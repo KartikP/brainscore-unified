@@ -18,7 +18,8 @@ from .base import Capability
 from .._model.behavioral import _declared_formats
 from .._model.dispatch import act
 from ..perturbation import INTERVENTION_CHANNELS
-from .._model.recording import open_recordings, records_while_answering, region_selector, trial_regions
+from .._model.recording import (open_recordings, planned_recordings, records_while_answering,
+                                region_selector, trial_regions)
 from .registry import register_capability
 from brainscore_core import streaming_helpers as _drivers
 from brainscore_core.streaming import StreamEvent, parse_channel
@@ -187,7 +188,8 @@ class _PolicySteps:
         self._stack = ExitStack()
 
     def __enter__(self) -> '_PolicySteps':
-        recordings = open_recordings(self.subject, None, self.layers)
+        recordings = open_recordings(self.subject, None, self.layers,
+                                     planned_recordings(self.subject, self.layers))
         try:
             self.live = {regions: self._stack.enter_context(recording)
                          for regions, recording in recordings.items()}
@@ -244,8 +246,8 @@ class InterventionSessions(Capability):
         _drivers.drive_state_change_session(subject._interventions, session)
 
 
-_NEURAL, _BEHAVIOR = NeuralSessions(), BehaviorSessions()
-for _capability in (_NEURAL, _BEHAVIOR, MotorSessions(), InterventionSessions()):
+_NEURAL, _BEHAVIOR, _MOTOR = NeuralSessions(), BehaviorSessions(), MotorSessions()
+for _capability in (_NEURAL, _BEHAVIOR, _MOTOR, InterventionSessions()):
     register_capability(_capability)
 
 

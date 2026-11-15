@@ -29,6 +29,7 @@ class SessionPlan:
     pick: Optional[Tuple[str, Optional[str]]] = None    # (answering part, probability source)
     pick_key: Optional[tuple] = None    # the task and formats the pick was made for
     by_answer: Optional[bool] = None    # within generation: the answer part (True) or the reply part
+    recordings: Optional[tuple] = None  # groups that record the regions during the answering pass or a step
 
     def pick_for(self, task, formats) -> Optional[Tuple[str, Optional[str]]]:
         """The planned pick when ``task`` and ``formats`` are the ones it was made for, else None."""
@@ -73,7 +74,8 @@ def plan_session(model, session, passes: str) -> SessionPlan:
     streaming = bool(getattr(session, 'streaming', False))
     history = 'memory:trial_history' in model.traits
 
-    from ..capabilities.sessions import _BEHAVIOR, _NEURAL
+    from ..capabilities.sessions import _BEHAVIOR, _MOTOR, _NEURAL
+    from .recording import plan_recordings
     if handler is _NEURAL:
         task_path = task is not None and task.task_type != 'passive'
     elif handler is _BEHAVIOR:
@@ -81,7 +83,7 @@ def plan_session(model, session, passes: str) -> SessionPlan:
     else:
         task_path = False
 
-    pick = pick_key = by_answer = None
+    pick = pick_key = by_answer = recordings = None
     if task_path:
         _refuse_task_session(model, session, task, answers, regions)
         delivery = 'stream' if streaming else 'per_trial' if history else 'table'
@@ -90,12 +92,19 @@ def plan_session(model, session, passes: str) -> SessionPlan:
             pick_key = _pick_key(task, answers)
             if task.response is not None:
                 by_answer = model._behavioral.by_answer(task)
+            stimuli = getattr(session, 'stimuli', None)
+            if regions and pick[0] != 'readout' and stimuli is not None:
+                # Regions recorded during the answering pass: refused, or grouped, before any fit.
+                recordings = plan_recordings(model, stimuli, _region_layers(model, regions))
     elif handler is _NEURAL:
         refuse_variance(model, session)
         per_trial = history and (task is None or task.trial_memory == 'none')
         delivery = 'stream' if streaming else 'per_trial' if per_trial else 'table'
     else:
         delivery = 'stream' if streaming else 'table'
+        if handler is _MOTOR and regions:
+            # Regions recorded during each policy step: refused, or grouped, before the first step.
+            recordings = plan_recordings(model, None, _region_layers(model, regions))
         if handler is _BEHAVIOR and task is not None and task.task_type != 'passive':
             # Bare behavior of a legacy task (core's typed driver): its part is chosen here too.
             refuse_variance(model, session)
@@ -104,7 +113,13 @@ def plan_session(model, session, passes: str) -> SessionPlan:
             pick_key = _pick_key(task, ['behavior'])
     return SessionPlan(handler=handler, regions_per_pass=passes, answers=answers, regions=regions,
                        task_path=task_path, delivery=delivery, pick=pick, pick_key=pick_key,
-                       by_answer=by_answer)
+                       by_answer=by_answer, recordings=recordings)
+
+
+def _region_layers(model, regions) -> dict:
+    """``{region: its layer paths}``, as the session parts build it."""
+    from .recording import region_selector
+    return {region: list(region_selector(model, region).layer_paths) for region in regions}
 
 
 def _refuse_task_session(model, session, task, answers, regions) -> None:
