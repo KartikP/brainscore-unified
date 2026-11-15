@@ -32,7 +32,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     from transformers import (
         AutoProcessor, Qwen2_5_VLForConditionalGeneration)
     from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
-    from brainscore.models._multimodal_av_shared import build_audio_wrapper
+    from brainscore.models._shared import build_audio_wrapper
 
     qwen_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         'Qwen/Qwen2.5-VL-3B-Instruct',

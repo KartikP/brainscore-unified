@@ -22,7 +22,7 @@ def test_qwen_av_registration_builds_its_vision_tower():
             patch.object(transformers.AutoProcessor, 'from_pretrained',
                          return_value=MagicMock()), \
             patch.object(reg, 'pin_image_processor', side_effect=lambda p, *a, **k: p), \
-            patch('brainscore.models._multimodal_av_shared.build_audio_wrapper',
+            patch('brainscore.models._shared.build_audio_wrapper',
                   return_value=(audio, None)):
         model = reg.get_model('qwen2.5-vl-wav2vec2')
     vision = model.extractor['vision']

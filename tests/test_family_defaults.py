@@ -44,3 +44,53 @@ def test_without_a_grid_each_output_row_is_one_image():
     assert wrapper._patch_counts({'image_grid_thw': torch.tensor([[1, 2, 3], [2, 2, 2]])}) == [6, 8]
     with pytest.raises(TypeError):
         type(wrapper)(wrapper._model, None, patch_count_fn=lambda out: None)
+
+
+# -- tubelet video models -------------------------------------------------------
+
+def _old_tubelet_mean(arr, temporal, spatial):
+    """Frozen copy of the V-JEPA 1, V-JEPA 2 and VideoMAE post-hooks before they were shared."""
+    B, seq_len, hidden = arr.shape
+    if seq_len == temporal * spatial:
+        t_steps, s_steps = temporal, spatial
+    elif seq_len % spatial == 0:
+        t_steps, s_steps = seq_len // spatial, spatial
+    elif seq_len % temporal == 0:
+        t_steps, s_steps = temporal, seq_len // temporal
+    else:
+        raise ValueError('unable to infer')
+    return arr.reshape(B, t_steps, s_steps, hidden).mean(axis=2)
+
+
+def _old_fit(frames, count):
+    """Frozen copy of the V-JEPA 1 and 2 frame pad and subsample before it was shared."""
+    frames = list(frames)
+    if len(frames) < count:
+        frames = frames + [frames[-1]] * (count - len(frames))
+    elif len(frames) > count:
+        idxs = [int(round(i * (len(frames) - 1) / (count - 1))) for i in range(count)]
+        frames = [frames[i] for i in idxs]
+    return frames
+
+
+@pytest.mark.parametrize('module, hook, temporal, spatial', [
+    ('vjepa', '_vjepa_post_hook', 32, 256), ('vjepa_v1', '_vjepa_v1_post_hook', 8, 196),
+    ('videomae_base', '_videomae_post_hook', 8, 196)])
+def test_each_tubelet_registration_reduces_as_its_old_copy(module, hook, temporal, spatial):
+    import importlib
+    post_hook = getattr(importlib.import_module(f'brainscore.models.{module}.model'), hook)
+    rng = np.random.default_rng(0)
+    for seq in (temporal * spatial, 3 * spatial, temporal * 5):
+        arr = rng.standard_normal((2, seq, 4)).astype(np.float32)
+        result, expected = post_hook(arr), _old_tubelet_mean(arr, temporal, spatial)
+        assert result.dtype == expected.dtype and np.array_equal(result, expected)
+
+
+@pytest.mark.parametrize('count', [16, 64])
+def test_fit_frames_gives_the_old_frames(count):
+    from brainscore.models._shared import fit_frames
+    frames = [np.full((2, 2, 3), i, np.uint8) for i in range(70)]
+    for n in (1, 10, count, 70):
+        assert [f is g for f, g in zip(fit_frames(frames[:n], count), _old_fit(frames[:n], count))] == [True] * count
+    with pytest.raises(ValueError, match='empty frame list'):
+        fit_frames([], count)

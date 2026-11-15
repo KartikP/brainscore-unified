@@ -22,7 +22,7 @@ import functools
 import torch
 
 from brainscore import BrainScoreModel, LayerSelector
-from brainscore.models._multimodal_av_shared import (
+from brainscore.models._shared import (
     _load_preprocess_images, build_audio_wrapper)
 
 from ._ids import SUPPORTED_IDENTIFIERS
