@@ -93,7 +93,7 @@ def plan_session(model, session, passes: str) -> SessionPlan:
             pick_key = _pick_key(task, answers)
             if task.response is not None:
                 by_answer = model._behavioral.by_answer(task)
-            stimuli = getattr(session, 'stimuli', None)
+            stimuli = _presented_table(session)
             if regions and pick[0] != 'readout' and stimuli is not None:
                 # Regions recorded during the answering pass: refused, or grouped, before any fit.
                 recordings = plan_recordings(model, stimuli, _region_layers(model, regions))
@@ -101,7 +101,7 @@ def plan_session(model, session, passes: str) -> SessionPlan:
         refuse_variance(model, session)
         per_trial = history and (task is None or task.trial_memory == 'none')
         delivery = 'stream' if streaming else 'per_trial' if per_trial else 'table'
-        stimuli = getattr(session, 'stimuli', None)
+        stimuli = _presented_table(session)
         if stimuli is not None and regions:
             # Every region is checked before the first pass; the order and the shared calls
             # are decided once. The whole table reads several inputs at once (core's driver).
@@ -123,6 +123,18 @@ def plan_session(model, session, passes: str) -> SessionPlan:
     return SessionPlan(handler=handler, regions_per_pass=passes, answers=answers, regions=regions,
                        task_path=task_path, delivery=delivery, pick=pick, pick_key=pick_key,
                        by_answer=by_answer, recordings=recordings, passive=passive)
+
+
+def _presented_table(session):
+    """The session's table when its source presents exactly that table's rows, else None.
+
+    Only then can the plan check the whole table, group the recordings and read its
+    input forms before any set-up: ``stimulus_session`` states it (core
+    ``Session._presents_table``, listed and streaming). A source given with a table
+    by its caller may present other rows or other forms, so each batch decides, as
+    before the plan.
+    """
+    return session.stimuli if getattr(session, '_presents_table', False) else None
 
 
 def _spans_several_inputs(stimuli) -> bool:
@@ -165,10 +177,10 @@ def _choose_answering_part(model, session, task, answers, regions, delivery):
 
     The refusals that ``respond`` and the readout would raise after the readout
     was fitted are raised here: trial history without a reply or likelihood part,
-    and, when the session has its table, a region the readout cannot record from
+    and, when the source presents exactly its table, a region the readout cannot record from
     the input it presents, a bad prompt layout and rows with different numbers of
     options (whole table only; one trial at a time or a stream compares nothing
-    across trials). A source with no table is checked per trial (stated limit, O2).
+    across trials). Any other source is checked per batch (stated limit, O2).
     """
     readout = model._behavioral
     readout.validate_task(task)
@@ -179,10 +191,10 @@ def _choose_answering_part(model, session, task, answers, regions, delivery):
         raise ExecutionNotFeasibleError(
             "memory='trial_history' needs reply= or likelihood=; answer= cannot see earlier trials.",
             channels=set(answers), task_type=task.task_type)
-    stimuli = getattr(session, 'stimuli', None)
+    stimuli = _presented_table(session)
     if stimuli is None:
-        return pick                     # only the trials show their columns (rule 5.14, stated limit)
-    # A known table is checked whole, also for a streamed delivery (core keeps the table);
+        return pick                     # only the batches show their rows (rule 5.14, stated limit)
+    # A presented table is checked whole, also for a streamed delivery;
     # options are compared across rows only when the whole table is answered at once.
     if path == 'readout' and regions:
         readout.refuse_readout_regions(stimuli, regions)
