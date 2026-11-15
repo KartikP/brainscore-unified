@@ -191,7 +191,7 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
     """
 
     # Asks for the choice of each word; every word is an independent trial.
-    # The input channel is the one the variant sends, set in __init__.
+    # Pre-flight reads the inputs from stimulus_set and task: the word and the question.
     requested_output_channels = frozenset({'behavior:choice'})
     trial_memory = 'none'
 
@@ -202,8 +202,6 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
                 f"channels must be one of {[(c,) for c in _CHANNEL_COLUMNS]}; "
                 f"got {channels!r}")
         channel = channels[0]
-        # The word (an image or a string) and the question put to the participant.
-        self.required_input_channels = frozenset({channel, 'instruction'})
 
         full_stimulus_set = load_stimulus_set('Yeatman2021')
         # Split first on the full set so the train/test partition is the
@@ -211,10 +209,10 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
         # chosen channel.
         train_full, test_full = _split_train_test(full_stimulus_set)
         self._train_stimuli = _project_to_channel(train_full, channel)
-        self._test_stimuli = _project_to_channel(test_full, channel)
+        self.stimulus_set = _project_to_channel(test_full, channel)
         self._human_ds = load_dataset('Yeatman2021')
 
-        test_ids = list(self._test_stimuli['stimulus_id'].values)
+        test_ids = list(self.stimulus_set['stimulus_id'].values)
         self._human_accuracy = _human_accuracy_on_stimuli(self._human_ds, test_ids)
 
         super().__init__(
@@ -225,16 +223,19 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
             bibtex=BIBTEX,
         )
 
-    def __call__(self, subject) -> Score:
-        # The subject's parts decide how it answers: an answer part, a reply, or a readout.
-        task = TaskContext(
+    @property
+    def task(self) -> TaskContext:
+        """The question and its two answers; a readout fits on the 400 training words."""
+        return TaskContext(
             fitting_stimuli=self._train_stimuli,
             instruction='Is this a real word or a pseudo word?',
             response=Choice(['real', 'pseudo']),
         )
-        # The 100-item test set is what gets answered; the fitting stimuli only
-        # train a readout.
-        session = stimulus_session(self._test_stimuli, ['behavior:choice'], task)
+
+    def __call__(self, subject) -> Score:
+        # The subject's parts decide how it answers: an answer part, a reply, or a readout.
+        # The 100-item test set is what gets answered.
+        session = stimulus_session(self.stimulus_set, ['behavior:choice'], self.task)
         subject.participate(session)
         predictions = session.collect('behavior:choice')
         choice_values = list(predictions['choice'].values)
@@ -251,8 +252,8 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
         # Ground truth
         stim_ids = list(predictions['stimulus_id'].values)
         truth_map = dict(zip(
-            self._test_stimuli['stimulus_id'].values,
-            self._test_stimuli['image_label'].values,
+            self.stimulus_set['stimulus_id'].values,
+            self.stimulus_set['image_label'].values,
         ))
         truth = [truth_map[sid] for sid in stim_ids]
 

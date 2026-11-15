@@ -199,21 +199,21 @@ BIBTEX = ''   # the citation of the data
 
 class YourBenchmark(BenchmarkBase):
     # Checked before any compute, so a mismatched model is N/A instead of failing mid-run.
-    required_input_channels = {'vision:image'}
+    # The inputs are read from stimulus_set: each stimulus column feeds one channel.
     requested_output_channels = {'neural:IT'}
 
     def __init__(self):
         super().__init__(identifier='my-benchmark', ceiling=not_estimated(),  # or Score(your estimate)
                          version=1, parent='neural', bibtex=BIBTEX)
         self._assembly = load_dataset('your-measurements')      # target measurements
-        self._stimulus_set = load_stimulus_set('your-stimuli')
+        self.stimulus_set = load_stimulus_set('your-stimuli')
         self._metric = load_metric('your-metric')
 
     def __call__(self, subject):
         # Runs a session through subject.participate; works for any Subject.
         predictions = neural_response(
             subject=subject,
-            stimuli=self._stimulus_set,
+            stimuli=self.stimulus_set,
             outputs=['neural:IT'],
             time_bins=[(70, 170)],
         )                                                    # -> NeuroidAssembly

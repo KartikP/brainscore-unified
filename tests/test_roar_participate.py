@@ -53,9 +53,9 @@ def test_the_choice_request_scores_what_the_legacy_request_scored(synthetic_roar
     new = float(benchmark(_noisy_readout_model()).attrs['raw'])
     legacy = TaskContext(task_type='probabilities', fitting_stimuli=benchmark._train_stimuli,
                          label_set=['real', 'pseudo'], instruction='Is this a real word or a pseudo word?')
-    rows = behavioral_response(_noisy_readout_model(), benchmark._test_stimuli, legacy)
+    rows = behavioral_response(_noisy_readout_model(), benchmark.stimulus_set, legacy)
     labels = list(rows['choice'].values)
-    truth = dict(zip(benchmark._test_stimuli['stimulus_id'], benchmark._test_stimuli['image_label']))
+    truth = dict(zip(benchmark.stimulus_set['stimulus_id'], benchmark.stimulus_set['image_label']))
     old = float(np.mean([labels[i] == truth[sid] for sid, i in
                          zip(rows['stimulus_id'].values, np.asarray(rows.values).argmax(axis=1))]))
     assert 0.5 < new < 1.0

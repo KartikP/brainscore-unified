@@ -17,7 +17,7 @@ import pytest
 import brainscore
 from brainscore import BrainScoreModel
 from brainscore_core.compatibility import (CompatibilityError, ExecutionNotFeasibleError,
-                                           check_channel_compatibility)
+                                           benchmark_required_input_channels, check_channel_compatibility)
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice, Scale, Text
 from brainscore_core.streaming_helpers import stimulus_session
@@ -164,7 +164,7 @@ def test_the_benchmark_declarations_match_the_matrix(synthetic_roar, prepared):
     from brainscore.benchmarks.roar_yeatman2021.benchmark import Yeatman2021LexicalDecision
     for word, name in (('vision:image', 'ROAR image'), ('text', 'ROAR text')):
         roar = Yeatman2021LexicalDecision(channels=(word,))
-        assert (set(roar.required_input_channels), set(roar.requested_output_channels)) == BENCHMARKS[name]
+        assert (benchmark_required_input_channels(roar), set(roar.requested_output_channels)) == BENCHMARKS[name]
     for mode in ('choice', 'logprobs'):
         ewok = brainscore.load_benchmark(f'EWoK-core-1.0-{mode}', root=prepared)
         assert (set(ewok.required_input_channels), set(ewok.requested_output_channels)) == \

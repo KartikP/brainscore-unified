@@ -362,7 +362,9 @@ def synthetic_roar(monkeypatch):
     ids = [f's{i}' for i in range(500)]
     labels = ['real'] * 250 + ['pseudo'] * 250
     words = [f'{label}-{i}' for i, label in enumerate(labels)]
-    stimuli = StimulusSet({'stimulus_id': ids, 'sentence': words, 'image_label': labels})
+    # As the data plugin gives it: the word as an image file and as a string.
+    stimuli = StimulusSet({'stimulus_id': ids, 'image_file_name': [f'{sid}.png' for sid in ids],
+                           'sentence': words, 'image_label': labels})
     stimuli.identifier = 'synthetic-roar-dyslexia'
     stimuli.stimulus_paths = {sid: sid for sid in ids}
     monkeypatch.setattr(roar, 'load_stimulus_set', lambda identifier: stimuli)

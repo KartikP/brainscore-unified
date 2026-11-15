@@ -10,7 +10,7 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 def _benchmark():
     # Skip __init__: it downloads the ROAR data. __call__ needs only these fields.
     benchmark = object.__new__(Yeatman2021LexicalDecision)
-    benchmark._test_stimuli = StimulusSet({
+    benchmark.stimulus_set = StimulusSet({
         'stimulus_id': ['w1', 'w2', 'p1', 'p2'], 'sentence': ['cat', 'dog', 'florp', 'blick'],
         'image_label': ['real', 'real', 'pseudo', 'pseudo']})
     benchmark._train_stimuli = None
@@ -70,19 +70,19 @@ def test_session_reading_matches_the_configured_readout():
 
     benchmark = _benchmark()
     benchmark._train_stimuli = stimuli(['w1', 'w2', 'p1', 'p2'])
-    benchmark._test_stimuli = stimuli(['w3', 'p3', 'w1', 'p1'])
+    benchmark.stimulus_set = stimuli(['w3', 'p3', 'w1', 'p1'])
 
     legacy = model()
     legacy.start_task(TaskContext(task_type='probabilities', label_set=['real', 'pseudo'],
                                   fitting_stimuli=benchmark._train_stimuli,
                                   instruction='Is this a real word or a pseudo word?'))
-    expected = legacy._behavioral.predict_probabilities(benchmark._test_stimuli)
+    expected = legacy._behavioral.predict_probabilities(benchmark.stimulus_set)
     choices = list(expected['choice'].values)
     expected_correct = [choices[int(i)] == label for i, label in
-                        zip(expected.values.argmax(axis=1), benchmark._test_stimuli['image_label'])]
+                        zip(expected.values.argmax(axis=1), benchmark.stimulus_set['image_label'])]
 
     from brainscore_core.streaming_helpers import behavioral_response
-    answered = behavioral_response(model(), benchmark._test_stimuli, TaskContext(
+    answered = behavioral_response(model(), benchmark.stimulus_set, TaskContext(
         task_type='probabilities', label_set=['real', 'pseudo'],
         fitting_stimuli=benchmark._train_stimuli,
         instruction='Is this a real word or a pseudo word?'))

@@ -125,7 +125,7 @@ A subject declares what it can take and give; a benchmark, a protocol and a tool
 | Role | Inputs | Outputs |
 | --- | --- | --- |
 | Subject (model) | `in_channels` (plus `required_channels`) | `out_channels` (plus `output_inputs`) |
-| Benchmark | `required_input_channels` | `requested_output_channels` |
+| Benchmark | `required_input_channels`, or read from its `stimulus_set` and `task` | `requested_output_channels` |
 | `SessionProtocol`, `Tool` | `required_input_channels` | `requested_output_channels` |
 
 **Pictures and clips.** A subject says which visual forms it takes natively: `vision:image` (pictures) and `vision:video` (video). A benchmark shows each subject the stimulus in the form people saw it when the subject has that form, and adapts it only when it doesn't (for example, frames from each clip for a picture-only model), recording the adaptation on the score as `attrs['input_adaptation']`.
