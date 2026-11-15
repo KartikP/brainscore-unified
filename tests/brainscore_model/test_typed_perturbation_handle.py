@@ -12,7 +12,7 @@ from brainscore_core.streaming_helpers import apply_state_change
 class _Benchmark:
     identifier = 'applies-a-lesion'
     version = 1
-    required_input_channels = {'text'}
+    required_input_channels = {'text', 'lesion'}   # a lesion record answers the lesion it sends
     requested_output_channels = {'perturbation'}
 
     def __init__(self, undo):
@@ -29,7 +29,7 @@ class _Benchmark:
 class _TypedLesionSubject(Subject):
     """Answers a perturbation session with a typed payload and default metadata."""
     identifier = 'typed-lesion'
-    in_channels = {'text'}
+    in_channels = {'text', 'lesion'}
     out_channels = {'perturbation'}
 
     def participate(self, session):

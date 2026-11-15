@@ -86,7 +86,8 @@ def test_declares_inputs_outputs_and_protocol():
     """What the benchmark sends, asks for, and how its trials relate."""
     import brainscore
     bench = brainscore.load_benchmark('your-benchmark')
-    assert set(bench.required_input_channels) == {'vision:image'}
+    from brainscore_core.compatibility import benchmark_required_input_channels
+    assert benchmark_required_input_channels(bench) == {'vision:image'}    # read from its stimulus_set
     assert set(bench.requested_output_channels) == {'neural:IT'}
     assert bench.trial_memory == 'none'
 

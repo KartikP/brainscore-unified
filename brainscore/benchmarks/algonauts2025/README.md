@@ -20,7 +20,7 @@ The held-out splits, Friends S7 (`split='friends_s7'`) and the out-of-distributi
 from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025
 from brainscore.tools.algonauts2025_predictions import generate_predictions
 
-held_out = Algonauts2025(participant=1, split='friends_s7')
+held_out = Algonauts2025(participant=1, split='friends_s7', identifier='Algonauts2025-friends_s7-sub01')
 result = generate_predictions(subject, held_out, out_dir)
 ```
 
@@ -31,8 +31,8 @@ Calling a held-out benchmark raises `ValueError`, because the data has no ground
 Each benchmark declares its input channels and uses `trial_memory = 'none'`. The `channels` parameter selects what the benchmark sends for each TR. The choices differ only in this.
 
 - `channels=('vision:image',)` (default) sends the frame at the middle of each TR on `vision:image`. All identifiers except the two variants of participant 1 use these channels.
-- `channels=('vision:video',)` sends the clip of each TR on `vision:video`: the movie from `t x 1.49 s` to `(t+1) x 1.49 s`, cut at 224 x 224 with 30 frames. It sends no sound and no speech. The identifier ends in `-video`.
-- `channels=('vision:video', 'audio')` sends the clip on `vision:video` and the sound of the same 1.49 s on `audio`, in one table row. The identifier ends in `-video-audio`.
+- `channels=('vision:video',)` sends the clip of each TR on `vision:video`: the movie from `t x 1.49 s` to `(t+1) x 1.49 s`, cut at 224 x 224 with 30 frames. It sends no sound and no speech. Its registry line names the identifier `...-video`.
+- `channels=('vision:video', 'audio')` sends the clip on `vision:video` and the sound of the same 1.49 s on `audio`, in one table row. Its registry line names the identifier `...-video-audio`.
 
 A model that takes none of the inputs the benchmark sends gets N/A. A model that requires an input the benchmark does not send also gets N/A.
 

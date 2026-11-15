@@ -8,12 +8,15 @@ when they are built; here a synthetic ROAR set stands behind their loaders, so
 the test needs no network. A change to a registry line that moves one of
 these fails here (Contract Rules 10: identifiers are stable and scores do not move).
 """
+import functools
 import warnings
+from types import SimpleNamespace
 
 import pytest
 
 import brainscore
 import brainscore.benchmarks  # noqa: F401  (registers the unified benchmarks)
+from brainscore_core.compatibility import benchmark_required_input_channels
 from tests.test_induced_dyslexia import synthetic_roar  # noqa: F401  (fixture)
 
 FAMILIES = ('Algonauts2025-', 'CogGym.', 'EWoK-', 'GridGame-', 'Lahner2024-',
@@ -202,22 +205,48 @@ def test_the_registered_identifiers_are_the_pinned_list():
     assert registered == sorted(REGISTERED)
 
 
-@pytest.mark.parametrize('identifier', sorted(BUILT))
-def test_a_registry_line_builds_the_pinned_benchmark(identifier, request):
+def _build(identifier, request):
     if identifier.startswith('Yeatman2021-'):
         request.getfixturevalue('synthetic_roar')
     try:
         with warnings.catch_warnings():
             warnings.simplefilter('ignore', DeprecationWarning)
-            benchmark = brainscore.benchmark_registry[identifier]()
+            return brainscore.benchmark_registry[identifier]()
     except FileNotFoundError:  # includes LocalDataMissing
+        return None
+
+
+@pytest.mark.parametrize('identifier', sorted(BUILT))
+def test_a_registry_line_builds_the_pinned_benchmark(identifier, request):
+    benchmark = _build(identifier, request)
+    if benchmark is None:
         pytest.skip(f'{identifier} needs local data to build')
     built, version, trial_memory, inputs, outputs = BUILT[identifier]
     assert benchmark.identifier == built
     assert benchmark.version == version
     assert benchmark.trial_memory == trial_memory
-    assert sorted(benchmark.required_input_channels) == inputs
+    assert sorted(benchmark_required_input_channels(benchmark)) == inputs     # as pre-flight reads them
     assert sorted(benchmark.requested_output_channels) == outputs
+
+
+# The benchmarks that keep the table and task they present; pre-flight reads their inputs from them.
+# The others declare: their data loads at the run (LeBel, Lahner, Algonauts), their tables are
+# built per batch (EWoK), they send an environment (GridGame) or a lesion (induced dyslexia).
+TABLE_AND_TASK = ['Yeatman2021-lexical_decision-image', 'Yeatman2021-lexical_decision-text']
+
+
+def test_a_kept_table_and_task_give_the_pinned_inputs_and_a_declaration_equals_them(request):
+    kept = []
+    for identifier in sorted(BUILT):
+        benchmark = _build(identifier, request)
+        if benchmark is None or 'stimulus_set' not in vars(benchmark):
+            continue
+        kept.append(identifier)
+        derived = benchmark_required_input_channels(
+            SimpleNamespace(stimulus_set=benchmark.stimulus_set, task=getattr(benchmark, 'task', None)))
+        assert sorted(derived) == BUILT[identifier][3]
+        assert benchmark.required_input_channels is None      # no hand-typed copy of the derived set
+    assert kept == TABLE_AND_TASK
 
 
 MODELS = [
@@ -250,3 +279,22 @@ def test_the_27_built_keys_name_the_identifier_they_build():
     """
     assert len(BUILT) == 27 and len(REGISTERED) == 62
     assert all(key == built for key, (built, *_rest) in BUILT.items())
+
+
+# A variant of these families is a registry line that names its identifier; the class builds none.
+NAMED = sorted(key for key in REGISTERED if key.startswith(('Algonauts2025-', 'Lahner2024-', 'Yeatman2021-')))
+
+
+@pytest.mark.parametrize('key', NAMED)
+def test_a_registry_line_names_its_key_as_the_identifier(key):
+    factory = brainscore.benchmark_registry[key]       # read, not built
+    assert isinstance(factory, functools.partial) and factory.keywords['identifier'] == key
+
+
+def test_the_benchmark_classes_need_an_identifier():
+    from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025
+    from brainscore.benchmarks.induced_dyslexia.benchmark import InducedDyslexia
+    from brainscore.benchmarks.roar_yeatman2021.benchmark import Yeatman2021LexicalDecision
+    for build in (lambda: Algonauts2025(participant=1), InducedDyslexia, Yeatman2021LexicalDecision):
+        with pytest.raises(TypeError, match='identifier'):
+            build()

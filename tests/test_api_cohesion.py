@@ -289,7 +289,7 @@ def test_roar_task_carries_no_answer_path_and_splits_train_from_test(monkeypatch
     })
     monkeypatch.setattr(module, 'load_stimulus_set', lambda identifier: stimuli)
     monkeypatch.setattr(module, 'load_dataset', lambda identifier: human)
-    benchmark = module.Yeatman2021LexicalDecision(channels=('text',))
+    benchmark = module.Yeatman2021LexicalDecision(channels=('text',), identifier='Yeatman2021-lexical_decision-text')
     assert benchmark.identifier == 'Yeatman2021-lexical_decision-text'
     tasks = []
     truth = dict(zip(stimuli.stimulus_id, stimuli.image_label))
@@ -311,10 +311,10 @@ def test_roar_task_carries_no_answer_path_and_splits_train_from_test(monkeypatch
 
     result = benchmark(Reader())
     assert not hasattr(tasks[0], 'prefer_path')
-    assert result.attrs['n_trials'] == len(benchmark._test_stimuli)
+    assert result.attrs['n_trials'] == len(benchmark.stimulus_set)
     assert float(result) == 1
     assert 'requested_behavioral_path' not in result.attrs
-    assert not set(benchmark._train_stimuli.stimulus_id) & set(benchmark._test_stimuli.stimulus_id)
+    assert not set(benchmark._train_stimuli.stimulus_id) & set(benchmark.stimulus_set.stimulus_id)
 
 
 def test_new_model_template_supports_public_recording_workflow(tmp_path):
