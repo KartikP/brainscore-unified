@@ -223,14 +223,20 @@ trials = result.trials()           # one row per trial
 it = result.neural('IT', condition='lesioned')
 ```
 
-`trials()` has `condition`, `repetition` and `stimulus_id`, then the stimulus set's own
-columns (a noise level, a word length), then each saved answer: `choice`, `p(<label>)`,
-`rt`, `rating`, `text`. For an answer read from a reply, `<answer>_valid`, `<answer>_raw`
-and `<answer>_error` say whether it could be read, what the reply was, and why not, so
-an analysis can count or drop invalid trials:
+`trials()` has one row for each presented trial (a repeated stimulus has one row for
+each time it was shown): `condition`, `repetition` and `stimulus_id`, then the stimulus
+set's own columns (a noise level, a word length), then each saved answer: `choice`,
+`p(<label>)`, `rt`, `rating`, `text`. For each answer, `<answer>_state` and
+`<answer>_reason` are the state Brain-Score stored for the trial (`valid`, `invalid` or
+`missing`) and why; `<answer>_raw`, `<answer>_valid` and `<answer>_error` are the reply,
+whether the model side could read it, and why not. A trial the model did not answer has
+a row with state `missing`. The column `rows_from` says where the rows come from: the
+answers saved after each completed session, or, for a session that ended with an error,
+the answers seen before the error. An analysis can count or drop invalid and missing
+trials by their state:
 
 ```python
-valid = trials[trials['choice_valid']]
+valid = trials[trials['choice_state'] == 'valid']
 print(valid.groupby(['condition', 'noise'])['choice'].apply(lambda c: (c == 'animal').mean()))
 ```
 

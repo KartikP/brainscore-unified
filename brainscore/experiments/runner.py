@@ -151,13 +151,16 @@ def _publish_finalized_answers(session, context, collected=None):
     While the runner owns the completed session, each addressed ``behavior:<format>``
     answer is collected once (``collected``, when the protocol collected the outputs)
     and published as one ``answer`` event, with the condition and repetition of the
-    record. It holds core's stored form: each trial's state, reason and raw answer.
-    ``RecordBehavior`` keeps it; ``ExperimentResult.trials()`` reads the states from
-    it and its rows from the ``output`` events, so no row is counted twice. A session
-    whose history limit dropped responses cannot be collected: it publishes none.
+    record. It holds core's stored form: each trial's value, state, reason and raw
+    answer, one row per presented trial (core adds a missing row for a trial with no
+    answer). Its meta carries the presented trials in presentation order with their
+    stimulus columns (``trials``), so ``ExperimentResult.trials()`` builds one row per
+    trial and occurrence from it. ``RecordBehavior`` keeps it. A session whose history
+    limit dropped responses cannot be collected: it publishes none.
     """
     if session.dropped:
         return
+    trials = _presented_trials(session)
     channels = [channel for channel in (session.outputs or ()) if channel.startswith('behavior:')]
     for channel in channels:
         if not any(event.channel == channel for event in session.emitted):
@@ -168,7 +171,26 @@ def _publish_finalized_answers(session, context, collected=None):
             answer = collected
         else:
             answer = session.collect(channel)
-        context.publish('answer', StreamEvent(channel, answer, None, {'finalized': True}))
+        meta = {'finalized': True, **({'trials': trials} if trials else {})}
+        context.publish('answer', StreamEvent(channel, answer, None, meta))
+
+
+def _presented_trials(session):
+    """The session's table in presentation order: ``stimulus_id`` and every stimulus
+    column of plain values (text, numbers, booleans), as lists; ``None`` without a table."""
+    import numbers
+    table = getattr(session, 'stimuli', None)
+    if table is None or 'stimulus_id' not in getattr(table, 'columns', ()):
+        return None
+
+    def plain(value):
+        return value is None or isinstance(value, (str, bool, numbers.Number))
+    trials = {}
+    for column in table.columns:
+        values = [value.item() if hasattr(value, 'item') else value for value in table[column].tolist()]
+        if column == 'stimulus_id' or all(plain(value) for value in values):
+            trials[column] = values
+    return trials
 
 
 class SessionProtocol:
@@ -419,6 +441,110 @@ def _per_trial_coords(assembly):
     return found
 
 
+# How each answer was read, by the coordinate core stores, and its column suffix.
+_DETAILS = {'response_state': 'state', 'response_reason': 'reason', 'raw_answer': 'raw',
+            'answer_valid': 'valid', 'parse_error': 'error'}
+
+
+def _occurrences(stimulus_ids):
+    """``(stimulus_id, k)`` for each row: its k-th occurrence, the session's matching rule."""
+    seen, keys = {}, []
+    for stimulus_id in stimulus_ids:
+        keys.append((stimulus_id, seen.get(stimulus_id, 0)))
+        seen[stimulus_id] = seen[stimulus_id] + 1 if stimulus_id in seen else 1
+    return keys
+
+
+def _answer_columns(channel, assembly, rows, columns):
+    """Add ``channel``'s value and detail columns for ``rows`` (a stored row or ``None`` each)."""
+    import numpy as np
+    values = np.asarray(assembly.values)
+    fmt = channel.split(':', 1)[1]
+    if 'choice' in assembly.dims and fmt in ('probabilities', 'log_probabilities'):
+        prefix = 'p' if fmt == 'probabilities' else 'logp'
+        for i, label in enumerate(assembly['choice'].values):
+            columns[f'{prefix}({label})'] = [float(values[r, i]) if r is not None else np.nan for r in rows]
+    elif 'choice' in assembly.dims:
+        labels = list(assembly['choice'].values)
+        columns[fmt] = [labels[int(np.argmax(values[r]))]
+                        if r is not None and np.isfinite(values[r]).all() else None for r in rows]
+    else:
+        columns[fmt] = [values[r] if r is not None else None for r in rows]
+    per_trial = _per_trial_coords(assembly)
+    for name, suffix in _DETAILS.items():
+        if name in per_trial:
+            column = list(per_trial[name])
+            columns[f'{fmt}_{suffix}'] = [column[r] if r is not None else None for r in rows]
+
+
+def _finalized_table(envelopes):
+    """One session's table from its finalized answers: one row per presented trial."""
+    trials = next((env['payload'].meta.get('trials') for env in envelopes
+                   if env['payload'].meta.get('trials')), None)
+    first = envelopes[0]['payload'].payload
+    order = list(trials['stimulus_id']) if trials else list(first['stimulus_id'].values)
+    keys = _occurrences(order)
+    columns = {'stimulus_id': order}
+    if trials:
+        columns.update({name: list(values) for name, values in trials.items() if name != 'stimulus_id'})
+    else:
+        index = {key: row for row, key in enumerate(_occurrences(first['stimulus_id'].values))}
+        for name, column in _per_trial_coords(first).items():
+            if name not in _DETAILS:
+                columns[name] = [list(column)[index[key]] if key in index else None for key in keys]
+    for env in envelopes:
+        channel, assembly = env['payload'].channel, env['payload'].payload
+        index = {key: row for row, key in enumerate(_occurrences(assembly['stimulus_id'].values))}
+        _answer_columns(channel, assembly, [index.get(key) for key in keys], columns)
+    return columns
+
+
+def _observed_table(envelopes):
+    """One session's table from the observed answer events (the fallback): the first
+    event gives the identifiers; each event's columns as it reports them."""
+    import numpy as np
+    named = {env['payload'].channel for env in envelopes} - {'behavior'}
+    details = {'answer_valid': 'valid', 'raw_answer': 'raw', 'parse_error': 'error'}
+    table = None
+    cells = [env['payload'] for env in envelopes if not hasattr(env['payload'].payload, 'dims')]
+    if cells:
+        # One answer cell per event: one row each, named by the event's stimulus_id.
+        table = {'stimulus_id': [event.meta.get('stimulus_id') for event in cells]}
+        for event in cells:
+            table.setdefault(event.channel.split(':', 1)[-1], [])
+        for event in cells:
+            for channel in {e.channel for e in cells}:
+                table[channel.split(':', 1)[-1]].append(event.payload if event.channel == channel else None)
+        return table
+    for env in envelopes:
+        channel, assembly = env['payload'].channel, env['payload'].payload
+        if channel == 'behavior' and named:
+            continue               # the main answer is also saved under its own name
+        values = np.asarray(assembly.values)
+        if table is None:
+            table = {'stimulus_id': list(assembly['stimulus_id'].values)}
+        per_trial = _per_trial_coords(assembly)
+        for name, column in per_trial.items():          # stimulus columns, once
+            if name not in details:
+                table.setdefault(name, list(column))
+        if 'choice' in assembly.dims and channel != 'behavior:probabilities':
+            labels = np.asarray(assembly['choice'].values)
+            answered = ~np.isnan(values).any(axis=1)          # unreadable answers are NaN rows
+            answer = 'choice'
+            table[answer] = [labels[row.argmax()] if ok else None for row, ok in zip(values, answered)]
+        elif 'choice' in assembly.dims:
+            for i, label in enumerate(assembly['choice'].values):
+                table[f'p({label})'] = values[:, i]
+            continue
+        else:
+            answer = channel.split(':', 1)[-1] if ':' in channel else 'answer'
+            table[answer] = values
+        for name, suffix in details.items():              # how the answer was read
+            if name in per_trial:
+                table[f'{answer}_{suffix}'] = list(per_trial[name])
+    return table or {'stimulus_id': []}
+
+
 @dataclass(frozen=True)
 class ExperimentResult:
     """What a run saved, read back from ``directory``.
@@ -488,85 +614,54 @@ class ExperimentResult:
         raise LookupError(f'No saved behavior for condition={condition!r}, repetition={repetition!r}.')
 
     def trials(self):
-        """Every saved answer as a table: one row per trial.
+        """Every saved answer as a table: one row per presented trial.
 
         Columns: ``condition``, ``repetition``, ``stimulus_id``, the stimulus set's own
         columns (e.g. a noise level), then one column per kind of answer the run saved:
-        ``choice`` (the chosen label), ``p(<label>)`` for each label's probability, ``rt``,
-        ``rating``, ``text``. For an answer that was read from a reply,
-        ``<answer>_valid``, ``<answer>_raw`` and ``<answer>_error`` say whether it could be
-        read, what the reply was, and why not. For every behavior format,
-        ``<answer>_state`` and ``<answer>_reason`` are the state core stored for the
-        trial (``valid``, ``invalid``, ``missing``) and its reason, read from the
-        finalized answer the runner saves after each session (empty for a session that
-        ended with an error, or whose history limit dropped responses). An unreadable
-        answer is empty (``None`` or NaN).
+        ``choice`` (the chosen label), ``p(<label>)`` for each label's probability,
+        ``logp(<label>)`` for each log probability, ``rt``, ``rating``, ``text``. For each
+        format, ``<answer>_state`` and ``<answer>_reason`` are the state core stored for
+        the trial (``valid``, ``invalid``, ``missing``) and its reason;
+        ``<answer>_raw``, ``<answer>_valid`` and ``<answer>_error`` are the raw response,
+        whether the model side could read it, and why not, when the answer has them. A
+        trial with no usable answer has an empty value (``None`` or NaN).
+
+        For a completed session the rows come from the finalized answers the runner
+        saves: one row for each presented trial and occurrence, in presentation order,
+        each format matched by stimulus identifier and occurrence. A session with no
+        finalized answer (one that ended with an error, a run saved before finalized
+        answers existed, or a history limit that dropped responses) falls back to the
+        observed answer events, one table per event as before. The column ``rows_from``
+        says which: ``'finalized answers'`` or ``'observed events'``.
         """
-        import numpy as np
         import pandas as pd
         path = self.directory / 'behavior'
         if not path.is_dir():
             raise FileNotFoundError('No behavior record: attach RecordBehavior to the experiment.')
-        outputs = [row['payload'] for row in RunRecord(path).events() if row['payload']['kind'] == 'output']
-        named = {env['payload'].channel for env in outputs} - {'behavior'}
-        details = {'answer_valid': 'valid', 'raw_answer': 'raw', 'parse_error': 'error'}
-        tables = {}                    # (condition, repetition) -> {column: values}
-        for env in outputs:
-            channel, assembly = env['payload'].channel, env['payload'].payload
-            if channel == 'behavior' and named:
-                continue               # the main answer is also saved under its own name
-            values = np.asarray(assembly.values)
-            table = tables.setdefault((env['condition'], env['repetition_id']),
-                                      {'stimulus_id': list(assembly['stimulus_id'].values)})
-            per_trial = _per_trial_coords(assembly)
-            for name, column in per_trial.items():          # stimulus columns, once
-                if name not in details:
-                    table.setdefault(name, list(column))
-            if 'choice' in assembly.dims and channel != 'behavior:probabilities':
-                labels = np.asarray(assembly['choice'].values)
-                answered = ~np.isnan(values).any(axis=1)          # unreadable answers are NaN rows
-                answer = 'choice'
-                table[answer] = [labels[row.argmax()] if ok else None for row, ok in zip(values, answered)]
-            elif 'choice' in assembly.dims:
-                for i, label in enumerate(assembly['choice'].values):
-                    table[f'p({label})'] = values[:, i]
+        envelopes = [row['payload'] for row in RunRecord(path).events()]
+        keys, outputs, finalized = [], {}, {}
+        for env in envelopes:
+            if env['kind'] not in ('output', 'answer'):
                 continue
+            key = (env['condition'], env['repetition_id'])
+            if key not in keys:
+                keys.append(key)
+            (finalized if env['kind'] == 'answer' else outputs).setdefault(key, []).append(env)
+        frames = []
+        for condition, repetition in keys:
+            key = (condition, repetition)
+            if key in finalized:
+                columns, source = _finalized_table(finalized[key]), 'finalized answers'
             else:
-                answer = channel.split(':', 1)[-1] if ':' in channel else 'answer'
-                table[answer] = values
-            for name, suffix in details.items():              # how the answer was read
-                if name in per_trial:
-                    table[f'{answer}_{suffix}'] = list(per_trial[name])
-        # The state of each trial: from the finalized answers (no rows of their own).
-        finalized = [row['payload'] for row in RunRecord(path).events() if row['payload']['kind'] == 'answer']
-        for env in finalized:
-            table = tables.get((env['condition'], env['repetition_id']))
-            if table is None:
-                continue
-            channel, assembly = env['payload'].channel, env['payload'].payload
-            name = channel.split(':', 1)[1]
-            by_occurrence, seen = {}, {}
-            for stimulus_id, state, reason in zip(assembly['stimulus_id'].values,
-                                                  assembly['response_state'].values,
-                                                  assembly['response_reason'].values):
-                key = (stimulus_id, seen.get(stimulus_id, 0))
-                seen[stimulus_id] = key[1] + 1
-                by_occurrence[key] = (str(state), str(reason))
-            states, reasons, seen = [], [], {}
-            for stimulus_id in table['stimulus_id']:
-                key = (stimulus_id, seen.get(stimulus_id, 0))
-                seen[stimulus_id] = key[1] + 1
-                state, reason = by_occurrence.get(key, (None, None))
-                states.append(state)
-                reasons.append(reason)
-            table[f'{name}_state'], table[f'{name}_reason'] = states, reasons
-        frames = [pd.DataFrame(columns).assign(condition=condition, repetition=repetition)
-                  for (condition, repetition), columns in tables.items()]
+                columns, source = _observed_table(outputs[key]), 'observed events'
+            frames.append(pd.DataFrame(columns).assign(condition=condition, repetition=repetition,
+                                                       rows_from=source))
         if not frames:
             raise LookupError('The behavior record holds no answers.')
         table = pd.concat(frames, ignore_index=True)
         first = ['condition', 'repetition', 'stimulus_id']
-        return table[first + [c for c in table.columns if c not in first]]
+        last = ['rows_from']
+        return table[first + [c for c in table.columns if c not in first + last] + last]
 
     def _saved(self, folder, channel, condition, repetition):
         path = self.directory / folder
