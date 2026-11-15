@@ -81,6 +81,8 @@ BIBTEX = """@article{yeatman2021rapid,
 TRAIN_PER_CLASS = 200
 TEST_PER_CLASS = 50
 DYSLEXIA_THRESHOLD = 0.65  # 1 SD below human mean (Honarmand et al. 2026)
+# What the accuracy does with a trial that has no usable reading (Contract Rule 6.2).
+ANSWER_POLICY = 'invalid: wrong, counted; missing: wrong, counted'
 SPLIT_SEED = 0
 
 
@@ -239,14 +241,13 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
         predictions = session.collect('behavior:choice')
         choice_values = list(predictions['choice'].values)
 
-        # The chosen label of each stimulus is the column holding the 1.
+        # The chosen label of a valid trial is the column holding the 1. An invalid or
+        # a missing trial (its state, set by core) counts as wrong: it is no reading.
         prob_matrix = predictions.values  # (n_test, n_choices): one-hot rows
-        # An invalid or a missing answer is stored as a NaN row; it is scored as
-        # wrong rather than as whichever label argmax would pick.
-        invalid = np.isnan(prob_matrix).any(axis=1)
+        valid = predictions['response_state'].values == 'valid'
         pred_idx = np.nan_to_num(prob_matrix, nan=-1).argmax(axis=1)
-        predicted_labels = [None if bad else choice_values[i]
-                            for i, bad in zip(pred_idx, invalid)]
+        predicted_labels = [choice_values[i] if ok else None
+                            for i, ok in zip(pred_idx, valid)]
 
         # Ground truth
         stim_ids = list(predictions['stimulus_id'].values)
@@ -259,9 +260,8 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
         correct = [p == t for p, t in zip(predicted_labels, truth)]
         raw_accuracy = float(np.mean(correct))
 
-        score = benchmark_score(self, raw=raw_accuracy, metric='accuracy')
-        score.attrs['n_test_stimuli'] = len(stim_ids)
-        score.attrs['n_invalid_answers'] = int(invalid.sum())   # invalid and missing answers
+        score = benchmark_score(self, raw=raw_accuracy, metric='accuracy', answers=predictions,
+                                answer_policy=ANSWER_POLICY)
         score.attrs['dyslexia_threshold'] = DYSLEXIA_THRESHOLD
         score.attrs['dyslexic'] = bool(raw_accuracy < DYSLEXIA_THRESHOLD)
         # Breakdown by stimulus class

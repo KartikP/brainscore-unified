@@ -56,6 +56,14 @@ def not_estimated() -> Score:
 
 
 def _state_counts(answer) -> dict:
+    if isinstance(answer, Score):
+        # A behavior score of a benchmark this benchmark runs: its counts were read
+        # from the states of its own answer.
+        try:
+            return {key: int(answer.attrs[key]) for key in ('n_trials', 'n_valid', 'n_invalid', 'n_missing')}
+        except KeyError:
+            raise ValueError('a behavior score passed as answers carries n_trials, n_valid, '
+                             'n_invalid and n_missing') from None
     try:
         states = [str(state) for state in answer['response_state'].values]
     except KeyError:
@@ -109,7 +117,8 @@ def benchmark_score(benchmark, *, raw: float, metric: str, ceiling: Optional[Sco
     must be :func:`not_estimated`.
 
     ``answers`` (a stored behavior answer, a list of them, or a mapping of condition to
-    answer) adds the counts of the trial states, ``answer_policy`` (required with it)
+    answer; a behavior score of a benchmark this benchmark runs stands for its answer)
+    adds the counts of the trial states, ``answer_policy`` (required with it)
     and ``result_validity`` against ``invalid_limit`` (a share; none by default).
     """
     reserved = sorted(set(attrs) & set(_DERIVED))

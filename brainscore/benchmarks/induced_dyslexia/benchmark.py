@@ -127,8 +127,8 @@ class InducedDyslexia(BenchmarkBase):
             n_units=self.n_units).resolve_layers(subject)
 
     # -- scoring ------------------------------------------------------------
-    def _reading_accuracy(self, subject) -> float:
-        return float(self._reading(subject).attrs['raw'])
+    def _reading_score(self, subject) -> Score:
+        return self._reading(subject)
 
     def _ablate(self, subject, selections: List[Selection], handles: List[str]) -> None:
         """Apply one zeroing lesion per selection, appending each handle as it lands.
@@ -172,14 +172,16 @@ class InducedDyslexia(BenchmarkBase):
         return self._score(subject)
 
     def _score(self, subject) -> Score:
-        baseline_acc = self._reading_accuracy(subject)
+        baseline = self._reading_score(subject)
+        baseline_acc = float(baseline.attrs['raw'])
 
         # word-form lesion
         selections = self._localize(subject)
         handles: List[str] = []
         try:
             self._ablate(subject, selections, handles)
-            lesioned_acc = self._reading_accuracy(subject)
+            lesioned = self._reading_score(subject)
+            lesioned_acc = float(lesioned.attrs['raw'])
         finally:
             self._undo(subject, handles)
 
@@ -192,7 +194,8 @@ class InducedDyslexia(BenchmarkBase):
                     for s in selections]
         try:
             self._ablate(subject, controls, handles)
-            random_acc = self._reading_accuracy(subject)
+            random_control = self._reading_score(subject)
+            random_acc = float(random_control.attrs['raw'])
         finally:
             self._undo(subject, handles)
 
@@ -201,7 +204,11 @@ class InducedDyslexia(BenchmarkBase):
 
         # The score is the lesioned reading accuracy; the ceiling (no deficit)
         # is a reference and does not divide it.
-        score = benchmark_score(self, raw=lesioned_acc, metric='lesioned_reading_accuracy')
+        # The counts of each reading: the reading benchmark's policy holds in each.
+        score = benchmark_score(self, raw=lesioned_acc, metric='lesioned_reading_accuracy',
+                                answers={'intact': baseline, 'lesion': lesioned,
+                                         'random_control': random_control},
+                                answer_policy=lesioned.attrs['answer_policy'])
         score.attrs['baseline_accuracy'] = baseline_acc
         score.attrs['lesioned_accuracy'] = lesioned_acc
         score.attrs['random_control_accuracy'] = random_acc

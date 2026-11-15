@@ -311,7 +311,7 @@ def test_roar_task_carries_no_answer_path_and_splits_train_from_test(monkeypatch
 
     result = benchmark(Reader())
     assert not hasattr(tasks[0], 'prefer_path')
-    assert result.attrs['n_test_stimuli'] == len(benchmark._test_stimuli)
+    assert result.attrs['n_trials'] == len(benchmark._test_stimuli)
     assert float(result) == 1
     assert 'requested_behavioral_path' not in result.attrs
     assert not set(benchmark._train_stimuli.stimulus_id) & set(benchmark._test_stimuli.stimulus_id)
