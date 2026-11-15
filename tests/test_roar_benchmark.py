@@ -5,12 +5,9 @@ accuracy metric, 65% dyslexia threshold.
 
 Per the April 30, 2026 design decision, ROAR is registered as two pinned
 variants: ``Yeatman2021-lexical_decision-image`` and
-``Yeatman2021-lexical_decision-text``. The legacy
-``Yeatman2021-lexical_decision`` identifier is a deprecated alias that
-defaults to the image variant.
+``Yeatman2021-lexical_decision-text``. The old alias is no longer registered.
 """
 
-import warnings
 
 import numpy as np
 import pytest
@@ -153,24 +150,8 @@ class TestParameterizedChannels:
         assert np.isclose(bm_vision._human_accuracy, bm_text._human_accuracy)
 
 
-class TestLegacyAlias:
-    """Legacy `Yeatman2021-lexical_decision` identifier should still load,
-    emit a DeprecationWarning, and default to the image variant."""
-
-    def test_alias_emits_deprecation_warning(self):
-        import brainscore
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter('always')
-            brainscore.load_benchmark('Yeatman2021-lexical_decision')
-        assert any(
-            issubclass(w.category, DeprecationWarning)
-            and 'Yeatman2021-lexical_decision' in str(w.message)
-            for w in caught
-        )
-
-    def test_alias_defaults_to_image_variant(self):
-        import brainscore
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', DeprecationWarning)
-            bm = brainscore.load_benchmark('Yeatman2021-lexical_decision')
-        assert bm.identifier == 'Yeatman2021-lexical_decision-image'
+def test_the_retired_alias_is_not_registered():
+    """``Yeatman2021-lexical_decision`` is gone; the two pinned variants remain."""
+    import brainscore
+    with pytest.raises(KeyError):
+        brainscore.load_benchmark('Yeatman2021-lexical_decision')

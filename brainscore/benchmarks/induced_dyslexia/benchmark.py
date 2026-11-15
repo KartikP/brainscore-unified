@@ -54,7 +54,7 @@ from brainscore_core.streaming_helpers import apply_state_change
 from brainscore.benchmarks._score import benchmark_score, not_estimated
 
 from ..roar_yeatman2021.benchmark import (
-    Yeatman2021LexicalDecision, DYSLEXIA_THRESHOLD, BIBTEX,
+    Yeatman2021LexicalDecision, DYSLEXIA_THRESHOLD, BIBTEX, _CHANNEL_SUFFIX,
 )
 
 
@@ -72,8 +72,6 @@ class InducedDyslexia(BenchmarkBase):
 
     # One lesion experiment is one pass; the reading trials inside it are independent.
     trial_memory = 'none'
-    # Suffix of the identifier for each input channel.
-    _CHANNEL_SUFFIX = {'vision:image': 'image', 'text': 'text'}
 
     def __init__(self, localizer_region: str = 'VWFA', n_units: int = 500,
                  control_seed: int = 0, channels: Sequence[str] = ('vision:image',),
@@ -82,9 +80,9 @@ class InducedDyslexia(BenchmarkBase):
         self.n_units = n_units
         self.control_seed = control_seed
         channels = tuple(channels)
-        if len(channels) != 1 or channels[0] not in self._CHANNEL_SUFFIX:
+        if len(channels) != 1 or channels[0] not in _CHANNEL_SUFFIX:
             raise ValueError(
-                f"channels must be one of {[(c,) for c in self._CHANNEL_SUFFIX]}; "
+                f"channels must be one of {[(c,) for c in _CHANNEL_SUFFIX]}; "
                 f"got {channels!r}")
         channel = channels[0]
         # Declarations decide compatibility (rule 5): the benchmark sends the
@@ -94,7 +92,7 @@ class InducedDyslexia(BenchmarkBase):
         self.required_input_channels = frozenset(
             {channel, 'instruction', 'lesion'})
         self.requested_output_channels = frozenset(
-            {'behavior', f'neural:{localizer_region}', 'perturbation'})
+            {'behavior:choice', f'neural:{localizer_region}', 'perturbation'})
 
         # The reading test (reused unchanged) and the localizer stimuli (its
         # train split, which carries the real/pseudo contrast label).
@@ -107,7 +105,7 @@ class InducedDyslexia(BenchmarkBase):
             self._localizer_stimuli = self._reading._train_stimuli
 
         super().__init__(
-            identifier=f'Yeatman2021-induced_dyslexia-{self._CHANNEL_SUFFIX[channel]}',
+            identifier=f'Yeatman2021-induced_dyslexia-{_CHANNEL_SUFFIX[channel]}',
             version=1,
             parent='perturbation',
             ceiling=not_estimated(),   # the reference is "no deficit"; the floor is the chance reader

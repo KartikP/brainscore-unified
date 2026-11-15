@@ -28,7 +28,7 @@ class _Subject(Subject):
     assembly, and reports the newest active lesion so the fake reader can react."""
     identifier = 'participate-only-stub'
     in_channels = {'text', 'lesion'}
-    out_channels = {'behavior', 'neural:VWFA', 'perturbation'}
+    out_channels = {'behavior:choice', 'neural:VWFA', 'perturbation'}
 
     def __init__(self, recording=None, fail_on_lesion=None):
         self.recording = recording
@@ -206,7 +206,7 @@ class TestPreflight:
         bench = self._bench()
         assert bench.required_input_channels == {'text', 'instruction', 'lesion'}
         assert bench.trial_memory == 'none'
-        assert bench.requested_output_channels == {'behavior', 'neural:VWFA', 'perturbation'}
+        assert bench.requested_output_channels == {'behavior:choice', 'neural:VWFA', 'perturbation'}
 
     def test_compatible_subject_matches(self):
         match = check_compatibility(_Subject(), self._bench())
@@ -301,12 +301,12 @@ class _ReaderSubject(Subject):
 
     Units 0 and 1 carry word form; with both silenced the subject calls every
     string real. It speaks only through ``participate``: neural activity as one
-    assembly with a ``layer`` coord, answers as one probability row per trial,
+    assembly with a ``layer`` coord, answers as one choice cell per trial,
     lesions as records.
     """
     identifier = 'participate-only-reader'
     in_channels = {'text', 'lesion'}
-    out_channels = {'behavior', 'neural:VWFA', 'perturbation'}
+    out_channels = {'behavior:choice', 'neural:VWFA', 'perturbation'}
 
     def __init__(self):
         self.silenced = {}
@@ -350,9 +350,8 @@ class _ReaderSubject(Subject):
         silenced = set().union(*self.silenced.values())
         for event in events:
             real = event.payload.startswith('real') or {0, 1} <= silenced
-            session.respond(StreamEvent('behavior', np.array([1.0, 0.0] if real else [0.0, 1.0]),
-                                        event.t_ms, {'stimulus_id': event.meta['stimulus_id'],
-                                                     'label_set': ['real', 'pseudo']}))
+            session.respond(StreamEvent('behavior:choice', 'real' if real else 'pseudo',
+                                        event.t_ms, {'stimulus_id': event.meta['stimulus_id']}))
 
     def reset(self):
         self.silenced.clear()

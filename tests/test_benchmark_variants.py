@@ -80,7 +80,6 @@ REGISTERED = [
     'Pereira2018.384sentences-ridge-unified',
     'Yeatman2021-induced_dyslexia-image',
     'Yeatman2021-induced_dyslexia-text',
-    'Yeatman2021-lexical_decision',
     'Yeatman2021-lexical_decision-image',
     'Yeatman2021-lexical_decision-text',
 ]
@@ -183,23 +182,19 @@ BUILT = {
     'Yeatman2021-induced_dyslexia-image': (
         'Yeatman2021-induced_dyslexia-image', 1, 'none',
         ['instruction', 'lesion', 'vision:image'],
-        ['behavior', 'neural:VWFA', 'perturbation']),
+        ['behavior:choice', 'neural:VWFA', 'perturbation']),
     'Yeatman2021-induced_dyslexia-text': (
         'Yeatman2021-induced_dyslexia-text', 1, 'none',
         ['instruction', 'lesion', 'text'],
-        ['behavior', 'neural:VWFA', 'perturbation']),
-    'Yeatman2021-lexical_decision': (
-        'Yeatman2021-lexical_decision-image', 1, 'none',
-        ['instruction', 'vision:image'],
-        ['behavior']),
+        ['behavior:choice', 'neural:VWFA', 'perturbation']),
     'Yeatman2021-lexical_decision-image': (
         'Yeatman2021-lexical_decision-image', 1, 'none',
         ['instruction', 'vision:image'],
-        ['behavior']),
+        ['behavior:choice']),
     'Yeatman2021-lexical_decision-text': (
         'Yeatman2021-lexical_decision-text', 1, 'none',
         ['instruction', 'text'],
-        ['behavior']),
+        ['behavior:choice']),
 }
 
 def test_the_registered_identifiers_are_the_pinned_list():
@@ -241,3 +236,9 @@ MODELS = [
 def test_the_registered_model_identifiers_are_the_pinned_list():
     """A model identifier is stable: adding one adds a line here, removing one is a decision."""
     assert sorted(brainscore.model_registry) == sorted(MODELS)
+
+
+def test_every_pinned_registry_key_is_the_identifier_it_builds():
+    """Lane C's deferred check, now that the ROAR alias is gone: every pinned key builds a
+    benchmark with that identifier (the builds above assert it for each key)."""
+    assert all(key == built for key, (built, *_rest) in BUILT.items())
