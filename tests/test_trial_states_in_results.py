@@ -247,3 +247,99 @@ def test_a_failed_session_falls_back_to_the_observed_events_and_says_so(tmp_path
     trials = ExperimentResult.open(tmp_path / 'run').trials()
     assert _rows(trials, 'stimulus_id', 'choice', 'rows_from') == [('cat', 'animal', 'observed events')]
     assert 'choice_state' not in trials
+
+
+# --- M9-07: a stimulus column of arrays --------------------------------------------------
+
+def test_a_stimulus_column_of_arrays_is_left_out_of_the_presented_trials(tmp_path):
+    stimuli = StimulusSet({'stimulus_id': ['cat', 'boat', 'unknown'], 'sentence': ['cat', 'boat', 'ambiguous'],
+                           'vector': [np.array([1, 2]), np.array([3, 4]), np.array([5, 6])]})
+    stimuli.identifier = 'trial-states-vector'
+    subject = _Cells('behavior:text', {'cat': 'A cat.', 'boat': 'A boat.', 'unknown': 'Unclear.'})
+    result = _experiment(subject, TaskContext(response=Text()), tmp_path / 'run', stimuli=stimuli)
+    trials = result.trials()
+    assert _rows(trials, 'stimulus_id', 'sentence', 'text', 'text_state') == [
+        ('cat', 'cat', 'A cat.', 'valid'), ('boat', 'boat', 'A boat.', 'valid'),
+        ('unknown', 'ambiguous', 'Unclear.', 'valid')]
+    (answer,) = [row['payload'] for row in RunRecord(tmp_path / 'run' / 'behavior').events()
+                 if row['payload']['kind'] == 'answer']
+    assert set(answer['payload'].meta['trials']) == {'stimulus_id', 'sentence'}     # no 'vector'
+
+
+# --- M9-08: the fallback keeps every observed row ----------------------------------------
+
+def _one_row(stimulus_id, label):
+    row = [1.0, 0.0] if label == 'animal' else [0.0, 1.0]
+    return BehavioralAssembly(np.array([row], dtype=np.float32), dims=['presentation', 'choice'], coords={
+        'stimulus_id': ('presentation', [stimulus_id]), 'choice': ['animal', 'vehicle'],
+        'raw_answer': ('presentation', [label])},
+        attrs={'response': response_record('behavior:choice', 'test')})
+
+
+class _AnswersTwoThenFails(Subject):
+    """Answers 'cat' and 'boat' (as one-row assemblies, cells, or one of each), then raises."""
+    identifier, in_channels, out_channels, required_channels = 'two-then-fails', {'text'}, {'behavior:choice'}, set()
+
+    def __init__(self, forms):
+        self.forms = forms
+
+    def participate(self, session):
+        answers = {'cat': 'animal', 'boat': 'vehicle'}
+        for form, (sid, label) in zip(self.forms, answers.items()):
+            session.next_input()
+            payload = _one_row(sid, label) if form == 'assembly' else label
+            session.respond(StreamEvent('behavior:choice', payload, None, {'stimulus_id': sid}))
+        raise RuntimeError('the model failed')
+
+    def reset(self):
+        pass
+
+
+@pytest.mark.parametrize('forms', [('assembly', 'assembly'), ('cell', 'cell'), ('cell', 'assembly')])
+def test_a_failed_session_keeps_every_observed_row(tmp_path, forms):
+    with pytest.raises(RuntimeError, match='the model failed'):
+        _experiment(_AnswersTwoThenFails(forms), TaskContext(response=CHOICE), tmp_path / 'run')
+    trials = ExperimentResult.open(tmp_path / 'run').trials()
+    assert _rows(trials, 'stimulus_id', 'choice', 'rows_from') == [
+        ('cat', 'animal', 'observed events'), ('boat', 'vehicle', 'observed events')]
+
+
+def test_the_review_case_reopens_as_two_exact_rows(tmp_path):
+    """M9-08: a -> x, then b -> y as one-row assemblies, then an error: two rows, not one."""
+    with pytest.raises(RuntimeError, match='the model failed'):
+        _experiment(_AnswersTwoThenFails(('assembly', 'assembly')), TaskContext(response=CHOICE),
+                    tmp_path / 'run')
+    trials = ExperimentResult.open(tmp_path / 'run').trials()
+    assert _rows(trials, 'stimulus_id', 'choice', 'choice_raw') == [
+        ('cat', 'animal', 'animal'), ('boat', 'vehicle', 'vehicle')]
+
+
+def test_an_older_saved_run_with_several_assembly_events_has_one_row_each(tmp_path):
+    """A run saved before finalized answers existed: its behavior record holds only the
+    observed events (written here by hand in that form)."""
+    import shutil
+    from brainscore.run_record import RunRecorder
+
+    class _OneRowEach(Subject):
+        identifier, in_channels, out_channels, required_channels = 'one-row-each', {'text'}, {'behavior:choice'}, set()
+
+        def participate(self, session):
+            for sid, label in (('cat', 'animal'), ('boat', 'vehicle'), ('unknown', 'animal')):
+                session.next_input()
+                session.respond(StreamEvent('behavior:choice', _one_row(sid, label), None, {'stimulus_id': sid}))
+
+        def reset(self):
+            pass
+    _experiment(_OneRowEach(), TaskContext(response=CHOICE), tmp_path / 'new')
+    old = tmp_path / 'old'
+    old.mkdir()
+    shutil.copy(tmp_path / 'new' / 'experiment.json', old / 'experiment.json')
+    record = RunRecord(tmp_path / 'new' / 'behavior')
+    envelopes = [row['payload'] for row in record.events() if row['payload']['kind'] != 'answer']
+    with RunRecorder(old / 'behavior', metadata={'experiment': 'older-run', 'plan': {}}) as recorder:
+        for envelope in envelopes:
+            recorder.record('input' if envelope['kind'] == 'input' else 'output', envelope)
+    trials = ExperimentResult.open(old).trials()
+    assert _rows(trials, 'stimulus_id', 'choice', 'rows_from') == [
+        ('cat', 'animal', 'observed events'), ('boat', 'vehicle', 'observed events'),
+        ('unknown', 'animal', 'observed events')]

@@ -177,8 +177,11 @@ def _publish_finalized_answers(session, context, collected=None):
 
 def _presented_trials(session):
     """The session's table in presentation order: ``stimulus_id`` and every stimulus
-    column of plain values (text, numbers, booleans), as lists; ``None`` without a table."""
+    column of plain scalar values (text, numbers, booleans, None), as lists; ``None``
+    without a table. A numpy scalar becomes its Python value; a column with any other
+    value (an array, a list) is left out, unconverted."""
     import numbers
+    import numpy as np
     table = getattr(session, 'stimuli', None)
     if table is None or 'stimulus_id' not in getattr(table, 'columns', ()):
         return None
@@ -187,7 +190,8 @@ def _presented_trials(session):
         return value is None or isinstance(value, (str, bool, numbers.Number))
     trials = {}
     for column in table.columns:
-        values = [value.item() if hasattr(value, 'item') else value for value in table[column].tolist()]
+        values = [value.item() if isinstance(value, np.generic) else value
+                  for value in table[column].tolist()]
         if column == 'stimulus_id' or all(plain(value) for value in values):
             trials[column] = values
     return trials
@@ -455,26 +459,75 @@ def _occurrences(stimulus_ids):
     return keys
 
 
-def _answer_columns(channel, assembly, rows, columns):
-    """Add ``channel``'s value and detail columns for ``rows`` (a stored row or ``None`` each)."""
+def _rows_of(events):
+    """Each answer row of ``events`` (one format, in order) with its key ``(stimulus_id, k)``:
+    ``(key, assembly, row)`` for an assembly row, ``(key, event, None)`` for a one-cell event."""
+    found = []
+    for event in events:
+        payload = event.payload
+        if hasattr(payload, 'dims'):
+            found += [(stimulus_id, payload, row)
+                      for row, stimulus_id in enumerate(payload['stimulus_id'].values)]
+        else:
+            found.append((event.meta.get('stimulus_id'), event, None))
+    keys = _occurrences([stimulus_id for stimulus_id, _, _ in found])
+    return [(key, source, row) for key, (_, source, row) in zip(keys, found)]
+
+
+def _answer_columns(channel, rows, keys, columns):
+    """Add ``channel``'s value and detail columns, one value per table key; ``rows`` are
+    its answer rows (``_rows_of``), matched to the keys by stimulus and occurrence."""
     import numpy as np
-    values = np.asarray(assembly.values)
-    fmt = channel.split(':', 1)[1]
-    if 'choice' in assembly.dims and fmt in ('probabilities', 'log_probabilities'):
+    by_key = {key: (source, row) for key, source, row in rows}
+    # A bare behavior answer (a legacy task) keeps its earlier name: 'choice' when it
+    # has a choice axis, else 'answer'.
+    fmt = (channel.split(':', 1)[1] if ':' in channel else
+           'choice' if any(row is not None and 'choice' in source.dims for _, source, row in rows)
+           else 'answer')
+    picked = [by_key.get(key) for key in keys]
+    per_trial = {}
+    for source, row in filter(None, picked):
+        if row is not None and id(source) not in per_trial:
+            per_trial[id(source)] = {name: list(values) for name, values in _per_trial_coords(source).items()}
+
+    def value(item):
+        if item is None:
+            return None
+        source, row = item
+        if row is None:                         # a one-cell event: the cell as sent
+            return source.payload
+        values = np.asarray(source.values)
+        if 'choice' in source.dims and fmt not in ('probabilities', 'log_probabilities'):
+            labels = list(source['choice'].values)
+            return labels[int(np.argmax(values[row]))] if np.isfinite(values[row]).all() else None
+        return values[row]
+    if any(item is not None and item[1] is not None and 'choice' in item[0].dims
+           for item in picked) and fmt in ('probabilities', 'log_probabilities'):
         prefix = 'p' if fmt == 'probabilities' else 'logp'
-        for i, label in enumerate(assembly['choice'].values):
-            columns[f'{prefix}({label})'] = [float(values[r, i]) if r is not None else np.nan for r in rows]
-    elif 'choice' in assembly.dims:
-        labels = list(assembly['choice'].values)
-        columns[fmt] = [labels[int(np.argmax(values[r]))]
-                        if r is not None and np.isfinite(values[r]).all() else None for r in rows]
+        labels = next(list(item[0]['choice'].values) for item in picked if item and item[1] is not None)
+        for i, label in enumerate(labels):
+            columns[f'{prefix}({label})'] = [float(value(item)[i]) if item is not None else np.nan
+                                            for item in picked]
     else:
-        columns[fmt] = [values[r] if r is not None else None for r in rows]
-    per_trial = _per_trial_coords(assembly)
+        columns[fmt] = [value(item) for item in picked]
     for name, suffix in _DETAILS.items():
-        if name in per_trial:
-            column = list(per_trial[name])
-            columns[f'{fmt}_{suffix}'] = [column[r] if r is not None else None for r in rows]
+        if any(name in coords for coords in per_trial.values()):
+            columns[f'{fmt}_{suffix}'] = [
+                per_trial[id(item[0])].get(name, [None] * (item[1] + 1))[item[1]]
+                if item is not None and item[1] is not None else None for item in picked]
+
+
+def _stimulus_columns(rows, keys, columns):
+    """Stimulus columns of the answer rows (the first row that has a key gives its values)."""
+    found = {}
+    for key, source, row in rows:
+        if row is None:
+            continue
+        for name, values in _per_trial_coords(source).items():
+            if name not in _DETAILS:
+                found.setdefault(name, {}).setdefault(key, list(values)[row])
+    for name, by_key in found.items():
+        columns.setdefault(name, [by_key.get(key) for key in keys])
 
 
 def _finalized_table(envelopes):
@@ -488,61 +541,31 @@ def _finalized_table(envelopes):
     if trials:
         columns.update({name: list(values) for name, values in trials.items() if name != 'stimulus_id'})
     else:
-        index = {key: row for row, key in enumerate(_occurrences(first['stimulus_id'].values))}
-        for name, column in _per_trial_coords(first).items():
-            if name not in _DETAILS:
-                columns[name] = [list(column)[index[key]] if key in index else None for key in keys]
+        _stimulus_columns(_rows_of([envelopes[0]['payload']]), keys, columns)
     for env in envelopes:
-        channel, assembly = env['payload'].channel, env['payload'].payload
-        index = {key: row for row, key in enumerate(_occurrences(assembly['stimulus_id'].values))}
-        _answer_columns(channel, assembly, [index.get(key) for key in keys], columns)
+        _answer_columns(env['payload'].channel, _rows_of([env['payload']]), keys, columns)
     return columns
 
 
 def _observed_table(envelopes):
-    """One session's table from the observed answer events (the fallback): the first
-    event gives the identifiers; each event's columns as it reports them."""
-    import numpy as np
+    """One session's table from the observed answer events (the fallback): every observed
+    answer row is a table row, in the order it was observed; the formats are matched by
+    stimulus and occurrence as in a completed session. A trial never observed has no row."""
     named = {env['payload'].channel for env in envelopes} - {'behavior'}
-    details = {'answer_valid': 'valid', 'raw_answer': 'raw', 'parse_error': 'error'}
-    table = None
-    cells = [env['payload'] for env in envelopes if not hasattr(env['payload'].payload, 'dims')]
-    if cells:
-        # One answer cell per event: one row each, named by the event's stimulus_id.
-        table = {'stimulus_id': [event.meta.get('stimulus_id') for event in cells]}
-        for event in cells:
-            table.setdefault(event.channel.split(':', 1)[-1], [])
-        for event in cells:
-            for channel in {e.channel for e in cells}:
-                table[channel.split(':', 1)[-1]].append(event.payload if event.channel == channel else None)
-        return table
+    by_channel = {}
     for env in envelopes:
-        channel, assembly = env['payload'].channel, env['payload'].payload
+        channel = env['payload'].channel
         if channel == 'behavior' and named:
             continue               # the main answer is also saved under its own name
-        values = np.asarray(assembly.values)
-        if table is None:
-            table = {'stimulus_id': list(assembly['stimulus_id'].values)}
-        per_trial = _per_trial_coords(assembly)
-        for name, column in per_trial.items():          # stimulus columns, once
-            if name not in details:
-                table.setdefault(name, list(column))
-        if 'choice' in assembly.dims and channel != 'behavior:probabilities':
-            labels = np.asarray(assembly['choice'].values)
-            answered = ~np.isnan(values).any(axis=1)          # unreadable answers are NaN rows
-            answer = 'choice'
-            table[answer] = [labels[row.argmax()] if ok else None for row, ok in zip(values, answered)]
-        elif 'choice' in assembly.dims:
-            for i, label in enumerate(assembly['choice'].values):
-                table[f'p({label})'] = values[:, i]
-            continue
-        else:
-            answer = channel.split(':', 1)[-1] if ':' in channel else 'answer'
-            table[answer] = values
-        for name, suffix in details.items():              # how the answer was read
-            if name in per_trial:
-                table[f'{answer}_{suffix}'] = list(per_trial[name])
-    return table or {'stimulus_id': []}
+        by_channel.setdefault(channel, []).append(env['payload'])
+    rows = {channel: _rows_of(events) for channel, events in by_channel.items()}
+    keys = list(dict.fromkeys(key for found in rows.values() for key, _, _ in found))
+    columns = {'stimulus_id': [stimulus_id for stimulus_id, _ in keys]}
+    for found in rows.values():
+        _stimulus_columns(found, keys, columns)
+    for channel, found in rows.items():
+        _answer_columns(channel, found, keys, columns)
+    return columns
 
 
 @dataclass(frozen=True)
