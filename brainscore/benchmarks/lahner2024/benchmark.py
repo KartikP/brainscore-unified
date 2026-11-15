@@ -373,9 +373,11 @@ class Lahner2024BOLDMoments(BenchmarkBase):
     def _ceiling_reliability(self) -> np.ndarray:
         """The reliability that gives the ceilings: ``_split_half_reliability`` on the
         scored videos (``_scored_ids``), with the same splits and random state,
-        computed once. The ceiling is the reliability of the data that is predicted:
-        it is not fitted, and it has no selection bias because the voxels were
-        selected on the test-set videos, which are not scored."""
+        computed once. The ceiling is an estimate of the reliability of the data that
+        is predicted, from all scored videos (the test videos of each fold included).
+        It is not a parameter of the regression, and the voxels were selected on the
+        test-set videos, which are not scored: no voxel is selected and given its
+        ceiling on the same videos."""
         if self._ceiling_rel is None:
             self._ceiling_rel = _split_half_reliability(self.assembly, stimuli=self._scored_ids())
         return self._ceiling_rel
@@ -529,12 +531,12 @@ class Lahner2024BOLDMoments(BenchmarkBase):
 
 # Noise ceiling for the visual-ROI voxel set, measured on the hosted data 2026-11-15.
 # For a predictivity correlation the ceiling is sqrt(reliability): the highest r a
-# perfect model could reach given measurement noise. The constant is meant to be the
-# median over the voxels of the mask (reliability at least 0.3 on the 93 test-set
-# videos) of sqrt(reliability on the scored videos, the 933 training-set videos).
-# The value below is still the median of sqrt(reliability_on_test_set(assembly))
-# over the 7209 voxels of the mask; it is set again from a cloud measurement. The
-# constant marks the variant that divides by a ceiling and is what
-# ``benchmark.ceiling`` reports: the score divides each voxel by its own ceiling
-# and does not read this value.
-VISUAL_ROI_CEILING = 0.7400961024018685
+# perfect model could reach given measurement noise. The value is the median of
+# sqrt(reliability on the scored videos, the 933 training-set videos) over the voxels
+# of the mask that have a positive ceiling: 7106 of the 7209 voxels with a reliability
+# of at least 0.3 on the 93 test-set videos (103 have a reliability at or below zero
+# on the scored videos and are left out of every score). It is what
+# ``benchmark.ceiling`` reports, and what a score reports as its ceiling when every
+# one of those voxels has a correlation. The score divides each voxel by its own
+# ceiling and does not read this value.
+VISUAL_ROI_CEILING = 0.5849361770948155

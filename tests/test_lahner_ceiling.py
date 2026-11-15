@@ -33,8 +33,8 @@ def test_ceiling_is_a_plausible_correlation_ceiling():
 
 @pytest.mark.unit
 def test_normalized_beats_raw_but_stays_below_one():
-    # V-JEPA v1 raw on this benchmark, measured 2026-07-31 (task6_result.json).
-    vjepa1_raw = 0.5328519444188079
+    # V-JEPA v1 raw on this benchmark (median correlation over the mask), measured 2026-11-15.
+    vjepa1_raw = 0.3435100279459528
     normalized = vjepa1_raw / VISUAL_ROI_CEILING
     assert normalized > vjepa1_raw, "a ceiling <1 must raise the score"
     assert normalized < 1.0, (
