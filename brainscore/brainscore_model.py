@@ -140,7 +140,7 @@ class BrainScoreModel(UnifiedModel):
         :param reply: ``(prompt) -> str``; the model's raw reply to one trial.
             ``prompt`` is a ``brainscore_core.responses.Prompt``: the trial's parts
             in order (instruction, stimulus parts, the response's directive).
-            Parsing is the task's. Gives choices, ratings, reported confidence
+            Parsing is the task's. Gives choices, ratings
             and written answers. As a policy does, a reply may return a
             ``StreamEvent`` instead, with the text as payload and extra data
             (for example ``reasoning``, ``token_usage``) as meta; the meta goes

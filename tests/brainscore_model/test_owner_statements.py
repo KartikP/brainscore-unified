@@ -21,7 +21,7 @@ QWEN_STATEMENT = {'behavior': 'generation', 'behavior:rating': 'generation',
                   'behavior:probabilities': ('likelihood', 'softmax')}
 CHOICE = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']),
                      fitting_stimuli=FITTING)
-FORMATS = ("['behavior', 'behavior:choice', 'behavior:confidence', 'behavior:probabilities', "
+FORMATS = ("['behavior', 'behavior:choice', 'behavior:probabilities', "
            "'behavior:rating', 'behavior:text']")
 
 
@@ -56,6 +56,15 @@ def test_a_readout_only_model_builds_without_a_statement():
 def test_a_wrong_statement_is_refused_with_what_to_write(owners, message):
     with pytest.raises(ValueError, match=message):
         _readout(owners)
+
+
+def test_confidence_is_no_response_format():
+    """``behavior:confidence`` is deleted: a statement naming it lists the formats, and no
+    reply model declares it."""
+    with pytest.raises(ValueError, match=r"names 'behavior:confidence', which is not a response "
+                                         r"format\. Formats: " + re.escape(FORMATS)):
+        _model('reply', owners={'behavior:confidence': 'generation'})
+    assert 'behavior:confidence' not in _model(*QWEN, owners=QWEN_STATEMENT).out_channels
 
 
 def test_the_qwen_statement_answers_choice_by_generation_and_probabilities_by_softmax():

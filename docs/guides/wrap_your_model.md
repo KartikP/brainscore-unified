@@ -171,7 +171,7 @@ def my_answer(*, stimulus_row, instruction, label_set):   # likewise
 model = BrainScoreModel(identifier='my-api-model', in_channels={'text'},
                         reply=my_reply, answer=my_answer)
 print(sorted(model.out_channels))
-# ['behavior', 'behavior:choice', 'behavior:confidence', 'behavior:rating', 'behavior:text']
+# ['behavior', 'behavior:choice', 'behavior:rating', 'behavior:text']
 ```
 
 For a hosted API, `build_api_reply(provider, model_id)` (a `reply`) and `build_api_generation_fn(provider, model_id)` (an `answer`) build both from one client per provider ([Behavior](behavior.md)).

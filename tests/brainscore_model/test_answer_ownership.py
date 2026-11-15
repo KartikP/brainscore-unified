@@ -119,9 +119,8 @@ def test_an_owner_that_cannot_give_the_output_is_refused(owners, message):
 
 def test_a_task_no_part_can_serve_stays_not_feasible():
     model = _model('answer', 'behavioral_readout_layer', owners={'behavior': 'generation'})
-    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], confidence=Scale(1, 5)),
-                       fitting_stimuli=FITTING)
-    with pytest.raises(ExecutionNotFeasibleError, match='cannot give a Choice answer with reported confidence'):
+    task = TaskContext(response=Choice(['cat', 'dog'], verbatim=True), fitting_stimuli=FITTING)
+    with pytest.raises(ExecutionNotFeasibleError, match='verbatim'):
         _run(model, ['behavior:choice'], task)
 
 
@@ -241,12 +240,10 @@ OPTIONS['options'] = [['cat', 'dog']] * len(STIMULI)
 OPTIONS.identifier = 'behavior-paths-options'
 # The task forms the library's benchmarks and harnesses send beyond the numeric
 # baseline: EWoK (raw-text choice; raw scores of the options of each row),
-# CogGym (free text), and a choice with reported confidence.
+# CogGym (free text).
 EWOK_CHOICE = TaskContext(response=Choice(['1', '2'], verbatim=True))
 EWOK_LOGPROBS = TaskContext(response=Choice('options', raw_scores=True, verbatim=True))
 FREE_TEXT = TaskContext(instruction='Say it.', response=Text())
-CONFIDENCE = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], confidence=Scale(1, 5)),
-                         fitting_stimuli=FITTING)
 # (part set, task, stimuli, requested channel, method in the response record or None when refused)
 TASK_FORMS = {
     'qwen ewok choice': (QWEN, EWOK_CHOICE, STIMULI, 'behavior:choice', 'generation'),
@@ -258,10 +255,6 @@ TASK_FORMS = {
     'qwen free text': (QWEN, FREE_TEXT, STIMULI, 'behavior:text', 'generation'),
     'causal lm free text': (CAUSAL_LM, FREE_TEXT, STIMULI, 'behavior:text', 'generation'),
     'api free text': (API, FREE_TEXT, STIMULI, 'behavior:text', 'generation'),
-    'qwen confidence': (QWEN, CONFIDENCE, STIMULI, 'behavior:choice', 'generation'),
-    'api confidence': (API, CONFIDENCE, STIMULI, 'behavior:choice', 'generation'),
-    'blip2 confidence': (BLIP2, CONFIDENCE, STIMULI, 'behavior:choice', None),
-    'readout confidence': (READOUT, CONFIDENCE, STIMULI, 'behavior:choice', None),
 }
 
 

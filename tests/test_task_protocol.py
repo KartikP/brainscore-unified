@@ -313,16 +313,22 @@ def test_experiment_saves_every_kind_of_answer(tmp_path):
 
     def reply(prompt):
         sentence = [content for kind, content in prompt.parts if kind == 'text'][1]
-        if 'confidence' in prompt.text():
-            return 'long\n4' if len(sentence) > 1 else 'short\n5'
+        if isinstance(prompt.response, Scale):
+            return str(len(sentence))
+        if isinstance(prompt.response, Choice):
+            return 'long' if len(sentence) > 1 else 'short'
         return f"It reads {sentence}."
 
     model = BrainScoreModel(identifier='replier', in_channels={'text'}, reply=reply)
-    choice = TaskContext(instruction='Is it long?', response=Choice(['short', 'long'], confidence=Scale(1, 5, 1)))
+    choice = TaskContext(instruction='Is it long?', response=Choice(['short', 'long']))
     result = Experiment(subject=model, protocol=TaskProtocol(STIMULI, choice),
-                        tools=[RecordBehavior(['choice', 'confidence'])], output_dir=tmp_path / 'choice').run()
-    assert list(result.behavior()['raw_answer'].values) == ['short\n5', 'long\n4', 'long\n4']
-    assert list(result.behavior(measure='confidence').values) == [5, 4, 4]
+                        tools=[RecordBehavior()], output_dir=tmp_path / 'choice').run()
+    assert list(result.behavior()['raw_answer'].values) == ['short', 'long', 'long']
+
+    rated = TaskContext(instruction='How long?', response=Scale(1, 5, 1))
+    result = Experiment(subject=model, protocol=TaskProtocol(STIMULI, rated),
+                        tools=[RecordBehavior()], output_dir=tmp_path / 'rating').run()
+    assert list(result.behavior(measure='rating').values) == [1, 2, 3]
 
     written = TaskContext(instruction='Read it.', response=Text())
     result = Experiment(subject=model, protocol=TaskProtocol(STIMULI, written),

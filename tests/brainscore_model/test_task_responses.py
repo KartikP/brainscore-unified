@@ -1,4 +1,4 @@
-"""TaskContext(response=...): choices, confidence, ratings and written answers.
+"""TaskContext(response=...): choices, ratings and written answers.
 
 Answers come from a reply (parsed by the response), a likelihood part or a
 readout. Each answer's response record says which.
@@ -76,16 +76,6 @@ def test_choice_reply_is_parsed_and_invalid_replies_are_kept_as_invalid():
     assert prompts[0] == 'Which animal?\n\nw\n\nAnswer with exactly one of: cat, dog.'
 
 
-def test_reported_confidence_comes_from_the_same_reply():
-    model, _ = _model(replies={'a': 'cat\n4', 'b': 'dog\n9', 'c': 'cat', 'd': 'dog\n2'})
-    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], confidence=Scale(1, 5, 1)))
-    session = _ask(model, task, ['behavior:choice', 'behavior:confidence'])
-    confidence = session.collect('behavior:confidence')
-    np.testing.assert_array_equal(np.isnan(confidence.values), [False, True, True, False])
-    assert confidence.values[0] == 4 and confidence.values[3] == 2
-    assert 'outside' in confidence['parse_error'].values[1]
-
-
 def test_rating_from_a_reply_and_from_a_readout():
     model, _ = _model(replies={'a': '6', 'b': 'about 2', 'c': '7.5', 'd': 'none'})
     rating = _ask(model, TaskContext(instruction='How cute?', response=Scale(1, 7, 1)),
@@ -142,9 +132,7 @@ def test_readout_probabilities_follow_the_task_label_order(labels):
     np.testing.assert_array_equal(probabilities.values.argmax(1), choice.values.argmax(1))
 
 
-@pytest.mark.parametrize('response, channel', [(Text(), 'behavior:text'),
-                                               (Choice(['cat', 'dog'], confidence=Scale(1, 5)),
-                                                'behavior:confidence')])
+@pytest.mark.parametrize('response, channel', [(Text(), 'behavior:text')])
 def test_reported_answers_from_a_readout_only_model_are_refused(response, channel):
     model, _ = _model(readout=True)
     assert channel not in model.out_channels

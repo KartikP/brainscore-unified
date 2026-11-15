@@ -95,7 +95,7 @@ def one_hot(chosen, valid, stimuli, row_labels, axis, record, *, raw, errors=Non
 
 
 def numbers(parsed, stimuli, record, raw=None):
-    """One number per stimulus (a rating or a confidence); invalid ones are NaN."""
+    """One number per stimulus (a rating); invalid ones are NaN."""
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
     values = np.array([np.nan if v is None else v for v, _ in parsed], dtype=float)
     coords = {**_presentation(stimuli),

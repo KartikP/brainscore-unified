@@ -33,8 +33,8 @@ pytestmark = pytest.mark.unit
 PARTS = {'answer': lambda stimulus_row, instruction, label_set: label_set[0], 'reply': lambda prompt: 'cat',
          'likelihood': lambda prompt, labels: {label: -float(i) for i, label in enumerate(labels)},
          'behavioral_readout_layer': 'late'}
-B, CH, CO, P, RA, RT, TE = ('behavior', 'behavior:choice', 'behavior:confidence', 'behavior:probabilities',
-                            'behavior:rating', 'behavior:rt', 'behavior:text')
+B, CH, P, RA, RT, TE = ('behavior', 'behavior:choice', 'behavior:probabilities',
+                        'behavior:rating', 'behavior:rt', 'behavior:text')
 NEURAL_ONLY = ('benchmarks/grid_game/benchmark.py', 'models/multimodal_av_blip2_wav2vec2/model.py',
                'models/multimodal_av_clip_wav2vec2/model.py', 'models/multimodal_av_qwen_wav2vec2/model.py',
                'models/multimodal_av_vjepa_wav2vec2/model.py', 'models/random_wav2vec2/model.py',
@@ -42,13 +42,13 @@ NEURAL_ONLY = ('benchmarks/grid_game/benchmark.py', 'models/multimodal_av_blip2_
                'tools/auto_register.py', 'validation/benchmark_parity.py')
 # Declared behavior formats per library call, before this chunk and after it.
 DECLARED = {
-    'model_helpers/causal_lm.py': ({B, CH, CO, P, RA, RT, TE}, {CH, CO, P, RA, RT, TE}),
-    'models/api_closed/model.py': ({B, CH, CO, RA, TE}, {B, CH, CO, RA, TE}),
+    'model_helpers/causal_lm.py': ({B, CH, P, RA, RT, TE}, {CH, P, RA, RT, TE}),
+    'models/api_closed/model.py': ({B, CH, RA, TE}, {B, CH, RA, TE}),
     'models/blip2_opt_2_7b/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
     'models/clip_vit_b_32/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
     'models/gpt2/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
-    'models/qwen25_vl_3b/model.py': ({B, CH, CO, P, RA, RT, TE}, {B, CH, CO, P, RA, RT, TE}),
-    'models/qwen36_27b/model.py': ({B, CH, CO, P, RA, RT, TE}, {B, CH, CO, P, RA, RT, TE}),
+    'models/qwen25_vl_3b/model.py': ({B, CH, P, RA, RT, TE}, {B, CH, P, RA, RT, TE}),
+    'models/qwen36_27b/model.py': ({B, CH, P, RA, RT, TE}, {B, CH, P, RA, RT, TE}),
     'models/random_vit_b_32/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
     'tools/rajalingham2018_2afc/score_2afc.py': ({B, CH}, {B, CH}),
     **{where: (set(), set()) for where in NEURAL_ONLY},
@@ -209,7 +209,7 @@ def test_session_support_uses_the_declared_set(where, wired, stated):
     model = _stand_in(wired, stated)
     behavior = next(c for c in model._declared_capabilities() if c.identifier == 'behavior-sessions') \
         if _behavior(model) else None
-    for channel in (B, CH, CO, P, RA, RT, TE):
+    for channel in (B, CH, P, RA, RT, TE):
         supported = behavior is not None and behavior.supports_session(model, [channel])
         assert supported == (channel in model.out_channels), (where, channel)
 
@@ -222,7 +222,6 @@ SESSIONS = {
     P: TaskContext(instruction='Which?', response=Choice(['cat', 'dog']),
                    fitting_stimuli=FITTING),
     RA: TaskContext(instruction='How much?', response=Scale(1, 7), fitting_stimuli=RATINGS),
-    CO: TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], confidence=Scale(1, 5))),
     TE: TaskContext(instruction='Say it.', response=Text()),
     RT: TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], reaction_time='surprisal'),
                     fitting_stimuli=FITTING),

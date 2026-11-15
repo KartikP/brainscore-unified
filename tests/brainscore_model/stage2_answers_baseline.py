@@ -27,7 +27,7 @@ RATINGS = FITTING.copy()
 RATINGS['label'] = [6.0, 2.0, 6.0, 2.0]
 RATINGS.identifier = 'behavior-paths-ratings'
 CHOICE_FORM = {'kind': 'choice', 'labels': 'shared', 'reaction_time': None,
-               'raw_scores': False, 'verbatim': False, 'confidence': False, 'fitting': True}
+               'raw_scores': False, 'verbatim': False, 'fitting': True}
 SESSIONS = {   # task descriptions and the outputs the session requests
     'legacy answer': ({'kind': 'legacy', 'instruction': True, 'label_set': ['cat', 'dog'], 'fitting': True},
                       ['behavior']),
@@ -54,8 +54,7 @@ def task_from(description, fitting_stimuli):
         return TaskContext(instruction='How much?', response=Scale(1, 7), fitting_stimuli=fitting)
     choice = Choice(['cat', 'dog'] if description['labels'] == 'shared' else 'options',
                     reaction_time=description['reaction_time'], raw_scores=description['raw_scores'],
-                    verbatim=description['verbatim'],
-                    confidence=Scale(1, 5) if description['confidence'] else None)
+                    verbatim=description['verbatim'])
     return TaskContext(instruction=None if description['verbatim'] else 'Which?', response=choice,
                        fitting_stimuli=fitting)
 

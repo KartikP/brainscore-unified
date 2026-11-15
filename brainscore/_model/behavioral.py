@@ -495,7 +495,6 @@ class BehavioralReadout:
                     task_type=task.task_type)
             return path, None
         readout_wired = readout_wired and task.fitting_stimuli is not None
-        reported_confidence = isinstance(response, Choice) and response.confidence is not None
         raw_scores = isinstance(response, Choice) and response.raw_scores
         if raw_scores and owner._likelihood is None:
             # Raw scores come only from a likelihood part: no softmax of a readout, no guess.
@@ -507,28 +506,25 @@ class BehavioralReadout:
         can = {
             'generation': not raw_scores and (owner._reply is not None or (
                 owner._answer is not None and isinstance(response, Choice)
-                and not reported_confidence and not verbatim)),   # answer= takes no settings
-            'likelihood': (owner._likelihood is not None and isinstance(response, Choice)
-                           and not reported_confidence),
+                and not verbatim)),   # answer= takes no settings
+            'likelihood': owner._likelihood is not None and isinstance(response, Choice),
             'readout': (readout_wired and isinstance(response, (Choice, Scale))
-                        and not reported_confidence and not raw_scores and not per_row),
+                        and not raw_scores and not per_row),
         }
         # The answer format: the raw scores of a raw-scores Choice (they travel on
         # behavior:probabilities), else the response's first format. Its owner answers;
         # a task form the owner cannot serve is refused (no other part stands in).
         settings = [name for name, on in (('verbatim', verbatim), ('raw_scores', raw_scores),
-                                          ('confidence', reported_confidence),
                                           ('labels per row', per_row)) if on]
         answer_format = ('behavior:probabilities' if raw_scores   # decision: raw scores travel there
                          else dict(self._ANSWER_FORMATS)[type(response).__name__])
         path = self._owner_serving(answer_format, can, task, settings)
         if path is None:
             needs = {'generation': 'reply= (or answer= for a plain Choice)',
-                     'likelihood': 'likelihood= and a Choice without reported confidence',
+                     'likelihood': 'likelihood= and a Choice',
                      'readout': 'behavioral_readout_layer=, an extractor and fitting_stimuli'}
             raise ExecutionNotFeasibleError(
                 f"Subject '{owner.identifier}' cannot give a {type(response).__name__} answer"
-                + (' with reported confidence (needs reply=)' if reported_confidence else '')
                 + '. Paths tried: ' + '; '.join(f'{p} needs {need}' for p, need in needs.items()),
                 task_type=task.task_type)
         source = None
@@ -689,11 +685,6 @@ class BehavioralReadout:
                                     parameters=(VERBATIM_IN_TEMPLATE if response.verbatim
                                                 and owner._reply is not None else None)),
                     raw=replies, errors=[error for _, error in parsed])
-                if response.confidence is not None:
-                    outputs['behavior:confidence'] = answers.numbers(
-                        [response.parse_confidence(reply) for reply in replies], stimuli,
-                        response_record('behavior:confidence', 'generation', parsed_by='model'),
-                        raw=replies)
                 if score_first:
                     rt_source = _softmax_probabilities(
                         outputs, answers.score_rows(scores, row_labels), stimuli, axis)
@@ -842,8 +833,7 @@ class BehavioralReadout:
 # never stated. ``behavior`` is the answer to a legacy task.
 _PART_FORMATS = {
     'answer': {'behavior': None, 'behavior:choice': None},
-    'reply': {'behavior:choice': None, 'behavior:rating': None,
-              'behavior:confidence': None, 'behavior:text': None},
+    'reply': {'behavior:choice': None, 'behavior:rating': None, 'behavior:text': None},
     'likelihood': {'behavior:probabilities': 'softmax', 'behavior:choice': 'softmax_argmax',
                    'behavior:rt': 'link'},
     'readout': {'behavior': None, 'behavior:probabilities': None, 'behavior:rating': None,

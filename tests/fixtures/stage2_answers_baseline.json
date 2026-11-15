@@ -559,7 +559,7 @@
    "ewok choice": {
     "error": [
      "ExecutionNotFeasibleError",
-     "Subject 'owned' cannot give a Choice answer. Paths tried: generation needs reply= (or answer= for a plain Choice); likelihood needs likelihood= and a Choice without reported confidence; readout needs behavioral_readout_layer=, an extractor and fitting_stimuli"
+     "Subject 'owned' cannot give a Choice answer. Paths tried: generation needs reply= (or answer= for a plain Choice); likelihood needs likelihood= and a Choice; readout needs behavioral_readout_layer=, an extractor and fitting_stimuli"
     ]
    },
    "ewok log scores": {
@@ -895,7 +895,6 @@
   "out_channels": [
    "behavior",
    "behavior:choice",
-   "behavior:confidence",
    "behavior:rating",
    "behavior:text"
   ],
@@ -903,19 +902,19 @@
    "choice": {
     "error": [
      "ExecutionNotFeasibleError",
-     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:choice', 'behavior:probabilities'] in one session: it does not produce ['behavior:probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:confidence', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
+     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:choice', 'behavior:probabilities'] in one session: it does not produce ['behavior:probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
     ]
    },
    "choice with reaction time evidence_margin": {
     "error": [
      "ExecutionNotFeasibleError",
-     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:choice', 'behavior:probabilities', 'behavior:rt'] in one session: it does not produce ['behavior:probabilities', 'behavior:rt']; out_channels: ['behavior', 'behavior:choice', 'behavior:confidence', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
+     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:choice', 'behavior:probabilities', 'behavior:rt'] in one session: it does not produce ['behavior:probabilities', 'behavior:rt']; out_channels: ['behavior', 'behavior:choice', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
     ]
    },
    "choice with reaction time surprisal": {
     "error": [
      "ExecutionNotFeasibleError",
-     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:choice', 'behavior:probabilities', 'behavior:rt'] in one session: it does not produce ['behavior:probabilities', 'behavior:rt']; out_channels: ['behavior', 'behavior:choice', 'behavior:confidence', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
+     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:choice', 'behavior:probabilities', 'behavior:rt'] in one session: it does not produce ['behavior:probabilities', 'behavior:rt']; out_channels: ['behavior', 'behavior:choice', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
     ]
    },
    "ewok choice": {
@@ -998,7 +997,7 @@
    "ewok log scores": {
     "error": [
      "ExecutionNotFeasibleError",
-     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:probabilities'] in one session: it does not produce ['behavior:probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:confidence', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
+     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:probabilities'] in one session: it does not produce ['behavior:probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
     ]
    },
    "legacy answer": {
@@ -1070,7 +1069,7 @@
    "probabilities only": {
     "error": [
      "ExecutionNotFeasibleError",
-     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:probabilities'] in one session: it does not produce ['behavior:probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:confidence', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
+     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:probabilities'] in one session: it does not produce ['behavior:probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
     ]
    },
    "rating": {
@@ -1146,7 +1145,7 @@
    "raw scores": {
     "error": [
      "ExecutionNotFeasibleError",
-     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:choice', 'behavior:probabilities'] in one session: it does not produce ['behavior:probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:confidence', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
+     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:choice', 'behavior:probabilities'] in one session: it does not produce ['behavior:probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
     ]
    },
    "roar plain choice": {
@@ -1230,7 +1229,6 @@
   "out_channels": [
    "behavior",
    "behavior:choice",
-   "behavior:confidence",
    "behavior:probabilities",
    "behavior:rating",
    "behavior:rt",
@@ -3014,7 +3012,7 @@
    "ewok choice": {
     "error": [
      "ExecutionNotFeasibleError",
-     "Subject 'owned' cannot give a Choice answer. Paths tried: generation needs reply= (or answer= for a plain Choice); likelihood needs likelihood= and a Choice without reported confidence; readout needs behavioral_readout_layer=, an extractor and fitting_stimuli"
+     "Subject 'owned' cannot give a Choice answer. Paths tried: generation needs reply= (or answer= for a plain Choice); likelihood needs likelihood= and a Choice; readout needs behavioral_readout_layer=, an extractor and fitting_stimuli"
     ]
    },
    "ewok log scores": {
@@ -3337,7 +3335,6 @@
  "reply+likelihood": {
   "out_channels": [
    "behavior:choice",
-   "behavior:confidence",
    "behavior:probabilities",
    "behavior:rating",
    "behavior:rt",
@@ -4081,13 +4078,13 @@
    "legacy answer": {
     "error": [
      "ExecutionNotFeasibleError",
-     "Session refused (task type 'probabilities'): Subject 'owned' cannot answer ['behavior'] in one session: it does not produce ['behavior']; out_channels: ['behavior:choice', 'behavior:confidence', 'behavior:probabilities', 'behavior:rating', 'behavior:rt', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
+     "Session refused (task type 'probabilities'): Subject 'owned' cannot answer ['behavior'] in one session: it does not produce ['behavior']; out_channels: ['behavior:choice', 'behavior:probabilities', 'behavior:rating', 'behavior:rt', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
     ]
    },
    "legacy readout": {
     "error": [
      "ExecutionNotFeasibleError",
-     "Session refused (task type 'probabilities'): Subject 'owned' cannot answer ['behavior'] in one session: it does not produce ['behavior']; out_channels: ['behavior:choice', 'behavior:confidence', 'behavior:probabilities', 'behavior:rating', 'behavior:rt', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
+     "Session refused (task type 'probabilities'): Subject 'owned' cannot answer ['behavior'] in one session: it does not produce ['behavior']; out_channels: ['behavior:choice', 'behavior:probabilities', 'behavior:rating', 'behavior:rt', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
     ]
    },
    "probabilities only": {
