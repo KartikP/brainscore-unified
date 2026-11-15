@@ -238,5 +238,5 @@ def test_an_api_answer_part_sends_the_request_it_always_sent(provider, image_fir
     kinds = [part['type'] for part in content]
     assert kinds == (['image', 'text'] if image_first else ['text', 'image_url'])
     text = next(part['text'] for part in content if part['type'] == 'text')
-    assert text == 'Real?\n\nAnswer with exactly one of: real, pseudo. Reply with only that word, nothing else.'
+    assert text == 'Real?\n\nAnswer with exactly one of: real, pseudo.'
     assert {k: v for k, v in request.items() if k in ('max_tokens', 'temperature')} == settings

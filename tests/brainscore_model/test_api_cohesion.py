@@ -196,9 +196,9 @@ def test_generation_inputs_need_no_placeholder_extractors():
     stimuli = StimulusSet({'stimulus_id': ['s0'], 'sentence': ['hello']})
     stimuli.identifier = 'output-only'
     result = behavioral_response(model, stimuli, TaskContext(
-        task_type='probabilities', instruction='Choose yes.', label_set=['yes'],
+        task_type='probabilities', instruction='Choose yes.', label_set=['yes', 'no'],
     ))
-    assert result.values.tolist() == [[1.0]]
+    assert result.values.tolist() == [[1.0, 0.0]]
     # Without a session, process() has no extractor to answer with.
     with pytest.raises(NotImplementedError, match='no activation extractor'):
         model.process(StimulusSet({'stimulus_id': ['s0'], 'sentence': ['hello']}))

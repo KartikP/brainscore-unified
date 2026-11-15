@@ -39,7 +39,7 @@ task = TaskContext(
 | `Text()` | a written answer, kept as written | `behavior:text` |
 | `Text(max_tokens=512, temperature=1.0)` | a written answer under the task's generation settings | `behavior:text` |
 
-Each response phrases its own directive after the instruction ("Answer with exactly one of: real, pseudo.") and parses the reply. Prompt wording is the benchmark's science: the benchmark writes the instruction and the stimulus text. A task accepts only `Choice`, `Scale` and `Text` themselves, not a subclass, so a benchmark cannot change the directive by subclassing. To add no sentence at all, use `Choice(..., verbatim=True)`.
+Each response defines its directive ("Answer with exactly one of: real, pseudo.") and its parse once, in core. They are the model side's tools: a model part that generates text phrases its answer line with `directive` and reads its reply with `parse` (the API, Qwen and BLIP-2 `answer` parts do). The benchmark gives the specification only: the instruction, the stimulus text and the options. A task accepts only `Choice`, `Scale` and `Text` themselves, not a subclass, so a benchmark cannot change the directive by subclassing. To add no sentence at all, use `Choice(..., verbatim=True)`.
 
 Two fields of `Choice` and one format serve a library that compares options by their likelihood (EWoK):
 

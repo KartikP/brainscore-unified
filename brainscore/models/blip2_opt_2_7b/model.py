@@ -52,15 +52,25 @@ def _make_answer(blip_model, blip_processor, max_new_tokens: int = 8):
     prompt it in a captioning-style template that it handles better:
     "Question: {instruction} Answer:" → model completes with label.
     """
+    from brainscore.model_helpers.api_behavioral import _row_parts
     device = next(blip_model.parameters()).device
 
     def generate(stimulus_row, instruction: str, label_set: List[str]) -> str:
-        image = Image.open(stimulus_row['image_file_name']).convert('RGB')
-        # BLIP-2 OPT responds best to "Question: ... Answer:" template
-        prompt = (f"Question: {instruction} "
-                  f"Choose from: {', '.join(label_set)}. Answer:")
-        inputs = blip_processor(text=prompt, images=image,
-                                return_tensors='pt')
+        image_column, text_column = _row_parts(stimulus_row, 'BLIP-2 answer')
+        # BLIP-2 OPT responds best to "Question: ... Answer:" template; with no
+        # instruction there is no question. The row's text comes first.
+        prompt = ((f"Question: {instruction} " if instruction else '')
+                  + f"Choose from: {', '.join(label_set)}. Answer:")
+        if text_column:
+            prompt = f"{stimulus_row[text_column]}\n\n{prompt}"
+        if image_column:
+            image = Image.open(stimulus_row[image_column]).convert('RGB')
+            inputs = blip_processor(text=prompt, images=image, return_tensors='pt')
+            run = blip_model.generate
+        else:
+            # No picture: BLIP-2's own language model reads the text alone.
+            inputs = blip_processor.tokenizer(prompt, return_tensors='pt')
+            run = blip_model.language_model.generate
         # Explicit per-tensor device move. BatchFeature.to(device) does not
         # reliably move all tensors on MPS; BLIP-2's generate() accesses
         # input_ids inside get_input_embeddings() and needs it on the same
@@ -73,25 +83,17 @@ def _make_answer(blip_model, blip_processor, max_new_tokens: int = 8):
         }
 
         with torch.no_grad():
-            generated = blip_model.generate(
+            generated = run(
                 **inputs,
                 max_new_tokens=max_new_tokens,
                 do_sample=False,
             )
 
-        response = blip_processor.tokenizer.decode(
-            generated[0], skip_special_tokens=True).strip().lower()
-        # BLIP-2 echoes the prompt sometimes; strip it
-        if 'answer:' in response:
-            response = response.split('answer:')[-1].strip()
-
-        for lbl in label_set:
-            if response == lbl.lower():
-                return lbl
-        for lbl in label_set:
-            if re.search(rf'\b{re.escape(lbl.lower())}\b', response):
-                return lbl
-        return response  # unparseable — caller defaults to label_set[0]
+        decoded = blip_processor.tokenizer.decode(generated[0], skip_special_tokens=True)
+        # The generation can return the prompt before the reply: only that echo is
+        # removed. The rest is the generated text, exactly; BrainScoreModel parses it.
+        echoed = decoded.lstrip()
+        return echoed[len(prompt):] if echoed.startswith(prompt) else decoded
 
     return generate
 

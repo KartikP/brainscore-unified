@@ -9,40 +9,43 @@ import pytest
 
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore.model_helpers.api_behavioral import (
-    build_api_generation_fn, _parse_label, _find_column, _build_instruction,
-    IMAGE_COLUMNS, TEXT_COLUMNS,
+    build_api_generation_fn, _find_column, _answer_text, _row_parts, _CACHE_FORM,
 )
 
 
 class TestPureHelpers:
-    def test_parse_exact_case_insensitive(self):
-        assert _parse_label('REAL', ['real', 'pseudo']) == 'real'
-        assert _parse_label('  pseudo ', ['real', 'pseudo']) == 'pseudo'
+    def test_the_provider_text_is_returned_exactly(self):
+        """The answer part does not parse: BrainScoreModel reads the text with Choice.parse."""
+        for text in ('REAL', '  Pseudo, not REAL  ', 'The answer is real.'):
+            gen = build_api_generation_fn(lambda model, system, messages, settings: text, 'mock')
+            assert gen(pd.Series({'sentence': 'florp', 'stimulus_id': 's1'}), 'Real?',
+                       ['real', 'pseudo']) == text
 
-    def test_parse_word_boundary_substring(self):
-        assert _parse_label('The answer is real.', ['real', 'pseudo']) == 'real'
-        # word boundary: "unreal" must NOT match "real"
-        assert _parse_label('unreal', ['real', 'pseudo']) is None
+    def test_prompt_is_the_instruction_then_core_choice_directive(self):
+        assert _answer_text('Is this a real word?', ['real', 'pseudo']) == (
+            'Is this a real word?\n\nAnswer with exactly one of: real, pseudo.')
+        assert _answer_text(None, ['real', 'pseudo']) == 'Answer with exactly one of: real, pseudo.'
 
-    def test_parse_unparseable_returns_none(self):
-        assert _parse_label('maybe?', ['real', 'pseudo']) is None
-        assert _parse_label(None, ['real', 'pseudo']) is None
-
-    def test_build_instruction_has_forced_choice(self):
-        out = _build_instruction('Is this a real word?', ['real', 'pseudo'])
-        assert 'real, pseudo' in out
-        assert 'exactly one' in out.lower()
-
-    def test_find_column_prefers_image_then_text(self):
+    def test_find_column_reads_the_catalog_columns_in_order(self):
         row = pd.Series({'image_file_name': '/x.png', 'sentence': 'hi'})
-        assert _find_column(row, IMAGE_COLUMNS) == 'image_file_name'
+        assert _find_column(row, 'image') == 'image_file_name'
+        assert _find_column(pd.Series({'image_path': '/x.png'}), 'image') == 'image_path'
         text_only = pd.Series({'sentence': 'hi'})
-        assert _find_column(text_only, IMAGE_COLUMNS) is None
-        assert _find_column(text_only, TEXT_COLUMNS) == 'sentence'
+        assert _find_column(text_only, 'image') is None
+        assert _find_column(text_only, 'text') == 'sentence'
+        # a name outside the catalog is not read (stated change: the old lists had it)
+        assert _find_column(pd.Series({'filepath': '/x.png', 'word': 'hi'}), 'image') is None
 
     def test_find_column_skips_nan(self):
         row = pd.Series({'image_file_name': float('nan'), 'sentence': 'hi'})
-        assert _find_column(row, IMAGE_COLUMNS) is None  # NaN is not a usable path
+        assert _find_column(row, 'image') is None  # NaN is not a usable path
+
+    def test_row_parts_names_the_accepted_columns_when_the_row_has_neither(self):
+        assert _row_parts(pd.Series({'image_path': '/x.png', 'text': 'hi'}), 'part') == ('image_path', 'text')
+        with pytest.raises(ValueError, match=r"part: the stimulus row has no image column and no text "
+                                             r"column; accepted columns, in order: image \['image_file_name', "
+                                             r"'image_path', 'filename', 'image', 'vision'\], text \['sentence', 'text'\]"):
+            _row_parts(pd.Series({'notes': 'x'}), 'part')
 
 
 def _turn(messages):
@@ -65,7 +68,7 @@ class TestGenerationClosure:
             return responses.get('return', 'real')
         return call
 
-    def test_text_row_returns_parsed_label(self):
+    def test_text_row_returns_the_provider_text(self):
         gen = build_api_generation_fn(self._mock({'return': 'pseudo'}), 'mock')
         row = pd.Series({'sentence': 'florp', 'stimulus_id': 's1'})
         out = gen(row, 'Is this a real word?', ['real', 'pseudo'])
@@ -90,7 +93,7 @@ class TestGenerationClosure:
     def test_missing_modality_column_raises(self):
         gen = build_api_generation_fn(self._mock(), 'mock')
         row = pd.Series({'unrelated': 7, 'stimulus_id': 's1'})
-        with pytest.raises(ValueError, match='no readable image column'):
+        with pytest.raises(ValueError, match='no image column and no text column'):
             gen(row, 'Is this real?', ['real', 'pseudo'])
 
     def test_cache_avoids_resecond_call(self, tmp_path):
@@ -102,6 +105,28 @@ class TestGenerationClosure:
         b = gen(row, 'Is this real?', ['real', 'pseudo'])
         assert a == b == 'real'
         assert len(calls) == 1            # second call served from disk cache
+
+    def test_the_cache_key_holds_the_prompt_so_an_entry_of_the_old_prompt_is_not_used(self, tmp_path):
+        """Stated change: the prompt text changed, so a cached reply of the old prompt misses once."""
+        import hashlib, json
+        calls = []
+        provider = self._mock(counter=calls)
+        payload = hashlib.sha256(b'florp').hexdigest()[:16]
+
+        def key(prompt, *form):      # the old key had no form part
+            raw = json.dumps([provider.__name__, 'mock', prompt, ['real', 'pseudo'], 's1', payload, None, 16,
+                              *form])
+            return hashlib.sha256(raw.encode('utf-8')).hexdigest()
+
+        old = ('Is this real?\n\nAnswer with exactly one of: real, pseudo. '
+               'Reply with only that word, nothing else.')
+        (tmp_path / f'{key(old)}.json').write_text(json.dumps({'response': 'pseudo'}))
+        gen = build_api_generation_fn(provider, 'mock', cache_dir=str(tmp_path))
+        assert gen(pd.Series({'sentence': 'florp', 'stimulus_id': 's1'}), 'Is this real?',
+                   ['real', 'pseudo']) == 'real'
+        assert len(calls) == 1
+        new = 'Is this real?\n\nAnswer with exactly one of: real, pseudo.'
+        assert (tmp_path / f'{key(new, _CACHE_FORM)}.json').exists()
 
     def test_cache_distinguishes_stimuli(self, tmp_path):
         calls = []
@@ -465,7 +490,7 @@ class TestApiReply:
         monkeypatch.setitem(sys.modules, 'anthropic', fake)
         reply = build_api_reply('anthropic', 'claude-x')
         assert reply(Prompt((('text', 'Do it.'), ('text', 'x')), names=('instruction', 'text'),
-                            response=Text(max_tokens=512, temperature=1.0))) == 'ok'
+                            response=Text(max_tokens=512, temperature=1.0))) == ' ok '   # the provider's text exactly
         assert sent == {'model': 'claude-x', 'max_tokens': 512, 'system': 'Do it.',
                         'messages': [{'role': 'user', 'content': [{'type': 'text', 'text': 'x'}]}]}
 
@@ -490,7 +515,7 @@ class TestApiReply:
         prompt = Prompt((('text', '2 + 2?'),), response=Text())
         for _ in range(2):   # the second reply comes from the cache, with its extra data
             answer = reply(prompt)
-            assert isinstance(answer, StreamEvent) and answer.payload == '4'
+            assert isinstance(answer, StreamEvent) and answer.payload == ' 4 '   # exactly as given
             assert answer.meta == {'reasoning': 'Add them.',
                                    'token_usage': {'input_tokens': 7, 'output_tokens': 2}}
         assert len(requests) == 1
@@ -508,7 +533,7 @@ class TestApiReply:
             completions=types.SimpleNamespace(create=lambda **kwargs: response)))
         monkeypatch.setitem(sys.modules, 'openai', types.SimpleNamespace(OpenAI=lambda **kwargs: client))
         answer = _make_openai_compatible()('m', None, [{'role': 'user', 'content': []}], {'max_tokens': 8})
-        assert answer.payload == '4'
+        assert answer.payload == ' 4 '   # exactly as given
         assert answer.meta == {'reasoning': 'Add them.',
                                'token_usage': {'input_tokens': 7, 'output_tokens': 2}}
 
@@ -558,7 +583,7 @@ class TestApiReply:
         # A plain Choice goes to the answer part (point r), which phrases its own prompt.
         assert calls[1]['messages'][0]['content'][-1] == {
             'type': 'text',
-            'text': 'xyz\n\nAnswer with exactly one of: short, long. Reply with only that word, nothing else.'}
+            'text': 'xyz\n\nAnswer with exactly one of: short, long.'}
 
     def test_an_api_reply_model_runs_coggym(self, tmp_path, monkeypatch):
         """API models run CogGym: the settings reach the provider call."""

@@ -12,7 +12,8 @@ What it handles (the "graceful" parts):
   - per-stimulus on-disk response cache keyed by (provider, model, instruction,
     label_set, stimulus) — re-runs don't re-bill AND the scored result reproduces
     even though the live model may change behind the API;
-  - robust label parsing (exact -> word-boundary -> defer to caller's fallback);
+  - the directive of core's ``Choice`` (one text); the reply text is returned
+    exactly and ``BrainScoreModel`` parses it with ``Choice.parse``;
   - multimodal (base64 image) and text dispatch from the stimulus row.
 
 ``build_api_reply`` builds a ``reply`` part from the same clients (one table,
@@ -34,27 +35,44 @@ from pathlib import Path
 from typing import Callable, Optional, Sequence, Tuple, Union
 
 from brainscore_core.compatibility import ExecutionNotFeasibleError
-
-# Stimulus-set columns we know how to read, in priority order. Mirrors the
-# column conventions the wrappers use elsewhere; vision wins over text.
-IMAGE_COLUMNS = ('image_file_name', 'image_path', 'image_file', 'filepath',
-                 'stimulus_path')
-TEXT_COLUMNS = ('sentence', 'text', 'word', 'transcript', 'stimulus')
+from brainscore_core.responses import Choice
 
 _IMG_MIME = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
              '.gif': 'image/gif', '.webp': 'image/webp'}
 
 
-def _find_column(row, candidates: Sequence[str]) -> Optional[str]:
-    for c in candidates:
+def _find_column(row, kind: str) -> Optional[str]:
+    """The first column of ``row`` that the core catalog binds to the part ``kind``
+    (``'image'``, ``'text'``, ...), in the catalog's order, with a usable value.
+
+    It is the rule a trial's prompt uses (``brainscore_core.responses.part_columns``),
+    so an ``answer`` part reads the same column as a ``reply`` part.
+    """
+    from brainscore_core.responses import part_columns
+    for column in part_columns(kind):
         try:
-            val = row[c]
-        except (KeyError, TypeError):
+            value = row[column]
+        except (KeyError, TypeError, IndexError):
             continue
         # pandas Series rows: a missing/NaN cell is not a usable path/string
-        if val is not None and not (isinstance(val, float) and val != val):
-            return c
+        if value is not None and not (isinstance(value, float) and value != value):
+            return column
     return None
+
+
+def _row_parts(row, part: str) -> Tuple[Optional[str], Optional[str]]:
+    """The picture column and the text column of ``row`` (``_find_column``), either may be
+    ``None``; a row with neither raises a ValueError that names the accepted columns.
+
+    An answer part shows what the row has: its picture, its text, or both.
+    """
+    from brainscore_core.responses import part_columns
+    image, text = _find_column(row, 'image'), _find_column(row, 'text')
+    if image is None and text is None:
+        raise ValueError(f"{part}: the stimulus row has no image column and no text column; "
+                         f"accepted columns, in order: image {list(part_columns('image'))}, "
+                         f"text {list(part_columns('text'))}.")
+    return image, text
 
 
 def _encode_image(path: Union[str, Path]) -> Tuple[str, str]:
@@ -66,28 +84,10 @@ def _encode_image(path: Union[str, Path]) -> Tuple[str, str]:
     return media, b64
 
 
-def _build_instruction(instruction: str, label_set: Sequence[str]) -> str:
-    """Append a forced-choice directive so the response is parseable."""
-    opts = ', '.join(str(l) for l in label_set)
-    base = instruction.strip() if instruction else ''
-    return (f"{base}\n\nAnswer with exactly one of: {opts}. "
-            f"Reply with only that word, nothing else.").strip()
-
-
-def _parse_label(response: str, label_set: Sequence[str]) -> Optional[str]:
-    """Map a free-text response to a label. Exact (case-insensitive) match
-    first, then a word-boundary substring match, else None so the caller's
-    own fallback (BrainScoreModel defaults to label_set[0] + warns) fires."""
-    if response is None:
-        return None
-    resp = response.strip().lower()
-    for lbl in label_set:
-        if resp == str(lbl).strip().lower():
-            return lbl
-    for lbl in label_set:
-        if re.search(rf'\b{re.escape(str(lbl).strip().lower())}\b', resp):
-            return lbl
-    return None
+def _answer_text(instruction: Optional[str], label_set: Sequence[str]) -> str:
+    """The instruction, then the choice directive of core's ``Choice`` (the one text)."""
+    return '\n\n'.join(part for part in ((instruction or '').strip(),
+                                          Choice(list(label_set)).directive()) if part)
 
 
 # ── provider clients ───────────────────────────────────────────────────
@@ -137,7 +137,7 @@ def _call_anthropic(model, system, messages, settings):
     if system:
         kwargs['system'] = system
     resp = client.messages.create(**kwargs)
-    text = ''.join(b.text for b in resp.content if b.type == 'text').strip()
+    text = ''.join(b.text for b in resp.content if b.type == 'text')   # exactly as given
     reasoning = ''.join(b.thinking for b in resp.content if b.type == 'thinking') or None
     usage = getattr(resp, 'usage', None)
     return _with_meta(text, reasoning, None if usage is None else {
@@ -194,7 +194,7 @@ def _make_openai_compatible(base_url=None, api_key_env='OPENAI_API_KEY', label='
         # DeepSeek names the reasoning reasoning_content; OpenRouter names it reasoning.
         reasoning = getattr(message, 'reasoning_content', None) or getattr(message, 'reasoning', None)
         usage = getattr(resp, 'usage', None)
-        return _with_meta((message.content or '').strip(), reasoning,
+        return _with_meta(message.content or '', reasoning,   # the content exactly as given
                           None if usage is None else {'input_tokens': usage.prompt_tokens,
                                                       'output_tokens': usage.completion_tokens})
     call.__name__ = f'_call_{label}'
@@ -242,6 +242,12 @@ def _one_turn(call, model, system, text, image, max_tokens) -> str:
     return reply.payload if isinstance(reply, StreamEvent) else reply
 
 
+# The form of a cached text, part of every cache key. Before it, the clients stored
+# the provider's text stripped of outer spaces; those entries stay on disk and are
+# never read, so each key misses once and then stores the exact text.
+_CACHE_FORM = 'exact-text-v1'
+
+
 class _ResponseCache:
     """Tiny disk cache: sha256 key -> response string, one JSON file per key.
     Pins outputs so re-runs are free and bit-reproducible despite a live model."""
@@ -270,8 +276,6 @@ def build_api_generation_fn(
     system_prompt: Optional[str] = None,
     max_tokens: int = 16,
     cache_dir: Optional[Union[str, Path]] = None,
-    image_columns: Sequence[str] = IMAGE_COLUMNS,
-    text_columns: Sequence[str] = TEXT_COLUMNS,
 ) -> Callable:
     """Build an ``answer(stimulus_row, instruction, label_set) -> str``
     that answers a forced-choice behavioral task via a closed-weight API model.
@@ -291,19 +295,14 @@ def build_api_generation_fn(
 
     def _key(prompt, label_set, stim_key, payload_hash) -> str:
         raw = json.dumps([provider_name, model, prompt, list(map(str, label_set)),
-                          stim_key, payload_hash, system_prompt, max_tokens])
+                          stim_key, payload_hash, system_prompt, max_tokens, _CACHE_FORM])
         return hashlib.sha256(raw.encode('utf-8')).hexdigest()
 
     def generate(stimulus_row, instruction: str, label_set) -> str:
         label_set = list(label_set)
-        prompt = _build_instruction(instruction, label_set)
+        prompt = _answer_text(instruction, label_set)
 
-        img_col = _find_column(stimulus_row, image_columns)
-        txt_col = None if img_col else _find_column(stimulus_row, text_columns)
-        if img_col is None and txt_col is None:
-            raise ValueError(
-                f"api_behavioral: stimulus row has no readable image column "
-                f"({image_columns}) or text column ({text_columns}).")
+        img_col, txt_col = _row_parts(stimulus_row, 'api_behavioral answer')
 
         # stimulus identity for the cache key
         try:
@@ -311,16 +310,15 @@ def build_api_generation_fn(
         except (KeyError, TypeError):
             stim_key = ''
 
+        # The row's picture, then its text before the prompt; a row with both shows both.
+        image, user_text, payload = None, prompt, ''
         if img_col is not None:
             media, b64 = _encode_image(stimulus_row[img_col])
-            image = (media, b64)
-            user_text = prompt
-            payload_hash = hashlib.sha256(b64.encode('utf-8')).hexdigest()[:16]
-        else:
-            image = None
+            image, payload = (media, b64), b64
+        if txt_col is not None:
             text = str(stimulus_row[txt_col])
-            user_text = f"{text}\n\n{prompt}"
-            payload_hash = hashlib.sha256(text.encode('utf-8')).hexdigest()[:16]
+            user_text, payload = f"{text}\n\n{prompt}", payload + text
+        payload_hash = hashlib.sha256(payload.encode('utf-8')).hexdigest()[:16]
 
         key = _key(prompt, label_set, stim_key, payload_hash)
         response = cache.get(key) if cache is not None else None
@@ -329,10 +327,7 @@ def build_api_generation_fn(
             if cache is not None:
                 cache.set(key, response)
 
-        parsed = _parse_label(response, label_set)
-        # Returning the raw response on a parse miss lets BrainScoreModel emit
-        # its standard warning and fall back to label_set[0].
-        return parsed if parsed is not None else response
+        return response   # the provider's text, exactly: BrainScoreModel parses it
 
     return generate
 
@@ -420,8 +415,8 @@ def build_api_reply(
         if call is _call_anthropic:
             _anthropic_settings(settings)   # fail before the cache or a request
         system, messages = _reply_messages(prompt)
-        key = hashlib.sha256(json.dumps([provider_name, model, system, messages, settings],
-                                        sort_keys=True).encode('utf-8')).hexdigest()
+        key = hashlib.sha256(json.dumps([provider_name, model, system, messages, settings,
+                                         _CACHE_FORM], sort_keys=True).encode('utf-8')).hexdigest()
         # A sampled call without a seed differs on each repetition: do not cache it.
         use_cache = cache is not None and not (
             (settings.get('temperature') or 0) > 0 and settings.get('seed') is None)
@@ -610,7 +605,8 @@ def build_api_action_fn(
             # cache_dir=None for fresh per-tick calls.
             key = hashlib.sha256(
                 '|'.join([provider_name, model, prompt, payload,
-                          str(len(trace)), str(system_prompt), str(max_tokens)]).encode()
+                          str(len(trace)), str(system_prompt), str(max_tokens),
+                          _CACHE_FORM]).encode()
             ).hexdigest()
             response = cache.get(key)
         if response is None:

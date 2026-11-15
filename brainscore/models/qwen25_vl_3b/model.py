@@ -16,7 +16,6 @@ Region layer paths are relative to each wrapper's sub-model root:
   language paths  → relative to qwen_model.model.language_model
 """
 
-import re
 import hashlib
 import json
 from pathlib import Path
@@ -27,6 +26,7 @@ from PIL import Image
 
 from brainscore import BrainScoreModel
 from brainscore_core.contract import Subject
+from brainscore_core.responses import Choice
 from brainscore_core.hf_compat import pin_image_processor
 
 
@@ -90,24 +90,27 @@ def _make_answer(qwen_model, qwen_processor, max_new_tokens: int = 8):
     ``instruction`` (not just fitting_stimuli).
 
     Signature (the ``answer`` part of BrainScoreModel):
-        fn(stimulus_row, instruction, label_set) -> predicted_label
+        fn(stimulus_row, instruction, label_set) -> the generated text
     """
+    from brainscore.model_helpers.api_behavioral import _row_parts
     device = next(qwen_model.parameters()).device
 
     def generate(stimulus_row, instruction: str, label_set: List[str]) -> str:
-        image = Image.open(stimulus_row['image_file_name']).convert('RGB')
-        messages = [{
-            'role': 'user',
-            'content': [
-                {'type': 'image', 'image': image},
-                {'type': 'text',  'text': instruction +
-                 f' Answer with exactly one of: {", ".join(label_set)}.'},
-            ],
-        }]
+        # The row's picture, then its text (before the instruction and the directive).
+        image_column, text_column = _row_parts(stimulus_row, 'Qwen2.5-VL answer')
+        text = (f'{instruction} ' if instruction else '') + Choice(label_set).directive()
+        if text_column:
+            text = f'{stimulus_row[text_column]}\n\n{text}'
+        content, images = [], None
+        if image_column:
+            images = [Image.open(stimulus_row[image_column]).convert('RGB')]
+            content.append({'type': 'image', 'image': images[0]})
+        content.append({'type': 'text', 'text': text})
+        messages = [{'role': 'user', 'content': content}]
         prompt = qwen_processor.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True)
         inputs = qwen_processor(
-            text=[prompt], images=[image], return_tensors='pt', padding=True,
+            text=[prompt], images=images, return_tensors='pt', padding=True,
         ).to(device)
 
         with torch.no_grad():
@@ -120,18 +123,8 @@ def _make_answer(qwen_model, qwen_processor, max_new_tokens: int = 8):
         # Strip the prompt tokens, decode the tail
         input_len = inputs['input_ids'].shape[1]
         response_ids = generated[0, input_len:]
-        response = qwen_processor.tokenizer.decode(
-            response_ids, skip_special_tokens=True).strip().lower()
-
-        # Robust parsing: prefer exact match, then substring match, then
-        # fall back to first label (BrainScoreModel emits a warning).
-        for lbl in label_set:
-            if response == lbl.lower():
-                return lbl
-        for lbl in label_set:
-            if re.search(rf'\b{re.escape(lbl.lower())}\b', response):
-                return lbl
-        return response  # unparseable — caller will default to label_set[0]
+        # The generated text, exactly: BrainScoreModel parses it with core's Choice.parse.
+        return qwen_processor.tokenizer.decode(response_ids, skip_special_tokens=True)
 
     return generate
 

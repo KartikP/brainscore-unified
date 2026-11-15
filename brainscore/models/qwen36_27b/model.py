@@ -60,24 +60,23 @@ def _tower_root(visual, language_model):
 
 
 def _make_answer(model, processor, max_new_tokens: int = 16):
-    """``answer(stimulus_row, instruction, label_set) -> label`` for behavioral
-    tasks. Thinking is switched off so the reply is the label itself."""
+    """``answer(stimulus_row, instruction, label_set) -> text`` for behavioral
+    tasks: the row's picture and text, then the prompt. Thinking is switched off
+    so the reply is short; the generated text is returned exactly."""
     import torch
     from PIL import Image
     from brainscore.model_helpers.api_behavioral import (
-        IMAGE_COLUMNS, TEXT_COLUMNS, _build_instruction, _find_column, _parse_label)
+        _answer_text, _row_parts)
 
     def answer(stimulus_row, instruction, label_set):
-        prompt = _build_instruction(instruction, label_set)
-        image_column = _find_column(stimulus_row, IMAGE_COLUMNS)
+        prompt = _answer_text(instruction, label_set)
+        image_column, text_column = _row_parts(stimulus_row, 'Qwen3.6-27B answer')
         content, images = [], None
         if image_column:
             images = [Image.open(stimulus_row[image_column]).convert('RGB')]
             content.append({'type': 'image', 'image': images[0]})
-        else:
-            text_column = _find_column(stimulus_row, TEXT_COLUMNS)
-            if text_column:
-                prompt = f'{stimulus_row[text_column]}\n\n{prompt}'
+        if text_column:
+            prompt = f'{stimulus_row[text_column]}\n\n{prompt}'
         content.append({'type': 'text', 'text': prompt})
         text = processor.apply_chat_template(
             [{'role': 'user', 'content': content}], tokenize=False,
@@ -89,8 +88,7 @@ def _make_answer(model, processor, max_new_tokens: int = 16):
                                        do_sample=False)
         reply = processor.tokenizer.decode(
             generated[0, inputs['input_ids'].shape[1]:], skip_special_tokens=True)
-        label = _parse_label(reply, label_set)
-        return reply.strip() if label is None else label   # unparsed: caller warns
+        return reply   # the generated text, exactly: BrainScoreModel parses it
 
     return answer
 

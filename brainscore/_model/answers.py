@@ -24,27 +24,31 @@ def _raw(values):
 def legacy_one_hot(answers, label_set, stimuli):
     """A legacy task's answers as one-hot rows over ``label_set``.
 
-    An answer counts only when it is exactly a label; any other answer is
-    recorded as invalid (NaN row, ``answer_valid=False``) with a warning, as
-    legacy behavioral benchmarks expect. The coordinates keep their order:
-    ``stimulus_id``, the other stimulus columns, ``raw_answer``, ``answer_valid``.
+    Each answer is the text an ``answer`` part generated; core's ``Choice.parse``
+    reads the label, as for a response task. A text it cannot read is recorded as
+    invalid (NaN row, ``answer_valid=False``) with a warning, as legacy behavioral
+    benchmarks expect. The raw answer is the text itself. The coordinates keep their
+    order: ``stimulus_id``, the other stimulus columns, ``raw_answer``, ``answer_valid``.
     """
+    from brainscore_core.responses import Choice
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
     import warnings
     label_to_idx = {label: i for i, label in enumerate(label_set)}
+    choice = Choice(list(label_set))
     proba = np.zeros((len(stimuli), len(label_set)), dtype=np.float32)
     raw_answers, valid = [], []
-    for i, predicted in enumerate(answers):
-        raw_answers.append(str(predicted))
-        valid.append(predicted in label_to_idx)
+    for i, reply in enumerate(answers):
+        raw_answers.append(str(reply))
+        label, _ = choice.parse(str(reply))
+        valid.append(label is not None)
         if valid[-1]:
-            proba[i, label_to_idx[predicted]] = 1.0
+            proba[i, label_to_idx[label]] = 1.0
         else:
             # No label is credited: a substituted label would bias accuracy toward it.
             proba[i, :] = np.nan
             warnings.warn(
-                f"answer function returned {predicted!r}, not in "
-                f"label_set={label_set}. The response is recorded as invalid "
+                f"answer function returned {reply!r}, which names no single label of "
+                f"label_set={list(label_set)}. The response is recorded as invalid "
                 f"(NaN probabilities, answer_valid=False)."
             )
     coords = {'stimulus_id': ('presentation', list(stimuli['stimulus_id'].values))}
@@ -53,7 +57,7 @@ def legacy_one_hot(answers, label_set, stimuli):
             coords[column] = ('presentation', list(stimuli[column].values))
     coords['raw_answer'] = ('presentation', raw_answers)
     coords['answer_valid'] = ('presentation', valid)
-    return BehavioralAssembly(proba, coords={**coords, 'choice': label_set},
+    return BehavioralAssembly(proba, coords={**coords, 'choice': list(label_set)},
                               dims=['presentation', 'choice'],
                               attrs={'response': response_record('behavior', 'generation',
                                                                  parsed_by='model')})

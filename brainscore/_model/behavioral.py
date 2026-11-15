@@ -660,14 +660,15 @@ class BehavioralReadout:
                     if remember:
                         self.history.append((prompt, str(reply)))
                     return reply, scores, extra
-            else:   # a registration's answer: it phrases and parses a Choice itself
+            else:   # a registration's answer: it phrases a Choice itself; the reply is parsed below
                 def call(row, prompt):
                     # The likelihood scores the prompt first when it owns the probabilities.
                     scores = (owner._likelihood(prompt, list(prompt.response.labels))
                               if score_first else None)
-                    reply = owner._answer(stimulus_row=row, instruction=task.instruction,
-                                          label_set=list(prompt.response.labels))
-                    return reply, scores, {}
+                    reply, extra = answers.reply_and_meta(owner._answer(
+                        stimulus_row=row, instruction=task.instruction,
+                        label_set=list(prompt.response.labels)))
+                    return reply, scores, extra
             replies, neural = per_stimulus(owner, stimuli, layers, call, prompts)
             scores = None
             if path == 'generation':
@@ -774,8 +775,8 @@ class BehavioralReadout:
             task = self.task
             label_set = list(task.label_set)
             replies, neural = per_stimulus(
-                self.owner, stimuli, layers, lambda row, _: self.owner._answer(
-                    stimulus_row=row, instruction=task.instruction, label_set=label_set))
+                self.owner, stimuli, layers, lambda row, _: answers.reply_and_meta(self.owner._answer(
+                    stimulus_row=row, instruction=task.instruction, label_set=label_set))[0])
             stamp = self._stamp('answer', 'prompt')
             return (answers.legacy_one_hot(replies, label_set, stimuli),
                     {region: assembly.assign_attrs(recording=stamp) for region, assembly in neural.items()})

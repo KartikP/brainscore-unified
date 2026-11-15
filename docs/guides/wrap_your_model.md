@@ -157,7 +157,7 @@ The [CLIP registration](../../brainscore/models/clip_vit_b_32/model.py) is a com
 
 ## Models without accessible layers
 
-A hosted model or any system that only returns answers has no extractor. Declare its input and give it the parts that answer: a `reply` for tasks with a response (choices, ratings, written answers) and, for older `task_type`/`label_set` tasks, an `answer`:
+A hosted model or any system that only returns answers has no extractor. Declare its input and give it the parts that answer: a `reply` for tasks with a response (choices, ratings, written answers) and an `answer` for a plain choice and for older `task_type`/`label_set` tasks. Both return the text the model generated, exactly; Brain-Score reads the choice from it with core's `Choice.parse` and stores the text as the raw answer. A function that returns a label also works, because a label is a text that reads as itself:
 
 ```python
 def my_reply(prompt):                                      # calls your API in a real model
