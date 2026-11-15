@@ -4,6 +4,8 @@ A benchmark presents stimuli, requests outputs, and compares them with measured 
 
 Already have a `TaskProtocol`? Follow the [experiment-to-benchmark walkthrough](../../notebooks/lessons/10_run_an_experiment.ipynb) (its last section, "Make it a benchmark"): keep the protocol and recorders, run them inside `Benchmark.__call__`, and compare the saved assembly with reference data. `Experiment` continues to own session creation and resets. The manual-session example below is for authors who need that lower-level control.
 
+Mapping the experiments of an existing library (as CogGym and EWoK are mapped)? See [External libraries](external_libraries.md).
+
 ```python
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.streaming_helpers import stimulus_session
