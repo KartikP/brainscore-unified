@@ -56,8 +56,9 @@
 
 set -eo pipefail
 
-TORCH_VERSION=2.13.0
-TORCHVISION_VERSION=0.28.0
+# The versions of v2-constraints.txt (the reference lock's, without +cu124), as CPU wheels.
+TORCH_VERSION=2.6.0
+TORCHVISION_VERSION=0.21.0
 TORCH_INDEX=https://download.pytorch.org/whl/cpu
 OPENPI_REPOSITORY=Physical-Intelligence/openpi
 OPENPI_REVISION=215abfb217dbac7d5f1273282331b9b1866c0479

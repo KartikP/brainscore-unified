@@ -1,4 +1,7 @@
 # Shared CPU integration profile; full scientific platform qualification is separate.
+# Each version here is the version of the reference environment (lock-linux-py311-cu124.txt).
+# torch and torchvision carry the lock's version without its local tag (+cu124): pip then
+# takes the CPU wheel on Linux (2.6.0+cpu) and the plain wheel on macOS.
 numpy==1.26.4
 # netCDF4 1.7.5 wheels require macOS 15; 1.7.4 is kept so resolved environments stay unchanged.
 netCDF4==1.7.4
@@ -9,11 +12,14 @@ scipy==1.17.1
 scikit-learn==1.7.2
 xarray==2022.3.0
 transformers==4.57.6
-# The legacy wikitext plugin requires datasets 2.*; core refuses a conflicting plugin install.
+# The legacy wikitext plugin requires datasets 2.*, and core refuses a conflicting plugin
+# install, so datasets is 2.21.0. The reference environment follows this version; its lock
+# file is made again from the reference machine after a test on a fresh machine (until then
+# the lock still names 5.0.1).
 datasets==2.21.0
 importlib-metadata==4.13.0
-torch==2.13.0
-torchvision==0.28.0
-# Native environment versions resolved in a fresh qualification environment.
-gymnasium==1.4.0
-minigrid==3.2.0
+torch==2.6.0
+torchvision==0.21.0
+# Native environment versions, as in the reference lock.
+gymnasium==1.3.0
+minigrid==3.1.0
