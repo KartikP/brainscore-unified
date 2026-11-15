@@ -9,29 +9,29 @@ import pytest
 
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore.model_helpers.api_behavioral import (
-    build_api_generation_fn, _parse_label, _find_column, _build_instruction,
+    build_api_generation_fn, _label_or_reply, _find_column, _answer_text,
     IMAGE_COLUMNS, TEXT_COLUMNS,
 )
 
 
 class TestPureHelpers:
-    def test_parse_exact_case_insensitive(self):
-        assert _parse_label('REAL', ['real', 'pseudo']) == 'real'
-        assert _parse_label('  pseudo ', ['real', 'pseudo']) == 'pseudo'
-
-    def test_parse_word_boundary_substring(self):
-        assert _parse_label('The answer is real.', ['real', 'pseudo']) == 'real'
+    def test_parse_is_core_choice_parse(self):
+        labels = ['real', 'pseudo']
+        assert _label_or_reply('REAL', labels) == 'real'
+        assert _label_or_reply('  pseudo ', labels) == 'pseudo'
+        assert _label_or_reply('The answer is real.', labels) == 'real'
+        assert _label_or_reply('real\npseudo', labels) == 'real'        # the first line only
         # word boundary: "unreal" must NOT match "real"
-        assert _parse_label('unreal', ['real', 'pseudo']) is None
+        assert _label_or_reply('unreal', labels) == 'unreal'
+        # two labels: no label (stated change: the first label no longer wins)
+        assert _label_or_reply('real or pseudo', labels) == 'real or pseudo'
+        assert _label_or_reply('maybe?', labels) == 'maybe?'
+        assert _label_or_reply(None, labels) is None
 
-    def test_parse_unparseable_returns_none(self):
-        assert _parse_label('maybe?', ['real', 'pseudo']) is None
-        assert _parse_label(None, ['real', 'pseudo']) is None
-
-    def test_build_instruction_has_forced_choice(self):
-        out = _build_instruction('Is this a real word?', ['real', 'pseudo'])
-        assert 'real, pseudo' in out
-        assert 'exactly one' in out.lower()
+    def test_prompt_is_the_instruction_then_core_choice_directive(self):
+        assert _answer_text('Is this a real word?', ['real', 'pseudo']) == (
+            'Is this a real word?\n\nAnswer with exactly one of: real, pseudo.')
+        assert _answer_text(None, ['real', 'pseudo']) == 'Answer with exactly one of: real, pseudo.'
 
     def test_find_column_prefers_image_then_text(self):
         row = pd.Series({'image_file_name': '/x.png', 'sentence': 'hi'})
@@ -102,6 +102,27 @@ class TestGenerationClosure:
         b = gen(row, 'Is this real?', ['real', 'pseudo'])
         assert a == b == 'real'
         assert len(calls) == 1            # second call served from disk cache
+
+    def test_the_cache_key_holds_the_prompt_so_an_entry_of_the_old_prompt_is_not_used(self, tmp_path):
+        """Stated change: the prompt text changed, so a cached reply of the old prompt misses once."""
+        import hashlib, json
+        calls = []
+        provider = self._mock(counter=calls)
+        payload = hashlib.sha256(b'florp').hexdigest()[:16]
+
+        def key(prompt):
+            raw = json.dumps([provider.__name__, 'mock', prompt, ['real', 'pseudo'], 's1', payload, None, 16])
+            return hashlib.sha256(raw.encode('utf-8')).hexdigest()
+
+        old = ('Is this real?\n\nAnswer with exactly one of: real, pseudo. '
+               'Reply with only that word, nothing else.')
+        (tmp_path / f'{key(old)}.json').write_text(json.dumps({'response': 'pseudo'}))
+        gen = build_api_generation_fn(provider, 'mock', cache_dir=str(tmp_path))
+        assert gen(pd.Series({'sentence': 'florp', 'stimulus_id': 's1'}), 'Is this real?',
+                   ['real', 'pseudo']) == 'real'
+        assert len(calls) == 1
+        new = 'Is this real?\n\nAnswer with exactly one of: real, pseudo.'
+        assert (tmp_path / f'{key(new)}.json').exists()
 
     def test_cache_distinguishes_stimuli(self, tmp_path):
         calls = []
@@ -558,7 +579,7 @@ class TestApiReply:
         # A plain Choice goes to the answer part (point r), which phrases its own prompt.
         assert calls[1]['messages'][0]['content'][-1] == {
             'type': 'text',
-            'text': 'xyz\n\nAnswer with exactly one of: short, long. Reply with only that word, nothing else.'}
+            'text': 'xyz\n\nAnswer with exactly one of: short, long.'}
 
     def test_an_api_reply_model_runs_coggym(self, tmp_path, monkeypatch):
         """API models run CogGym: the settings reach the provider call."""

@@ -12,7 +12,7 @@ What it handles (the "graceful" parts):
   - per-stimulus on-disk response cache keyed by (provider, model, instruction,
     label_set, stimulus) — re-runs don't re-bill AND the scored result reproduces
     even though the live model may change behind the API;
-  - robust label parsing (exact -> word-boundary -> defer to caller's fallback);
+  - the directive and the parse of core's ``Choice`` (one text, one rule);
   - multimodal (base64 image) and text dispatch from the stimulus row.
 
 ``build_api_reply`` builds a ``reply`` part from the same clients (one table,
@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Callable, Optional, Sequence, Tuple, Union
 
 from brainscore_core.compatibility import ExecutionNotFeasibleError
+from brainscore_core.responses import Choice
 
 # Stimulus-set columns we know how to read, in priority order. Mirrors the
 # column conventions the wrappers use elsewhere; vision wins over text.
@@ -66,28 +67,17 @@ def _encode_image(path: Union[str, Path]) -> Tuple[str, str]:
     return media, b64
 
 
-def _build_instruction(instruction: str, label_set: Sequence[str]) -> str:
-    """Append a forced-choice directive so the response is parseable."""
-    opts = ', '.join(str(l) for l in label_set)
-    base = instruction.strip() if instruction else ''
-    return (f"{base}\n\nAnswer with exactly one of: {opts}. "
-            f"Reply with only that word, nothing else.").strip()
+def _answer_text(instruction: Optional[str], label_set: Sequence[str]) -> str:
+    """The instruction, then the choice directive of core's ``Choice`` (the one text)."""
+    return '\n\n'.join(part for part in ((instruction or '').strip(),
+                                          Choice(list(label_set)).directive()) if part)
 
 
-def _parse_label(response: str, label_set: Sequence[str]) -> Optional[str]:
-    """Map a free-text response to a label. Exact (case-insensitive) match
-    first, then a word-boundary substring match, else None so the caller's
-    own fallback (BrainScoreModel defaults to label_set[0] + warns) fires."""
-    if response is None:
-        return None
-    resp = response.strip().lower()
-    for lbl in label_set:
-        if resp == str(lbl).strip().lower():
-            return lbl
-    for lbl in label_set:
-        if re.search(rf'\b{re.escape(str(lbl).strip().lower())}\b', resp):
-            return lbl
-    return None
+def _label_or_reply(reply: Optional[str], label_set: Sequence[str]):
+    """The label core's ``Choice.parse`` reads in ``reply``, else the reply itself
+    (``BrainScoreModel`` parses it again and records the trial as invalid)."""
+    label, _ = Choice(list(label_set)).parse(reply)
+    return reply if label is None else label
 
 
 # ── provider clients ───────────────────────────────────────────────────
@@ -296,7 +286,7 @@ def build_api_generation_fn(
 
     def generate(stimulus_row, instruction: str, label_set) -> str:
         label_set = list(label_set)
-        prompt = _build_instruction(instruction, label_set)
+        prompt = _answer_text(instruction, label_set)
 
         img_col = _find_column(stimulus_row, image_columns)
         txt_col = None if img_col else _find_column(stimulus_row, text_columns)
@@ -329,10 +319,7 @@ def build_api_generation_fn(
             if cache is not None:
                 cache.set(key, response)
 
-        parsed = _parse_label(response, label_set)
-        # Returning the raw response on a parse miss lets BrainScoreModel emit
-        # its standard warning and fall back to label_set[0].
-        return parsed if parsed is not None else response
+        return _label_or_reply(response, label_set)
 
     return generate
 

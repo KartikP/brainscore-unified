@@ -65,10 +65,10 @@ def _make_answer(model, processor, max_new_tokens: int = 16):
     import torch
     from PIL import Image
     from brainscore.model_helpers.api_behavioral import (
-        IMAGE_COLUMNS, TEXT_COLUMNS, _build_instruction, _find_column, _parse_label)
+        IMAGE_COLUMNS, TEXT_COLUMNS, _answer_text, _find_column, _label_or_reply)
 
     def answer(stimulus_row, instruction, label_set):
-        prompt = _build_instruction(instruction, label_set)
+        prompt = _answer_text(instruction, label_set)
         image_column = _find_column(stimulus_row, IMAGE_COLUMNS)
         content, images = [], None
         if image_column:
@@ -89,8 +89,7 @@ def _make_answer(model, processor, max_new_tokens: int = 16):
                                        do_sample=False)
         reply = processor.tokenizer.decode(
             generated[0, inputs['input_ids'].shape[1]:], skip_special_tokens=True)
-        label = _parse_label(reply, label_set)
-        return reply.strip() if label is None else label   # unparsed: caller warns
+        return _label_or_reply(reply.strip(), label_set)   # unparsed: the reply itself
 
     return answer
 
