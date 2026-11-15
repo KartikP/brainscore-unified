@@ -100,7 +100,7 @@ Each wrapper is named after what it wraps; pick the one for your model. A model 
 | `likelihood` | `(prompt, candidates) -> {candidate: log probability}` | `chat_parts` |
 | `policy` | `row -> {output channel: payload}`; keeps its own history and clears it in `reset()` | `build_api_action_fn` (hosted APIs; the name is older than the part's), `DroidPolicy` (`brainscore.harnesses.droid_policy`), `LiberoChunkPolicy` (`brainscore.harnesses.libero_policy`) |
 | `intervention` | `StateChange -> (PerturbationApplied, undo_function)` | `build_pytorch_ablation_fn(net)` |
-| `behavioral_readout_layer` | a layer path | |
+| `behavioral_readout_layer` | a layer path; to answer a choice, add `capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}` | |
 
 ## Events
 

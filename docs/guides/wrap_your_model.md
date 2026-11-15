@@ -88,10 +88,14 @@ model = BrainScoreModel(
     extractor={'vision': vision},
     region_layer_map=region_layer_map,
     behavioral_readout_layer='layer4',           # optional: behavior by readout
+    # The readout gives probabilities; its choice is the most probable option.
+    # State that conversion for a model that must answer a choice task:
+    capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}},
 )
 print(sorted(model.out_channels))
 # ['behavior', 'behavior:choice', 'behavior:probabilities', 'behavior:rating', 'behavior:rt',
 #  'neural:IT', 'neural:V1', 'neural:V4']
+# Without the statement, 'behavior:choice' is not in the list.
 ```
 
 Pass the same `net` object to the extractor and to `model=`, so recording and interventions act on the same network.
