@@ -23,6 +23,13 @@ class TestReport:
         text, _ = doctor.report()
         assert f'environment fingerprint  {environment_fingerprint()}' in text
 
+    def test_an_unavailable_fingerprint_is_printed_and_the_report_finishes(self, monkeypatch):
+        from brainscore_core import environment_check
+        monkeypatch.setattr(environment_check, 'environment_fingerprint',
+                            lambda: 'unavailable: a distribution has no name (at /x)')
+        text, _ = doctor.report()
+        assert 'environment fingerprint  unavailable: a distribution has no name (at /x)' in text
+
     def test_reports_passing_dependencies_too(self, monkeypatch):
         monkeypatch.setattr(doctor, '_dependency_rows',
                             lambda: [('numpy', '1.26.4', '>=1.21,<2', True)])
