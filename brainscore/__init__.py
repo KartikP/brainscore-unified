@@ -418,7 +418,8 @@ def score(model_identifier, benchmark_identifier,
                                      visual_degrees=declared_visual_degrees(subject))
 
     _t0 = _time.time()
-    with weight_fingerprint_scope(), record_measures() as measures:
+    # A session no note names belongs to this score's subject, also when this score runs inside another.
+    with weight_fingerprint_scope(), record_measures(subject=getattr(subject, 'identifier', None)) as measures:
         result = benchmark(received)
     # The run must leave the subject as it found it: every intervention a session
     # of the benchmark applied is undone. Interventions the caller applied stay.

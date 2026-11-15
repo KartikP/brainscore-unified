@@ -592,3 +592,29 @@ def test_a_shared_pass_states_the_settings_of_the_pass_for_each_output(monkeypat
     assert value == STORE_OFF if store == 'off' else value.startswith('v2-')
     assert entries['all'] == {'subject': 'shared-pass', 'activation_store': store, 'parts': [
         _text(['neural:IT'], ['proj'], settings=value), _text(['neural:V4'], ['enc'], settings=value)]}
+
+
+# A score run inside a benchmark keeps its own subject.
+
+class _InnerScore(BenchmarkBase):
+    """Scores another subject on the made-up choice benchmark and returns that score; the subject this
+    benchmark is given never takes part."""
+    requested_output_channels = frozenset({'behavior:choice'})
+
+    def __init__(self, inner):
+        self.inner = inner
+        self.required_input_channels = frozenset({'text'})
+        super().__init__(identifier='provenance-inner-score', version=1, parent='behavioral',
+                         ceiling=not_estimated())
+
+    def __call__(self, subject):
+        inner = brainscore.score(self.inner, pseudo.PseudoChoice(), check_mem=False)
+        return benchmark_score(self, raw=float(inner), metric='the inner score')
+
+
+def test_an_inner_score_keeps_its_silent_subject_and_names_no_part_that_never_ran():
+    inner = pseudo.CellSubject()
+    outer = pseudo.reply_model(calls := [])
+    score = _score(outer, _InnerScore(inner))
+    assert calls == []                                   # the outer model's part never ran
+    assert score.attrs['provenance'] == ({'subject': inner.identifier, 'parts': NS, 'activation_store': 'off'},)
