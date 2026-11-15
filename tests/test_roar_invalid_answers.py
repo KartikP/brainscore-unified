@@ -25,10 +25,16 @@ def test_invalid_answers_count_as_wrong():
     model = BrainScoreModel(identifier='answers', in_channels={'text'},
                             answer=lambda stimulus_row, instruction, label_set:
                             replies[stimulus_row.stimulus_id])
-    with pytest.warns(UserWarning, match='invalid'):
-        score = _benchmark()(model)
+    benchmark, sessions = _benchmark(), []
+    participate = model.participate
+    model.participate = lambda session: sessions.append(session) or participate(session)
+    score = benchmark(model)
     assert float(score.attrs['raw']) == pytest.approx(.5)
+    # The count of invalid answers is in the score; each trial keeps its state and reason.
     assert score.attrs['n_invalid_answers'] == 2
+    answer = sessions[0].collect('behavior:choice')
+    assert list(answer['response_state'].values) == ['valid', 'invalid', 'valid', 'invalid']
+    assert list(answer['raw_answer'].values) == ['real', 'unsure', 'pseudo', 'unsure']
     assert score.attrs['accuracy_real'] == pytest.approx(.5)
 
 
@@ -56,8 +62,11 @@ def test_session_reading_matches_the_configured_readout():
         return table
 
     def model():
+        # As the registered readout-only models (CLIP, random ViT, GPT-2) state it.
         return BrainScoreModel(identifier='readout', extractor={'text': extractor},
-                               region_layer_map={}, behavioral_readout_layer='L')
+                               region_layer_map={}, behavioral_readout_layer='L',
+                               capability_config={'behavior-sessions': {
+                                   'behavior:choice': ('readout', 'argmax')}})
 
     benchmark = _benchmark()
     benchmark._train_stimuli = stimuli(['w1', 'w2', 'p1', 'p2'])
