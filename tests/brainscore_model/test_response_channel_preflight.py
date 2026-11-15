@@ -44,7 +44,10 @@ def _likelihood_model():
         calls.append(prompt.stimulus_id)
         return {c: float(i) for i, c in enumerate(candidates)}
 
-    return BrainScoreModel(identifier='toy-likelihood', likelihood=likelihood), calls
+    # The likelihood derives both formats; the statements declare them (rule 4.11).
+    return BrainScoreModel(identifier='toy-likelihood', likelihood=likelihood, capability_config={
+        'behavior-sessions': {'behavior:choice': ('likelihood', 'softmax_argmax'),
+                              'behavior:probabilities': ('likelihood', 'softmax')}}), calls
 
 
 def _ask(model, task, channels):
@@ -86,11 +89,20 @@ def test_readout_matched_request_is_unchanged():
 def test_likelihood_matched_request_is_unchanged():
     model, calls = _likelihood_model()
     task = TaskContext(instruction='Pick.', response=Choice(['cat', 'dog'], probabilities=True))
-    session = _ask(model, task, ['behavior', 'behavior:choice', 'behavior:probabilities'])
+    session = _ask(model, task, ['behavior:choice', 'behavior:probabilities'])
     np.testing.assert_array_equal(session.collect('behavior:choice').values.argmax(1), [1, 1, 1, 1])
     assert session.collect('behavior:probabilities').values.shape == (4, 2)
-    assert session.collect('behavior').values.shape == (4, 2)
     assert len(calls) == 4
+
+
+def test_a_likelihood_alone_does_not_declare_bare_behavior():
+    """Bare behavior answers a legacy task: only answer= or a readout with an extractor gives it."""
+    model, calls = _likelihood_model()
+    assert 'behavior' not in model.out_channels
+    task = TaskContext(instruction='Pick.', response=Choice(['cat', 'dog'], probabilities=True))
+    with pytest.raises(ExecutionNotFeasibleError, match=r"does not produce \['behavior'\]"):
+        _ask(model, task, ['behavior', 'behavior:choice', 'behavior:probabilities'])
+    assert calls == []
 
 
 def test_driver_refuses_addressed_channels_without_a_response_before_task_setup():

@@ -54,10 +54,20 @@ CHOICE = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], proba
                      fitting_stimuli=FITTING)
 
 
-def test_one_part_is_selected_without_a_statement():
+def test_one_part_is_selected_with_a_statement_of_its_derived_format():
     calls = []
-    choice = _run(_model('likelihood', calls=calls), ['behavior:choice'], CHOICE).collect('behavior:choice')
+    model = _model('likelihood', calls=calls, owners={'behavior:choice': ('likelihood', 'softmax_argmax')})
+    choice = _run(model, ['behavior:choice'], CHOICE).collect('behavior:choice')
     assert choice.attrs['response']['method'] == 'likelihood' and set(calls) == {'likelihood'}
+
+
+def test_a_derived_format_without_a_statement_is_not_declared_and_is_refused_before_compute():
+    calls = []
+    model = _model('likelihood', calls=calls)
+    assert 'behavior:choice' not in model.out_channels
+    with pytest.raises(ExecutionNotFeasibleError, match=r"does not produce \['behavior:choice'\]"):
+        _run(model, ['behavior:choice'], CHOICE)
+    assert calls == []
 
 
 def test_two_native_parts_without_an_owner_are_refused_at_construction():
@@ -288,6 +298,12 @@ SESSIONS = {   # baseline task descriptions and the outputs the session requests
 }
 
 
+# Sessions that request a format the part set does not declare (C3: a derived format
+# with no statement): refused at session start. A readout-only model (CLIP, random
+# ViT, GPT-2) states no ('readout', 'argmax'), so it does not declare behavior:choice.
+UNDECLARED = {(('behavioral_readout_layer',), 'choice')}
+
+
 @pytest.mark.parametrize('session_name', sorted(SESSIONS))
 @pytest.mark.parametrize('parts', sorted(REGISTERED_PART_SETS), ids='+'.join)
 def test_registered_part_sets_emit_the_sources_the_base_commit_chose(parts, session_name):
@@ -297,7 +313,7 @@ def test_registered_part_sets_emit_the_sources_the_base_commit_chose(parts, sess
     task = task_from(description, RATINGS if description['kind'] == 'scale' else FITTING)
     calls = []
     model = _model(*parts, owners=REGISTERED_STATEMENTS[parts], calls=calls)
-    if case['outcome'] == 'refused':
+    if case['outcome'] == 'refused' or (parts, session_name) in UNDECLARED:
         with pytest.raises(ExecutionNotFeasibleError):
             _run(model, outputs, task)
         assert calls == []

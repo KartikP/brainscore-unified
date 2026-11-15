@@ -30,7 +30,7 @@ def _readout(owners=None):
 
 
 def test_a_readout_only_model_builds_without_a_statement():
-    assert 'behavior:choice' in _readout().out_channels
+    assert 'behavior:choice' not in _readout().out_channels   # derived, not stated (C3)
 
 
 @pytest.mark.parametrize('owners, message', [

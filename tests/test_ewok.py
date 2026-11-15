@@ -41,7 +41,9 @@ def prepared(native, tmp_path):
 
 def likelihood_subject(likelihood):
     """A normal model with a ``likelihood`` part: it runs both modes."""
-    return BrainScoreModel('fixture', in_channels={'text'}, likelihood=likelihood)
+    # The likelihood derives the probabilities; the statement declares them (rule 4.11).
+    return BrainScoreModel('fixture', in_channels={'text'}, likelihood=likelihood,
+                           capability_config={'behavior-sessions': {'behavior:probabilities': ('likelihood', 'softmax')}})
 
 
 def scenario(prompt):
@@ -281,8 +283,11 @@ def test_a_likelihood_part_also_runs_choice(prepared, tmp_path, parts={'likeliho
         return {label: (0. if label==native_choice(prompt) else -1.) for label in candidates}
     def answer(stimulus_row, instruction, label_set):
         return '1' if ' A ' in stimulus_row['text'].split('# TEST EXAMPLE')[1].split('## Scenario')[1] else '2'
+    # The likelihood derives the choice by softmax_argmax; the statement declares it (rule 4.11).
     model=BrainScoreModel('fixture', in_channels={'text'},
-                          **({'likelihood':likelihood} if 'likelihood' in parts else {'answer':answer}))
+                          **({'likelihood':likelihood, 'capability_config': {'behavior-sessions': {
+                              'behavior:choice': ('likelihood', 'softmax_argmax')}}}
+                             if 'likelihood' in parts else {'answer':answer}))
     b=brainscore.load_benchmark('EWoK-core-1.0-choice',root=prepared,output_dir=tmp_path/'run')
     assert float(b(model))==1
 
@@ -722,7 +727,8 @@ def _stateful_intervened_subject():
                                    perturbation=change.perturbation, applied_at=0), cleanup
 
     model = BrainScoreModel('stateful-fixture', in_channels={'text'},
-                            likelihood=likelihood, intervention=intervention)
+                            likelihood=likelihood, intervention=intervention,
+                            capability_config={'behavior-sessions': {'behavior:probabilities': ('likelihood', 'softmax')}})
     return model, state
 
 

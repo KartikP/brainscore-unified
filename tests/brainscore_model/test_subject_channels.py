@@ -15,7 +15,8 @@ def test_brainscore_model_gets_channel_identity_from_extractors():
     )
 
     assert model.in_channels == {"vision:image", "control"}   # a vision key takes stills
-    assert model.out_channels == {"neural:IT", "behavior", "behavior:choice",
+    # The readout derives behavior:choice; with no statement it is not declared (rule 4.11).
+    assert model.out_channels == {"neural:IT", "behavior",
                                   "behavior:probabilities", "behavior:rating", "behavior:rt"}
     assert model.required_channels == set()
 

@@ -79,7 +79,12 @@ def _model(net, region_map=None, replies=True):
     return BrainScoreModel('toy', extractor={'text': Recordable(net)},
                            region_layer_map=region_map or {'A': LayerSelector('early', modality='text')},
                            reply=reply if replies else None, likelihood=likelihood,
-                           **owned('likelihood', *(['reply'] if replies else [])))
+                           capability_config={'behavior-sessions': {
+                               # The likelihood derives these formats; the statements declare them.
+                               **owned('likelihood', *(['reply'] if replies else []))[
+                                   'capability_config']['behavior-sessions'],
+                               'behavior:probabilities': ('likelihood', 'softmax'),
+                               **({} if replies else {'behavior:choice': ('likelihood', 'softmax_argmax')})}})
 
 
 def _run(model, task, channels, streaming=False):

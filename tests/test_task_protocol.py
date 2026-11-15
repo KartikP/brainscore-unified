@@ -335,6 +335,7 @@ def test_record_behavior_runs_for_subjects_without_bare_behavior(tmp_path):
     subject and a likelihood-only subject (the parts of build_causal_lm_subject) answer."""
     from brainscore_core.responses import Choice, Text
     replier = BrainScoreModel(identifier='replier', in_channels={'text'}, reply=lambda prompt: 'It reads.')
+    assert 'behavior' not in replier.out_channels
     written = TaskContext(instruction='Read it.', response=Text())
     result = Experiment(subject=replier, protocol=TaskProtocol(STIMULI, written),
                         tools=[RecordBehavior()], output_dir=tmp_path / 'text').run()
@@ -566,7 +567,10 @@ def test_channel_errors_explain_declarations_before_resets(tmp_path, mistake, ex
     subject = BrainScoreModel(identifier='reader', in_channels={'text', 'vision:image'}
                              if mistake == 'required' else {'text'},
                              required_channels={'vision:image'} if mistake == 'required' else set(),
-                             reply=lambda prompt: calls.append('inference') or 'yes')
+                             reply=lambda prompt: calls.append('inference') or 'yes',
+                             # answer= answers the legacy task, so bare behavior is declared.
+                             answer=lambda stimulus_row, instruction, label_set:
+                             calls.append('inference') or 'yes')
     subject.reset = lambda: calls.append('reset')
     stimuli = (StimulusSet({'stimulus_id': ['x'], 'image_path': ['unused.png']})
                if mistake == 'input' else STIMULI)
@@ -694,7 +698,10 @@ def test_options_that_differ_for_each_row_reach_each_part():
         return label_set[0]
 
     raw = TaskContext(response=Choice(labels='options', raw_scores=True, raw_text=True))
-    scorer = BrainScoreModel(identifier='scorer', in_channels={'text'}, likelihood=likelihood)
+    scorer = BrainScoreModel(identifier='scorer', in_channels={'text'}, likelihood=likelihood,
+                             capability_config={'behavior-sessions': {   # derived formats (rule 4.11)
+                                 'behavior:choice': ('likelihood', 'softmax_argmax'),
+                                 'behavior:probabilities': ('likelihood', 'softmax')}})
     session = stimulus_session(_options_stimuli(), ['behavior:choice', 'behavior:probabilities'], raw)
     scorer.participate(session)
     scores = session.collect('behavior:probabilities')

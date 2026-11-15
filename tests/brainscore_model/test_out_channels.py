@@ -17,7 +17,8 @@ def test_motor_absent_without_policy():
     assert 'neural:IT' in m.out_channels
 
 
-def test_behavior_still_advertised_with_readout():
+def test_a_readout_layer_without_an_extractor_declares_no_behavior():
+    """Rule 2.4: a readout with no extractor cannot answer, so it declares nothing."""
     m = BrainScoreModel('clf', None, {'IT': 'layer4'},
                         behavioral_readout_layer='layer4')
-    assert 'behavior' in m.out_channels
+    assert not {c for c in m.out_channels if c == 'behavior' or c.startswith('behavior:')}

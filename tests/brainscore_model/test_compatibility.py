@@ -54,7 +54,10 @@ def _model(calls):
 
     return BrainScoreModel('all-parts', region_layer_map={'IT': 'layer'},
                            extractor={'vision': extractor}, behavioral_readout_layer='layer',
-                           policy=policy, intervention=intervention)
+                           policy=policy, intervention=intervention,
+                           # The readout derives the choice; the statement declares it (rule 4.11).
+                           capability_config={'behavior-sessions': {
+                               'behavior:choice': ('readout', 'argmax')}})
 
 
 class _Benchmark:

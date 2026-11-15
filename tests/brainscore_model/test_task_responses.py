@@ -41,10 +41,20 @@ def _model(replies=None, scores=None, readout=False):
     def likelihood(prompt, candidates):
         return {c: scores[prompt.stimulus_id][c] for c in candidates}
 
+    # A derived format is declared by a statement (rule 4.11): the likelihood's
+    # probabilities and, without a reply, its choice; a readout's choice.
+    stated = {}
+    if scores:
+        stated['behavior:probabilities'] = ('likelihood', 'softmax')
+        if not replies:
+            stated['behavior:choice'] = ('likelihood', 'softmax_argmax')
+    elif readout and not replies:
+        stated['behavior:choice'] = ('readout', 'argmax')
     model = BrainScoreModel(identifier='toy', extractor={'text': _features},
                             reply=reply if replies else None,
                             likelihood=likelihood if scores else None,
-                            behavioral_readout_layer='late' if readout else None)
+                            behavioral_readout_layer='late' if readout else None,
+                            capability_config={'behavior-sessions': stated})
     return model, prompts
 
 
@@ -142,8 +152,21 @@ def test_reported_answers_from_a_readout_only_model_are_refused(response, channe
         _ask(model, TaskContext(response=response, fitting_stimuli=STIMULI), [channel])
 
 
+def test_plain_behavior_request_is_refused_for_a_reply_only_subject():
+    """Bare behavior is given only by an answer part or a readout with an extractor."""
+    model, prompts = _model(replies={s: 'dog' for s in 'abcd'})
+    assert 'behavior' not in model.out_channels
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
+    with pytest.raises(ExecutionNotFeasibleError, match=r"does not produce \['behavior'\]"):
+        _ask(model, task, ['behavior'])
+    assert prompts == []
+
+
 def test_plain_behavior_request_returns_the_primary_answer():
-    model, _ = _model(replies={s: 'dog' for s in 'abcd'})
+    """With an answer part bare behavior is declared; a response task's choice is copied to it."""
+    model = BrainScoreModel(identifier='toy', extractor={'text': _features},
+                            answer=lambda stimulus_row, instruction, label_set: 'cat',
+                            reply=lambda prompt: 'dog')
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
     behavior = _ask(model, task, ['behavior']).collect('behavior')
     np.testing.assert_array_equal(behavior.values.argmax(1), [1, 1, 1, 1])

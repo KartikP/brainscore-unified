@@ -753,6 +753,22 @@ def _formats_by_part(subject) -> Dict[str, Dict[str, Optional[str]]]:
     return parts
 
 
+def _declared_formats(subject) -> set:
+    """The answer formats the subject declares (rules 2.4, 4.11): each format with an owner.
+
+    A format has an owner when a statement names it or exactly one part gives it
+    natively (``answer_owners``); a derived format with no statement has none, so
+    it is not declared. Bare ``behavior`` therefore needs ``answer=`` or a readout
+    with an extractor. A ``'link'`` format (``behavior:rt``) is declared with
+    ``behavior:probabilities``, whose owner gives it.
+    """
+    declared = set(subject._behavioral.owners)
+    if 'behavior:probabilities' in declared:
+        declared |= {f for formats in _PART_FORMATS.values() for f, how in formats.items()
+                     if how == 'link'}
+    return declared
+
+
 _ARGUMENTS = {'generation': 'answer= or reply=', 'likelihood': 'likelihood=',
               'readout': 'behavioral_readout_layer= (with an extractor)'}
 
