@@ -79,9 +79,22 @@ class TestReport:
 
 class TestAgainstTheRealEnvironment:
     def test_this_environment_is_within_bounds(self):
-        """The suite is meaningless if run under drifted dependencies."""
-        _, problems = doctor.report()
-        assert problems == 0, 'this environment is outside the verified bounds'
+        """The suite is meaningless if run under drifted dependencies.
+
+        An environment check, not a check of the code: in the GitHub jobs (which install
+        the pinned versions and also run `python -m brainscore.doctor`) a drift fails
+        here. On a developer machine the drift is a condition of that machine, so the
+        test is skipped and names it.
+        """
+        import os
+        text, problems = doctor.report()
+        if problems and os.environ.get('GITHUB_ACTIONS') != 'true':
+            drifted = [f'{package} {installed} (needs {expected})'
+                       for package, installed, expected, ok in doctor._dependency_rows() if not ok]
+            pytest.skip('this environment is outside the verified bounds: '
+                        + ('; '.join(drifted) or 'see python -m brainscore.doctor')
+                        + '. Install with -c unified/install/v2-constraints.txt.')
+        assert problems == 0, text
 
     def test_describe_env_covers_every_bound(self):
         from brainscore_core.environment_check import _BOUNDS, describe_env
