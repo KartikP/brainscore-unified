@@ -38,10 +38,17 @@ def kind_folder(tmp_path, monkeypatch):
     monkeypatch.setattr(brainscore, '_plugin_import_failures', {})
     monkeypatch.setattr(brainscore, '_plugin_failed_files', {})
     yield name
-    for plugin in ('good', 'broken'):
-        sys.modules.pop(f'{name}.{plugin}', None)
+    _forget(name)
     if hasattr(brainscore, '_fake_registered'):
         del brainscore._fake_registered
+
+
+def _forget(kind):
+    """Remove the synthetic plugins from ``sys.modules``. A test calls this before it
+    ends: the installed-package check accepts, under ``brainscore``, only modules of the
+    installed package, and it looks after each test."""
+    for plugin in ('good', 'broken'):
+        sys.modules.pop(f'{kind}.{plugin}', None)
 
 
 def test_every_plugin_folder_is_imported_and_a_broken_one_is_named(kind_folder, caplog):
@@ -58,6 +65,7 @@ def test_every_plugin_folder_is_imported_and_a_broken_one_is_named(kind_folder, 
     message = str(brainscore._not_found('Thing', 'x', 'unified', KIND))
     assert f'{kind_folder}.broken (ModuleNotFoundError' in message
     assert 'failed to import' in message
+    _forget(kind_folder)
 
 
 def test_the_not_found_message_needs_no_parent_edit():
@@ -86,6 +94,7 @@ def test_a_failed_plugin_leaves_no_entry_it_registered_before_its_error(kind_fol
     assert 'discovery-partial' not in brainscore.model_registry          # a factory of the package
     assert 'discovery-partial-lambda' not in brainscore.model_registry   # a statement in its folder
     assert 'chance-baseline' in brainscore.model_registry                # other plugins stay
+    _forget(kind_folder)
 
 
 def test_a_failed_plugin_that_names_the_identifier_refuses_its_load(kind_folder):
@@ -95,6 +104,7 @@ def test_a_failed_plugin_that_names_the_identifier_refuses_its_load(kind_folder)
     message = str(refused.value)
     assert f'{kind_folder}.broken' in message and 'a_module_that_does_not_exist_here' in message
     brainscore._refuse_failed_owner('Model', 'another-identifier', KIND)   # not named: no refusal
+    _forget(kind_folder)
 
 
 @pytest.fixture
