@@ -489,3 +489,39 @@ def test_every_rounded_readout_rating_is_on_core_s_grid(scale):
     raw = list(rng.uniform(scale.low, scale.high, 500)) + [scale.low, scale.high]
     rated, _ = _on_scale_steps(raw, scale)
     assert all(scale.low <= v <= scale.high and _on_step(v, scale.low, scale.step) for v in rated)
+
+
+# --- the vision adapter as a producer (stage 5, chunk 5.3) ---------------------------------
+# A legacy vision model behind the permanent adapter answers the image variants of the
+# choice and probabilities benchmarks with the same benchmark code; every other format is
+# N/A before any call (the adapter declares no other behavior format, and the legacy model
+# takes only pictures).
+
+@pytest.mark.parametrize('fmt, benchmark, record, expected', [
+    ('behavior:choice', lambda folder: pseudo.PseudoChoice('vision:image', folder),
+     ('derived', 'legacy', 'argmax', 'behavior:probabilities'), 0.75),
+    ('behavior:probabilities', lambda folder: pseudo.PseudoProbabilities(channel='vision:image', folder=folder),
+     ('native', 'legacy', None, None), 0.7749999761581421),
+], ids=['choice', 'probabilities'])
+def test_the_vision_adapter_answers_the_same_benchmark(tmp_path, fmt, benchmark, record, expected):
+    calls = []
+    subject = pseudo.legacy_vision_model(calls)
+    sessions = _spied(subject)
+    score = _score(subject, benchmark(tmp_path))
+    assert float(score) == expected
+    stored = sessions[0].collect(fmt)
+    dims, dtype = SCHEMA[fmt]
+    assert stored.dims == dims and stored.values.dtype == dtype
+    answer = stored.attrs['response']
+    assert (answer['origin'], answer['method'], answer['conversion'], answer['source_format']) == record
+    assert calls == pseudo.IDS
+
+
+@pytest.mark.parametrize('fmt', ['behavior:rating', 'behavior:rt', 'behavior:text', 'behavior:log_probabilities'])
+def test_the_vision_adapter_is_na_for_every_other_format(fmt):
+    calls = []
+    benchmark = (pseudo.PseudoLogProbabilities() if fmt == 'behavior:log_probabilities'
+                 else pseudo.BENCHMARKS[fmt]())
+    score = _score(pseudo.legacy_vision_model(calls), benchmark)
+    assert score.attrs['status'] == 'N/A' and math.isnan(float(score))
+    assert calls == []
