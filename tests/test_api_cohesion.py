@@ -298,18 +298,16 @@ def test_roar_task_carries_no_answer_path_and_splits_train_from_test(monkeypatch
         # A contract subject: participate() and declarations only.
         identifier = 'roar-participate-only'
         in_channels = {'text'}
-        out_channels = {'behavior'}
+        out_channels = {'behavior:choice'}
 
         def participate(self, session):
             tasks.append(session.task)
             while (event := session.next_input()) is not None:
                 if event.channel != 'text':
                     continue
-                label = truth[event.meta['stimulus_id']]
-                session.respond(StreamEvent(
-                    'behavior', np.array([1., 0.] if label == 'real' else [0., 1.]),
-                    event.t_ms, {'stimulus_id': event.meta['stimulus_id'],
-                                 'label_set': ['real', 'pseudo']}))
+                # ROAR requests behavior:choice: one chosen label per trial.
+                session.respond(StreamEvent('behavior:choice', truth[event.meta['stimulus_id']],
+                                            event.t_ms, {'stimulus_id': event.meta['stimulus_id']}))
 
     result = benchmark(Reader())
     assert not hasattr(tasks[0], 'prefer_path')
