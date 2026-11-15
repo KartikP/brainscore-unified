@@ -13,22 +13,21 @@ import pytest
 from brainscore.benchmarks.lebel2023.language_mask import (
     FSAVERAGE5_PER_HEMISPHERE, lana_mask, lana_probabilities, mask_summary)
 
-pytestmark = pytest.mark.unit
-
 N_VERTICES = 2 * FSAVERAGE5_PER_HEMISPHERE
 
 
-def _atlas_available():
+@pytest.fixture
+def atlas():
     try:
         lana_probabilities()
-        return True
     except (FileNotFoundError, ImportError):
-        return False
+        pytest.skip('LanA atlas not present; set BRAINSCORE_LANA_ATLAS (osf.io/kzwbh)')
 
 
-needs_atlas = pytest.mark.skipif(
-    not _atlas_available(),
-    reason='LanA atlas not present; set BRAINSCORE_LANA_ATLAS (osf.io/kzwbh)')
+def needs_atlas(test):
+    """The test reads the user's LanA atlas: real data, so it is in the slow tier, and the
+    atlas is looked for only when the test runs (never while tests are collected)."""
+    return pytest.mark.slow(pytest.mark.usefixtures('atlas')(test))
 
 
 class TestMaskShape:

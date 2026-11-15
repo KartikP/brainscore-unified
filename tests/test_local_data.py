@@ -25,6 +25,7 @@ def asset(tmp_path, monkeypatch):
         used_by=['Example-benchmark'])
     monkeypatch.setitem(local.REGISTRY, declared.name, declared)
     monkeypatch.delenv(declared.env_var, raising=False)
+    monkeypatch.setenv('HOME', str(tmp_path))  # the default folder is never the user's own
     return declared
 
 

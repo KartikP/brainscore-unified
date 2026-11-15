@@ -83,8 +83,9 @@ def test_all_public_experiments_registered_lazily():
     assert Counter(EXPERIMENTS.values()) == {'text': 11, 'image': 6, 'video': 6}
 
 
-def test_loading_requires_explicit_checkout_before_model_use(monkeypatch):
-    monkeypatch.delenv('BRAINSCORE_COGGYM_CHECKOUT', raising=False)
+def test_loading_requires_explicit_checkout_before_model_use(monkeypatch, tmp_path):
+    # A folder that does not exist: the user's own checkout at ~/coggym is never read.
+    monkeypatch.setenv('BRAINSCORE_COGGYM_CHECKOUT', str(tmp_path / 'no-checkout'))
     with pytest.raises(FileNotFoundError, match='BRAINSCORE_COGGYM_CHECKOUT'):
         brainscore.load_benchmark('CogGym.Hu2023Fine.exp1')
 
