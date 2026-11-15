@@ -19,6 +19,7 @@ from typing import Dict, Iterable, Iterator, Optional, Tuple
 
 _log: ContextVar[Optional['PartLog']] = ContextVar('brainscore_part_log', default=None)
 _serving: ContextVar[Tuple[str, ...]] = ContextVar('brainscore_part_serving', default=())
+_quiet: ContextVar[bool] = ContextVar('brainscore_part_quiet', default=False)
 
 # The parts that answer a behavior format: a conversion of their answer is noted on them.
 ANSWERING = ('answer', 'reply', 'likelihood', 'readout', 'policy')
@@ -79,18 +80,20 @@ def serving(channels: Iterable[str]) -> Iterator[None]:
 
 @contextmanager
 def unnoted() -> Iterator[None]:
-    """Calls inside the block are not noted (a shared pass whose requests note themselves)."""
-    token = _log.set(None)
+    """Calls inside the block are not attributed to an output (a shared pass whose requests note
+    themselves with their own layers). The log stays open: a caching wrapper still records the
+    settings of the pass, which each request's note then states."""
+    token = _quiet.set(True)
     try:
         yield
     finally:
-        _log.reset(token)
+        _quiet.reset(token)
 
 
 def note(part: str, obj, layers: Iterable[str] = (), serves: Optional[Iterable[str]] = None) -> None:
     """Note one call of ``obj`` as ``part`` in the running session's log (nothing outside a session)."""
     log = _log.get()
-    if log is not None:
+    if log is not None and not _quiet.get():
         log.note(part, obj, layers, serves)
 
 

@@ -566,3 +566,29 @@ def test_a_session_that_fails_halfway_leaves_none_of_its_parts_on_the_score():
     assert calls == ['broken', 'fine']           # the failed session called the extractor before it failed
     assert _entry(score) == {'subject': 'flaky', 'activation_store': 'off', 'parts': [
         _item('extractor', f'{__name__}.{flaky.__qualname__}', ['neural:V4'], ['fine'])]}
+
+
+# A shared extraction pass states its settings for every output it served.
+
+def _two_layer_entry(monkeypatch, passes):
+    monkeypatch.setenv('BRAINSCORE_REGIONS_PER_PASS', passes)
+    model = BrainScoreModel('shared-pass', extractor={'text': text_wrapper(batch_size=2)},
+                            region_layer_map={'IT': 'proj', 'V4': 'enc'})
+    return _entry(_score(model, _Neural(_sentences(), {'neural:IT', 'neural:V4'})))
+
+
+@pytest.mark.parametrize('store', ['off', 'on'])
+def test_a_shared_pass_states_the_settings_of_the_pass_for_each_output(monkeypatch, tmp_path, store):
+    if store == 'on':
+        monkeypatch.delenv('RESULTCACHING_DISABLE')
+    entries = {}
+    for passes in ('all', 'one'):
+        if store == 'on':
+            _store_in(monkeypatch, tmp_path / f'store-{passes}')
+        entries[passes] = _two_layer_entry(monkeypatch, passes)
+    settings = {passes: [item['settings'] for item in entry['parts']] for passes, entry in entries.items()}
+    assert settings['all'] == settings['one']
+    (value,) = set(settings['all'])
+    assert value == STORE_OFF if store == 'off' else value.startswith('v2-')
+    assert entries['all'] == {'subject': 'shared-pass', 'activation_store': store, 'parts': [
+        _text(['neural:IT'], ['proj'], settings=value), _text(['neural:V4'], ['enc'], settings=value)]}
