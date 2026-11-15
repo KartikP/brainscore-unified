@@ -60,17 +60,30 @@ def test_one_part_is_selected_without_a_statement():
     assert choice.attrs['response']['method'] == 'likelihood' and set(calls) == {'likelihood'}
 
 
-def test_two_parts_without_an_owner_are_refused_at_construction():
-    with pytest.raises(ValueError, match=r"\['generation', 'likelihood'\] can all give 'behavior:choice'"
+def test_two_native_parts_without_an_owner_are_refused_at_construction():
+    with pytest.raises(ValueError, match=r"\['generation', 'readout'\] give 'behavior:rating' natively"
                                          r".*capability_config"):
-        _model('reply', 'likelihood')
+        _model('reply', 'behavioral_readout_layer')
+
+
+def test_one_native_part_owns_a_format_without_a_statement():
+    calls = []
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
+    choice = _run(_model('reply', 'likelihood', calls=calls), ['behavior:choice'], task)
+    assert choice.collect('behavior:choice').attrs['response']['method'] == 'generation'
+    assert 'likelihood' not in calls
 
 
 def test_two_parts_with_a_stated_owner_answer_through_the_owner():
     calls = []
-    model = _model('reply', 'likelihood', owners={'behavior:choice': 'likelihood'}, calls=calls)
+    model = _model('reply', 'likelihood', owners={'behavior:choice': ('likelihood', 'softmax_argmax')},
+                   calls=calls)
     choice = _run(model, ['behavior:choice'], CHOICE).collect('behavior:choice')
     assert choice.attrs['response']['method'] == 'likelihood' and 'reply' not in calls
+
+
+# The statement of each part for behavior:probabilities: the likelihood derives them.
+PROBABILITIES = {'likelihood': ('likelihood', 'softmax'), 'readout': 'readout'}
 
 
 @pytest.mark.parametrize('probabilities', ['likelihood', 'readout'])
@@ -79,7 +92,7 @@ def test_each_output_has_its_own_owner(probabilities):
     calls = []
     model = _model('reply', 'likelihood', 'behavioral_readout_layer', calls=calls, owners={
         'behavior:choice': 'generation', 'behavior:rating': 'generation',
-        'behavior:probabilities': probabilities})
+        'behavior:probabilities': PROBABILITIES[probabilities]})
     session = _run(model, ['behavior:choice', 'behavior:probabilities'], CHOICE)
     assert session.collect('behavior:choice').attrs['response']['method'] == 'generation'
     assert session.collect('behavior:probabilities').attrs['response']['method'] == probabilities
@@ -88,9 +101,10 @@ def test_each_output_has_its_own_owner(probabilities):
 
 
 @pytest.mark.parametrize('owners, message', [
-    ({'behavior:choice': 'readout'}, r"'readout' stated for 'behavior:choice' cannot give it"),
-    ({'behavior:text': 'likelihood'}, r"'likelihood' stated for 'behavior:text' cannot give it"),
-    ({'behavior:rt': 'likelihood'}, r"not an answer output.*follows 'behavior:probabilities'"),
+    ({'behavior:choice': 'readout'}, r"names 'readout' for 'behavior:choice', but no "
+                                     r"behavioral_readout_layer= \(with an extractor\) part is wired"),
+    ({'behavior:text': 'likelihood'}, r"'likelihood' does not give 'behavior:text'"),
+    ({'behavior:rt': 'likelihood'}, r"follows the owner of 'behavior:probabilities'"),
 ])
 def test_an_owner_that_cannot_give_the_output_is_refused(owners, message):
     with pytest.raises(ValueError, match=message):
@@ -107,8 +121,10 @@ def test_a_task_no_part_can_serve_stays_not_feasible():
 
 # --- finding 1: each output's owner stands on its own --------------------------
 
-CROSS = {'readout choice': {'behavior:choice': 'readout', 'behavior:probabilities': 'likelihood'},
-         'likelihood choice': {'behavior:choice': 'likelihood', 'behavior:probabilities': 'readout'}}
+CROSS = {'readout choice': {'behavior:choice': ('readout', 'argmax'),
+                            'behavior:probabilities': ('likelihood', 'softmax')},
+         'likelihood choice': {'behavior:choice': ('likelihood', 'softmax_argmax'),
+                               'behavior:probabilities': 'readout'}}
 
 
 @pytest.mark.parametrize('settings', [{'probabilities': True}, {'reaction_time': 'surprisal'}],
@@ -133,7 +149,7 @@ def test_a_choice_alone_answers_through_its_own_owner(owners):
     model = _model('likelihood', 'behavioral_readout_layer', owners=CROSS[owners], calls=calls)
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)
     choice = _run(model, ['behavior:choice'], task).collect('behavior:choice')
-    assert choice.attrs['response']['method'] == CROSS[owners]['behavior:choice']
+    assert choice.attrs['response']['method'] == CROSS[owners]['behavior:choice'][0]
 
 
 @pytest.mark.parametrize('settings', [{'probabilities': True}, {'reaction_time': 'surprisal'}],
@@ -143,7 +159,7 @@ def test_a_generated_choice_takes_probabilities_from_their_owner(probabilities, 
     calls = []
     model = _model('reply', 'likelihood', 'behavioral_readout_layer', calls=calls, owners={
         'behavior:choice': 'generation', 'behavior:rating': 'generation',
-        'behavior:probabilities': probabilities})
+        'behavior:probabilities': PROBABILITIES[probabilities]})
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], **settings),
                        fitting_stimuli=FITTING)
     channel = 'behavior:probabilities' if 'probabilities' in settings else 'behavior:rt'
@@ -308,7 +324,8 @@ def _registrations():
     found, expanded = [], set()
     for path in sorted(root.rglob('*.py')):
         for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
-            if isinstance(node, ast.Call) and getattr(node.func, 'id', None) == 'BrainScoreModel':
+            if isinstance(node, ast.Call) and 'BrainScoreModel' in (
+                    getattr(node.func, 'id', None), getattr(node.func, 'attr', None)):
                 if any(keyword.arg is None for keyword in node.keywords):
                     expanded.add(path.relative_to(root).as_posix())
                 keywords = {k.arg: k.value for k in node.keywords if k.arg}
@@ -320,14 +337,18 @@ def _registrations():
     return found, expanded
 
 
-def test_every_registration_states_the_owner_the_base_order_chose():
-    """Covers every direct ``BrainScoreModel(...)`` call in the library, helpers included
-    (``model_helpers/causal_lm.py``). Not covered: keywords that arrive through ``**``
-    expansion (``EXPANDED``) and models built outside the library; the constructor checks those."""
+def test_every_registration_keeps_the_owner_the_base_order_chose():
+    """Covers every ``BrainScoreModel(...)`` and ``<module>.BrainScoreModel(...)`` call in
+    the library, helpers included (``model_helpers/causal_lm.py``). A statement may be
+    left out where the one native part is the owner the base order chose. Not covered:
+    keywords that arrive through ``**`` expansion (``EXPANDED``) and models built outside
+    the library; the constructor checks those."""
     registrations, expanded = _registrations()
     assert expanded == set(EXPANDED)
     assert {'models/qwen25_vl_3b/model.py', 'models/qwen36_27b/model.py', 'models/blip2_opt_2_7b/model.py',
             'model_helpers/causal_lm.py'} <= {r[0] for r in registrations}
     for where, wired, stated in registrations:
-        assert stated == fixed_order_owners(*wired), where
-        _model(*wired, owners=stated)   # construction accepts it
+        owners = _model(*wired, owners=stated)._behavioral.owners   # construction accepts it
+        for output, statement in fixed_order_owners(*wired).items():
+            part = statement if isinstance(statement, str) else statement[0]
+            assert owners[output] == part, (where, output)

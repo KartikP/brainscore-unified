@@ -96,8 +96,7 @@ owned = BrainScoreModel(
     answer=answer, reply=lambda prompt: 'real', likelihood=likelihood,
     capability_config={'behavior-sessions': {
         'behavior': 'generation',                # bare behavior: the answer to a legacy task
-        'behavior:choice': 'generation',         # the choice of a Choice response: another channel
-        'behavior:probabilities': 'likelihood'}})
+        'behavior:probabilities': ('likelihood', 'softmax')}})   # derived from the log scores
 
 legacy = stimulus_session(test_stimuli, ['behavior'], TaskContext(
     task_type='probabilities', instruction='Is this a real word?', label_set=['real', 'pseudo']))
@@ -110,7 +109,7 @@ print(legacy.collect('behavior').attrs['response']['method'],          # generat
       choice.collect('behavior:probabilities').attrs['response']['method'])   # likelihood
 ```
 
-Bare `behavior` is the answer channel of a legacy task; `behavior:choice` is the choice of a `Choice` response. They are different channels, and neither is shorthand for the other: a model whose answer and readout parts can both answer a legacy task states an owner for `behavior` as well. A model with several paths for one answer and no stated owner is refused when it is built. The owner answers its channel. When a task form excludes the owner (for example raw scores, which only the likelihood gives, or a legacy task without an instruction, which only the readout can answer) and exactly one other path can serve it, that path answers; when two or more paths that do not own the channel could serve it, the session is refused before any compute. A choice from the likelihood with probabilities from the readout (or the reverse) cannot come from one session and is refused; the choice alone still runs. To compare paths, build one model for each with only the parts of that path (for example the same network without `answer` and `reply`, so it answers through its readout). A readout asks what information a layer holds; generation asks what the model does when asked.
+Bare `behavior` is the answer channel of a legacy task; `behavior:choice` is the choice of a `Choice` response. They are different channels, and neither is shorthand for the other: a model whose answer and readout parts can both answer a legacy task states an owner for `behavior` as well. A statement names a part for a format the part gives natively, or a part and a conversion for a format it derives: the readout gives `behavior:choice` by `('readout', 'argmax')`, the likelihood gives `behavior:probabilities` by `('likelihood', 'softmax')` and `behavior:choice` by `('likelihood', 'softmax_argmax')`. A format with one native part needs no statement. A format with two native parts (bare `behavior` from `answer` and the readout; `behavior:rating` from `reply` and the readout) and no statement is refused when the model is built, and so is a wrong statement; the message says what to write. `behavior:rt` follows the owner of `behavior:probabilities` and is not stated. The owner answers its channel. When a task form excludes the owner (for example raw scores, which only the likelihood gives, or a legacy task without an instruction, which only the readout can answer) and exactly one other path can serve it, that path answers; when two or more paths that do not own the channel could serve it, the session is refused before any compute. A choice from the likelihood with probabilities from the readout (or the reverse) cannot come from one session and is refused; the choice alone still runs. To compare paths, build one model for each with only the parts of that path (for example the same network without `answer` and `reply`, so it answers through its readout). A readout asks what information a layer holds; generation asks what the model does when asked.
 
 One benchmark can take models of both kinds, as long as it fills in both the instruction and `fitting_stimuli`. Choices, ratings and implied probabilities come from either kind. Reported confidence and written answers need a model that replies; a readout-only model refuses those sessions before any compute (`ExecutionNotFeasibleError`, an error of `score`).
 
@@ -136,7 +135,8 @@ Written answers are stored as written; scoring them (a parser, a judge, a compar
 ```python
 reply, likelihood = chat_parts(hf_model, processor, chat_template_kwargs={'enable_thinking': False})
 BrainScoreModel(..., reply=reply, likelihood=likelihood,
-                capability_config={'behavior-sessions': {'behavior:choice': 'generation'}})
+                capability_config={'behavior-sessions': {
+                    'behavior:probabilities': ('likelihood', 'softmax')}})
 ```
 
 **Generation settings.** The settings of a written answer belong to the task, so the benchmark sets them on `Text`: `max_tokens`, `temperature` (0 or `None` is greedy), `top_p` (needs a temperature above 0) and `seed`. A `reply` part reads them from `prompt.response`. The reply that `chat_parts` builds obeys them. With no settings it is greedy and at most `max_new_tokens` (64) tokens long, as before.

@@ -150,6 +150,6 @@ def build_causal_lm_subject(identifier: str, model: Any, tokenizer: Any, *,
         intervention=build_pytorch_ablation_fn(model),
         reply=parts.reply,
         likelihood=parts.likelihood,
-        # A reply and the likelihood can both give a choice; the reply owns it.
-        capability_config={'behavior-sessions': {'behavior:choice': 'generation'}},
+        # The reply gives the choice natively; the likelihood derives the probabilities.
+        capability_config={'behavior-sessions': {'behavior:probabilities': ('likelihood', 'softmax')}},
     )

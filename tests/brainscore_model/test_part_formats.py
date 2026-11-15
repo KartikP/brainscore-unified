@@ -45,7 +45,7 @@ def test_a_readout_only_model_declares_choice_probabilities_rating_rt():
 
 
 def test_a_reply_and_likelihood_model_declares_every_format():
-    model = _model('reply', 'likelihood', owners={'behavior:choice': 'likelihood'})
+    model = _model('reply', 'likelihood')
     assert _behavior(model) == {'behavior', 'behavior:choice', 'behavior:probabilities',
                                 'behavior:rating', 'behavior:confidence', 'behavior:text',
                                 'behavior:rt'}

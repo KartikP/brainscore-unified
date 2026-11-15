@@ -738,53 +738,95 @@ _PART_FORMATS = {
 }
 
 
-def _formats_by_part(subject) -> Dict[str, set]:
-    """The answer formats of each wired part, native or derived, read from ``_PART_FORMATS``."""
+def _formats_by_part(subject) -> Dict[str, Dict[str, Optional[str]]]:
+    """The answer formats of each wired part, read from ``_PART_FORMATS``.
+
+    Per part, format -> ``None`` (native) or the conversion that derives it.
+    """
     wired = {'answer': subject._answer, 'reply': subject._reply,
              'likelihood': subject._likelihood, 'readout': subject._behavioral_readout_layer}
-    parts: Dict[str, set] = {}
+    parts: Dict[str, Dict[str, Optional[str]]] = {}
     for kind, formats in _PART_FORMATS.items():
         if wired[kind] is not None:
             part = 'generation' if kind in ('answer', 'reply') else kind
-            parts.setdefault(part, set()).update(formats)
+            parts.setdefault(part, {}).update(formats)
     return parts
 
 
-def answer_owners(subject, stated) -> Dict[str, str]:
-    """Check the stated owner of each answer output at construction (rule 4.11).
+_ARGUMENTS = {'generation': 'answer= or reply=', 'likelihood': 'likelihood=',
+              'readout': 'behavioral_readout_layer= (with an extractor)'}
 
-    ``stated`` maps an output channel to a part (``generation``, ``likelihood``,
-    ``readout``); it is ``capability_config['behavior-sessions']``. An output
-    that one wired part can give needs no owner. An output that several parts
-    can give needs one; without it, or with an owner that cannot give the
-    output, construction fails.
+
+def answer_owners(subject, stated) -> Dict[str, str]:
+    """Check the owner statements at construction; return the owner part of each format (rule 4.11).
+
+    ``stated`` is ``capability_config['behavior-sessions']``: format ->
+    a part (``'generation'``, ``'likelihood'``, ``'readout'``) for a format the
+    part gives natively, or ``(part, conversion)`` for a format it derives
+    (``_PART_FORMATS``). A format with exactly one native part is owned by that
+    part without a statement; a format with two or more native parts needs a
+    statement. A wrong statement fails with a message that says what to write.
     """
-    stated = dict(stated or {})
+    who = f"Subject '{subject.identifier}': "
+    prefix = who + "capability_config['behavior-sessions'] "
     parts = _formats_by_part(subject)
     if not subject._extractors:
         parts.pop('readout', None)   # a readout layer without an extractor never answers
     followers = {f for formats in _PART_FORMATS.values() for f, how in formats.items()
                  if how == 'link'}
-    outputs = set().union(*parts.values()) - followers
-    for output in sorted(set(stated) - outputs):
-        raise ValueError(
-            f"Subject '{subject.identifier}': capability_config['behavior-sessions'] names "
-            f"an owner for {output!r}, which is not an answer output of the subject"
-            + ("; it follows 'behavior:probabilities'" if output in followers else '')
-            + f'. Answer outputs: {sorted(outputs)}.')
-    for output in sorted(outputs):
-        eligible = [part for part in BehavioralReadout._PATHS if output in parts.get(part, ())]
-        owner = stated.get(output)
-        if owner is not None and owner not in eligible:
+    formats = sorted({f for kinds in _PART_FORMATS.values() for f in kinds} - followers)
+    owners: Dict[str, str] = {}
+    for key, value in (stated or {}).items():
+        if key in followers:
+            raise ValueError(f"{prefix}names {key!r}: {key!r} follows the owner of "
+                             f"'behavior:probabilities'; state that owner instead.")
+        if key not in formats:
+            raise ValueError(f"{prefix}names {key!r}, which is not a response format. "
+                             f"Formats: {formats}.")
+        if not (isinstance(value, str) or (type(value) is tuple and len(value) == 2
+                                           and all(isinstance(v, str) for v in value))):
+            raise ValueError(f"{prefix}gives {value!r} for {key!r}; a statement is a part "
+                             f"('readout') or a tuple of a part and a conversion "
+                             f"(('readout', 'argmax')).")
+        part, conversion = (value, None) if isinstance(value, str) else value
+        if part not in _ARGUMENTS:
+            raise ValueError(f"{prefix}names the part {part!r} for {key!r}; parts are "
+                             f"'generation', 'likelihood', 'readout'.")
+        if conversion is not None and key == 'behavior':
+            raise ValueError(f"{prefix}gives {value!r} for 'behavior'; 'behavior' takes a part, "
+                             f"not a conversion.")
+        if conversion is not None and conversion not in ('argmax', 'softmax', 'softmax_argmax'):
+            raise ValueError(f"{prefix}names the conversion {conversion!r} for {key!r}; "
+                             f"conversions are 'argmax', 'softmax', 'softmax_argmax'.")
+        if part not in parts:
+            raise ValueError(f"{prefix}names {part!r} for {key!r}, but no {_ARGUMENTS[part]} "
+                             f"part is wired.")
+        if key not in parts[part]:
+            givers = [p for p in BehavioralReadout._PATHS if key in parts.get(p, ())]
+            raise ValueError(f"{prefix}names {part!r} for {key!r}, but {part!r} does not give "
+                             f"{key!r}. Parts of this subject that give it: {givers}.")
+        given = parts[part][key]
+        if conversion is None and given is not None:
+            raise ValueError(f"{prefix}{part!r} gives {key!r} only by a conversion. "
+                             f"Write {key!r}: ({part!r}, {given!r}).")
+        if conversion is not None and given is None:
+            raise ValueError(f"{prefix}{part!r} gives {key!r} natively. Write {key!r}: {part!r}.")
+        if conversion != given:
+            raise ValueError(f"{prefix}{part!r} gives {key!r} by {given!r}, not by "
+                             f"{conversion!r}. Write ({part!r}, {given!r}).")
+        owners[key] = part
+    for output in formats:
+        native = [p for p in BehavioralReadout._PATHS
+                  if output in parts.get(p, {}) and parts[p][output] is None]
+        if output in owners or not native:
+            continue
+        if len(native) > 1:
             raise ValueError(
-                f"Subject '{subject.identifier}': the owner {owner!r} stated for {output!r} "
-                f"cannot give it; the parts that can are {eligible}.")
-        if owner is None and len(eligible) > 1:
-            raise ValueError(
-                f"Subject '{subject.identifier}': the parts {eligible} can all give "
-                f"{output!r}. State the owner: BrainScoreModel(..., capability_config="
-                f"{{'behavior-sessions': {{{output!r}: <one of {eligible}>}}}}).")
-    return stated
+                f"{who}the parts {native} give {output!r} natively. State the owner: "
+                f"capability_config={{'behavior-sessions': {{{output!r}: {native[0]!r}}}}} (or "
+                + ' or '.join(repr(p) for p in native[1:]) + ').')
+        owners[output] = native[0]
+    return owners
 
 
 def _fitted_intact(task) -> bool:
