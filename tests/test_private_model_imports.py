@@ -43,8 +43,6 @@ TYPED_METHODS = {'process', 'start_recording', 'start_task'}
 _TYPED = 'the typed calling convention of the -unified MajajHong/Pereira pair (R21); needs a parity run to change'
 # (path inside brainscore, finding): reason
 ALLOWED = {
-    ('experiments/task.py', 'import brainscore._model.intervention'):
-        'the Intervene tool reads INTERVENTION_CHANNELS; named in the Ownership Map E3',
     ('benchmarks/majajhong2015/benchmark.py', 'call candidate.start_recording'): _TYPED,
     ('benchmarks/majajhong2015/benchmark.py', 'call candidate.process'): _TYPED,
     ('benchmarks/pereira2018/benchmark.py', 'call candidate.start_recording'): _TYPED,

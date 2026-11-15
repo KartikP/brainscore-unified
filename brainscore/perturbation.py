@@ -48,6 +48,8 @@ import numpy as np
 from brainscore.model_helpers.selection import split_site
 from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
 
+# The catalog's intervention input channels; the target is in the payload (rule 3.1).
+INTERVENTION_CHANNELS = ('lesion', 'stimulation', 'pharmacological')
 
 # The on/off switch of each change made here, keyed by its cleanup: switch(False)
 # makes the network intact and switch(True) makes the change again. The change

@@ -17,7 +17,7 @@ import pandas as pd
 from .base import Capability
 from .._model.behavioral import _declared_formats
 from .._model.dispatch import act
-from .._model.intervention import INTERVENTION_CHANNELS
+from ..perturbation import INTERVENTION_CHANNELS
 from .._model.recording import open_recordings, records_while_answering, region_selector, trial_regions
 from .registry import register_capability
 from brainscore_core import streaming_helpers as _drivers
