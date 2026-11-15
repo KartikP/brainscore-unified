@@ -1,5 +1,6 @@
-"""Lahner2024 GLM betas: the voxel mask and the ceilings come from the test-set videos
-(id above 1000), and the variants that use them score only the other videos.
+"""Lahner2024 GLM betas: the voxel mask comes from the test-set videos (id above 1000),
+the variants with a mask or a ceiling score only the other videos, and the ceilings
+come from the scored videos.
 
 Synthetic data behind the registered loaders (``tests/lahner_synthetic.py``): six
 training clips and five test clips, four participants each.
@@ -64,10 +65,9 @@ def test_one_rule_gives_the_reliability_for_both_classes():
 
 
 @pytest.mark.parametrize('identifier, channels, regions', MASK_VARIANTS)
-def test_mask_and_ceilings_do_not_see_the_training_videos(monkeypatch, tmp_path, identifier,
-                                                          channels, regions):
-    """Random training betas leave the mask and the ceilings equal; no test video is
-    presented or scored."""
+def test_the_mask_does_not_see_the_training_videos(monkeypatch, tmp_path, identifier,
+                                                  channels, regions):
+    """Random training betas leave the mask equal; no test video is presented or scored."""
     values = glm_values()
     score, benchmark, subject = _score(monkeypatch, tmp_path / 'a', identifier, channels,
                                        regions, values)
@@ -79,13 +79,11 @@ def test_mask_and_ceilings_do_not_see_the_training_videos(monkeypatch, tmp_path,
     assert score.attrs['n_videos'] == len(CLIPS)
     for _, _, ids, _ in subject.seen:
         assert sorted(ids) == sorted(CLIPS)
-    if 'ceiling' in score.attrs and score.attrs['ceiling_aggregation'] == 'per_voxel':
-        assert float(other.attrs['ceiling']) == float(score.attrs['ceiling'])
 
 
 @pytest.mark.parametrize('identifier, channels, regions', MASK_VARIANTS)
-def test_mask_and_ceilings_follow_the_test_videos(monkeypatch, tmp_path, identifier,
-                                                  channels, regions):
+def test_the_mask_follows_the_test_videos(monkeypatch, tmp_path, identifier,
+                                         channels, regions):
     values = glm_values()
     score, _, _ = _score(monkeypatch, tmp_path / 'a', identifier, channels, regions, values)
     other, _, _ = _score(monkeypatch, tmp_path / 'b', identifier, channels, regions,
@@ -93,16 +91,51 @@ def test_mask_and_ceilings_follow_the_test_videos(monkeypatch, tmp_path, identif
     assert not np.array_equal(other.attrs['voxel_mask_indices'], score.attrs['voxel_mask_indices'])
 
 
-def test_visual_roi_ceilings_are_sqrt_reliability_of_the_test_videos(monkeypatch, tmp_path):
+def test_visual_roi_ceilings_are_sqrt_reliability_of_the_scored_videos(monkeypatch, tmp_path):
+    """The mask is reliability >= 0.3 on the test-set videos; the ceiling of each voxel
+    is sqrt(reliability) on the scored (training) videos; a voxel whose ceiling is not
+    positive is left out of the median and counted in ``n_voxels_excluded``."""
     values = glm_values()
     score, benchmark, _ = _score(monkeypatch, tmp_path / 'a', VISUAL_ROI, {'vision:video'},
                                  ('IT',), values)
-    reliability = _split_half_reliability(glm_assembly(values), stimuli=TEST_CLIPS)
-    mask = reliability >= 0.3
+    assembly = glm_assembly(values)
+    mask = _split_half_reliability(assembly, stimuli=TEST_CLIPS) >= 0.3
     np.testing.assert_array_equal(benchmark.voxel_mask, mask)
-    ceiling = np.sqrt(np.clip(reliability[mask], 0.0, 1.0))
+    ceiling = np.sqrt(np.clip(_split_half_reliability(assembly, stimuli=CLIPS)[mask], 0.0, 1.0))
     counts = np.isfinite(score.attrs['per_voxel_r']) & (ceiling > 0)
+    assert (ceiling == 0).any()     # some voxels of the mask have no ceiling on the scored videos
+    assert score.attrs['n_voxels_excluded'] == int((~counts).sum())
+    assert score.attrs['n_voxels_scored'] == int(counts.sum())
     assert float(score.attrs['ceiling']) == pytest.approx(np.median(ceiling[counts]), rel=1e-12)
+    r = score.attrs['per_voxel_r']
+    assert float(score) == pytest.approx(np.median(r[counts] / ceiling[counts]), rel=1e-12)
+
+
+def _fixed_mask_score(monkeypatch, folder, values):
+    """A measured ceiling over a fixed set of voxels, so that only the ceilings can move."""
+    from brainscore.benchmarks.lahner2024 import VISUAL_ROI_CEILING, Lahner2024BOLDMoments
+    folder.mkdir()
+    install(monkeypatch, folder, glm=values)
+    mask = np.zeros(N_VOXELS, dtype=bool)
+    mask[N_VOXELS - 200:] = True
+    return Lahner2024BOLDMoments(ceiling=VISUAL_ROI_CEILING, voxel_mask_fn=lambda: mask,
+                                 identifier='Lahner2024-fMRI-naturalistic')(
+        Recorder({'vision:video'}))
+
+
+def test_ceilings_do_not_see_the_test_videos(monkeypatch, tmp_path):
+    values = glm_values()
+    score = _fixed_mask_score(monkeypatch, tmp_path / 'a', values)
+    other = _fixed_mask_score(monkeypatch, tmp_path / 'b', _replace(values, TEST_CLIPS, seed=13))
+    assert float(other.attrs['ceiling']) == float(score.attrs['ceiling'])
+    assert float(other) == float(score)
+
+
+def test_ceilings_follow_the_scored_videos(monkeypatch, tmp_path):
+    values = glm_values()
+    score = _fixed_mask_score(monkeypatch, tmp_path / 'a', values)
+    other = _fixed_mask_score(monkeypatch, tmp_path / 'b', _replace(values, CLIPS, seed=14))
+    assert float(other.attrs['ceiling']) != float(score.attrs['ceiling'])
 
 
 # Measured at the base commit 6ee39c0 on this synthetic data: the variants with no
@@ -127,6 +160,15 @@ def test_variants_without_mask_or_ceiling_keep_their_value(monkeypatch, tmp_path
     assert score.attrs['n_videos'] == len(GLM_CLIPS)
     for _, _, ids, _ in subject.seen:
         assert sorted(ids) == sorted(GLM_CLIPS)
+
+
+def test_the_mask_variant_without_a_ceiling_keeps_its_value(monkeypatch, tmp_path):
+    """``-multimodal-visualROI`` has the mask and no ceiling: the ceilings moving to the
+    scored videos leaves it as it was (measured at 2142740 on this synthetic data)."""
+    score, _, _ = _score(monkeypatch, tmp_path / 'a', MASK_VARIANTS[1][0], *MASK_VARIANTS[1][1:],
+                         None)
+    assert float(score) == pytest.approx(-0.4113512933254242, abs=1e-6)
+    assert score.attrs['ceiling_aggregation'] == 'scalar'
 
 
 @pytest.mark.parametrize('in_channels', [{'vision:video'}, {'vision:image'}])

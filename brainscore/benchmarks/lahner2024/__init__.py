@@ -27,8 +27,10 @@ from .benchmark_timeresolved import (
 #   (`-auditoryROI`: early auditory cortex, lateral STG and the planum, Destrieux
 #   atlas on fsaverage5);
 # - for TR time series, the fold rule and the confounds regressed out of the BOLD.
-# Only the GLM-beta visual ROI divides by a measured ceiling (`VISUAL_ROI_CEILING`);
-# the other variants return the raw correlation. Every line is version 2 (see the
+# Only the GLM-beta visual ROI divides by a measured ceiling (`VISUAL_ROI_CEILING`):
+# per voxel, sqrt of the split-half reliability on the videos it scores (the 933
+# training videos), not on the test-set videos that choose the voxels, which a
+# participant saw 10 times instead of 3; the other variants return the raw correlation. Every line is version 2 (see the
 # two module docstrings for what changed from version 1).
 _AUDIOVISUAL = ('vision:image', 'vision:video', 'audio')
 

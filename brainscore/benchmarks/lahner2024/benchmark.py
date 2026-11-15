@@ -15,14 +15,20 @@ participants. The coordinate that tells the participants apart is named
 to one person. We average the participants to get one response per video.
 
 The 1026 videos are 933 of the training set (id 1000 or lower) and 93 of the
-test set (id above 1000; ``boldmoments_test_set``). The voxel mask of the
-``-visualROI`` variants and the ceilings come from the 93 test videos only:
-the agreement between two halves of the 10 participants
-(``_split_half_reliability``). These variants then present and score only the
-933 training videos, so no video that chose the voxels or the ceilings is in a
-regression fold. The variants with no reliability mask and no ceiling (whole
-cortex, ``-multimodal``, ``-multimodal-auditoryROI``) present and score all
-1026 videos.
+test set (id above 1000; ``boldmoments_test_set``). The reliability of a voxel
+is the agreement between two halves of the 10 participants
+(``_split_half_reliability``). The voxel mask of the ``-visualROI`` variants
+comes from the reliability on the 93 test-set videos only
+(``reliability_on_test_set``), and these variants present and score only the 933
+training videos, so no video that chose the voxels is in a regression fold. The
+per-voxel ceilings of ``-visualROI`` are sqrt(reliability) on the scored videos
+(the 933): the ceiling is the reliability of the data that is predicted, not a
+parameter of the fit, and the voxels were selected on other videos. A
+participant saw each test-set video 10 times and each training-set video 3
+times, so the test-set betas are less noisy and their reliability would give
+ceilings too high for the scored videos. The variants with no reliability mask
+and no ceiling (whole cortex, ``-multimodal``, ``-multimodal-auditoryROI``)
+present and score all 1026 videos.
 
 Taken from brain-score/vision PR #1249 (YingtianDt):
     - BOLDMoments as the stimulus-set identifier
@@ -192,9 +198,10 @@ def _split_half_reliability(assembly, stimuli: Sequence[str], n_splits: int = 20
 
 
 def reliability_on_test_set(assembly) -> np.ndarray:
-    """The per-voxel reliability that gives the voxel mask and the ceilings of the GLM
-    and the time-resolved benchmarks: ``_split_half_reliability`` on the test-set
-    videos of the GLM assembly. The one owner of this rule."""
+    """The per-voxel reliability that selects the voxels of the reliability mask of the
+    GLM and the time-resolved benchmarks: ``_split_half_reliability`` on the test-set
+    videos of the GLM assembly. The one owner of this rule. The GLM ceilings use
+    the reliability on the scored videos instead (``_ceiling_reliability``)."""
     test = boldmoments_test_set(assembly['stimulus_id'].values)
     if not test:
         raise ValueError('The assembly holds no test-set video (id above 1000): '
@@ -299,7 +306,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
             inputs shown.
         sample_times_ms: the frames a stills-only subject sees from each clip.
         ceiling: a measured noise ceiling; the score is then normalized per voxel
-            by sqrt(reliability) of each voxel, measured on the test-set videos.
+            by sqrt(reliability) of each voxel, measured on the scored videos.
         reliability_threshold: score only the voxels whose split-half
             reliability on the test-set videos is at least this value.
             With a ceiling or this threshold, the benchmark presents and scores
@@ -333,7 +340,8 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         self._voxel_mask_fn = voxel_mask_fn
         self._assembly: Optional[NeuronRecordingAssembly] = None
         self._stimulus_set = None
-        self._reliability: Optional[np.ndarray] = None
+        self._mask_rel: Optional[np.ndarray] = None
+        self._ceiling_rel: Optional[np.ndarray] = None
         self._voxel_mask: Optional[np.ndarray] = None
         super().__init__(
             identifier=identifier,
@@ -355,11 +363,32 @@ class Lahner2024BOLDMoments(BenchmarkBase):
             self._stimulus_set = load_stimulus_set('BOLDMoments')
         return self._stimulus_set
 
-    def _reliability_once(self) -> np.ndarray:
-        """``reliability_on_test_set`` of the assembly, computed once."""
-        if self._reliability is None:
-            self._reliability = reliability_on_test_set(self.assembly)
-        return self._reliability
+    def _mask_reliability(self) -> np.ndarray:
+        """The reliability that selects the voxels: ``reliability_on_test_set`` of the
+        assembly, computed once."""
+        if self._mask_rel is None:
+            self._mask_rel = reliability_on_test_set(self.assembly)
+        return self._mask_rel
+
+    def _ceiling_reliability(self) -> np.ndarray:
+        """The reliability that gives the ceilings: ``_split_half_reliability`` on the
+        scored videos (``_scored_ids``), with the same splits and random state,
+        computed once. The ceiling is the reliability of the data that is predicted:
+        it is not fitted, and it has no selection bias because the voxels were
+        selected on the test-set videos, which are not scored."""
+        if self._ceiling_rel is None:
+            self._ceiling_rel = _split_half_reliability(self.assembly, stimuli=self._scored_ids())
+        return self._ceiling_rel
+
+    def _scored_ids(self) -> List[str]:
+        """The stimulus ids of ``_scored_stimuli``. Each must have BOLD in the
+        assembly; otherwise this raises, before any subject runs."""
+        ids = [str(stimulus_id) for stimulus_id in self._scored_stimuli()['stimulus_id']]
+        missing = sorted(set(ids) - {str(i) for i in self.assembly['stimulus_id'].values})
+        if missing:
+            raise ValueError(f'{len(missing)} scored stimuli have no BOLD in the assembly, '
+                             f'for example {missing[:3]}.')
+        return ids
 
     def _scored_stimuli(self):
         """The stimuli presented and scored: without a reliability mask and a ceiling,
@@ -368,7 +397,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         stimuli = self.stimulus_set
         if self._reliability_threshold is None and not _ceiling_measured(self):
             return stimuli
-        self._reliability_once()   # fails here when the assembly has no test-set video
+        self._mask_reliability()   # fails here when the assembly has no test-set video
         test = set(boldmoments_test_set(stimuli['stimulus_id']))
         return presented_stimuli(
             stimuli, [i for i in stimuli['stimulus_id'].astype(str) if i not in test])
@@ -378,22 +407,25 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         """The scored voxels (``None``: all of them); computed once."""
         if self._voxel_mask is None:
             self._voxel_mask = _select_voxels(self._reliability_threshold, self._voxel_mask_fn,
-                                              self._reliability_once)
+                                              self._mask_reliability)
         return self._voxel_mask
 
     def _frames(self):
         return frame_table(self._scored_stimuli(), self._sample_times_ms)
 
     def _per_voxel_ceiling(self, mask):
-        """sqrt(reliability) per scored voxel; ``None`` without a measured ceiling.
+        """sqrt(reliability on the scored videos) per scored voxel; ``None`` without a
+        measured ceiling.
 
         Whole cortex and every variant without a measured ceiling hold
-        ``not_estimated()`` and take the scalar path. A ceiling of zero (reliability
-        at or below zero) leaves the voxel out (``voxel_score``).
+        ``not_estimated()`` and take the scalar path. A voxel of the mask whose
+        reliability on the scored videos is at or below zero gets a ceiling of zero:
+        ``voxel_score`` leaves it out of the median and counts it in
+        ``n_voxels_excluded``.
         """
         if not _ceiling_measured(self):
             return None
-        rel = np.asarray(self._reliability_once(), dtype=float)
+        rel = np.asarray(self._ceiling_reliability(), dtype=float)
         if mask is not None:
             rel = rel[np.asarray(mask, dtype=bool)]
         return np.sqrt(np.clip(rel, 0.0, 1.0))
@@ -472,6 +504,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         }
 
     def __call__(self, subject) -> Score:
+        self._scored_ids()   # every scored stimulus has BOLD, or this fails before the subject runs
         features, clip_ids, route_attrs = self._features(subject)
 
         # Average the participants; align to the response order (only the scored
@@ -496,9 +529,12 @@ class Lahner2024BOLDMoments(BenchmarkBase):
 
 # Noise ceiling for the visual-ROI voxel set, measured on the hosted data 2026-11-15.
 # For a predictivity correlation the ceiling is sqrt(reliability): the highest r a
-# perfect model could reach given measurement noise. This value is the median of
-# sqrt(reliability_on_test_set(assembly)) over the 7209 voxels of the mask
-# (reliability at least 0.3 on the 93 test-set videos). The constant marks the
-# variant that divides by a ceiling and is what ``benchmark.ceiling`` reports: the
-# score divides each voxel by its own ceiling and does not read this value.
+# perfect model could reach given measurement noise. The constant is meant to be the
+# median over the voxels of the mask (reliability at least 0.3 on the 93 test-set
+# videos) of sqrt(reliability on the scored videos, the 933 training-set videos).
+# The value below is still the median of sqrt(reliability_on_test_set(assembly))
+# over the 7209 voxels of the mask; it is set again from a cloud measurement. The
+# constant marks the variant that divides by a ceiling and is what
+# ``benchmark.ceiling`` reports: the score divides each voxel by its own ceiling
+# and does not read this value.
 VISUAL_ROI_CEILING = 0.7400961024018685
