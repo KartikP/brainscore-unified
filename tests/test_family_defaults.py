@@ -94,3 +94,66 @@ def test_fit_frames_gives_the_old_frames(count):
         assert [f is g for f, g in zip(fit_frames(frames[:n], count), _old_fit(frames[:n], count))] == [True] * count
     with pytest.raises(ValueError, match='empty frame list'):
         fit_frames([], count)
+
+
+# -- Wav2Vec2-base audio tower ----------------------------------------------------
+
+@pytest.fixture
+def tiny_wav2vec2(monkeypatch):
+    """``from_pretrained`` of the config and feature extractor give tiny local objects (no download)."""
+    import transformers
+    config = transformers.Wav2Vec2Config(hidden_size=8, num_hidden_layers=2, num_attention_heads=2,
+                                         intermediate_size=16, conv_dim=(8, 8), conv_stride=(5, 2),
+                                         conv_kernel=(10, 3), num_conv_pos_embeddings=4,
+                                         num_conv_pos_embedding_groups=2)
+    monkeypatch.setattr(transformers.Wav2Vec2Config, 'from_pretrained', classmethod(lambda cls, *a, **k: config))
+    monkeypatch.setattr(transformers.Wav2Vec2FeatureExtractor, 'from_pretrained',
+                        classmethod(lambda cls, *a, **k: transformers.Wav2Vec2FeatureExtractor()))
+    monkeypatch.setattr('brainscore.model_helpers._device.select_device', lambda device=None: torch.device('cpu'))
+    return config
+
+
+def test_the_random_null_has_the_weights_of_its_old_copy(tiny_wav2vec2):
+    """The old ``random_wav2vec2`` builder also seeded numpy; Wav2Vec2 initialises from torch only."""
+    from transformers import Wav2Vec2Model
+    from brainscore.models._shared import build_audio_wrapper
+    np.random.seed(123)
+    _, shared = build_audio_wrapper('random-wav2vec2-base', random_init=True)
+    torch.manual_seed(0)
+    np.random.seed(0)
+    old = Wav2Vec2Model(tiny_wav2vec2).eval()                       # frozen copy of the old builder
+    assert shared.state_dict().keys() == old.state_dict().keys()
+    for name, tensor in old.state_dict().items():
+        assert torch.equal(shared.state_dict()[name], tensor), name
+
+
+def _old_wav_loader(audio_path, target_rate):
+    """Frozen copy of the wav loaders of the three audio registrations (they differed in message only)."""
+    from scipy.io import wavfile
+    sr, wav = wavfile.read(audio_path)
+    if sr != target_rate:
+        raise ValueError('rate')
+    if wav.dtype.kind == 'i':
+        wav = wav.astype(np.float32) / np.iinfo(wav.dtype).max
+    else:
+        wav = wav.astype(np.float32)
+    if wav.ndim > 1:
+        wav = wav.mean(axis=-1)
+    return wav
+
+
+def test_the_shared_wav_loader_reads_as_the_old_copies(tiny_wav2vec2, tmp_path):
+    from scipy.io import wavfile
+    from brainscore.models._shared import build_audio_wrapper
+    wrapper, _ = build_audio_wrapper('combo', random_init=True)
+    assert wrapper.identifier == 'combo-audio' and wrapper._layer_aggregation == 'time_series'
+    rng = np.random.default_rng(1)
+    for name, data in (('int16', rng.integers(-3000, 3000, 160).astype(np.int16)),
+                       ('float', rng.standard_normal(160).astype(np.float32)),
+                       ('stereo', rng.integers(-3000, 3000, (160, 2)).astype(np.int16))):
+        path = str(tmp_path / f'{name}.wav')
+        wavfile.write(path, 16000, data)
+        result, expected = wrapper._audio_loader(path, 16000), _old_wav_loader(path, 16000)
+        assert result.dtype == expected.dtype and np.array_equal(result, expected)
+    with pytest.raises(ValueError):
+        wrapper._audio_loader(path, 8000)
