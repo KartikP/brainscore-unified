@@ -281,11 +281,7 @@ RESPONSIBILITIES = {
 }
 
 # (responsibility, site): reason. Violations only; the target is empty.
-ALLOWED = {
-    ('R20 registry assignment', 'unified:capabilities/registry.py'):
-        'register_capability and capability_registry: a second registration style (R20); '
-        'decided after the response format work joins (D9)',
-}
+ALLOWED = {}
 
 _OBSERVER = ('Ownership Map R11: a user-attached observer (ActivationWindow, PerceptWindow) '
              'installs its own hooks on a network passed to it; it never runs in a score path')
@@ -300,6 +296,10 @@ STATED_EXCEPTIONS = {
     ('R20 registry assignment', 'unified:tools/_registry.py'):
         'Ownership Map R20: a tool is registered with register_tool(identifier, factory); '
         'a built-in tool is a lazy import path in _TOOLS, which a dict entry cannot hold',
+    ('R20 registry assignment', 'unified:capabilities/registry.py'):
+        'Ownership Map R20: a capability carries its own identifier and registers with '
+        'register_capability(capability), so the identifier is written once; a factory '
+        '(model, benchmark, data, metric) registers by a registry line',
 }
 
 
