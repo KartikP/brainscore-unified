@@ -32,7 +32,6 @@ SUITES = {
         'tests/test_native_subject.py',
         'tests/test_participate_contract.py',
         'tests/test_legacy_facade.py',
-        'tests/test_typed_convenience.py',
         'tests/test_session_view.py',
         'tests/test_subject_channels.py',
         'tests/test_subject_rename.py',

@@ -80,20 +80,17 @@ def records_while_answering(owner, region: str, stimuli=None) -> bool:
     return any(e is not None and (record_part(e) is not None or hooks) for e in extractors)
 
 
-def open_recordings(owner, stimuli, layers):
-    """``{regions: live recording}``, opened before any compute.
+def plan_recordings(owner, stimuli, layers):
+    """The recording groups of ``layers`` during an answering pass or a policy step.
 
-    Each region is recorded by the extractor the run selects for it
-    (``dispatch.extractor_keys`` for its input and its own layers, as for a
-    passive recording), so regions on an image and a video extractor are
-    recorded by each. The regions on one extractor share one recording, keyed
-    by the tuple of their names. It is the extractor's own
-    ``record(layers, stimuli)`` when it has one (``stimuli`` is None for a
-    policy step); otherwise forward hooks on the model passed as
-    ``BrainScoreModel(model=...)``, with layer paths read from that model. A
-    region that neither can record is refused before any compute
-    (``ExecutionNotFeasibleError``): the task, which chose this path, is known
-    only here.
+    Returns ``((extractor, group layers, regions), ...)``. Each region is
+    recorded by the extractor the run selects for it (``dispatch.extractor_keys``
+    for its input and its own layers, as for a passive recording), so regions on
+    an image and a video extractor are recorded by each; the regions on one
+    extractor share one group. A region that no extractor can record during the
+    pass is refused before any compute (``ExecutionNotFeasibleError``). A
+    session decides this once, in its plan, for its table (``stimuli``; None for
+    a policy step).
     """
     from brainscore_core.compatibility import ExecutionNotFeasibleError
     from .dispatch import extractor_for
@@ -113,11 +110,34 @@ def open_recordings(owner, stimuli, layers):
         _, group_layers, regions = groups.setdefault((modality, id(extractor)), (extractor, [], []))
         group_layers.extend(layer for layer in region_layers if layer not in group_layers)
         regions.append(region)
+    return tuple((extractor, tuple(group_layers), tuple(regions))
+                 for extractor, group_layers, regions in groups.values())
+
+
+def planned_recordings(owner, layers):
+    """The recording groups the running session's plan made for ``layers``, or None."""
+    plan = owner._session_plan
+    if plan is None or plan.recordings is None or tuple(layers) != plan.regions:
+        return None
+    return plan.recordings
+
+
+def open_recordings(owner, stimuli, layers, groups=None):
+    """``{regions: live recording}``, opened before any compute.
+
+    ``groups`` are the session plan's (``plan_recordings``); without them they
+    are made here. Each group is recorded by its extractor's own
+    ``record(layers, stimuli)`` when it has one (``stimuli`` is None for a policy
+    step), otherwise by forward hooks on the model passed as
+    ``BrainScoreModel(model=...)``, with layer paths read from that model. The
+    regions on one extractor share one recording, keyed by the tuple of their names.
+    """
+    groups = plan_recordings(owner, stimuli, layers) if groups is None else groups
     recordings = {}
-    for extractor, group_layers, regions in groups.values():
+    for extractor, group_layers, regions in groups:
         record = record_part(extractor)
-        recordings[tuple(regions)] = (record(group_layers, stimuli) if record is not None else
-                                      _hook_recording(owner._model, group_layers, owner.identifier))
+        recordings[tuple(regions)] = (record(list(group_layers), stimuli) if record is not None else
+                                      _hook_recording(owner._model, list(group_layers), owner.identifier))
     return recordings
 
 
@@ -129,7 +149,7 @@ def per_stimulus(owner, stimuli, layers, call, prompts=None):
     shows, is refused after the pass that shows it, before the next stimulus.
     """
     from contextlib import ExitStack
-    recordings = open_recordings(owner, stimuli, layers)
+    recordings = open_recordings(owner, stimuli, layers, planned_recordings(owner, layers))
     replies, trials = [], []
     with ExitStack() as stack:
         live = {regions: stack.enter_context(r) for regions, r in recordings.items()}
@@ -488,17 +508,23 @@ class Recorder:
             )
         return assembly
 
-    def process_composite_regions(self, stimuli, modality):
-        """Extract and concatenate blocks for composite recording regions."""
+    def process_composite_regions(self, stimuli, modality, check_only=False):
+        """Extract and concatenate blocks for composite recording regions.
+
+        ``check_only``: refuse a region with no extractor, and call none.
+        """
         import numpy as np
         import xarray as xr
 
-        from .dispatch import extract_for_modality
+        from .dispatch import extract_for_modality, extractor_or_refuse
         owner = self.owner
         blocks = []
         for region in self.regions_for_modality(modality):
             selector = region_selector(owner, region)
             layer_paths = list(selector.layer_paths)
+            if check_only:
+                extractor_or_refuse(owner, stimuli, modality, layer_paths, in_session=True)
+                continue
             assembly = extract_for_modality(owner, stimuli, modality, layer_paths)
             assembly = self.ensure_layer_provenance(
                 assembly,
@@ -519,6 +545,8 @@ class Recorder:
             block = block.assign_coords(
                 region=('neuroid', np.array([region] * n)))
             blocks.append(block)
+        if check_only:
+            return None
         from brainscore_core.time_axis import require_one_time_axis
         require_one_time_axis(blocks, sources=[str(b['region'].values[0]) if b.sizes['neuroid'] else '?'
                                                for b in blocks])

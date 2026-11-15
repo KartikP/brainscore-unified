@@ -58,7 +58,8 @@ class Interventions:
                     for handle, cleanup in self.active_interventions.items()]
         fixed = [handle for handle, switch in switches if switch is None]
         if fixed:
-            raise NotImplementedError(
+            from brainscore_core.compatibility import ExecutionNotFeasibleError
+            raise ExecutionNotFeasibleError(
                 f"Subject '{self.owner.identifier}' cannot fit on the intact network: the "
                 f"active intervention(s) {fixed} cannot be switched off in place. Only "
                 f"build_pytorch_ablation_fn makes changes that can. Use "
@@ -121,7 +122,6 @@ class Interventions:
         """
         owner = self.owner
         self._refuse_while_intact('apply or undo an intervention')
-        owner._behavioral.invalidate()
         if state_change.kind == 'reset':
             handle_id = state_change.handle_id
             if handle_id is None:
@@ -135,6 +135,9 @@ class Interventions:
                     f"No active intervention with handle_id={handle_id!r}. "
                     f"Active: {list(self.active_interventions.keys())}."
                 )
+            # The model changes from here on: the readout fits again next time.
+            # A refused event (above) leaves it as it was.
+            owner._behavioral.invalidate()
             # Deregister only once the undo has actually succeeded; popping
             # first would lose the handle to a raising cleanup and leave the
             # model changed with no way to retry.
@@ -152,6 +155,7 @@ class Interventions:
             )
 
         require_resolved(state_change)
+        owner._behavioral.invalidate()      # the model changes from here on (a refused event did not)
         result = owner._intervention(state_change)
         # The part has already run, so a rejected return may leave the model
         # changed: undo it with the returned cleanup, if there is one.

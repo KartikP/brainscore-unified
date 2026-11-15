@@ -254,6 +254,6 @@ def test_a_behavior_request_without_a_task_shows_the_line_to_write_before_any_an
                             answer=lambda stimulus_row, instruction, label_set: calls.append(1) or 'a')
     table = StimulusSet({'stimulus_id': ['s'], 'sentence': ['x']})
     table.identifier = 'no-task'
-    with pytest.raises(ValueError, match=r'needs a task.*TaskContext\(response=Choice\(\[\.\.\.\]\)\)'):
+    with pytest.raises(ExecutionNotFeasibleError, match=r'needs a task.*TaskContext\(response=Choice\(\[\.\.\.\]\)\)'):
         model.participate(stimulus_session(table, ['behavior:choice']))
     assert calls == []

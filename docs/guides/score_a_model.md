@@ -33,7 +33,7 @@ slow on a laptop:
 ```python
 import brainscore
 
-score = brainscore.score('clip-vit-b-32', 'MajajHong2015public.IT-pls-unified')
+score = brainscore.score('clip-vit-b-32', 'MajajHong2015public.IT-pls')
 print(float(score), score.attrs.get('raw'))
 ```
 
