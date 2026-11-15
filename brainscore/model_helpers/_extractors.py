@@ -25,7 +25,6 @@ import numpy as np
 from tqdm.auto import tqdm
 
 from brainscore_core.assembly_builder import make_assembly, make_layer_neuroid_coords, make_neuroid_ids
-from brainscore_core.supported_data_standards.brainio.assemblies import walk_coords
 from brainscore_core.extraction_cache import extraction_fingerprint, model_config
 from brainscore.model_helpers.selection import split_site
 
@@ -375,9 +374,10 @@ def labelled(assembly, identifier: str):
 
     The cache key leaves the identifier out, so wrappers with the same weights
     and settings share one stored entry, and that entry carries the labels of
-    the wrapper that wrote it. Every cache return passes through here, so a
-    warm assembly equals the cold one of the same wrapper. An assembly that
-    already names ``identifier``, or has no ``model`` coordinate, is returned as it is.
+    the wrapper that wrote it. Every cache return passes through here. Only the
+    two unit labels are replaced; every other coordinate, index, name and
+    attribute stays as stored. An assembly that already names ``identifier``, or
+    has no ``model`` coordinate, is returned as it is.
     """
     try:
         models = assembly['model'].values
@@ -387,16 +387,16 @@ def labelled(assembly, identifier: str):
         return assembly
     layers, units = assembly['layer'].values, assembly['neuroid_num'].values
     ids = {layer: make_neuroid_ids(identifier, layer, int(units[layers == layer].max()) + 1) for layer in set(layers)}
-    coords = {}
-    for name, dims, values in walk_coords(assembly):
-        if name == 'model':
-            values = [identifier] * len(values)
-        elif name == 'neuroid_id':
-            values = [ids[layer][unit] for layer, unit in zip(layers, units)]
-        coords[name] = (dims, values)
-    relabelled = type(assembly)(assembly.values, coords=coords, dims=assembly.dims)
-    relabelled.attrs.update(assembly.attrs)
-    return relabelled
+    labels = {'model': [identifier] * len(models),
+              'neuroid_id': [ids[layer][unit] for layer, unit in zip(layers, units)]}
+    index = assembly.indexes.get('neuroid')
+    if index is not None and getattr(index, 'nlevels', 1) > 1:
+        import pandas as pd
+        arrays = [pd.Index(labels[name], dtype=index.levels[i].dtype) if name in labels
+                  else index.get_level_values(i) for i, name in enumerate(index.names)]
+        assembly = assembly.assign_coords(neuroid=pd.MultiIndex.from_arrays(arrays, names=index.names))
+        labels = {name: values for name, values in labels.items() if name not in index.names}
+    return assembly.assign_coords({name: ('neuroid', values) for name, values in labels.items()})
 
 
 def attach_stimulus_set(assembly, stimuli):

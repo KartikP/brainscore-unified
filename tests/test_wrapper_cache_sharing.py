@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 import result_caching
+import xarray
 
 from tests.test_wrapper_cache_guard import (
     _audio_files, _image_files, _stimuli, _video_files, audio_wrapper, digest, text_wrapper, video_wrapper,
@@ -21,6 +22,8 @@ from tests.test_wrapper_cache_guard import (
 CASES = {
     'text': (text_wrapper, lambda: _stimuli('share-text', sentence=['the cat sat', 'dog ran on the mat']),
              ['enc', 'proj']),
+    'text_per_token': (lambda: text_wrapper(layer_aggregation='per_token'),
+                       lambda: _stimuli('share-per-token', sentence=['the cat sat', 'dog']), ['enc', 'proj']),
     'audio': (audio_wrapper, lambda: _stimuli('share-audio', audio_path=_audio_files()), ['frames', 'head']),
     'video': (video_wrapper, lambda: _stimuli('share-video', video_path=_video_files()), ['block', 'head']),
     'vlm_vision': (vlm_vision_wrapper, lambda: _stimuli('share-vlm', image_file_name=_image_files()),
@@ -69,7 +72,11 @@ def test_a_second_identifier_gets_its_own_labels_from_a_warm_cache(name, store, 
     second_cold = second(stimuli, layers=layers)
     assert set(second_cold['model'].values) == {'second'}
     assert digest(second_warm) == digest(second_cold)
-    assert digest(first(stimuli, layers=layers)) == digest(first_cold)
+    xarray.testing.assert_identical(second_warm, second_cold)
+    store.enabled = True
+    first_warm = first(stimuli, layers=layers)
+    assert digest(first_warm) == digest(first_cold)
+    xarray.testing.assert_identical(first_warm, first_cold)
 
 
 class _Unversioned(__import__('brainscore.model_helpers.text_wrapper', fromlist=['TextWrapper']).TextWrapper):
