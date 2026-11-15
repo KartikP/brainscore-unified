@@ -12,8 +12,10 @@ returns ``(presentation, neuroid)``; ``sequence`` additionally preserves a
 
 Design:
 - Constructor: ``AudioWrapper(model, processor, identifier)``
-- ``__call__(stimuli, layers)`` — accepts a StimulusSet with ``audio_path``
-  column (or a list of paths).
+- ``__call__(stimuli, layers)`` — accepts a StimulusSet (or a list of paths).
+  The paths come from the first column that the core catalog binds to
+  ``audio`` (``audio_path``, ``audio_file_name``, ``audio_file``, ``audio``,
+  in that order).
 - Layer aggregation modes:
     ``mean`` (default): reduce (B, T, H) → (B, H). Matches frame-based
         extraction patterns used by TextWrapper for classification benchmarks.

@@ -247,3 +247,36 @@ def test_stored_paths_keep_their_place_in_each_wrapper():
     del table['video_path']
     table.stimulus_paths = {'s0': '/stored/clip.mp4'}
     assert VideoWrapper._extract_video_paths(None, table) == ['/stored/clip.mp4']
+
+
+@pytest.mark.parametrize('channel, columns', [
+    ('audio', ['audio', 'audio_path']), ('vision:video', ['video', 'video_path']),
+    ('vision:image', ['filename', 'image_file_name'])])
+def test_of_two_candidate_columns_the_catalog_order_decides(channel, columns):
+    """The table lists the less preferred column first; the catalog's order still decides."""
+    import pandas as pd
+    from brainscore.model_helpers.audio_wrapper import AudioWrapper
+    from brainscore.model_helpers.video_wrapper import VideoWrapper
+    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
+    read = {'audio': AudioWrapper._extract_paths,
+            'vision:video': lambda table: VideoWrapper._extract_video_paths(None, table),
+            'vision:image': lambda table: VLMVisionWrapper._extract_paths(None, table)}[channel]
+    table = pd.DataFrame({'stimulus_id': ['a'], columns[0]: ['less preferred'], columns[1]: ['preferred']})
+    assert read(table) == ['preferred']
+
+
+@pytest.mark.parametrize('channel, accepted', [
+    ('audio', "['audio_path', 'audio_file_name', 'audio_file', 'audio']"),
+    ('vision:video', "['video_path', 'video_file_name', 'video']"),
+    ('vision:image', "['image_file_name', 'image_path', 'filename', 'image', 'vision']")])
+def test_a_table_without_an_accepted_column_is_refused_with_the_accepted_columns(channel, accepted):
+    import re
+    import pandas as pd
+    from brainscore.model_helpers.audio_wrapper import AudioWrapper
+    from brainscore.model_helpers.video_wrapper import VideoWrapper
+    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
+    read = {'audio': AudioWrapper._extract_paths,
+            'vision:video': lambda table: VideoWrapper._extract_video_paths(None, table),
+            'vision:image': lambda table: VLMVisionWrapper._extract_paths(None, table)}[channel]
+    with pytest.raises(ValueError, match=re.escape(f'expected one of {accepted}')):
+        read(pd.DataFrame({'stimulus_id': ['a'], 'sentence': ['x']}))

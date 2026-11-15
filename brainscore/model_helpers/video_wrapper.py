@@ -29,7 +29,9 @@ matches against fMRI TRs) consumes it directly.
 
 Design symmetry with other wrappers:
     - An explicit key (weights, settings, inputs) keys the @store_xarray cache
-    - Accepts a StimulusSet with ``video_path`` column (or list of paths)
+    - Accepts a StimulusSet (or list of paths): the first column the core
+      catalog binds to ``vision:video`` (``video_path``, ``video_file_name``,
+      ``video``, in that order), else ``stimulus_paths``
     - Takes ``layers`` kwarg; returns NeuroidAssembly
 
 Design asymmetry (video-specific):
