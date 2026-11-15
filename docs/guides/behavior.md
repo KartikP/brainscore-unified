@@ -80,7 +80,7 @@ Every answer carries a response record in `attrs['response']`, and every score c
 | **Likelihood** | the model scores each label as its reply, without generating | choice (`softmax_argmax`), probabilities (`softmax`) | `likelihood` |
 | **Readout** | a classifier or ridge regression on one layer, fitted on `fitting_stimuli` | choice (`argmax`), probabilities, rating | `behavioral_readout_layer` and an extractor |
 
-Which path answers is a property of the model, not of the task. When only one of its paths can give an answer, that path gives it. When several can give the same answer (for example a reply and a likelihood both give a choice), the registration states which one owns it, per answer channel:
+Which path answers is a property of the model, not of the task. A path gives a format natively or derives it by a conversion (the table above). A format that exactly one path gives natively needs no statement: a model with a reply and a likelihood answers a choice through its reply. A format that two paths give natively (bare `behavior` from `answer` and the readout; `behavior:rating` from `reply` and the readout) needs a statement. A format that a path only derives is declared only when a statement names it, for example `('likelihood', 'softmax')` for the probabilities; without one, the model does not declare it. The registration states the owner per answer channel:
 
 ```python
 def answer(stimulus_row, instruction, label_set):   # answers a legacy task
@@ -107,6 +107,18 @@ owned.participate(choice)
 print(legacy.collect('behavior').attrs['response']['method'],          # generation (answer)
       choice.collect('behavior:choice').attrs['response']['method'],   # generation (reply)
       choice.collect('behavior:probabilities').attrs['response']['method'])   # likelihood
+```
+
+With one native path per format, no statement is needed; a derived format without a statement is not declared:
+
+```python
+plain = BrainScoreModel(identifier='plain-parts', in_channels={'text'},
+                        reply=lambda prompt: 'real', likelihood=likelihood)
+choice = stimulus_session(test_stimuli, ['behavior:choice'], TaskContext(
+    instruction='Is this a real word?', response=Choice(['real', 'pseudo'])))
+plain.participate(choice)
+print(choice.collect('behavior:choice').attrs['response']['method'],   # generation (reply)
+      'behavior:probabilities' in plain.out_channels)                  # False: no statement
 ```
 
 Bare `behavior` is the answer channel of a legacy task; `behavior:choice` is the choice of a `Choice` response. They are different channels, and neither is shorthand for the other: a model whose answer and readout parts can both answer a legacy task states an owner for `behavior` as well. A statement names a part for a format the part gives natively, or a part and a conversion for a format it derives: the readout gives `behavior:choice` by `('readout', 'argmax')`, the likelihood gives `behavior:probabilities` by `('likelihood', 'softmax')` and `behavior:choice` by `('likelihood', 'softmax_argmax')`. A format with one native part needs no statement. A format with two native parts (bare `behavior` from `answer` and the readout; `behavior:rating` from `reply` and the readout) and no statement is refused when the model is built, and so is a wrong statement; the message says what to write. `behavior:rt` follows the owner of `behavior:probabilities` and is not stated. The owner answers its channel. When a task form excludes the owner (for example raw scores, which only the likelihood gives, or a legacy task without an instruction, which only the readout can answer) and exactly one other path can serve it, that path answers; when two or more paths that do not own the channel could serve it, the session is refused before any compute. A choice from the likelihood with probabilities from the readout (or the reverse) cannot come from one session and is refused; the choice alone still runs. To compare paths, build one model for each with only the parts of that path (for example the same network without `answer` and `reply`, so it answers through its readout). A readout asks what information a layer holds; generation asks what the model does when asked.

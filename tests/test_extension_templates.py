@@ -165,7 +165,7 @@ NEEDS_DOWNLOADS = {
     ('docs/guides/score_a_model.md', 1): 'CLIP weights and the MajajHong2015 data',
     ('docs/guides/existing_models.md', 0): 'alexnet weights and the MajajHong2015 data',
     ('docs/guides/data.md', 0): 'the hosted LeBel2023 assembly',
-    ('docs/guides/behavior.md', 6): 'a Hugging Face chat model and its processor',
+    ('docs/guides/behavior.md', 7): 'a Hugging Face chat model and its processor',
     ('docs/guides/wrap_your_model.md', 6): 'CLIP and its image and text wrappers',
 }
 
