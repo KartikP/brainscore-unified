@@ -396,3 +396,173 @@ def test_a_conversation_states_the_model_parts_and_the_silent_partner():
         {'subject': 'provenance-partner', 'parts': NS, 'activation_store': 'off'},
         {'subject': 'provenance-talker', 'activation_store': 'off',
          'parts': [_item('policy', f'{__name__}._say_hello', ['behavior:text'])]})
+
+
+# Chunk B: each case where a second resolution named a part that did not run, or named none.
+
+class _Sessions(BenchmarkBase):
+    """Runs the given sessions in order (each made by a callable); a session that fails is caught when
+    ``catch`` says so. The score is the number of answers."""
+
+    def __init__(self, makers, outputs, inputs=('text',), catch=False):
+        self.makers, self.catch = makers, catch
+        self.requested_output_channels = frozenset(outputs)
+        self.required_input_channels = frozenset(inputs)
+        super().__init__(identifier='provenance-sessions', version=1, parent='behavioral',
+                         ceiling=not_estimated())
+
+    def __call__(self, subject):
+        answers = 0
+        for make in self.makers:
+            session = make()
+            try:
+                subject.participate(session)
+            except RuntimeError:
+                if not self.catch:
+                    raise
+                continue
+            answers += len(session.emitted)
+        return benchmark_score(self, raw=float(answers), metric='answers')
+
+
+def _entry(score):
+    (entry,) = score.attrs['provenance']
+    return entry
+
+
+def test_an_old_task_names_the_answer_part_when_answer_and_reply_are_wired():
+    def answer(stimulus_row, instruction, label_set):
+        return pseudo._truth(stimulus_row['stimulus_id'])
+
+    def reply(prompt):
+        raise AssertionError('the old task does not call the reply')
+    model = BrainScoreModel('legacy-both', in_channels={'text'}, answer=answer, reply=reply)
+    task = TaskContext(task_type='label', label_set=pseudo.OPTIONS, instruction='Is this a real word?')
+    score = _score(model, _Sessions([lambda: stimulus_session(pseudo.text_stimuli(), ['behavior'], task)],
+                                    {'behavior'}))
+    assert _entry(score) == {'subject': 'legacy-both', 'activation_store': 'off',
+                             'parts': [_item('answer', _qualified(answer), ['behavior'])]}
+
+
+def test_a_verbatim_choice_with_choice_and_log_probabilities_names_the_likelihood():
+    from brainscore_core.responses import Choice
+    def reply(prompt):
+        raise AssertionError('a joint request with log probabilities is answered by the likelihood')
+    likelihood = pseudo.likelihood_model()._likelihood
+    model = BrainScoreModel('joint', in_channels={'text'}, reply=reply, likelihood=likelihood)
+    outputs = ['behavior:choice', 'behavior:log_probabilities']
+    task = TaskContext(response=Choice(pseudo.OPTIONS, verbatim=True))
+    score = _score(model, _Sessions([lambda: stimulus_session(pseudo.text_stimuli(), outputs, task)], set(outputs)))
+    assert _entry(score) == {'subject': 'joint', 'activation_store': 'off', 'parts': [
+        _item('likelihood', _qualified(likelihood), outputs, conversion={'behavior:choice': 'softmax_argmax'})]}
+
+
+def test_a_readout_that_owns_the_probabilities_is_named_for_them_beside_the_reply():
+    from brainscore_core.responses import Choice
+    reading = pseudo.readout_model()
+    reply = pseudo.reply_model()._reply
+    model = BrainScoreModel('reply-and-readout', extractor={'text': reading._extractors['text']},
+                            in_channels={'text'}, reply=reply, behavioral_readout_layer='late',
+                            capability_config={'behavior-sessions': {'behavior:rating': 'generation'}})
+    outputs = ['behavior:choice', 'behavior:probabilities']
+    task = TaskContext(instruction='Is this a real word?', response=Choice(pseudo.OPTIONS),
+                       fitting_stimuli=pseudo.FITTING)
+    score = _score(model, _Sessions([lambda: stimulus_session(pseudo.text_stimuli(), outputs, task)], set(outputs)))
+    extract = _qualified(reading._extractors['text'])
+    assert _entry(score) == {'subject': 'reply-and-readout', 'activation_store': 'off', 'parts': [
+        _item('extractor', extract, [], ['late']), _item('readout', READOUT, [], ['late']),
+        _item('reply', _qualified(reply), ['behavior:choice']),
+        _item('extractor', extract, ['behavior:probabilities'], ['late']),
+        _item('readout', READOUT, ['behavior:probabilities'], ['late'])]}
+
+
+def test_a_composite_region_lists_its_extractor_with_every_layer_it_read():
+    from brainscore import CompositeSelector
+    model = BrainScoreModel('composite', extractor={'text': text_wrapper(batch_size=2)},
+                            region_layer_map={'IT': CompositeSelector((('enc', (0,)), ('proj', (0, 1))))})
+    score = _score(model, _Neural(_sentences(), {'neural:IT'}))
+    assert _entry(score) == {'subject': 'composite', 'activation_store': 'off',
+                             'parts': [_text(['neural:IT'], ['enc', 'proj'])]}
+
+
+def test_a_fused_extractor_is_listed_once_for_the_region_it_served(tmp_path):
+    from tests.brainscore_model.test_fused_extractor import Fused
+    fused = Fused()
+    model = BrainScoreModel('fused', extractor={('vision', 'text'): fused}, region_layer_map={'A': 'layers.3'})
+    from PIL import Image
+    paths = []
+    for name in 'ab':
+        paths.append(str(tmp_path / f'{name}.png'))
+        Image.new('RGB', (4, 4)).save(paths[-1])
+    stimuli = _stimuli('provenance-fused', image_path=paths, sentence=['one', 'two'])
+    score = _score(model, _Sessions([lambda: stimulus_session(stimuli, ['neural:A'])], {'neural:A'},
+                                    inputs=('text', 'vision:image')))
+    assert len(fused.calls) == 1
+    assert _entry(score) == {'subject': 'fused', 'activation_store': 'off', 'parts': [
+        _item('extractor', 'tests.brainscore_model.test_fused_extractor.Fused', ['neural:A'], ['layers.3'])]}
+
+
+def _tower(name):
+    def extract(stimuli, layers):
+        ids = list(stimuli['stimulus_id'])
+        return NeuroidAssembly(np.ones((len(ids), 2)), dims=['presentation', 'neuroid'], coords={
+            'stimulus_id': ('presentation', ids), 'neuroid_id': ('neuroid', [f'{name}0', f'{name}1']),
+            'layer': ('neuroid', [layers[0]] * 2)})
+    extract.__qualname__ = f'tower_{name}'
+    return extract
+
+
+def test_a_stream_with_no_table_lists_both_towers_that_served_one_region(tmp_path):
+    """Image events reach the image extractor and video events the video one: one region, two parts."""
+    from brainscore_core.streaming import Session, StreamEvent
+    image, video = _tower('image'), _tower('video')
+    model = BrainScoreModel('two-towers', extractor={'vision': image, 'video': video},
+                            region_layer_map={'IT': LayerSelector(name='L', modality='vision')})
+    picture, clip = tmp_path / 'a.png', tmp_path / 'b.mp4'
+    from PIL import Image
+    Image.new('RGB', (4, 4)).save(picture)
+    clip.write_bytes(b'not decoded by this extractor')
+    events = lambda: [StreamEvent('vision:image', str(picture), 0.0, {'stimulus_id': 'a'}),
+                      StreamEvent('vision:video', str(clip), 1.0, {'stimulus_id': 'b'})]
+    score = _score(model, _Sessions([lambda: Session(iter(events()), ['neural:IT'])], {'neural:IT'},
+                                    inputs=('vision:image', 'vision:video')))
+    assert _entry(score) == {'subject': 'two-towers', 'activation_store': 'off', 'parts': [
+        _item('extractor', f'{__name__}.tower_image', ['neural:IT'], ['L']),
+        _item('extractor', f'{__name__}.tower_video', ['neural:IT'], ['L'])]}
+
+
+def test_a_custom_session_with_a_table_lists_what_ran():
+    from brainscore_core.streaming import Session, StreamEvent
+    table = _sentences()
+    events = [StreamEvent('text', sentence, float(i)) for i, sentence in enumerate(table['sentence'])]
+    model = _text_model(batch_size=2)
+    score = _score(model, _Sessions([lambda: Session(events, ['neural:IT'], stimuli=table)], {'neural:IT'}))
+    assert _entry(score) == {'subject': 'provenance-text', 'activation_store': 'off',
+                             'parts': [_text(['neural:IT'])]}
+
+
+def test_two_sessions_in_sequence_give_one_entry_each():
+    model = BrainScoreModel('two-regions', extractor={'text': text_wrapper(batch_size=2)},
+                            region_layer_map={'IT': 'proj', 'V4': 'enc'})
+    makers = [lambda: stimulus_session(_sentences(), ['neural:IT']), lambda: stimulus_session(_sentences(), ['neural:V4'])]
+    score = _score(model, _Sessions(makers, {'neural:IT', 'neural:V4'}))
+    assert score.attrs['provenance'] == (      # sorted by content
+        {'subject': 'two-regions', 'activation_store': 'off', 'parts': [_text(['neural:V4'], ['enc'])]},
+        {'subject': 'two-regions', 'activation_store': 'off', 'parts': [_text(['neural:IT'], ['proj'])]})
+
+
+def test_a_session_that_fails_halfway_leaves_none_of_its_parts_on_the_score():
+    calls = []
+
+    def flaky(stimuli, layers):
+        calls.append(layers[0])
+        if layers[0] == 'broken':
+            raise RuntimeError('the extractor failed')
+        return _tower('ok')(stimuli, layers)
+    model = BrainScoreModel('flaky', extractor={'text': flaky},
+                            region_layer_map={'IT': 'broken', 'V4': 'fine'})
+    makers = [lambda: stimulus_session(_sentences(), ['neural:IT']), lambda: stimulus_session(_sentences(), ['neural:V4'])]
+    score = _score(model, _Sessions(makers, {'neural:IT', 'neural:V4'}, catch=True))
+    assert calls == ['broken', 'fine']           # the failed session called the extractor before it failed
+    assert _entry(score) == {'subject': 'flaky', 'activation_store': 'off', 'parts': [
+        _item('extractor', f'{__name__}.{flaky.__qualname__}', ['neural:V4'], ['fine'])]}
