@@ -21,12 +21,14 @@ from collections import OrderedDict
 from typing import Callable, List
 
 import numpy as np
+from result_caching import is_enabled
 from tqdm.auto import tqdm
 
 from brainscore_core.assembly_builder import make_assembly, make_layer_neuroid_coords, make_neuroid_ids
 from brainscore_core.extraction_cache import extraction_fingerprint, file_inputs, model_config
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.model_helpers.selection import split_site
+
 
 
 def get_layer(root, layer: str):
@@ -359,14 +361,16 @@ def _version(cls):
 _UNVERSIONED = set()        # classes already warned about
 
 
-def cache_signature(wrapper, stored: str, inputs, stimuli_identifier):
+def cache_signature(wrapper, stored: str, inputs, stimuli_identifier, *, settings: bool = False):
     """The cache fingerprint for one extraction, or None when the cache does not apply.
 
     ``stored`` names the wrapper's ``@store_xarray`` method; ``inputs`` is what
     the fingerprint reads for the stimuli (the texts, or the files behind paths).
+    With ``settings``, a pair: the fingerprint and the fingerprint of the
+    configuration alone (the key without the inputs), from the same traversal.
     """
     if not stimuli_identifier:
-        return None
+        return (None, None) if settings else None
     if _version(type(wrapper)) is None:
         cls = type(wrapper)
         if cls not in _UNVERSIONED:
@@ -375,9 +379,10 @@ def cache_signature(wrapper, stored: str, inputs, stimuli_identifier):
                 f'{kind(wrapper)} has no _VERSION of its own, so it extracts every time and does not use '
                 f'the activation cache. To cache it, add _VERSION = 1 to its class body and a guard test '
                 f'that pins its values (see tests/test_wrapper_cache_guard.py).', stacklevel=3)
-        return None
+        return (None, None) if settings else None
     return extraction_fingerprint({'configuration': wrapper.cache_config(), 'inputs': inputs},
-                                  cache_identifier=f'{kind(wrapper)}.{stored}')
+                                  cache_identifier=f'{kind(wrapper)}.{stored}',
+                                  part='configuration' if settings else None)
 
 
 class CachingExtractor:
@@ -422,13 +427,33 @@ class CachingExtractor:
         return cache_config(self, self.CACHE_FIELDS)
 
     def _cached(self, inputs, layers, stimuli_identifier=None):
+        from brainscore._model import parts
         stored = f'_from_{self._INPUTS}_stored'
-        signature = cache_signature(self, stored, self._key_inputs(inputs), stimuli_identifier)
+        log = parts.active()
+        if log is None:
+            signature = cache_signature(self, stored, self._key_inputs(inputs), stimuli_identifier)
+        else:
+            signature = self._signature_and_facts(log, stored, inputs, stimuli_identifier)
         if signature is None:
             return in_layer_order(getattr(self, f'_from_{self._INPUTS}')(inputs, layers, stimuli_identifier), layers)
         result = getattr(self, stored)(stimuli_identifier=stimuli_identifier, layers=layers,
                                        extraction_fingerprint=signature, **{self._INPUTS: inputs})
         return in_layer_order(labelled(c_order(result), self._identifier), layers)
+
+    def _signature_and_facts(self, log, stored, inputs, stimuli_identifier):
+        """The cache signature, and this call's settings fingerprint in the session's part log.
+
+        The settings fingerprint is the cache key without the inputs, taken from the
+        traversal that makes the signature: no tensor is read a second time. With the
+        store off nothing is hashed and the fact says so.
+        """
+        signature, settings = cache_signature(self, stored, self._key_inputs(inputs), stimuli_identifier,
+                                              settings=True)
+        if signature is None:
+            settings = ('not hashed (store off)' if not is_enabled(f'{kind(self)}.{stored}')
+                        else 'not hashed (store not used)')
+        log.settings.setdefault(id(self), set()).add(settings)
+        return signature
 
     def _key_inputs(self, inputs):
         """What the cache key reads of the inputs: the bytes of the files behind paths."""

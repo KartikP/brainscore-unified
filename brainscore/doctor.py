@@ -137,6 +137,11 @@ def report():
             lines.append(f'  XX {package:<14s} {error}')
             problems += 1
 
+    from brainscore_core.environment_check import environment_fingerprint
+    lines.append('')
+    # The value every score's software carries: scores compare bit for bit only when it is equal.
+    lines.append(f'environment fingerprint  {environment_fingerprint()}')
+
     lock = _lock_file()
     lines.append('')
     if lock is None:

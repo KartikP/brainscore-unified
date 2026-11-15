@@ -254,6 +254,9 @@ def act(model, row):
             f"policy(row) -> {{output channel: payload}}."
         )
     outputs = model._policy(row)
+    if isinstance(outputs, Mapping):
+        from . import parts
+        parts.note('policy', model._policy, serves=list(outputs))   # the channels it answered
     if not isinstance(outputs, Mapping):
         raise TypeError(
             f"Subject '{model.identifier}' policy returned {type(outputs).__name__}; "
@@ -319,6 +322,8 @@ def call_extractor(extractor, stimuli, layers):
     the store-off result bit for bit, and leaves a C-ordered result as it is.
     """
     from brainscore.model_helpers._extractors import c_order
+    from . import parts
+    parts.note('extractor', extractor, layers)    # it runs: listed for the outputs being served
     return c_order(extractor(stimuli, layers=layers))
 
 
@@ -445,15 +450,18 @@ class _SharedCall:
 
     def __call__(self, stimuli, layers):
         from brainscore.model_helpers._extractors import LayerDtypesDiffer
+        from . import parts
         if self.shared and set(layers) <= set(self.layers):
             if self.output is None:
                 try:
-                    self.output = call_extractor(self.extractor, stimuli, self.layers)
+                    with parts.unnoted():     # each request of the shared pass notes its own layers
+                        self.output = call_extractor(self.extractor, stimuli, self.layers)
                 except LayerDtypesDiffer:
                     self.shared = False
                     return call_extractor(self.extractor, stimuli, layers)
             part = _layers_of(self.output, list(layers))
             if part is not None:
+                parts.note('extractor', self.extractor, layers)
                 return part
         return call_extractor(self.extractor, stimuli, layers)
 

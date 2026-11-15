@@ -86,8 +86,8 @@ interface is exercised, but the result is not a brain-alignment claim.
 
 | Capability | Example | Status | Evidence |
 | --- | --- | --- | --- |
-| Vision neural encoding | MajajHong2015 V4/IT | validated | Baseline manifest plus slow replay test preserve anchored leaderboard scores. |
-| Language neural encoding | Pereira2018 | validated | Same regression-baseline path as vision; normal CI checks manifest shape, slow tier re-scores. |
+| Vision neural encoding | MajajHong2015 V4/IT | validated | The table of reference scores (`tests/fixtures/reference-scores.json`) holds the leaderboard values and the cloud reference values; normal CI checks the table, the slow tier re-scores the leaderboard rows. |
+| Language neural encoding | Pereira2018 | validated | The same table holds cloud reference values for Pereira2018 ridge (GPT-2, CLIP-ViT-B/32); normal CI checks the table. |
 | Behavioral lexical decision | ROAR / Yeatman2021 | validated | Registered image/text variants, shared split, ceiling, and CLIP-above-chance scoring are tested. |
 | Video neural encoding | Lahner2024 BOLDMoments | EC2-only | Local tests verify registration, temporal preprocessing, and V-JEPA wiring; full scoring is EC2-only. |
 | Audio wrapper | Wav2Vec2-style features | structurally-tested | Construction, stimulus columns, aggregation, truncation, and cache keys are unit-tested without weights. |

@@ -21,7 +21,7 @@ from brainscore_core.streaming import StreamEvent
 
 import numpy as np
 
-from . import answers
+from . import answers, parts
 from .dispatch import detect_modalities, extract_for_modality, pick_modality, record
 from .recording import gather_region, per_stimulus, region_modality, region_selector
 
@@ -374,6 +374,7 @@ class BehavioralReadout:
         else:
             self.readout_classifier = ProbabilitiesClassifier()
             self.readout_classifier.fit(features, labels)
+        parts.note('readout', self.readout_classifier, [owner._behavioral_readout_layer])   # the fit
 
     @staticmethod
     def extract_labels(stimuli):
@@ -407,6 +408,7 @@ class BehavioralReadout:
     def predict_probabilities(self, stimuli):
         """Return a BehavioralAssembly of per-label probabilities."""
         features = self.extract_behavioral_features(stimuli)
+        parts.note('readout', self.readout_classifier, [self.owner._behavioral_readout_layer])
         return answers.with_record(self.readout_classifier.predict_proba(features),
                                    response_record('behavior', 'readout'))
 
@@ -619,7 +621,8 @@ class BehavioralReadout:
             path, probability_source = planned or self._choose_path(task, channels)
         layers = {region: list(region_selector(owner, region).layer_paths) for region in regions}
         if response is None:
-            behavior, neural = self._answer_legacy_task(stimuli, layers)
+            with parts.serving(channels):
+                behavior, neural = self._answer_legacy_task(stimuli, layers)
             return ({channel: behavior for channel in channels}, neural)
         labels = labels_of(response)
         # Every trial's prompt is built first, so a bad layout fails before any compute
@@ -628,8 +631,12 @@ class BehavioralReadout:
         neural, outputs, extras = {}, {}, []
         rt_source = None   # (float64 probabilities, row validity, record) for a reaction time
 
+        # The outputs each part answers here: what the code below writes from its result.
+        probability_side = [c for c in channels if c in self._PROBABILITY_SIDE]
+        answer_side = [c for c in channels if c not in self._PROBABILITY_SIDE and c != LOG_PROBABILITIES]
         if path == 'readout':
-            values, neural = self._read_out_and_record(stimuli, layers, raw=True)
+            with parts.serving(channels):
+                values, neural = self._read_out_and_record(stimuli, layers, raw=True)
             if isinstance(response, Scale):
                 # The readout answers on the task's scale: the regression value is put on the
                 # nearest step (the raw answer keeps it); a value outside the bounds stays.
@@ -671,6 +678,7 @@ class BehavioralReadout:
                          else self.by_answer(task))
             if path == 'likelihood':
                 def call(row, prompt):
+                    parts.note('likelihood', owner._likelihood, serves=channels)
                     scores = owner._likelihood(with_history(prompt), list(prompt.response.labels))
                     if remember:
                         self.history.append((prompt, max(scores, key=scores.get)))
@@ -679,8 +687,11 @@ class BehavioralReadout:
                 def call(row, prompt):
                     shown = with_history(prompt)
                     # Scoring first keeps the recorded first pass the prompt alone.
+                    if score_first:
+                        parts.note('likelihood', owner._likelihood, serves=probability_side)
                     scores = (owner._likelihood(shown, list(prompt.response.labels))
                               if score_first else None)
+                    parts.note('reply', owner._reply, serves=answer_side)
                     reply, extra = answers.reply_and_meta(owner._reply(shown))
                     if remember:
                         self.history.append((prompt, str(reply)))
@@ -688,8 +699,11 @@ class BehavioralReadout:
             else:   # a registration's answer: it phrases a Choice itself; the reply is parsed below
                 def call(row, prompt):
                     # The likelihood scores the prompt first when it owns the probabilities.
+                    if score_first:
+                        parts.note('likelihood', owner._likelihood, serves=probability_side)
                     scores = (owner._likelihood(prompt, list(prompt.response.labels))
                               if score_first else None)
+                    parts.note('answer', owner._answer, serves=answer_side)
                     reply, extra = answers.reply_and_meta(owner._answer(
                         stimulus_row=row, instruction=task.instruction,
                         label_set=list(prompt.response.labels)))
@@ -736,9 +750,11 @@ class BehavioralReadout:
                     rt_source = _softmax_probabilities(
                         outputs, answers.score_rows(scores, row_labels), stimuli, axis)
                 elif probability_source == 'readout':
+                    with parts.serving(probability_side):    # a separate probability pass
+                        features = self.extract_behavioral_features(stimuli)
+                        parts.note('readout', self.readout_classifier, [owner._behavioral_readout_layer])
                     rt_source = self._readout_probabilities(outputs, answers.in_order(
-                        self.readout_classifier.predict_proba(
-                            self.extract_behavioral_features(stimuli)), labels), stimuli)
+                        self.readout_classifier.predict_proba(features), labels), stimuli)
         if isinstance(response, Choice) and response.reaction_time and rt_source is not None:
             # From the probabilities each path read before stage 1, with their validity.
             outputs['behavior:rt'] = answers.reaction_time(*rt_source, response.reaction_time,
@@ -747,6 +763,10 @@ class BehavioralReadout:
         first = outputs[response.channels[0]]
         outputs['behavior'] = answers.with_record(first, {**first.attrs['response'],
                                                           'format': 'behavior'})
+        log = parts.active()
+        if log is not None:     # the conversion each answer record names, on the part that gave it
+            for channel in channels:
+                log.conversion(channel, outputs[channel].attrs['response'].get('conversion'))
         meta = answers.trials_meta(extras)
         if meta:
             # The reply's extra data goes into the meta of its answer event, as a
@@ -799,9 +819,11 @@ class BehavioralReadout:
         if self.response_path == 'generation':
             task = self.task
             label_set = list(task.label_set)
-            replies, neural = per_stimulus(
-                self.owner, stimuli, layers, lambda row, _: answers.reply_and_meta(self.owner._answer(
-                    stimulus_row=row, instruction=task.instruction, label_set=label_set))[0])
+            def call(row, _):
+                parts.note('answer', self.owner._answer)
+                return answers.reply_and_meta(self.owner._answer(
+                    stimulus_row=row, instruction=task.instruction, label_set=label_set))[0]
+            replies, neural = per_stimulus(self.owner, stimuli, layers, call)
             stamp = self._stamp('answer', 'prompt')
             return (answers.legacy_one_hot(replies, label_set, stimuli),
                     {region: assembly.assign_attrs(recording=stamp) for region, assembly in neural.items()})
@@ -841,10 +863,18 @@ class BehavioralReadout:
         readout_layer = owner._behavioral_readout_layer
         modality = self.refuse_readout_regions(stimuli, layers)
 
+        answering = parts.serving_now()
+
         def extract(call_layers):
-            extracted = owner._recorder.ensure_layer_provenance(
-                extract_for_modality(owner, stimuli, modality, call_layers), call_layers,
-                description='Readout extraction')
+            # This call serves the readout's outputs when it reads the readout layer, and each
+            # region whose layers it reads.
+            serves = (list(answering) if readout_layer in call_layers else []) + [
+                f'neural:{region}' for region, region_layers in layers.items()
+                if set(region_layers) & set(call_layers)]
+            with parts.serving(serves):
+                extracted = owner._recorder.ensure_layer_provenance(
+                    extract_for_modality(owner, stimuli, modality, call_layers), call_layers,
+                    description='Readout extraction')
             layer_of = extracted['layer'].values
             return lambda layer: extracted.isel(neuroid=layer_of == layer)
 
@@ -868,6 +898,7 @@ class BehavioralReadout:
             part_of = {region: extract(list(region_layers)) for region, region_layers in layers.items()}
         if 'presentation' in features.dims and 'neuroid' in features.dims:
             features = features.transpose('presentation', 'neuroid')
+        parts.note('readout', self.readout_classifier, [readout_layer])
         if raw and isinstance(self.task.response, Scale):
             behavior = [(float(v), None) for v in self.readout_classifier.predict(features)]
         else:
