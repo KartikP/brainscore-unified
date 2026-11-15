@@ -24,7 +24,11 @@ def kind_folder(tmp_path, monkeypatch):
         folder.mkdir()
         (folder / '__init__.py').write_text(body)
     package('good', 'import brainscore\nbrainscore._fake_registered = True\n')
-    package('broken', 'import a_module_that_does_not_exist_here\n')
+    package('broken', "import brainscore\n"
+                      "def build():\n    return 'partial'\n"
+                      "brainscore.model_registry['discovery-partial'] = build\n"
+                      "brainscore.model_registry['discovery-partial-lambda'] = lambda: 'partial'\n"
+                      "import a_module_that_does_not_exist_here\n")
     package('_private', 'raise RuntimeError("a folder starting with _ is not a plugin")\n')
     (tmp_path / 'helper.py').write_text('raise RuntimeError("a module is not a plugin")\n')
     name = f'brainscore.{KIND}'
@@ -74,3 +78,10 @@ def test_import_brainscore_loads_only_the_init_of_a_dormant_plugin():
             "assert MirageRuntime.__module__ == 'brainscore.models.mirage.runtime'\n")
     result = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr[-2000:]
+
+
+def test_a_failed_plugin_leaves_no_entry_it_registered_before_its_error(kind_folder):
+    brainscore._import_plugins(kind_folder)
+    assert 'discovery-partial' not in brainscore.model_registry          # a factory of the package
+    assert 'discovery-partial-lambda' not in brainscore.model_registry   # a statement in its folder
+    assert 'chance-baseline' in brainscore.model_registry                # other plugins stay

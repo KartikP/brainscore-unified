@@ -107,6 +107,7 @@ def _import_plugins(package: str) -> None:
     still register, and the loaders' not-found message names it.
     """
     import importlib
+    import os
     import pkgutil
     import sys
     for info in sorted(pkgutil.iter_modules(sys.modules[package].__path__), key=lambda i: i.name):
@@ -117,6 +118,14 @@ def _import_plugins(package: str) -> None:
             importlib.import_module(name)
         except ImportError as error:
             _plugin_import_failures[name] = f'{type(error).__name__}: {error}'
+            folder = Path(info.module_finder.path) / info.name
+            # Remove what the package registered before its error (the source of an entry is
+            # a factory of the package, or a registering statement in a file of its folder).
+            for registry in (model_registry, benchmark_registry, metric_registry, data_registry,
+                             stimulus_set_registry, data_builder_registry):
+                for key, source in list(registry._sources.items()):
+                    if source.startswith((f'{name}.', f'{folder}{os.sep}')):
+                        del registry[key]
             _logger.warning(f'plugin {name} failed to import and registers nothing: '
                             f'{type(error).__name__}: {error}')
 
