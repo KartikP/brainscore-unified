@@ -52,13 +52,15 @@ def _make_answer(blip_model, blip_processor, max_new_tokens: int = 8):
     prompt it in a captioning-style template that it handles better:
     "Question: {instruction} Answer:" → model completes with label.
     """
+    from brainscore_core.responses import Choice
     device = next(blip_model.parameters()).device
 
     def generate(stimulus_row, instruction: str, label_set: List[str]) -> str:
         image = Image.open(stimulus_row['image_file_name']).convert('RGB')
-        # BLIP-2 OPT responds best to "Question: ... Answer:" template
-        prompt = (f"Question: {instruction} "
-                  f"Choose from: {', '.join(label_set)}. Answer:")
+        # BLIP-2 OPT responds best to "Question: ... Answer:" template; with no
+        # instruction there is no question.
+        prompt = ((f"Question: {instruction} " if instruction else '')
+                  + f"Choose from: {', '.join(label_set)}. Answer:")
         inputs = blip_processor(text=prompt, images=image,
                                 return_tensors='pt')
         # Explicit per-tensor device move. BatchFeature.to(device) does not
@@ -85,13 +87,10 @@ def _make_answer(blip_model, blip_processor, max_new_tokens: int = 8):
         if 'answer:' in response:
             response = response.split('answer:')[-1].strip()
 
-        for lbl in label_set:
-            if response == lbl.lower():
-                return lbl
-        for lbl in label_set:
-            if re.search(rf'\b{re.escape(lbl.lower())}\b', response):
-                return lbl
-        return response  # unparseable — caller defaults to label_set[0]
+        # Core's Choice.parse reads the label; an unread reply is returned as it is
+        # and recorded as an invalid trial.
+        label, _ = Choice(label_set).parse(response)
+        return response if label is None else label
 
     return generate
 

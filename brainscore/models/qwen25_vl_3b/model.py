@@ -16,7 +16,6 @@ Region layer paths are relative to each wrapper's sub-model root:
   language paths  → relative to qwen_model.model.language_model
 """
 
-import re
 import hashlib
 import json
 from pathlib import Path
@@ -27,6 +26,7 @@ from PIL import Image
 
 from brainscore import BrainScoreModel
 from brainscore_core.contract import Subject
+from brainscore_core.responses import Choice
 from brainscore_core.hf_compat import pin_image_processor
 
 
@@ -100,8 +100,8 @@ def _make_answer(qwen_model, qwen_processor, max_new_tokens: int = 8):
             'role': 'user',
             'content': [
                 {'type': 'image', 'image': image},
-                {'type': 'text',  'text': instruction +
-                 f' Answer with exactly one of: {", ".join(label_set)}.'},
+                {'type': 'text',  'text': (f'{instruction} ' if instruction else '')
+                 + Choice(label_set).directive()},
             ],
         }]
         prompt = qwen_processor.apply_chat_template(
@@ -123,15 +123,10 @@ def _make_answer(qwen_model, qwen_processor, max_new_tokens: int = 8):
         response = qwen_processor.tokenizer.decode(
             response_ids, skip_special_tokens=True).strip().lower()
 
-        # Robust parsing: prefer exact match, then substring match, then
-        # fall back to first label (BrainScoreModel emits a warning).
-        for lbl in label_set:
-            if response == lbl.lower():
-                return lbl
-        for lbl in label_set:
-            if re.search(rf'\b{re.escape(lbl.lower())}\b', response):
-                return lbl
-        return response  # unparseable — caller will default to label_set[0]
+        # Core's Choice.parse reads the label; an unread reply is returned as it is
+        # and recorded as an invalid trial.
+        label, _ = Choice(label_set).parse(response)
+        return response if label is None else label
 
     return generate
 
