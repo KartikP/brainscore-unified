@@ -44,3 +44,31 @@ def test_random_vit_keeps_its_readout_choice_and_is_applicable_on_roar_image(mon
     subject = BUILDERS['random-vit-b-32'](monkeypatch).get_model('random-vit-b-32')
     assert 'behavior:choice' in subject.out_channels
     assert check_compatibility(subject, Yeatman2021LexicalDecision(channels=('vision:image',)))
+
+
+def _session(rows, labels):
+    from brainscore_core.contract import TaskContext
+    from brainscore_core.responses import Choice
+    from brainscore_core.streaming_helpers import stimulus_session
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    stimuli = StimulusSet(rows)
+    stimuli.identifier = 'chance-trials'
+    return stimulus_session(stimuli, ['behavior:choice'], TaskContext(response=Choice(labels)))
+
+
+def test_chance_baseline_answers_every_trial_occurrence():
+    session = _session([{'stimulus_id': 's', 'sentence': 'a'}, {'stimulus_id': 's', 'sentence': 'a'},
+                        {'stimulus_id': 't', 'sentence': 'b'}], ['real', 'pseudo'])
+    ChanceBaseline().participate(session)
+    choice = session.collect('behavior:choice')
+    assert list(choice['stimulus_id'].values) == ['s', 's', 't']
+    assert list(choice['response_state'].values) == ['valid'] * 3
+    assert choice.values.tolist() == [[1.0, 0.0]] * 3
+
+
+def test_chance_baseline_refuses_options_per_row_at_the_start_of_the_session():
+    import pytest
+    session = _session([{'stimulus_id': 's', 'sentence': 'a', 'options': ('x', 'y')}], 'options')
+    with pytest.raises(ValueError, match=r"options per row \(Choice\('options'\)\) are not supported"):
+        ChanceBaseline().participate(session)
+    assert session.emitted == []

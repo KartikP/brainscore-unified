@@ -62,15 +62,23 @@ class ChanceBaseline(UnifiedModel):
     def participate(self, session) -> None:
         if list(session.outputs or ()) != ['behavior:choice']:
             return super().participate(session)
-        # One answer for the whole table: the choice derived from uniform rows.
+        # One answer for the whole table: the choice derived from uniform rows, one row
+        # for each trial (a stimulus shown twice is answered twice).
         from brainscore_core.response_formats import argmax, response_record
         from brainscore_core.streaming import StreamEvent
-        labels = list(session.task.response.labels)
-        ids = []
+        labels = session.task.response.labels
+        if isinstance(labels, str):
+            raise ValueError("chance-baseline answers a Choice with shared options; options per "
+                             f"row (Choice({labels!r})) are not supported.")
+        labels = list(labels)
+        trials = []
         while (event := session.next_input()) is not None:
-            stimulus_id = (event.meta or {}).get('stimulus_id')
-            if stimulus_id is not None and stimulus_id not in ids:
-                ids.append(stimulus_id)
+            meta = event.meta or {}
+            if meta.get('stimulus_id') is not None:
+                trial = (meta['stimulus_id'], meta.get('table_row', meta.get('stimulus_index')))
+                if trial not in trials:      # one trial may send several columns
+                    trials.append(trial)
+        ids = [stimulus_id for stimulus_id, _ in trials]
         rows = np.full((len(ids), len(labels)), 1.0 / len(labels))
         indices, valid = argmax(rows)
         one_hot = np.where(valid[:, None], np.eye(len(labels))[indices], np.nan).astype(np.float32)
