@@ -20,7 +20,7 @@ Reads (with ``ast``, never imported) the three entry points: unified
    those that rule 11.5 states, each with its sentence. Both may only shrink.
 
 Cannot detect: a difference in arguments (for example another
-``harness_id``) or in what a step does inside; calls through a variable or a
+``entry_point``) or in what a step does inside; calls through a variable or a
 non-Brain-Score helper; a step reached only through ``score`` instead of
 ``_run_score``. Same-pair behaviour is not compared (rule 10 of the
 Ownership Map list).
