@@ -405,7 +405,8 @@ class BehavioralReadout:
         format) and its implied probabilities by the owner of
         ``behavior:probabilities`` (rule 4.11, ``answer_owners``); an owner
         that cannot serve the task's settings (``can`` below) is refused, no
-        other part stands in. A legacy task (``task_type`` with ``label_set``)
+        other part stands in. The choice that accompanies raw scores comes from the
+        owner of the probabilities. A legacy task (``task_type`` with ``label_set``)
         answers on ``behavior``, through ``answer=`` (with an instruction and
         labels) or the readout (with fitting stimuli).
 
@@ -481,16 +482,36 @@ class BehavioralReadout:
                     f"Subject '{owner.identifier}' cannot give implied probabilities: "
                     'it needs likelihood= or a readout (behavioral_readout_layer=, '
                     'fitting_stimuli).', task_type=task.task_type)
-            if {path, source} == {'likelihood', 'readout'}:
-                # One pass gives a likelihood or readout answer and its probabilities;
-                # the executor cannot take the choice from one and the probabilities
-                # from the other. Each owner stands, so the combination is refused.
-                raise ExecutionNotFeasibleError(
-                    f"Subject '{owner.identifier}' cannot give choices from its {path} part "
-                    f"and probabilities from its {source} part in one session; request "
-                    "the choice alone, or state one owner for both outputs.",
-                    task_type=task.task_type)
         return path, source
+
+    # The formats of a response task on each side of a crossed likelihood/readout pair.
+    _CHOICE_SIDE = frozenset({'behavior', 'behavior:choice'})
+    _PROBABILITY_SIDE = frozenset({'behavior:probabilities', 'behavior:rt'})
+
+    def _parts_for(self, task, channels, path=None, source=None) -> Tuple[str, Optional[str]]:
+        """The part that answers and the probability source for the requested ``channels``.
+
+        When the choice and the probabilities have two owners, a likelihood and a
+        readout, one pass cannot give both: a session that requests one format is
+        answered by that format's owner, and a session that requests both is
+        refused before any compute (point j). ``path`` and ``source`` default to
+        the choice for ``task`` (``_choose_path``).
+        """
+        from brainscore_core.compatibility import ExecutionNotFeasibleError
+        if path is None:
+            path, source = self._choose_path(task)
+        if {path, source} != {'likelihood', 'readout'}:
+            return path, source
+        requested = set(channels)
+        if requested & self._CHOICE_SIDE and requested & self._PROBABILITY_SIDE:
+            raise ExecutionNotFeasibleError(
+                f"Subject '{self.owner.identifier}' cannot give choices from its {path} part "
+                f"and probabilities from its {source} part in one session; request one format "
+                "in the session, or state one owner for both outputs.",
+                task_type=task.task_type)
+        if requested & self._PROBABILITY_SIDE:
+            return source, source
+        return path, None
 
     def respond(self, stimuli, channels, regions=()):
         """Answer a response task; return ``({channel: assembly}, {region: NeuroidAssembly})``.
@@ -503,7 +524,9 @@ class BehavioralReadout:
         """
         from brainscore_core.responses import Choice, Scale, Text, labels_of, trial_prompt
         owner, task = self.owner, self.task
-        response, path = task.response, self.response_path
+        response, path, probability_source = task.response, self.response_path, self.probability_source
+        if response is not None:
+            path, probability_source = self._parts_for(task, channels, path, probability_source)
         layers = {region: list(region_selector(owner, region).layer_paths) for region in regions}
         if response is None:
             behavior, neural = self._answer_legacy_task(stimuli, layers)
@@ -543,11 +566,11 @@ class BehavioralReadout:
                         parameters={'tie': 'first', 'option_order': 'readout'}),
                     raw=answers.source_rows(source),
                     errors=answers.conversion_errors(chose))
-                if self.probability_source == 'readout':
+                if probability_source == 'readout':
                     rt_source = self._readout_probabilities(
                         outputs, answers.in_order(values, labels), stimuli)
         else:
-            score_first = path == 'generation' and self.probability_source == 'likelihood'
+            score_first = path == 'generation' and probability_source == 'likelihood'
             remember = owner._memory == 'trial_history'
             if remember and owner._reply is None and owner._likelihood is None:
                 raise ValueError("memory='trial_history' needs reply= or likelihood=; answer= cannot see "
@@ -599,7 +622,7 @@ class BehavioralReadout:
                         logp, None, stimuli, axis, response_record(
                             'behavior:probabilities', 'likelihood', category='model-derived',
                             parameters={'scale': 'log'}))
-                elif self.probability_source == 'likelihood':
+                elif probability_source == 'likelihood':
                     rt_source = _softmax_probabilities(outputs, logp, stimuli, axis)
             elif isinstance(response, Text):
                 parsed = [response.parse(reply) for reply in replies]
@@ -624,11 +647,11 @@ class BehavioralReadout:
                 if score_first:
                     rt_source = _softmax_probabilities(
                         outputs, answers.score_rows(scores, row_labels), stimuli, axis)
-                elif self.probability_source == 'readout':
+                elif probability_source == 'readout':
                     rt_source = self._readout_probabilities(outputs, answers.in_order(
                         self.readout_classifier.predict_proba(
                             self.extract_behavioral_features(stimuli)), labels), stimuli)
-        if isinstance(response, Choice) and response.reaction_time:
+        if isinstance(response, Choice) and response.reaction_time and rt_source is not None:
             # From the probabilities each path read before stage 1, with their validity.
             outputs['behavior:rt'] = answers.reaction_time(*rt_source, response.reaction_time,
                                                            stimuli)

@@ -121,3 +121,43 @@ def test_each_answered_format_comes_from_its_owner(parts):
             raw_scores = getattr(task.response, 'raw_scores', False)
             owner = owner_of('behavior:probabilities' if raw_scores else channel)
             assert record['method'] == owner, (parts, name, channel)
+
+
+# --- Z01: one format of a crossed likelihood/readout pair -----------------------------
+
+CROSSED = {
+    'likelihood choice': {'behavior:choice': ('likelihood', 'softmax_argmax'),
+                          'behavior:probabilities': 'readout'},
+    'readout choice': {'behavior:choice': ('readout', 'argmax'),
+                       'behavior:probabilities': ('likelihood', 'softmax')},
+}
+CHOICE_AND_PROBABILITIES = TaskContext(instruction='Which?',
+                                       response=Choice(['cat', 'dog'], probabilities=True),
+                                       fitting_stimuli=FITTING)
+
+
+@pytest.mark.parametrize('arrangement', sorted(CROSSED))
+@pytest.mark.parametrize('channel', ['behavior:choice', 'behavior:probabilities'])
+def test_one_format_of_a_crossed_pair_is_served_by_its_owner(arrangement, channel):
+    owners = CROSSED[arrangement]
+    calls = []
+    model = _model('likelihood', 'behavioral_readout_layer', owners=owners, calls=calls)
+    answer = _run(model, [channel], CHOICE_AND_PROBABILITIES).collect(channel)
+    owner = owners[channel] if isinstance(owners[channel], str) else owners[channel][0]
+    assert answer.attrs['response']['method'] == owner
+    assert answer.sizes['presentation'] == len(STIMULI)
+    if owner == 'likelihood':
+        assert calls.count('likelihood') == len(STIMULI)
+    else:
+        assert 'likelihood' not in calls
+
+
+@pytest.mark.parametrize('arrangement', sorted(CROSSED))
+def test_both_formats_of_a_crossed_pair_are_refused_before_compute(arrangement):
+    calls = []
+    model = _model('likelihood', 'behavioral_readout_layer', owners=CROSSED[arrangement], calls=calls)
+    with pytest.raises(ExecutionNotFeasibleError,
+                       match=r"from its (likelihood|readout) part and probabilities from its "
+                             r"(readout|likelihood) part in one session; request one format in the session"):
+        _run(model, ['behavior:choice', 'behavior:probabilities'], CHOICE_AND_PROBABILITIES)
+    assert calls == []
