@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from brainscore_core import Subject
-from brainscore_core.compatibility import CompatibilityError, check_compatibility, ExecutionNotFeasibleError
+from brainscore_core.compatibility import CompatibilityError, check_compatibility
 from brainscore_core.metrics import Score
 from brainscore import RandomSelection
 from brainscore_core.events import PerturbationApplied, Selection
@@ -221,15 +221,14 @@ class TestPreflight:
         assert subject.sessions == 0
 
     @pytest.mark.parametrize('in_channels', [{'text', 'stimulation'}, {'text'}])
-    def test_subject_without_lesion_input_is_refused_before_compute(self, in_channels):
-        # Declares every requested output, but not the lesion input. Pre-flight
-        # passes (inputs need only overlap, rule 5.2), so the benchmark refuses
-        # it from the declaration before any session.
+    def test_subject_without_lesion_input_is_na_in_pre_flight(self, in_channels):
+        # Declares every requested output, but not the lesion input: its lesion
+        # record is answered only from the intervention inputs it takes (pre-flight
+        # rule 4), and the benchmark sends none of them, so the pair is N/A.
         subject = _Subject()
         subject.in_channels = in_channels
-        check_compatibility(subject, self._bench())
-        with pytest.raises(ExecutionNotFeasibleError, match='lesion'):
-            self._bench()(subject)
+        with pytest.raises(CompatibilityError, match="'perturbation'"):
+            check_compatibility(subject, self._bench())
         assert subject.sessions == 0
 
     def test_an_addressed_lesion_declaration_is_refused_by_pre_flight(self):
