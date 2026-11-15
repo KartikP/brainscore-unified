@@ -904,6 +904,62 @@ def test_a_log_probability_request_with_no_answer_stays_an_error(prepared, tmp_p
         b(_Silent(skip=lambda sid: True))
 
 
+def test_stated_change_a_finite_choice_row_marked_invalid_loses_credit(prepared, tmp_path):
+    """M9-03, stated change: a custom subject's finite one-hot row with answer_valid False
+    counted as answered before; its state is invalid, so it is wrong now. No registered
+    producer sends such a row (theirs are all-NaN when not valid)."""
+    from brainscore_core.response_formats import response_record
+    from brainscore_core.streaming import StreamEvent
+    from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
+
+    class _FlagsFirst(_ChoiceCells):
+        def participate(self, session):
+            while session.next_input() is not None:
+                pass
+            ids = list(session.stimuli['stimulus_id'])
+            rows = np.array([[1.0, 0.0] if _native_cell(sid) == '1' else [0.0, 1.0] for sid in ids],
+                            dtype=np.float32)
+            session.respond(StreamEvent('behavior:choice', BehavioralAssembly(
+                rows, dims=['presentation', 'choice'], coords={
+                    'stimulus_id': ('presentation', ids), 'choice': ['1', '2'],
+                    'raw_answer': ('presentation', [_native_cell(sid) for sid in ids]),
+                    'answer_valid': ('presentation', [i != 0 for i in range(len(ids))])},
+                attrs={'response': response_record('behavior:choice', 'test')}), None))
+    b = brainscore.load_benchmark('EWoK-core-1.0-choice', root=prepared, batch_size=3,
+                                  output_dir=tmp_path / 'run')
+    value = b(_FlagsFirst())
+    assert value.attrs['n_invalid'] == 2              # the first row of each of the two requests
+    assert float(value) < 1.0                          # before this step: 1.0 (all values right)
+
+
+def test_stated_change_a_finite_log_probability_row_with_no_raw_answer_raises(prepared, tmp_path):
+    """M9-03, stated change: core stores a row with no raw answer as missing; the
+    log-probability form now raises for it (before: its finite values were scored)."""
+    from brainscore._model.behavioral import VERBATIM_LOG_PROBABILITIES
+    from brainscore_core.response_formats import response_record
+    from brainscore_core.streaming import StreamEvent
+    from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
+
+    class _NoRaw(_ChoiceCells):
+        out_channels = {'behavior:log_probabilities'}
+
+        def participate(self, session):
+            while session.next_input() is not None:
+                pass
+            ids = list(session.stimuli['stimulus_id'])
+            options = [list(o) for o in session.stimuli['options']]
+            session.respond(StreamEvent('behavior:log_probabilities', BehavioralAssembly(
+                np.array([[-1.0, -2.0]] * len(ids)), dims=['presentation', 'choice'], coords={
+                    'stimulus_id': ('presentation', ids), 'choice': [0, 1],
+                    'raw_answer': ('presentation', [None] * len(ids))},
+                attrs={'response': response_record(
+                    'behavior:log_probabilities', 'test', category='model-derived',
+                    parameters=VERBATIM_LOG_PROBABILITIES)}), None))
+    b = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared, output_dir=tmp_path / 'run')
+    with pytest.raises(ValueError, match='a log probability is missing'):
+        b(_NoRaw())
+
+
 def test_a_value_within_cores_tolerance_above_0_is_valid(prepared, tmp_path):
     """M9-04: the counts are core's states; 5e-7 nats is a rounded 0 (valid), 0.01 is invalid."""
     for value, invalid in ((5e-7, 0), (0.01, 6)):

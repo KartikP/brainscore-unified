@@ -123,3 +123,41 @@ def test_a_missing_answer_counts_as_wrong_and_is_counted_apart():
     assert (score.attrs['n_trials'], score.attrs['n_valid'], score.attrs['n_invalid'],
             score.attrs['n_missing']) == (4, 3, 0, 1)
     assert score.attrs['result_validity'] == 'valid'
+
+
+def test_stated_change_a_finite_row_marked_invalid_loses_credit():
+    """M9-03, stated change: a custom subject's one-hot row with answer_valid False counted
+    as answered before this step (1.0 here); its state is invalid, so it is wrong now (0.75).
+    No registered producer sends such a row: theirs are all-NaN when not valid."""
+    import numpy as np
+    from brainscore_core import Subject
+    from brainscore_core.response_formats import response_record
+    from brainscore_core.streaming import StreamEvent
+    from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
+    truth = {'w1': 'real', 'w2': 'real', 'p1': 'pseudo', 'p2': 'pseudo'}
+
+    class _FlagsFirst(Subject):
+        identifier = 'flags-first'
+        in_channels = {'text'}
+        out_channels = {'behavior:choice'}
+        required_channels = set()
+
+        def participate(self, session):
+            while session.next_input() is not None:
+                pass
+            ids = list(session.stimuli['stimulus_id'])
+            rows = np.array([[1.0, 0.0] if truth[sid] == 'real' else [0.0, 1.0] for sid in ids],
+                            dtype=np.float32)
+            session.respond(StreamEvent('behavior:choice', BehavioralAssembly(
+                rows, dims=['presentation', 'choice'], coords={
+                    'stimulus_id': ('presentation', ids), 'choice': ['real', 'pseudo'],
+                    'raw_answer': ('presentation', [truth[sid] for sid in ids]),
+                    'answer_valid': ('presentation', [sid != 'w1' for sid in ids])},
+                attrs={'response': response_record('behavior:choice', 'test')}), None))
+
+        def reset(self):
+            pass
+
+    score = _benchmark()(_FlagsFirst())
+    assert float(score.attrs['raw']) == pytest.approx(.75)
+    assert (score.attrs['n_valid'], score.attrs['n_invalid']) == (3, 1)
