@@ -413,7 +413,9 @@ class BehavioralReadout:
         A task with a response is answered by the owner of its answer format
         (the raw scores of a raw-scores Choice, else the response kind's own
         format: choice, rating or text) and, when ``formats`` request
-        probabilities or a reaction time, its implied probabilities by the
+        probabilities or a reaction time or the response carries the
+        probabilities switch or a reaction-time link (the passes of the task
+        stay as before stage 3), its implied probabilities by the
         owner of ``behavior:probabilities`` (rule 4.11, ``answer_owners``); an
         owner that cannot serve the task's settings (``can`` below) is refused,
         no other part stands in. The choice that accompanies raw scores comes
@@ -488,7 +490,13 @@ class BehavioralReadout:
                 task_type=task.task_type)
         source = None
         requested = set(formats)
-        if isinstance(response, Choice) and requested & self._PROBABILITY_SIDE:
+        wanted = requested & self._PROBABILITY_SIDE
+        # The passes of a task stay as they were: while the response carries the
+        # probabilities switch or a reaction-time link, the probability owner runs
+        # (first, for a reply) even when the session does not request its formats;
+        # an unrequested answer is not sent. Stage 3 deletes the switch (a stated change).
+        if isinstance(response, Choice) and (wanted or response.probabilities
+                                             or response.reaction_time or response.raw_scores):
             source = self._owner_serving('behavior:probabilities', {
                 'likelihood': owner._likelihood is not None,
                 'readout': readout_wired and not per_row}, task, settings)
@@ -499,13 +507,13 @@ class BehavioralReadout:
                     'fitting_stimuli).', task_type=task.task_type)
         if {path, source} != {'likelihood', 'readout'}:
             return path, source
-        if requested & self._CHOICE_SIDE:
+        if requested & self._CHOICE_SIDE and wanted:
             raise ExecutionNotFeasibleError(
                 f"Subject '{owner.identifier}' cannot give choices from its {path} part "
                 f"and probabilities from its {source} part in one session; request one format "
                 "in the session, or state one owner for both outputs.",
                 task_type=task.task_type)
-        return source, source
+        return (source, source) if wanted else (path, None)
 
     def respond(self, stimuli, channels, regions=()):
         """Answer a response task; return ``({channel: assembly}, {region: NeuroidAssembly})``.

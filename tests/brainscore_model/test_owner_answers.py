@@ -6,11 +6,19 @@ Choice, else the response kind's own format. A task form its owner cannot serve 
 refused before any compute; only bare ``behavior`` (a legacy task) keeps the
 fallback to the one other part that can serve it.
 """
+from contextlib import contextmanager
+
+import numpy as np
 import pytest
 
+from brainscore import BrainScoreModel
+from brainscore.selection import LayerSelector
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice
+from brainscore_core.streaming_helpers import stimulus_session
+from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from tests.brainscore_model.test_answer_ownership import (
     BLIP2, CAUSAL_LM, LEGACY_NO_INSTRUCTION, QWEN, REGISTERED_STATEMENTS, _model, _run)
 from tests.brainscore_model.stage2_answers_baseline import RATINGS, SESSIONS, task_from
@@ -200,14 +208,90 @@ def test_one_configured_task_serves_two_sessions_of_different_formats(owners):
     assert fits == [1]
 
 
-def test_a_choice_only_session_does_not_call_the_probability_owner():
-    """Qwen's reply gives the choice; its likelihood owns the probabilities and is called
-    only when a session requests them."""
-    calls = []
-    model = _model(*QWEN, owners=REGISTERED_STATEMENTS[QWEN], calls=calls)
-    choice = _run(model, ['behavior:choice'], CHOICE_AND_PROBABILITIES).collect('behavior:choice')
-    assert choice.attrs['response']['method'] == 'generation'
-    assert calls.count('reply') == len(STIMULI) and 'likelihood' not in calls
-    del calls[:]
-    _run(model, ['behavior:choice', 'behavior:probabilities'], CHOICE_AND_PROBABILITIES)
-    assert calls.count('reply') == calls.count('likelihood') == len(STIMULI)
+# --- the passes of a task stay as before stage 3 (review finding S2-01) -----------------
+
+class _PassNet:
+    """Each part's pass gives its own activity (likelihood 100, reply 110, answer 120,
+    readout extraction 130, plus the stimulus index), so the recording names its pass."""
+    BASE = {'likelihood': 100, 'reply': 110, 'answer': 120, 'extract': 130}
+
+    def __init__(self):
+        self.calls, self.hooks = [], []
+
+    def forward(self, stimulus_id, kind):
+        self.calls.append(kind)
+        out = {'early': self.BASE[kind] + 'abc'.index(stimulus_id) + np.arange(3.)}
+        for hook in self.hooks:
+            hook(out)
+        return out
+
+
+def _rows(rows, ids):
+    return NeuroidAssembly(np.array(rows), dims=['presentation', 'neuroid'], coords={
+        'stimulus_id': ('presentation', list(ids)),
+        'neuroid_id': ('neuroid', [f'early.{unit}' for unit in range(3)]),
+        'layer': ('neuroid', ['early'] * 3)})
+
+
+class _PassExtractor:
+    """Records the first pass of each trial, as TextWrapper.record does."""
+    identifier = backbone_id = 'pass-net'
+
+    def __init__(self, net):
+        self.net = net
+
+    def __call__(self, stimuli, layers, **kwargs):
+        ids = list(stimuli['stimulus_id'])
+        return _rows([self.net.forward(i, 'extract')['early'] for i in ids], ids)
+
+    @contextmanager
+    def record(self, layers, stimuli=None):
+        captured, recording = [], type('Recording', (), {})()
+
+        def take(_row):
+            first = captured[0]
+            captured.clear()
+            return {layer: _rows([first['early']], ['?']) for layer in layers}
+        recording.take = take
+        self.net.hooks.append(captured.append)
+        try:
+            yield recording
+        finally:
+            self.net.hooks.remove(captured.append)
+
+
+def _pass_model(net, parts, owners):
+    every = {
+        'reply': lambda prompt: net.forward(prompt.stimulus_id, 'reply') and 'cat',
+        'likelihood': lambda prompt, labels: net.forward(prompt.stimulus_id, 'likelihood') and {
+            label: -float(i) for i, label in enumerate(labels)},
+        'answer': lambda stimulus_row, instruction, label_set: net.forward(
+            stimulus_row['stimulus_id'], 'answer') and label_set[0],
+        'behavioral_readout_layer': 'early'}
+    return BrainScoreModel('pass-net', extractor={'text': _PassExtractor(net)}, in_channels={'text'},
+                           region_layer_map={'A': LayerSelector('early', modality='text')},
+                           **{part: every[part] for part in parts},
+                           capability_config={'behavior-sessions': owners})
+
+
+PASS_STIMULI = StimulusSet({'stimulus_id': ['a', 'b', 'c'], 'sentence': ['x', 'y', 'z']})
+PASS_STIMULI.identifier = 'pass-net'
+PROBABILITIES_RAW_TEXT = TaskContext(response=Choice(['cat', 'dog'], probabilities=True, raw_text=True))
+
+
+@pytest.mark.parametrize('parts', [CAUSAL_LM, QWEN], ids=['causal lm', 'qwen'])
+@pytest.mark.parametrize('outputs', [['behavior:choice', 'neural:A'], ['neural:A']],
+                         ids=['choice and neural', 'neural only'])
+def test_a_probabilities_task_keeps_its_passes_and_its_recording(parts, outputs):
+    """The values are those of a37dcb3: the likelihood (the probabilities' owner) scores the
+    prompt first, so the recording comes from the likelihood pass, whether or not the session
+    requests probabilities."""
+    net = _PassNet()
+    session = stimulus_session(PASS_STIMULI, outputs, task=PROBABILITIES_RAW_TEXT)
+    _pass_model(net, parts, REGISTERED_STATEMENTS[parts]).participate(session)
+    assert net.calls == ['likelihood', 'reply'] * 3
+    recorded = session.collect('neural:A')
+    assert recorded.values.tolist() == [[100.0, 101.0, 102.0], [101.0, 102.0, 103.0],
+                                        [102.0, 103.0, 104.0]]
+    assert (recorded.attrs['recording']['path'], recorded.attrs['recording']['forward_pass']) == (
+        'generation', 'prompt')
