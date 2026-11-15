@@ -6,7 +6,7 @@ from typing import Any, Callable, Iterator
 @contextmanager
 def transform(provider: Any, targets: Any, apply: Callable[[Any], Any]) -> Iterator[None]:
     import torch
-    from .tools import _selection
+    from .tools import _forward_hook, _selection
     from .attribution import _tensor, _replace
     from brainscore.model_helpers.selection import selection_view
 
@@ -44,8 +44,7 @@ def transform(provider: Any, targets: Any, apply: Callable[[Any], Any]) -> Itera
                 seen.add(selection.layer)
                 return _replace(output, result)
 
-            handle = provider.targets[selection.layer].register_forward_hook(hook)
-            stack.callback(handle.remove)
+            _forward_hook(stack, provider.targets[selection.layer], hook)
         yield
         if seen != {_selection(target).layer for target in targets}:
             raise RuntimeError('An activity transform observed no forward activity; cached-only responses are unsupported')

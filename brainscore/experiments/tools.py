@@ -200,6 +200,15 @@ class PatchActivity(Ablate):
         return instrumentation.patch(self.targets, reference=self.reference)
 
 
+def _forward_hook(stack, module, hook):
+    """Run ``hook`` on each forward call of ``module`` until ``stack`` closes.
+
+    The one place the experiment tools hook a module (R11); recording uses
+    ActivationWindow and interventions use build_pytorch_ablation_fn.
+    """
+    stack.callback(module.register_forward_hook(hook).remove)
+
+
 def _selection(target):
     return Selection(layer=target) if isinstance(target, str) else target
 

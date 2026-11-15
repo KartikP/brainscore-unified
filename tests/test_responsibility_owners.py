@@ -197,8 +197,6 @@ ALLOWED = {
     ('R11 hooks on a network', 'unified:percept_window.py'): _HOOK_TOOL,
     ('R11 hooks on a network', 'unified:experiments/tools.py'):
         'TorchInstrumentation: the Ablate tool family intervenes through its own hooks (R12, decision 14)',
-    ('R11 hooks on a network', 'unified:experiments/transforms.py'): _HOOK_TOOL,
-    ('R11 hooks on a network', 'unified:experiments/attribution.py'): _HOOK_TOOL,
     ('R11 hooks on a network', 'vision:model_helpers/activations/pytorch.py'): _LEGACY,
     ('R11 hooks on a network', 'vision:model_helpers/activations/temporal/model/pytorch.py'): _LEGACY,
     ('R11 hooks on a network', 'language:model_helpers/huggingface.py'): _LEGACY,
