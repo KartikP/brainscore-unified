@@ -4,12 +4,11 @@ Both modes run on the common channels; each question is one stimulus row.
 
 Log-probability mode shows each context as ``text``, exactly as given. The two
 targets are the options of that row (``Choice(labels='options',
-raw_scores=True, raw_text=True)``), and the subject returns the raw score of
-each target on ``behavior:probabilities``: the summed log probability of the
-target's tokens in ``f"{context} {target}"``, raw text, no template, as EWoK's
-``score`` does. A subject needs a ``likelihood`` part: one that does not
-declare ``behavior:probabilities`` is N/A, and one that declares it without a
-``likelihood`` part refuses the session (``ExecutionNotFeasibleError``). The
+verbatim=True)``), and the subject returns the log probability of each target
+on ``behavior:log_probabilities``: the summed log probability of the target's
+tokens in ``f"{context} {target}"``, plain text, no template, as EWoK's
+``score`` does (record layout ``'continuation'``). Only a ``likelihood`` part
+gives that format: a subject that does not declare it is N/A. The
 scoring compares log p(T1 | C1) with log p(T1 | C2) and log p(T2 | C2) with
 log p(T2 | C1).
 Log-probability scores can differ slightly from EWoK's own evaluator, for two
@@ -22,7 +21,7 @@ these two differences.
 Choice mode shows EWoK's own choice prompt (instructions, two worked examples,
 the two contexts numbered 1 and 2, the scenario and a response cue) as
 ``text``, with no added sentence (``Choice(labels=('1', '2'),
-raw_text=True)``). The subject answers on ``behavior:choice``; any subject with
+verbatim=True)``). The subject answers on ``behavior:choice``; any subject with
 a ``reply``, ``likelihood`` or ``answer`` part and the ``text`` input runs it.
 Choice scores can differ from EWoK's own evaluator: a chat model answers
 through its own chat template and the subject decodes by its own rule, where
@@ -66,11 +65,10 @@ _LOGPROBS_NOTE = {
                'tokenizers add a start token before the context. The subject does neither, so '
                "the numbers can differ slightly from EWoK's own."),
 }
-# What each mode asks for. Log probabilities: the raw score of each target after a context.
+# What each mode asks for. Log probabilities: the summed log probability of each target after a context.
 _TASKS = {
-    'logprobs': (Choice(labels='options', raw_scores=True, raw_text=True),
-                 'behavior:probabilities'),
-    'choice': (Choice(labels=('1', '2'), raw_text=True), 'behavior:choice'),
+    'logprobs': (Choice(labels='options', verbatim=True), 'behavior:log_probabilities'),
+    'choice': (Choice(labels=('1', '2'), verbatim=True), 'behavior:choice'),
 }
 
 
@@ -135,9 +133,9 @@ def _answers(subject: Subject, context, stimuli, mode: str, repetition: int) -> 
     if 'choice' not in getattr(answers, 'dims', ()):
         raise TypeError(f'EWoK {mode} requires one row of option values per question')
     record = answers.attrs.get('response') or {}
-    if mode == 'logprobs' and (record.get('parameters') or {}).get('scale') != 'log':
-        raise ValueError('EWoK log-probability mode requires raw log scores '
-                         '(response record parameter scale "log")')
+    if mode == 'logprobs' and (record.get('parameters') or {}).get('layout') != 'continuation':
+        raise ValueError('EWoK log-probability mode compares targets as continuations of a '
+                         "context (response record parameter layout 'continuation')")
     requested = list(stimuli['stimulus_id'])
     order = {stimulus_id: row for row, stimulus_id in
              enumerate(response_stimulus_ids(answers, requested))}
@@ -157,8 +155,8 @@ def _mean_by_version(rows: list[dict]) -> tuple[float, dict]:
 class EWoKBenchmark(BenchmarkBase):
     """Score a prepared local EWoK dataset; no automatic model/data downloads.
 
-    ``mode='logprobs'`` shows each context as ``text`` (raw text, no template)
-    and asks for the raw score of each target on ``behavior:probabilities``.
+    ``mode='logprobs'`` shows each context as ``text`` (plain text, no template)
+    and asks for the log probability of each target on ``behavior:log_probabilities``.
     ``mode='choice'`` shows EWoK's choice prompt as ``text`` and asks for
     ``behavior:choice`` between the labels 1 and 2. The module docstring says
     what each needs and why the numbers can differ from EWoK's own evaluator.

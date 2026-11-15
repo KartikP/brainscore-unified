@@ -27,15 +27,15 @@ RATINGS = FITTING.copy()
 RATINGS['label'] = [6.0, 2.0, 6.0, 2.0]
 RATINGS.identifier = 'behavior-paths-ratings'
 CHOICE_FORM = {'kind': 'choice', 'labels': 'shared', 'reaction_time': None,
-               'raw_scores': False, 'raw_text': False, 'confidence': False, 'fitting': True}
+               'verbatim': False, 'fitting': True}
 SESSIONS = {   # task descriptions and the outputs the session requests
     'legacy answer': ({'kind': 'legacy', 'instruction': True, 'label_set': ['cat', 'dog'], 'fitting': True},
                       ['behavior']),
     'legacy readout': ({'kind': 'legacy', 'instruction': False, 'label_set': ['cat', 'dog'], 'fitting': True},
                        ['behavior']),
     'choice': (dict(CHOICE_FORM), ['behavior:choice', 'behavior:probabilities']),
-    'raw scores': (dict(CHOICE_FORM, raw_scores=True, fitting=False),
-                   ['behavior:choice', 'behavior:probabilities']),
+    'log probabilities': (dict(CHOICE_FORM, verbatim=True, fitting=False),
+                          ['behavior:choice', 'behavior:log_probabilities']),
     'rating': ({'kind': 'scale', 'fitting': True}, ['behavior:rating']),
 }
 
@@ -53,10 +53,9 @@ def task_from(description, fitting_stimuli):
     if kind == 'scale':
         return TaskContext(instruction='How much?', response=Scale(1, 7), fitting_stimuli=fitting)
     choice = Choice(['cat', 'dog'] if description['labels'] == 'shared' else 'options',
-                    reaction_time=description['reaction_time'], raw_scores=description['raw_scores'],
-                    raw_text=description['raw_text'],
-                    confidence=Scale(1, 5) if description['confidence'] else None)
-    return TaskContext(instruction=None if description['raw_text'] else 'Which?', response=choice,
+                    reaction_time=description['reaction_time'],
+                    verbatim=description['verbatim'])
+    return TaskContext(instruction=None if description['verbatim'] else 'Which?', response=choice,
                        fitting_stimuli=fitting)
 
 
@@ -79,7 +78,8 @@ def _channel(answer):
     else:
         flat = [str(v) for v in values.ravel()]
     index = answer.indexes['presentation']
-    return {'dtype': str(values.dtype), 'dims': list(answer.dims), 'shape': list(values.shape), 'values': flat,
+    axis = ({'choice': [_cell(v) for v in answer['choice'].values]} if 'choice' in answer.dims else {})
+    return {**axis, 'dtype': str(values.dtype), 'dims': list(answer.dims), 'shape': list(values.shape), 'values': flat,
             'presentation': {name: [_cell(v) for v in index.get_level_values(name)] for name in index.names},
             'response': json.loads(json.dumps(answer.attrs.get('response'), sort_keys=True, default=str))}
 
@@ -101,8 +101,8 @@ def _cases():
 
 def stage3_cases():
     """(outputs, task, stimuli) of the task forms stage 3 changes: ROAR (a plain Choice with
-    an instruction and fitting stimuli), EWoK log scores (options per row, raw scores and
-    raw text, no fitting stimuli) and EWoK choice (raw text, no fitting stimuli)."""
+    an instruction and fitting stimuli), EWoK log scores (options per row, log probabilities,
+    verbatim, no fitting stimuli) and EWoK choice (verbatim, no fitting stimuli)."""
     from brainscore_core.contract import TaskContext
     from brainscore_core.responses import Choice
     from tests.brainscore_model.test_answer_ownership import OPTIONS
@@ -110,9 +110,9 @@ def stage3_cases():
     return {
         'roar plain choice': (['behavior:choice'], TaskContext(
             instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING), STIMULI),
-        'ewok log scores': (['behavior:probabilities'], TaskContext(
-            response=Choice('options', raw_scores=True, raw_text=True)), OPTIONS),
-        'ewok choice': (['behavior:choice'], TaskContext(response=Choice(['1', '2'], raw_text=True)), STIMULI),
+        'ewok log scores': (['behavior:log_probabilities'], TaskContext(
+            response=Choice('options', verbatim=True)), OPTIONS),
+        'ewok choice': (['behavior:choice'], TaskContext(response=Choice(['1', '2'], verbatim=True)), STIMULI),
     }
 
 

@@ -21,7 +21,7 @@ QWEN_STATEMENT = {'behavior': 'generation', 'behavior:rating': 'generation',
                   'behavior:probabilities': ('likelihood', 'softmax')}
 CHOICE = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']),
                      fitting_stimuli=FITTING)
-FORMATS = ("['behavior', 'behavior:choice', 'behavior:confidence', 'behavior:probabilities', "
+FORMATS = ("['behavior', 'behavior:choice', 'behavior:log_probabilities', 'behavior:probabilities', "
            "'behavior:rating', 'behavior:text']")
 
 
@@ -58,6 +58,15 @@ def test_a_wrong_statement_is_refused_with_what_to_write(owners, message):
         _readout(owners)
 
 
+def test_confidence_is_no_response_format():
+    """``behavior:confidence`` is deleted: a statement naming it lists the formats, and no
+    reply model declares it."""
+    with pytest.raises(ValueError, match=r"names 'behavior:confidence', which is not a response "
+                                         r"format\. Formats: " + re.escape(FORMATS)):
+        _model('reply', owners={'behavior:confidence': 'generation'})
+    assert 'behavior:confidence' not in _model(*QWEN, owners=QWEN_STATEMENT).out_channels
+
+
 def test_the_qwen_statement_answers_choice_by_generation_and_probabilities_by_softmax():
     model = _model(*QWEN, owners=QWEN_STATEMENT)
     session = _run(model, ['behavior:choice', 'behavior:probabilities'],
@@ -83,13 +92,27 @@ def test_the_qwen_set_without_a_probabilities_owner_takes_them_from_the_readout(
     assert (record['method'], record['origin']) == ('readout', 'native')
 
 
-def test_raw_scores_from_a_stated_likelihood_are_log_scores():
+def test_log_probabilities_come_natively_from_the_likelihood():
     model = _model('reply', 'likelihood', owners={'behavior:probabilities': ('likelihood', 'softmax')})
-    session = _run(model, ['behavior:probabilities'],
-                   TaskContext(response=Choice(['cat', 'dog'], raw_scores=True)))
-    scores = session.collect('behavior:probabilities')
-    assert scores.attrs['response']['category'] == 'model-derived'
+    assert 'behavior:log_probabilities' in model.out_channels    # no statement needed: one native part
+    session = _run(model, ['behavior:log_probabilities'],
+                   TaskContext(response=Choice(['cat', 'dog'], verbatim=True)))
+    scores = session.collect('behavior:log_probabilities')
+    record = scores.attrs['response']
+    assert (record['format'], record['method'], record['origin'], record['category']) == (
+        'behavior:log_probabilities', 'likelihood', 'native', 'model-derived')
+    assert (record['parameters']['units'], record['parameters']['layout']) == ('nats', 'continuation')
     assert scores.values[0].tolist() == [0.0, -1.0]      # the fake likelihood's log scores
+    assert scores.values.dtype == 'float64'
+
+
+def test_log_probabilities_take_no_conversion_statement():
+    with pytest.raises(ValueError, match="gives 'behavior:log_probabilities' natively"):
+        _model('reply', 'likelihood', owners={'behavior:log_probabilities': ('likelihood', 'softmax')})
+
+
+def test_a_readout_does_not_declare_log_probabilities():
+    assert 'behavior:log_probabilities' not in _readout().out_channels
 
 
 def test_a_redundant_native_statement_is_accepted():

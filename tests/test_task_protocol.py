@@ -313,16 +313,22 @@ def test_experiment_saves_every_kind_of_answer(tmp_path):
 
     def reply(prompt):
         sentence = [content for kind, content in prompt.parts if kind == 'text'][1]
-        if 'confidence' in prompt.text():
-            return 'long\n4' if len(sentence) > 1 else 'short\n5'
+        if isinstance(prompt.response, Scale):
+            return str(len(sentence))
+        if isinstance(prompt.response, Choice):
+            return 'long' if len(sentence) > 1 else 'short'
         return f"It reads {sentence}."
 
     model = BrainScoreModel(identifier='replier', in_channels={'text'}, reply=reply)
-    choice = TaskContext(instruction='Is it long?', response=Choice(['short', 'long'], confidence=Scale(1, 5, 1)))
+    choice = TaskContext(instruction='Is it long?', response=Choice(['short', 'long']))
     result = Experiment(subject=model, protocol=TaskProtocol(STIMULI, choice),
-                        tools=[RecordBehavior(['choice', 'confidence'])], output_dir=tmp_path / 'choice').run()
-    assert list(result.behavior()['raw_answer'].values) == ['short\n5', 'long\n4', 'long\n4']
-    assert list(result.behavior(measure='confidence').values) == [5, 4, 4]
+                        tools=[RecordBehavior()], output_dir=tmp_path / 'choice').run()
+    assert list(result.behavior()['raw_answer'].values) == ['short', 'long', 'long']
+
+    rated = TaskContext(instruction='How long?', response=Scale(1, 5, 1))
+    result = Experiment(subject=model, protocol=TaskProtocol(STIMULI, rated),
+                        tools=[RecordBehavior()], output_dir=tmp_path / 'rating').run()
+    assert list(result.behavior(measure='rating').values) == [1, 2, 3]
 
     written = TaskContext(instruction='Read it.', response=Text())
     result = Experiment(subject=model, protocol=TaskProtocol(STIMULI, written),
@@ -697,19 +703,24 @@ def test_options_that_differ_for_each_row_reach_each_part():
         seen.append(('answer', stimulus_row['text'], tuple(label_set)))
         return label_set[0]
 
-    raw = TaskContext(response=Choice(labels='options', raw_scores=True, raw_text=True))
+    raw = TaskContext(response=Choice(labels='options', verbatim=True))
     scorer = BrainScoreModel(identifier='scorer', in_channels={'text'}, likelihood=likelihood,
                              capability_config={'behavior-sessions': {   # derived formats (rule 4.11)
                                  'behavior:choice': ('likelihood', 'softmax_argmax'),
                                  'behavior:probabilities': ('likelihood', 'softmax')}})
-    session = stimulus_session(_options_stimuli(), ['behavior:choice', 'behavior:probabilities'], raw)
+    session = stimulus_session(_options_stimuli(), ['behavior:choice', 'behavior:log_probabilities'], raw)
     scorer.participate(session)
-    scores = session.collect('behavior:probabilities')
-    # Raw scores, as the part gave them, in the order of each row's options.
+    scores = session.collect('behavior:log_probabilities')
+    # Log probabilities, as the part gave them, in the order of each row's options. A
+    # value above 0 is not a log probability: core stores that row as invalid.
     np.testing.assert_array_equal(scores.values, [[-0.25, 0.5], [0.5, -0.25]])
+    assert list(scores['response_state'].values) == ['invalid', 'invalid']
     assert list(scores['choice'].values) == [0, 1]
+    from brainscore._model.behavioral import VERBATIM_LOG_PROBABILITIES
     from brainscore_core.response_formats import response_record
-    assert scores.attrs['response'] == response_record('behavior:probabilities', 'likelihood', category='model-derived', parameters={'scale': 'log'})
+    assert scores.attrs['response'] == response_record(
+        'behavior:log_probabilities', 'likelihood', category='model-derived',
+        parameters=VERBATIM_LOG_PROBABILITIES)
     np.testing.assert_array_equal(session.collect('behavior:choice').values, [[0, 1], [1, 0]])
     assert seen == [('likelihood', (('text', 'the cat'),), ('sat', 'ran')),
                     ('likelihood', (('text', 'the dog'),), ('kind', 'mean'))]
@@ -726,18 +737,20 @@ def test_options_that_differ_for_each_row_reach_each_part():
     assert seen[2] == ('answer', 'the cat', ('sat', 'ran'))
 
 
-def test_raw_scores_need_a_likelihood_part():
-    """A model that would have to guess or normalize is N/A, never scored."""
-    from brainscore_core.compatibility import CompatibilityError, ExecutionNotFeasibleError
+def test_log_probabilities_need_a_likelihood_part():
+    """A model that would have to guess or normalize does not declare the format."""
+    from brainscore_core.compatibility import ExecutionNotFeasibleError
     from brainscore_core.responses import Choice
     from brainscore_core.streaming_helpers import stimulus_session
     model = BrainScoreModel(identifier='replier', in_channels={'text'}, reply=lambda p: 'sat')
-    task = TaskContext(response=Choice(labels='options', raw_scores=True, raw_text=True))
-    with pytest.raises(ExecutionNotFeasibleError, match='likelihood'):
-        model.start_task(task)
+    assert 'behavior:log_probabilities' not in model.out_channels
+    session = stimulus_session(_options_stimuli(), ['behavior:log_probabilities'],
+                               TaskContext(response=Choice(labels='options', verbatim=True)))
+    with pytest.raises(ExecutionNotFeasibleError, match='does not produce'):
+        model.participate(session)
 
 
-def test_chat_parts_scores_plain_text_under_raw_text():
+def test_chat_parts_scores_plain_text_under_verbatim():
     """No template, no BOS: the option's tokens after the text's own tokens."""
     from brainscore_core.responses import Choice, Prompt
     from brainscore.model_helpers.replies import chat_parts
@@ -749,7 +762,7 @@ def test_chat_parts_scores_plain_text_under_raw_text():
         seen.setdefault('ids', []).append(input_ids)
         return TinyLM2.forward(model, input_ids, attention_mask, torch.zeros_like(input_ids))
     model.forward = forward
-    prompt = Prompt((('text', 'ab'),), response=Choice(['c', 'dd'], raw_text=True))
+    prompt = Prompt((('text', 'ab'),), response=Choice(['c', 'dd'], verbatim=True))
     scores = likelihood(prompt, ['c', 'dd'])
     tok = processor.tokenizer
     for option in ('c', 'dd'):
@@ -762,7 +775,7 @@ def test_chat_parts_scores_plain_text_under_raw_text():
     assert not hasattr(processor, 'kwargs')
 
 
-def test_an_answer_part_cannot_serve_a_raw_text_choice():
+def test_an_answer_part_cannot_serve_a_verbatim_choice():
     """answer= takes no response settings and adds its own directive, so it is refused."""
     from brainscore_core.responses import Choice
     from brainscore_core.streaming_helpers import stimulus_session
@@ -772,7 +785,7 @@ def test_an_answer_part_cannot_serve_a_raw_text_choice():
         calls.append(1)
         return label_set[0]
     model = BrainScoreModel(identifier='answerer', in_channels={'text'}, answer=answer)
-    task = TaskContext(response=Choice(labels='options', raw_text=True))
+    task = TaskContext(response=Choice(labels='options', verbatim=True))
     session = stimulus_session(_options_stimuli(), ['behavior:choice'], task)
     with pytest.raises(ExecutionNotFeasibleError, match='cannot give a Choice answer'):
         model.participate(session)
@@ -857,7 +870,7 @@ def test_plain_text_scoring_refuses_several_parts_and_trial_history():
     from brainscore_core.responses import Choice, Prompt
     from brainscore.model_helpers.replies import chat_parts
     _, likelihood = chat_parts(TinyLM2(), CharProcessor())
-    response = Choice(['c', 'dd'], raw_text=True)
+    response = Choice(['c', 'dd'], verbatim=True)
     with pytest.raises(ExecutionNotFeasibleError, match='exactly one text part'):
         likelihood(Prompt((('text', 'a'), ('text', 'b')), response=response), ['c', 'dd'])
     earlier = Prompt((('text', 'a'),), response=response)

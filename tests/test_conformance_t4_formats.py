@@ -395,8 +395,12 @@ def test_a_readout_rating_on_a_scale_without_a_step_is_unchanged():
     (0.31, Scale(0.1, 0.3, 0.1), 0.31, 'invalid'),
     (6.5, Scale(1, 7, 1), 7.0, 'valid'),
     (7.0, Scale(1, 7, 1), 7.0, 'valid'),
+    (0.1, Scale(-1e15, 1, 0.1), 0.1, 'valid'),
+    (-3 + 16 * 0.3, Scale(-3, -3 + 16 * 0.3, 0.3), -3 + 16 * 0.3, 'valid'),   # high 1.7999999999999998
+    (7.29, Scale(0.1, 0.1 + 24 * 0.3, 0.3), 0.1 + 24 * 0.3, 'valid'),
 ], ids=['top of a decimal scale', 'decimal tie', 'large magnitude', 'above the bounds',
-        'integer tie', 'integer top'])
+        'integer tie', 'integer top', 'a far low bound', 'high one rounding below a point',
+        'raw near a high one rounding off'])
 def test_a_constant_readout_rating_lands_on_the_grid(label, scale, stored, state):
     answer = _readout_rating(scale, pseudo._fitting([label] * 4, f'pseudo-fit-constant-{label}'))
     assert set(answer.values.tolist()) == {stored}
@@ -416,3 +420,72 @@ def test_a_text_answer_records_no_parser():
     sessions = _spied(subject)
     _score(subject, pseudo.PseudoText())
     assert sessions[0].collect('behavior:text').attrs['response']['parsed_by'] is None
+
+
+# --- behavior:log_probabilities (F6): a pseudo benchmark and every kind of producer --------
+
+def test_log_probabilities_from_a_likelihood_part_score_the_known_value():
+    calls = []
+    score, answer = _run(pseudo.likelihood_model(calls), pseudo.PseudoLogProbabilities())
+    assert float(score) == 0.75 and score.attrs['n_invalid'] == 0     # 6 of 8 agree with people
+    assert calls == ['likelihood'] * len(pseudo.IDS)
+    assert answer.values.dtype == np.float64
+    assert answer.values[0].tolist() == [-0.10536051565782628, -2.302585092994046]   # log 0.9, log (1 - 0.9)
+    record = answer.attrs['response']
+    assert (record['format'], record['origin'], record['method'], record['category']) == (
+        'behavior:log_probabilities', 'native', 'likelihood', 'model-derived')
+    assert record['parameters'] == pseudo.LOG_PROBABILITY_SCHEMA
+
+
+def test_log_probabilities_from_a_custom_assembly_subject_score_the_known_value():
+    subject = pseudo.LogProbabilityAssemblySubject()
+    score, answer = _run(subject, pseudo.PseudoLogProbabilities())
+    assert float(score) == 0.75 and score.attrs['n_invalid'] == 0
+    assert answer.attrs['response']['method'] == 'lookup'
+
+
+def test_log_probabilities_as_cells_are_malformed_and_nothing_is_stored():
+    # Point m: the format is an assembly with its record only; five schema fields cannot
+    # default from a cell.
+    subject = pseudo.CellSubject(out_channels={'behavior:log_probabilities'}, in_channels={'text'})
+    sessions = _spied(subject)
+    with pytest.raises(ValueError, match='an assembly with its response record'):
+        _score(subject, pseudo.PseudoLogProbabilities())
+    assert sessions[0].emitted == []
+
+
+@pytest.mark.parametrize('producer', ['reply', 'readout', 'text only'])
+def test_a_subject_that_does_not_declare_log_probabilities_is_na(producer):
+    calls = []
+    subject = {'reply': lambda: pseudo.reply_model(calls), 'readout': lambda: pseudo.readout_model(calls),
+               'text only': pseudo.text_only_subject}[producer]()
+    score = _score(subject, pseudo.PseudoLogProbabilities())
+    assert score.attrs['status'] == 'N/A' and math.isnan(float(score))
+    assert calls == []
+
+
+def test_a_pseudo_ewok_runs_the_real_benchmark_on_made_up_items(tmp_path):
+    calls = []
+    benchmark = pseudo.pseudo_ewok(tmp_path)
+    sessions = _spied(subject := pseudo.marker_likelihood_model(calls))
+    score = _score(subject, benchmark)
+    assert float(score) == 0.5                          # version 0: 1.0, version 1: 0.0
+    assert score.attrs['version_scores'] == {'0': 1.0, '1': 0.0}
+    assert calls == ['likelihood'] * 6                  # six contexts, one pass each
+    answers = [session.collect('behavior:log_probabilities') for session in sessions]
+    assert all(answer.attrs['response']['parameters']['layout'] == 'continuation' for answer in answers)
+
+
+@pytest.mark.parametrize('scale', [Scale(1, 7, 1), Scale(0.1, 0.3, 0.1), Scale(1.1, 7.1, 0.1),
+                                   Scale(-1e15, 1, 0.1), Scale(100000000.0, 100000001.0, 0.1),
+                                   Scale(0, 1000000000000001, 1), Scale(-5, 5, 0.25),
+                                   Scale(-3, -3 + 16 * 0.3, 0.3), Scale(0.1, 0.1 + 24 * 0.3, 0.3)],
+                         ids=str)
+def test_every_rounded_readout_rating_is_on_core_s_grid(scale):
+    """One grid for the readout and core: each stored value inside the bounds is on the step."""
+    from brainscore._model.behavioral import _on_scale_steps
+    from brainscore_core.responses import _on_step
+    rng = np.random.default_rng(0)
+    raw = list(rng.uniform(scale.low, scale.high, 500)) + [scale.low, scale.high]
+    rated, _ = _on_scale_steps(raw, scale)
+    assert all(scale.low <= v <= scale.high and _on_step(v, scale.low, scale.step) for v in rated)

@@ -240,6 +240,34 @@ class PseudoText(BenchmarkBase):
         return benchmark_score(self, raw=accuracy, metric='exact match after parse', n_unparsed=parsed.count(None), **_counts(answer))
 
 
+class PseudoLogProbabilities(BenchmarkBase):
+    """Agreement of the likelier continuation with the made-up human choice. Each context
+    has two continuations (the options); the subject gives the log probability of each.
+    Policy: an invalid or missing row is left out and counted."""
+    requested_output_channels = frozenset({'behavior:log_probabilities'})
+    required_input_channels = frozenset({'text'})
+    trial_memory = 'none'
+
+    def __init__(self):
+        self.stimuli = text_stimuli()
+        super().__init__(identifier='pseudo-log-probabilities', version=1, parent='behavioral',
+                         ceiling=not_estimated())
+
+    def __call__(self, subject):
+        task = TaskContext(response=Choice(OPTIONS, verbatim=True))
+        session = stimulus_session(self.stimuli, ['behavior:log_probabilities'], task)
+        subject.participate(session)
+        answer = session.collect('behavior:log_probabilities')
+        options = list(answer['choice'].values)
+        agree = [options[int(np.argmax(row))] == HUMAN_CHOICE[sid]
+                 for sid, state, row in zip(answer['stimulus_id'].values,
+                                            answer['response_state'].values, answer.values)
+                 if state == 'valid']
+        value = float(np.mean(agree)) if agree else float('nan')
+        return benchmark_score(self, raw=value, metric='agreement of the likelier continuation',
+                               **_counts(answer))
+
+
 BENCHMARKS = {'behavior:choice': PseudoChoice, 'behavior:probabilities': PseudoProbabilities,
               'behavior:rating': PseudoRating, 'behavior:rt': PseudoResponseTime,
               'behavior:text': PseudoText}
@@ -318,6 +346,12 @@ def readout_model(calls=None):
 
 
 ALL_FORMATS = frozenset(BENCHMARKS)
+LOG_PROBABILITIES = 'behavior:log_probabilities'
+# The record schema a custom subject states for continuation log probabilities.
+LOG_PROBABILITY_SCHEMA = {
+    'layout': 'continuation', 'context': 'shared', 'aggregation': 'sum', 'units': 'nats',
+    'tokenization': {'join': 'space', 'special_tokens': 'none', 'template': 'none',
+                     'truncation': 'none'}}
 
 
 def _probabilities(stimulus_id, options):
@@ -359,7 +393,9 @@ class CellSubject(Subject):
                 'behavior:probabilities': lambda: _probabilities(sid, options),
                 'behavior:rating': lambda: _rating(sid),
                 'behavior:rt': lambda: 750.0 if sid in HARD else 450.0,
-                'behavior:text': lambda: f'Answer: {_truth(sid)}'}[channel]()
+                'behavior:text': lambda: f'Answer: {_truth(sid)}',
+                # A cell is malformed on this format (an assembly with its record only).
+                'behavior:log_probabilities': lambda: np.log(_probabilities(sid, options))}[channel]()
 
     def participate(self, session):
         response = session.task.response
@@ -405,6 +441,13 @@ class AssemblySubject(Subject):
                                      source_format='behavior:probabilities')
             return BehavioralAssembly(one_hot, dims=['presentation', 'choice'],
                                       coords={**coords, 'choice': options}, attrs={'response': record})
+        if channel == 'behavior:log_probabilities':
+            rows = np.log(np.array([_probabilities(sid, options) for sid in ids]))
+            return BehavioralAssembly(rows, dims=['presentation', 'choice'],
+                                      coords={**coords, 'choice': options},
+                                      attrs={'response': response_record(
+                                          channel, self.METHOD, category='model-derived',
+                                          parameters=LOG_PROBABILITY_SCHEMA)})
         if channel == 'behavior:text':
             values = np.array([f'Answer: {_truth(sid)}' for sid in ids], dtype=object)
             return BehavioralAssembly(values, dims=['presentation'], coords=coords,
@@ -430,3 +473,42 @@ class AssemblySubject(Subject):
 def text_only_subject():
     """A subject that declares only free text: it does not declare the other formats."""
     return CellSubject(out_channels={'behavior:text'}, in_channels={'text'})
+
+
+class LogProbabilityAssemblySubject(AssemblySubject):
+    """The assembly subject, declaring the log-probability format too."""
+    identifier = 'pseudo-assembly-log-probabilities'
+    out_channels = ALL_FORMATS | {LOG_PROBABILITIES}
+
+
+# --- a pseudo EWoK: the real EWoK benchmark code on made-up item pairs -------------------
+
+def pseudo_ewok(folder):
+    """``EWoK-core-1.0-logprobs`` on three made-up items (no EWoK sentence), prepared with
+    the library's own data step. Each context and target carries a marker, A or B; in the
+    third item the targets are swapped, so a subject that matches markers gets it wrong.
+    Items 0 and 1 are version 0, item 2 version 1, so such a subject scores 0.5."""
+    import pandas as pd
+    import brainscore
+    from brainscore.data.preparation import prepare_dataset
+    rows = [dict(Domain='pseudo-domain', MetaTemplateID='1', TemplateID=str(i), Version=str(version),
+                 Context1=f'pseudo context A {i}', Context2=f'pseudo context B {i}',
+                 Target1=f'pseudo target {first} {i}', Target2=f'pseudo target {second} {i}')
+            for i, version, (first, second) in [(0, 0, 'AB'), (1, 0, 'AB'), (2, 1, 'BA')]]
+    source = folder / 'pseudo-ewok.csv'
+    pd.DataFrame(rows).to_csv(source, index=False)
+    root = prepare_dataset('EWoK-core-1.0', source=source, output=folder / 'pseudo-ewok-build')
+    return brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=root,
+                                     output_dir=folder / 'pseudo-ewok-run')
+
+
+def marker_likelihood_model(calls=None):
+    """A likelihood part that gives log p 0 to a target whose marker matches the context's
+    marker, and -1 otherwise."""
+    calls = [] if calls is None else calls
+
+    def likelihood(prompt, labels):
+        calls.append('likelihood')
+        context = prompt.parts[0][1]
+        return {label: 0.0 if (' A ' in label) == (' A ' in context) else -1.0 for label in labels}
+    return BrainScoreModel('pseudo-marker-likelihood', in_channels={'text'}, likelihood=likelihood)

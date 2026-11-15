@@ -448,7 +448,7 @@ class ExperimentResult:
         """The BehavioralAssembly a RecordBehavior tool saved.
 
         ``measure`` picks one kind of answer: ``'choice'``, ``'probabilities'``,
-        ``'confidence'``, ``'rating'`` or ``'text'``. By default, the main answer.
+        ``'rating'``, ``'rt'`` or ``'text'``. By default, the main answer.
         """
         if measure is not None:
             return self._saved('behavior', f'behavior:{measure}', condition, repetition)
@@ -465,7 +465,7 @@ class ExperimentResult:
         Columns: ``condition``, ``repetition``, ``stimulus_id``, the stimulus set's own
         columns (e.g. a noise level), then one column per kind of answer the run saved:
         ``choice`` (the chosen label), ``p(<label>)`` for each label's probability, ``rt``,
-        ``confidence``, ``rating``, ``text``. For an answer that was read from a reply,
+        ``rating``, ``text``. For an answer that was read from a reply,
         ``<answer>_valid``, ``<answer>_raw`` and ``<answer>_error`` say whether it could be
         read, what the reply was, and why not. An unreadable answer is empty (``None`` or NaN).
         """

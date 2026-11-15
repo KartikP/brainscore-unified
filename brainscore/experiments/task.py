@@ -16,8 +16,8 @@ from contextlib import contextmanager
 
 from brainscore_core.contract import required_traits_for
 from brainscore_core.events import StateChange
-from brainscore_core.streaming import CONTROL_CHANNEL, check_response_formats
-from brainscore_core.streaming_helpers import apply_state_change, stimulus_session
+from brainscore_core.streaming import check_response_formats
+from brainscore_core.streaming_helpers import apply_state_change, stimulus_session, task_input_channels
 
 from brainscore._model.intervention import INTERVENTION_CHANNELS
 from brainscore.selection import require_resolved
@@ -44,11 +44,9 @@ class TaskProtocol(SessionProtocol):
 
     def __init__(self, stimuli, task, *, identifier='task', conditions=None,
                  repetitions=(0,), required_traits=(), metadata=None):
-        probe = stimulus_session(stimuli)
-        inputs = set()
-        while (event := probe.next_input()) is not None:
-            if event.channel != CONTROL_CHANNEL:
-                inputs.add(event.channel)
+        # The inputs the task presents from the table: its 'present' entries when it
+        # names them (a 'kind:column' entry presents that column), else the catalog columns.
+        inputs = task_input_channels(stimuli, task)
         self.stimuli = stimuli
         self.task = task
         self.required_traits = frozenset(required_traits_for(required_traits, task.trial_memory))

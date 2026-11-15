@@ -274,7 +274,7 @@ class BehavioralReadout:
 
         The setup and its reuse both use it. The setup is keyed by the task alone:
         a single format never crosses two parts, so every refusal comes before the
-        fit. A probability format that no part serves is skipped: a session that
+        fit. A probability or log-probability format that no part serves is skipped: a session that
         requests it is refused by its own selection, before any compute.
         """
         from brainscore_core.compatibility import ExecutionNotFeasibleError
@@ -284,7 +284,7 @@ class BehavioralReadout:
             try:
                 picks.append(self._choose_path(task, [output]))
             except ExecutionNotFeasibleError:
-                if output not in self._PROBABILITY_SIDE:
+                if output not in self._PROBABILITY_SIDE | {LOG_PROBABILITIES}:
                     raise
         return picks
 
@@ -454,15 +454,17 @@ class BehavioralReadout:
         reaction time. A format that the session does not request needs no owner:
         a reaction-time link names the rt format; it is no setting of the choice.
 
+        A session that requests ``behavior:log_probabilities`` is answered by the
+        likelihood, its only native owner, and only for a verbatim Choice; the
+        choice and the probabilities it also requests come from that same pass
+        (``softmax_argmax``, ``softmax``), so the likelihood runs once.
+
         A task with a response is answered by the owner of its answer format
-        (the raw scores of a raw-scores Choice, else the response kind's own
-        format: choice, rating or text) and, when ``formats`` request
-        probabilities or a reaction time (or the response asks for raw
-        scores), its implied probabilities by the
-        owner of ``behavior:probabilities`` (rule 4.11, ``answer_owners``); an
-        owner that cannot serve the task's settings (``can`` below) is refused,
-        no other part stands in. The choice that accompanies raw scores comes
-        from the owner of the probabilities. When the choice and the
+        (the response kind's own format: choice, rating or text) and, when
+        ``formats`` request probabilities or a reaction time, its implied
+        probabilities by the owner of ``behavior:probabilities`` (rule 4.11,
+        ``answer_owners``); an owner that cannot serve the task's settings
+        (``can`` below) is refused, no other part stands in. When the choice and the
         probabilities have two owners, a likelihood and a readout, one pass
         cannot give both: formats on one side are answered by that side's
         owner, formats on both sides are refused (point j). A legacy task
@@ -495,49 +497,54 @@ class BehavioralReadout:
                     task_type=task.task_type)
             return path, None
         readout_wired = readout_wired and task.fitting_stimuli is not None
-        reported_confidence = isinstance(response, Choice) and response.confidence is not None
-        raw_scores = isinstance(response, Choice) and response.raw_scores
-        if raw_scores and owner._likelihood is None:
-            # Raw scores come only from a likelihood part: no softmax of a readout, no guess.
+        requested = set(formats)
+        log_probabilities = isinstance(response, Choice) and LOG_PROBABILITIES in requested
+        if log_probabilities and owner._likelihood is None:
+            # Log probabilities come only from a likelihood part: no readout, no guess.
             raise ExecutionNotFeasibleError(
-                f"Subject '{owner.identifier}' cannot give raw scores of the options: "
-                'they come only from a likelihood= part.', task_type=task.task_type)
+                f"Subject '{owner.identifier}' cannot give {LOG_PROBABILITIES}: it comes only "
+                'from a likelihood= part.', task_type=task.task_type)
         per_row = isinstance(response, Choice) and isinstance(response.labels, str)
-        raw_text = isinstance(response, Choice) and response.raw_text
+        verbatim = isinstance(response, Choice) and response.verbatim
+        if log_probabilities and not verbatim:
+            # The record's tokenization is known only for plain-text scoring (point f).
+            raise ExecutionNotFeasibleError(
+                f"Subject '{owner.identifier}' gives {LOG_PROBABILITIES} only for a verbatim "
+                'Choice (Choice(..., verbatim=True)): its tokenization is then the plain text.',
+                task_type=task.task_type)
         can = {
-            'generation': not raw_scores and (owner._reply is not None or (
+            'generation': not log_probabilities and (owner._reply is not None or (
                 owner._answer is not None and isinstance(response, Choice)
-                and not reported_confidence and not raw_text)),   # answer= takes no settings
-            'likelihood': (owner._likelihood is not None and isinstance(response, Choice)
-                           and not reported_confidence),
+                and not verbatim)),   # answer= takes no settings
+            'likelihood': owner._likelihood is not None and isinstance(response, Choice),
             'readout': (readout_wired and isinstance(response, (Choice, Scale))
-                        and not reported_confidence and not raw_scores and not per_row),
+                        and not log_probabilities and not per_row),
         }
-        # The answer format: the raw scores of a raw-scores Choice (they travel on
-        # behavior:probabilities), else the response's first format. Its owner answers;
-        # a task form the owner cannot serve is refused (no other part stands in).
-        settings = [name for name, on in (('raw_text', raw_text), ('raw_scores', raw_scores),
-                                          ('confidence', reported_confidence),
+        # The answer format: the log probabilities when the session requests them,
+        # else the response's first format. Its owner answers; a task form the owner
+        # cannot serve is refused (no other part stands in).
+        settings = [name for name, on in (('verbatim', verbatim),
                                           ('labels per row', per_row)) if on]
-        answer_format = ('behavior:probabilities' if raw_scores   # decision: raw scores travel there
+        answer_format = (LOG_PROBABILITIES if log_probabilities
                          else dict(self._ANSWER_FORMATS)[type(response).__name__])
         path = self._owner_serving(answer_format, can, task, settings)
         if path is None:
             needs = {'generation': 'reply= (or answer= for a plain Choice)',
-                     'likelihood': 'likelihood= and a Choice without reported confidence',
+                     'likelihood': 'likelihood= and a Choice',
                      'readout': 'behavioral_readout_layer=, an extractor and fitting_stimuli'}
             raise ExecutionNotFeasibleError(
                 f"Subject '{owner.identifier}' cannot give a {type(response).__name__} answer"
-                + (' with reported confidence (needs reply=)' if reported_confidence else '')
                 + '. Paths tried: ' + '; '.join(f'{p} needs {need}' for p, need in needs.items()),
                 task_type=task.task_type)
         source = None
-        requested = set(formats)
         wanted = requested & self._PROBABILITY_SIDE
+        if log_probabilities:
+            # One likelihood pass gives the log probabilities and what derives from them.
+            return path, (path if wanted else None)
         # The requested formats decide the passes: the probability owner runs (first,
         # for a reply, so a recording comes from its pass) only when the session
-        # requests probabilities or a reaction time. Raw scores keep their pass.
-        if isinstance(response, Choice) and (wanted or raw_scores):
+        # requests probabilities or a reaction time.
+        if isinstance(response, Choice) and wanted:
             source = self._owner_serving('behavior:probabilities', {
                 'likelihood': owner._likelihood is not None,
                 'readout': readout_wired and not per_row}, task, settings)
@@ -665,12 +672,12 @@ class BehavioralReadout:
                         'behavior:choice', 'likelihood', conversion='softmax_argmax',
                         source_format=LOG_PROBABILITIES),
                     raw=answers.source_rows(logp), errors=answers.conversion_errors(chose))
-                if response.raw_scores:
-                    outputs['behavior:probabilities'] = answers.implied_array(
-                        logp, None, stimuli, axis, response_record(
-                            'behavior:probabilities', 'likelihood', category='model-derived',
-                            parameters={'scale': 'log'}))
-                elif probability_source == 'likelihood':
+                if LOG_PROBABILITIES in channels:
+                    outputs[LOG_PROBABILITIES] = answers.log_probabilities(
+                        logp, stimuli, axis, response_record(
+                            LOG_PROBABILITIES, 'likelihood', category='model-derived',
+                            parameters=VERBATIM_LOG_PROBABILITIES))
+                if probability_source == 'likelihood':
                     rt_source = _softmax_probabilities(outputs, logp, stimuli, axis)
             elif isinstance(response, Text):
                 parsed = [response.parse(reply) for reply in replies]
@@ -685,13 +692,10 @@ class BehavioralReadout:
                 outputs['behavior:choice'] = answers.one_hot(
                     [label for label, _ in parsed], [label is not None for label, _ in parsed],
                     stimuli, row_labels, axis,
-                    response_record('behavior:choice', 'generation', parsed_by='model'),
+                    response_record('behavior:choice', 'generation', parsed_by='model',
+                                    parameters=(VERBATIM_IN_TEMPLATE if response.verbatim
+                                                and owner._reply is not None else None)),
                     raw=replies, errors=[error for _, error in parsed])
-                if response.confidence is not None:
-                    outputs['behavior:confidence'] = answers.numbers(
-                        [response.parse_confidence(reply) for reply in replies], stimuli,
-                        response_record('behavior:confidence', 'generation', parsed_by='model'),
-                        raw=replies)
                 if score_first:
                     rt_source = _softmax_probabilities(
                         outputs, answers.score_rows(scores, row_labels), stimuli, axis)
@@ -834,16 +838,14 @@ class BehavioralReadout:
 # The answer formats of each part kind (Response Format Standard 4.2; rule
 # 4.11): format -> None when the part gives it natively, else the conversion
 # that derives it. ``answer`` and ``reply`` are the two kinds of the part
-# ``generation``. The likelihood gives log scores natively; until step 5 they
-# travel on ``behavior:probabilities`` with ``raw_scores``. ``'link'``:
+# ``generation``. The likelihood gives the log probabilities natively. ``'link'``:
 # ``behavior:rt`` follows the owner of ``behavior:probabilities`` and is
 # never stated. ``behavior`` is the answer to a legacy task.
 _PART_FORMATS = {
     'answer': {'behavior': None, 'behavior:choice': None},
-    'reply': {'behavior:choice': None, 'behavior:rating': None,
-              'behavior:confidence': None, 'behavior:text': None},
-    'likelihood': {'behavior:probabilities': 'softmax', 'behavior:choice': 'softmax_argmax',
-                   'behavior:rt': 'link'},
+    'reply': {'behavior:choice': None, 'behavior:rating': None, 'behavior:text': None},
+    'likelihood': {LOG_PROBABILITIES: None, 'behavior:probabilities': 'softmax',
+                   'behavior:choice': 'softmax_argmax', 'behavior:rt': 'link'},
     'readout': {'behavior': None, 'behavior:probabilities': None, 'behavior:rating': None,
                 'behavior:choice': 'argmax', 'behavior:rt': 'link'},
 }
@@ -957,16 +959,28 @@ def answer_owners(subject, stated) -> Dict[str, str]:
 
 
 RATING_ROUNDING = 'nearest step, ties to the higher step'
+# The schema of the log probabilities a likelihood part gives under a verbatim Choice:
+# f"{text} {option}" as plain text, no special tokens, no template, summed natural logs.
+VERBATIM_LOG_PROBABILITIES = {
+    'layout': 'continuation', 'context': 'shared', 'aggregation': 'sum', 'units': 'nats',
+    'tokenization': {'join': 'space', 'special_tokens': 'none', 'template': 'none',
+                     'truncation': 'none'}}
+# A verbatim trial text reaches a reply part as given; the part may wrap it in its own chat
+# template (ADR-0063). The record says only that: a reply part is any callable.
+VERBATIM_IN_TEMPLATE = {'template': "the reply part's own, if it has one"}
 
 
 def _on_scale_steps(values, scale) -> Tuple[list, dict]:
     """Each value on the nearest step of ``scale``, and the record parameters that say so.
 
+    The grid of a scale is decimal: the points Decimal(repr(low)) + n * Decimal(repr(step)).
     The step index is read from the raw value in decimal; an index within 1e-9 of a half is a
-    tie and goes to the higher step. The stored value is that grid point as a float; the first
-    and last points are ``low`` and ``high`` exactly, so a raw value inside the bounds stays in.
-    A raw value outside the bounds, or not finite, is not rounded and not clipped (core marks
-    it invalid). A scale with no step leaves every value unchanged and records no rounding.
+    tie and goes to the higher step. The stored value is the float of that grid point, the
+    value core's step rule accepts, kept inside the bounds: the index never passes the last
+    point inside them, and a point one float rounding beyond ``high`` (or ``low``) is
+    stored as that bound. A raw value outside the bounds, or not finite,
+    is not rounded and not clipped (core marks it invalid). A scale with no step leaves every
+    value unchanged and records no rounding.
     """
     if scale.step is None:
         return list(values), {}
@@ -974,21 +988,21 @@ def _on_scale_steps(values, scale) -> Tuple[list, dict]:
 
 
 def _grid_point(value, scale):
-    from decimal import Decimal, ROUND_FLOOR
+    from decimal import Decimal, ROUND_FLOOR, localcontext
     if not (math.isfinite(value) and scale.low <= value <= scale.high):
         return value
-    low, step = Decimal(repr(float(scale.low))), Decimal(repr(float(scale.step)))
-    last = int(((Decimal(repr(float(scale.high))) - low) / step + Decimal('1e-9'))
-               .to_integral_value(ROUND_FLOOR))
-    index = (Decimal(repr(float(value))) - low) / step
-    below = int(index.to_integral_value(ROUND_FLOOR))
-    fraction = index - below
-    n = below + 1 if fraction > Decimal('0.5') - Decimal('1e-9') else below
-    n = min(n, last)
-    if n == 0:
-        return float(scale.low)
-    point = float(low + n * step)
-    return float(scale.high) if n == last and math.isclose(point, scale.high, rel_tol=0, abs_tol=1e-9 * float(step)) else point
+    with localcontext() as context:
+        context.prec = 50
+        low, step = Decimal(repr(float(scale.low))), Decimal(repr(float(scale.step)))
+        last = int(((Decimal(repr(float(scale.high))) - low) / step + Decimal('1e-9'))
+                   .to_integral_value(ROUND_FLOOR))
+        index = (Decimal(repr(float(value))) - low) / step
+        below = int(index.to_integral_value(ROUND_FLOOR))
+        n = below + 1 if index - below > Decimal('0.5') - Decimal('1e-9') else below
+        point = float(low + min(n, last) * step)
+    # A high (or low) one float rounding off a grid point: the stored value stays inside the
+    # bounds; it moves by at most 1e-9 of a step, which core's step rule accepts.
+    return min(max(point, float(scale.low)), float(scale.high))
 
 
 def _fitted_intact(task) -> bool:

@@ -140,7 +140,7 @@ class BrainScoreModel(UnifiedModel):
         :param reply: ``(prompt) -> str``; the model's raw reply to one trial.
             ``prompt`` is a ``brainscore_core.responses.Prompt``: the trial's parts
             in order (instruction, stimulus parts, the response's directive).
-            Parsing is the task's. Gives choices, ratings, reported confidence
+            Parsing is the task's. Gives choices, ratings
             and written answers. As a policy does, a reply may return a
             ``StreamEvent`` instead, with the text as payload and extra data
             (for example ``reasoning``, ``token_usage``) as meta; the meta goes
@@ -209,7 +209,7 @@ class BrainScoreModel(UnifiedModel):
             are different channels: neither is shorthand for the other. A
             wrong statement is refused here with a message that says what to
             write. The owner answers its channel. When a task form excludes it (for
-            example raw scores, which only a likelihood gives) and exactly one
+            example log probabilities, which only a likelihood gives) and exactly one
             other part can serve that form, that part answers; when two or more
             can, the session is refused before any compute.
         """

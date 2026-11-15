@@ -13,7 +13,7 @@ float32 on CPU. A local checkpoint's weight files are hashed into provenance.
 The causal-LM subject has a `reply` part (written answers through the chat
 template, under the task's generation settings), a `likelihood` part (the summed
 log probability of each option; plain text with no template under a
-`raw_text` choice, as EWoK scores), neural recording and declared interventions.
+`verbatim` choice, as EWoK scores), neural recording and declared interventions.
 It runs CogGym text experiments and both EWoK benchmarks.
 Its `language_system` mapping to `model.layers.23` is a provisional last-layer
 hypothesis, not a validated brain-region fit. Generated text can be factually

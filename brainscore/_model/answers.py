@@ -95,7 +95,7 @@ def one_hot(chosen, valid, stimuli, row_labels, axis, record, *, raw, errors=Non
 
 
 def numbers(parsed, stimuli, record, raw=None):
-    """One number per stimulus (a rating or a confidence); invalid ones are NaN."""
+    """One number per stimulus (a rating); invalid ones are NaN."""
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
     values = np.array([np.nan if v is None else v for v, _ in parsed], dtype=float)
     coords = {**_presentation(stimuli),
@@ -172,23 +172,27 @@ def score_rows(scores, row_labels):
 
 
 def implied_array(values, valid, stimuli, axis, record, raw=None):
-    """Values per option. Raw scores (record parameter ``scale='log'``) keep full precision.
-
-    ``valid`` is the validity of each row a conversion returned (None for raw
-    scores, which core checks itself); an invalid row is marked so. ``raw`` is
-    the source evidence of a derived answer (each source row as text).
+    """Probabilities per option (float32). ``valid`` is the validity of each row a
+    conversion returned (None for a readout's own rows); an invalid row is marked
+    so. ``raw`` is the source evidence of a derived answer (each source row as text).
     """
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
-    log_scale = record['parameters'].get('scale') == 'log'
     coords = {**_presentation(stimuli), 'choice': list(axis)}
     if valid is not None:
         coords['answer_valid'] = ('presentation', [bool(v) for v in valid])
         coords['parse_error'] = ('presentation', conversion_errors(valid))
     if raw is not None:
         coords['raw_answer'] = ('presentation', list(raw))
-    return BehavioralAssembly(values if log_scale else values.astype(np.float32),
-                              coords=coords, dims=['presentation', 'choice'],
-                              attrs={'response': record})
+    return BehavioralAssembly(values.astype(np.float32), coords=coords,
+                              dims=['presentation', 'choice'], attrs={'response': record})
+
+
+def log_probabilities(values, stimuli, axis, record):
+    """The log probability of each option, float64, as the likelihood gave it; core checks them."""
+    from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
+    coords = {**_presentation(stimuli), 'choice': list(axis)}
+    return BehavioralAssembly(np.asarray(values, dtype=np.float64), coords=coords,
+                              dims=['presentation', 'choice'], attrs={'response': record})
 
 
 def source_rows(values):

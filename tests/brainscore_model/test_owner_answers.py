@@ -1,8 +1,8 @@
 """The owner of the requested answer format gives the answer (rule 4.11; stage 2, C4).
 
-For a task with a response, the part that answers is the owner of the task's
-answer format: the raw scores (``behavior:probabilities``) of a raw-scores
-Choice, else the response kind's own format. A task form its owner cannot serve is
+For a task with a response, the part that answers is the owner of the answer
+format: the log probabilities (``behavior:log_probabilities``) when the session
+requests them, else the response kind's own format. A task form its owner cannot serve is
 refused before any compute; only bare ``behavior`` (a legacy task) keeps the
 fallback to the one other part that can serve it.
 """
@@ -26,26 +26,34 @@ from tests.brainscore_model.test_behavior_paths import FITTING, STIMULI
 
 pytestmark = pytest.mark.unit
 
-RAW_SCORES = TaskContext(response=Choice(['cat', 'dog'], raw_scores=True))
+VERBATIM = TaskContext(response=Choice(['cat', 'dog'], verbatim=True))
 
 
+@pytest.mark.parametrize('outputs', [['behavior:log_probabilities'],
+                                     ['behavior:log_probabilities', 'behavior:probabilities'],
+                                     ['behavior:log_probabilities', 'behavior:probabilities',
+                                      'behavior:choice']],
+                         ids=['log probabilities', 'with probabilities', 'with choice'])
 @pytest.mark.parametrize('parts', [QWEN, CAUSAL_LM], ids=['qwen', 'causal lm'])
-def test_raw_scores_come_from_the_owner_of_the_probabilities(parts):
+def test_log_probabilities_come_from_one_likelihood_pass(parts, outputs):
+    """The likelihood answers a session that requests log probabilities; the
+    probabilities and the choice come from that same pass (one call per trial)."""
     calls = []
     model = _model(*parts, owners=REGISTERED_STATEMENTS[parts], calls=calls)
-    session = _run(model, ['behavior:probabilities'], RAW_SCORES)
-    record = session.collect('behavior:probabilities').attrs['response']
+    session = _run(model, outputs, VERBATIM)
+    record = session.collect('behavior:log_probabilities').attrs['response']
     assert (record['method'], record['category']) == ('likelihood', 'model-derived')
-    assert set(calls) == {'likelihood'}                  # neither reply nor answer
-    assert calls.count('likelihood') == len(STIMULI)
+    assert calls == ['likelihood'] * len(STIMULI)          # neither reply nor answer, one pass
+    for channel in outputs[1:]:
+        assert session.collect(channel).attrs['response']['source_format'] == 'behavior:log_probabilities'
 
 
-def test_blip2_raw_text_choice_is_refused_before_compute():
+def test_blip2_verbatim_choice_is_refused_before_compute():
     calls = []
     model = _model(*BLIP2, owners=REGISTERED_STATEMENTS[BLIP2], calls=calls)
-    task = TaskContext(response=Choice(['cat', 'dog'], raw_text=True), fitting_stimuli=FITTING)
+    task = TaskContext(response=Choice(['cat', 'dog'], verbatim=True), fitting_stimuli=FITTING)
     with pytest.raises(ExecutionNotFeasibleError,
-                       match=r"'behavior:choice' is owned by 'generation'.*task settings: raw_text"):
+                       match=r"'behavior:choice' is owned by 'generation'.*task settings: verbatim"):
         _run(model, ['behavior:choice'], task)
     assert calls.count('extract') == 0 and calls == []
 
@@ -109,7 +117,7 @@ STATEMENTS = {
 def test_each_answered_format_comes_from_its_owner(parts):
     """Every session of SESSIONS on every part set: each answered format channel was given
     by the part that owns it (the probabilities' owner also gives the choice that comes
-    with raw scores; a reaction time names the probabilities' method)."""
+    with log probabilities; a reaction time names the probabilities' method)."""
     model = _model(*parts, owners=STATEMENTS[parts])
     owners = model._behavioral.owners
     for name, (description, outputs) in SESSIONS.items():
@@ -125,8 +133,8 @@ def test_each_answered_format_comes_from_its_owner(parts):
             if channel == 'behavior':
                 continue                  # bare behavior: the legacy fallback stays
             record = session.collect(channel).attrs['response']
-            raw_scores = getattr(task.response, 'raw_scores', False)
-            owner = owners['behavior:probabilities' if raw_scores else channel]
+            owner = (owners['behavior:log_probabilities'] if 'behavior:log_probabilities' in requested
+                     else owners[channel])
             assert record['method'] == owner, (parts, name, channel)
 
 
@@ -276,7 +284,7 @@ def _pass_model(net, parts, owners):
 
 PASS_STIMULI = StimulusSet({'stimulus_id': ['a', 'b', 'c'], 'sentence': ['x', 'y', 'z']})
 PASS_STIMULI.identifier = 'pass-net'
-CHOICE_RAW_TEXT = TaskContext(response=Choice(['cat', 'dog'], raw_text=True))
+CHOICE_RAW_TEXT = TaskContext(response=Choice(['cat', 'dog'], verbatim=True))
 LIKELIHOOD_ROWS = [[100.0, 101.0, 102.0], [101.0, 102.0, 103.0], [102.0, 103.0, 104.0]]
 REPLY_ROWS = [[110.0, 111.0, 112.0], [111.0, 112.0, 113.0], [112.0, 113.0, 114.0]]
 

@@ -189,7 +189,7 @@ def get_model(identifier: str) -> Subject:
     # path; others fall back to the logistic readout configured below.
     answer = _make_answer(qwen_model, qwen_processor)
     # Raw replies and candidate likelihoods for TaskContext(response=...) tasks:
-    # ratings, reported confidence, written answers and implied probabilities.
+    # ratings, written answers and implied probabilities.
     from brainscore.model_helpers.replies import chat_parts
     reply, likelihood = chat_parts(qwen_model, qwen_processor)
 
