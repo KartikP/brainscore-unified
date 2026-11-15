@@ -29,6 +29,10 @@ A subject that takes only still images reads the frames; a subject that takes
 sound reads the sound tracks. A missing file stops the run with the command
 that prepares it.
 
+A Lahner2024 benchmark takes no folder argument: for every variant, the frames
+folder is set by `BRAINSCORE_LAHNER_FRAMES_DIR` and the sound folder by
+`BRAINSCORE_LAHNER_SOUND_DIR`.
+
 ## Existing preparation scripts
 
 | Module under `brainscore.data.lahner2024` | Produces |
