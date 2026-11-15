@@ -194,7 +194,7 @@ List tools in this order: recorders, activity recorded *before* an intervention,
 | Tool | Does |
 | --- | --- |
 | `RecordNeural(regions)` | Requests `neural:<region>` from the subject and saves it. Read with `result.neural(region, condition=...)`. |
-| `RecordBehavior()` | Requests every kind of answer the task's response asks for and saves them. Read with `result.behavior(condition=..., measure=...)`. |
+| `RecordBehavior(formats=None)` | Requests the answer in the task's first format (the choice of a `Choice`) and saves it; `RecordBehavior(['choice', 'probabilities'])` names more. A format the task's response does not name is refused before the run. Read with `result.behavior(condition=..., measure=...)`. |
 | `Intervene(change, conditions=...)` | Sends an intervention (a `StateChange`) to the subject with `apply_state_change`, undone after each repetition. |
 | `RecordInputsOutputs` | Saves every input, output and lifecycle event with its condition and repetition. Needs no access to model internals. |
 | `RecordActivity(targets)` | Records layer outputs through instrumentation. |

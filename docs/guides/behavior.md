@@ -34,8 +34,7 @@ task = TaskContext(
 | Response | Answer | Channel |
 | --- | --- | --- |
 | none: `TaskContext(task_type='passive')` | nothing; plain viewing | (neural only) |
-| `Choice(labels)` | one label | `behavior:choice` |
-| `Choice(labels, probabilities=True)` | also the implied probability of each label | `+ behavior:probabilities` |
+| `Choice(labels)` | one label, or the implied probability of each label; the session's requested outputs say which | `behavior:choice`, `behavior:probabilities` |
 | `Choice(labels, confidence=Scale(1, 5, 1))` | also a reported confidence, in the same reply | `+ behavior:confidence` |
 | `Scale(1, 7, 1)` | a rating | `behavior:rating` |
 | `Text()` | a written answer, kept as written | `behavior:text` |
@@ -102,7 +101,7 @@ legacy = stimulus_session(test_stimuli, ['behavior'], TaskContext(
     task_type='probabilities', instruction='Is this a real word?', label_set=['real', 'pseudo']))
 owned.participate(legacy)
 choice = stimulus_session(test_stimuli, ['behavior:choice', 'behavior:probabilities'], TaskContext(
-    instruction='Is this a real word?', response=Choice(['real', 'pseudo'], probabilities=True)))
+    instruction='Is this a real word?', response=Choice(['real', 'pseudo'])))
 owned.participate(choice)
 print(legacy.collect('behavior').attrs['response']['method'],          # generation (answer)
       choice.collect('behavior:choice').attrs['response']['method'],   # generation (reply)
