@@ -65,9 +65,7 @@ itself), then installs the four repositories from their checkouts with `--no-dep
 platform the option stops with a message; the pinned setup above and the bounds of the doctor
 apply there. Do not combine the lock with `v2-constraints.txt`: that file is the CPU test
 profile. It names the lock's versions (torch and torchvision without the `+cu124` tag, so
-the CPU wheel installs). For datasets the constraints file is the rule (2.21.0: the old
-wikitext plugin requires datasets 2.*); the lock is made again from the reference machine
-after it moves to that version.
+the CPU wheel installs).
 
 The script refuses to overwrite an existing conda environment. Choose a
 different name when needed:
