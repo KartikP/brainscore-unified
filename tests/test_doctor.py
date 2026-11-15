@@ -18,6 +18,11 @@ class TestReport:
         text, _ = doctor.report()
         assert sys.executable in text
 
+    def test_prints_the_fingerprint_every_score_carries(self):
+        from brainscore_core.environment_check import environment_fingerprint
+        text, _ = doctor.report()
+        assert f'environment fingerprint  {environment_fingerprint()}' in text
+
     def test_reports_passing_dependencies_too(self, monkeypatch):
         monkeypatch.setattr(doctor, '_dependency_rows',
                             lambda: [('numpy', '1.26.4', '>=1.21,<2', True)])
