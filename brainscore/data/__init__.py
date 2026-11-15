@@ -1,14 +1,12 @@
 """Unified-owned data plugins.
 
-Modules imported here only register lightweight factories. Actual data I/O
+Every plugin folder here (a sub-package whose name does not start with ``_``) is
+imported when the package loads, and only registers lightweight factories or local
+assets; ``local``, ``preparation`` and ``__main__`` are modules, not plugins. Actual data I/O
 stays deferred until ``brainscore.load_dataset`` or
 ``brainscore.load_stimulus_set`` is called.
 """
 
-from . import algonauts2025  # noqa: F401
-from . import coggym  # noqa: F401
-from . import lahner2024  # noqa: F401
-from . import lebel2023  # noqa: F401
-from . import roar_yeatman2021  # noqa: F401
+from brainscore import _import_plugins
 
-from . import ewok  # noqa: F401
+_import_plugins(__name__)    # every plugin folder here registers by its presence

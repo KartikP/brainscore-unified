@@ -36,9 +36,10 @@ that those domain registries populate lazily — see
 missing because it is not in a registry dict.
 
 A plugin is a subpackage whose `__init__.py` adds a factory to the
-matching registry; the parent package imports it so registration runs on load. Load by id.
-A plugin whose package is not imported is not found: add `from . import <name>` to the
-parent package's `__init__.py`. Each plugin's test goes in `tests/test_<name>.py`.
+matching registry. Every subpackage of `brainscore/{models,benchmarks,data,metrics}/` whose
+name does not start with `_` is imported when `brainscore` is imported, so a new folder
+registers by its presence; no other file changes. A plugin in another package (another repository) registers when you import that package before you load it. Load by id.
+Each plugin's test goes in `tests/test_<name>.py`.
 The folders in `templates/` are such plugins; started from the `templates/` folder, this
 runs as written:
 
@@ -102,7 +103,7 @@ def get_model():
 model_registry['my-model'] = get_model
 ```
 
-Then add `from . import your_name` to `brainscore/models/__init__.py`. Run `auto_register` to
+The folder registers by its presence. Run `auto_register` to
 infer the wrapper, layers, and a provisional `region_layer_map`, then refine with the
 layer-mapping explorer.
 
@@ -228,7 +229,7 @@ benchmark_registry['my-benchmark'] = lambda: YourBenchmark()
 ceiling; with `not_estimated()` it is `raw`, and `normalized` says which. `templates/new_benchmark/benchmark.py` is a
 complete version of this class that scores the template model as shipped.
 
-Then add `from . import your_name` to `brainscore/benchmarks/__init__.py`. For naturalistic /
+The folder registers by its presence. For naturalistic /
 temporal data, reuse `brainscore/temporal.py` (`temporal_bin`, `hrf_convolve`,
 `contiguous_block_cv`, `window_plan`) — see `benchmarks/lahner2024` and `benchmarks/algonauts2025`
 as worked examples. For a clip longer than a video model's native temporal window, set
@@ -295,7 +296,7 @@ metric_registry['my-metric'] = lambda: YourMetric()
 ```
 
 Put it in its own folder, `brainscore/metrics/<name>/`, with the registry line in the folder's
-`__init__.py` and its test in `tests/`; `brainscore/metrics/__init__.py` imports the folder. A reference lives at
+`__init__.py` and its test in `tests/`; the folder registers by its presence. A reference lives at
 `brainscore/metrics/topographic/` — `load_metric('topographic-alignment')` — which scores a model's
 spatial unit layout against cortical topography (the correlation-vs-distance profile). Copy
 `templates/new_metric/` to start. Keep predictivity, RSA, topographic, and SCA-style metrics

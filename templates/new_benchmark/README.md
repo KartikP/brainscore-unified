@@ -9,7 +9,7 @@ See `EXTENDING.md` (Seam 2) for the contract.
 2. Edit `benchmark.py`. Implement `_load_assembly()` (your measurements + stimulus_set),
    `_ceiling()`, and `__call__(subject)`. Pick your metric via `load_metric(...)`.
 3. Pick your identifier in `benchmark_registry['<your-id>']`.
-4. Add `from . import <your_name>` to `brainscore/benchmarks/__init__.py`.
+4. Nothing else to edit: the folder registers by its presence.
 5. Move `test_benchmark.py` to `tests/test_<your_name>.py`, adapt it and run it.
 
 ## Variants

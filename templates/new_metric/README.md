@@ -10,7 +10,7 @@ topographic, behavioral, causal). See `EXTENDING.md` (Seam 3) for the full contr
 2. Edit `metric.py`. Implement `__call__(assembly1, assembly2) -> Score`. Document the coords
    each assembly must carry, and fail loudly on a mismatch.
 3. Edit `__init__.py`. Pick your identifier in `metric_registry['<your-id>']`.
-4. Add `from . import <your_name>` to `brainscore/metrics/__init__.py`.
+4. Nothing else to edit: the folder registers by its presence.
 5. Move `test_metric.py` to `tests/test_<your_name>.py`, adapt it and run it (`pytest tests/test_<your_name>.py`).
 
 From the `templates/` folder, with the data template for an assembly:

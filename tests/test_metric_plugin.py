@@ -41,7 +41,7 @@ class TestMetricSeamFirstClass:
     def test_load_metric_returns_metric(self):
         import brainscore
         from brainscore_core.metrics import Metric
-        from brainscore.metrics import TopographicMetric
+        from brainscore.metrics.topographic import TopographicMetric
         metric = brainscore.load_metric('topographic-alignment')
         assert isinstance(metric, Metric) and isinstance(metric, TopographicMetric)
 

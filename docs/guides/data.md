@@ -40,6 +40,8 @@ brainscore/data/<name>/
     data_packaging/      scripts that build the hosted files from the source data
 ```
 
+The folder registers by its presence: every subpackage of `brainscore/data/` is imported with `brainscore`, so no other file changes. A plugin in another package (another repository) registers when you import that package before you load it.
+
 Register a loader for each assembly and each stimulus set:
 
 ```python

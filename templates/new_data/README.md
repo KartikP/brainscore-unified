@@ -25,11 +25,7 @@ Neither scores anything. A benchmark loads both and compares a model against the
 ## Install
 
 Copy this folder to `brainscore/data/<your_name>/` and move `test_data.py` to
-`tests/test_<your_name>.py`. Then add one line to `brainscore/data/__init__.py`:
-
-```
-from . import your_name
-```
+`tests/test_<your_name>.py`. Nothing else to edit: the folder registers by its presence.
 
 Then, typically from inside a benchmark (here from the `templates/` folder, where
 importing the template registers it):

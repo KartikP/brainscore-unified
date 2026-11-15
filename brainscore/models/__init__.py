@@ -1,23 +1,10 @@
 """Unified Brain-Score model registrations.
 
-Each subpackage's __init__.py adds an entry to ``brainscore.model_registry``.
-They're imported here so the registry populates on package load.
+Each plugin folder here (a sub-package whose name does not start with ``_``) adds
+its entries to ``brainscore.model_registry``. Every one is imported when the package
+loads; ``_downloads`` and ``_shared`` are helper modules, not plugins.
 """
 
-from . import clip_vit_b_32  # noqa: F401
-from . import qwen25_vl_3b   # noqa: F401
-from . import qwen36_27b  # noqa: F401  27B VLM: vision + text (needs transformers>=5)
-from . import blip2_opt_2_7b  # noqa: F401
-from . import gpt2            # noqa: F401
-from . import qwen25_05b_instruct  # noqa: F401
-from . import random_vit_b_32  # noqa: F401   null-control: untrained ViT + logistic
-from . import chance_baseline   # noqa: F401   null-control: uniform probabilities
-from . import videomae_base     # noqa: F401   native-temporal video model (pixel-reconstruction)
-from . import vjepa             # noqa: F401   native-temporal video model (representation-reconstruction, V-JEPA v2)
-from . import vjepa_v1          # noqa: F401   native-temporal video model (representation-reconstruction, V-JEPA v1 — EPFL paper's exact checkpoint)
-from . import multimodal_av_vjepa_wav2vec2  # noqa: F401  multimodal A+V: V-JEPA v1 video + Wav2Vec2-base audio
-from . import random_wav2vec2  # noqa: F401  null-control: random-init Wav2Vec2-base for audio
-from . import multimodal_av_clip_wav2vec2  # noqa: F401  multimodal A+V: CLIP frames + Wav2Vec2 (4 signal/null combos)
-from . import multimodal_av_blip2_wav2vec2  # noqa: F401  multimodal A+V: BLIP-2 ViT-G frames + Wav2Vec2 (signal-only)
-from . import multimodal_av_qwen_wav2vec2  # noqa: F401  multimodal A+V: Qwen2.5-VL-3B vision + Wav2Vec2 (signal-only)
-from . import api_closed  # noqa: F401  closed-weight API models (Claude/GPT-4), behavioral-only via an answer part
+from brainscore import _import_plugins
+
+_import_plugins(__name__)    # every plugin folder here registers by its presence

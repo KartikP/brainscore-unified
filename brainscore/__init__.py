@@ -94,6 +94,33 @@ stimulus_set_registry: Dict[str, Callable[..., Any]] = _Registry()
 data_builder_registry: Dict[str, Callable[[], Any]] = _Registry()
 
 
+# Plugin packages that failed to import: {qualified name: 'ErrorType: message'}.
+_plugin_import_failures: Dict[str, str] = {}
+
+
+def _import_plugins(package: str) -> None:
+    """Import every plugin of the kind folder ``package`` so that it registers.
+
+    A plugin is a sub-package (a folder with an ``__init__.py``) whose name does not
+    start with ``_``; a plain module (a shared helper) is not imported. A plugin whose
+    import fails is named in a warning with the cause and recorded; the other plugins
+    still register, and the loaders' not-found message names it.
+    """
+    import importlib
+    import pkgutil
+    import sys
+    for info in sorted(pkgutil.iter_modules(sys.modules[package].__path__), key=lambda i: i.name):
+        if not info.ispkg or info.name.startswith('_'):
+            continue
+        name = f'{package}.{info.name}'
+        try:
+            importlib.import_module(name)
+        except ImportError as error:
+            _plugin_import_failures[name] = f'{type(error).__name__}: {error}'
+            _logger.warning(f'plugin {name} failed to import and registers nothing: '
+                            f'{type(error).__name__}: {error}')
+
+
 def _populate_unified_registries() -> None:
     """Import benchmark + model subpackages so they register factories.
 
@@ -216,11 +243,16 @@ def list_benchmarks():
 def _not_found(kind: str, identifier: str, sources: str, folder: str, listing: str = '') -> KeyError:
     """The one message of a loader that finds no identifier."""
     listed = f' {listing} lists them all.' if listing else ''
+    failed = {name: cause for name, cause in _plugin_import_failures.items()
+              if name.startswith(f'brainscore.{folder}.')}
+    broken = (' These plugin packages failed to import, so their identifiers are missing: '
+              + '; '.join(f'{name} ({cause})' for name, cause in sorted(failed.items())) + '.'
+              if failed else '')
     return KeyError(
-        f"{kind} '{identifier}' not found in {sources} registries.{listed} A plugin registers "
-        f"when its package is imported: for a plugin in brainscore/{folder}/<name>/, add "
-        f"'from . import <name>' to brainscore/{folder}/__init__.py, or import the package "
-        f"before you load it.")
+        f"{kind} '{identifier}' not found in {sources} registries.{listed}{broken} A plugin "
+        f"registers when its package is imported: a folder brainscore/{folder}/<name>/ with an "
+        f"__init__.py is imported with brainscore; a plugin in another package registers when "
+        f"you import that package before you load it.")
 
 
 def load_model(identifier: str) -> Subject:
