@@ -68,12 +68,12 @@ def test_answer_and_readout_set_answers_both_forms_through_the_answer_part():
         assert calls == ['answer'] * 3 and 'extract' not in calls
 
 
-def test_the_full_part_set_answers_legacy_through_answer_and_the_choice_through_reply_today():
-    """Pins today's selection (stage 3 plan, point r): a plain Choice goes to the reply part."""
+def test_the_full_part_set_answers_legacy_and_the_plain_choice_through_answer():
+    """Stage 3 plan, point r: within generation a plain Choice goes to answer= when it is wired."""
     _, legacy_calls = _answers(QWEN, ['behavior'], LEGACY)
     choice, choice_calls = _answers(QWEN, ['behavior:choice'], PLAIN)
     assert legacy_calls == ['answer'] * 3
-    assert choice_calls == ['reply'] * 3
+    assert choice_calls == ['answer'] * 3
     assert choice.attrs['response']['method'] == 'generation' and choice.attrs['response']['origin'] == 'native'
 
 

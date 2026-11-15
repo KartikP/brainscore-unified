@@ -362,11 +362,15 @@ def test_data_source_choice_required(tmp_path):
             prepare_dataset('EWoK-core-1.0',output=tmp_path/'out',**options)
 
 
-def test_feature_only_subject_rejected(prepared):
-    from brainscore_core.compatibility import CompatibilityError
-    benchmark=brainscore.load_benchmark('EWoK-core-1.0-choice',root=prepared)
-    result = brainscore.score(brainscore.load_model('chance-baseline'),benchmark,check_mem=False)
-    assert result.attrs['status'] == 'N/A'
+def test_the_chance_baseline_answers_choice_mode_and_is_not_applicable_on_logprobs(prepared, tmp_path):
+    # Since stage 3, S7, chance-baseline gives behavior:choice (the first option of uniform
+    # rows), so it is the chance floor of choice mode; it gives no log probabilities.
+    chance = brainscore.load_model('chance-baseline')
+    choice = brainscore.load_benchmark('EWoK-core-1.0-choice', root=prepared, output_dir=tmp_path / 'c')
+    result = brainscore.score(chance, choice, check_mem=False)
+    assert 'status' not in result.attrs and float(result.attrs['raw']) == 0.5
+    logprobs = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared)
+    assert brainscore.score(chance, logprobs, check_mem=False).attrs['status'] == 'N/A'
 
 
 def test_real_hooks_change_score_and_restore(prepared, tmp_path):

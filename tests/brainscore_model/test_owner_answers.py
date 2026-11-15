@@ -311,3 +311,63 @@ def test_the_requested_formats_decide_the_passes_and_the_recording(parts, output
     assert recorded.values.tolist() == rows
     assert (recorded.attrs['recording']['path'], recorded.attrs['recording']['forward_pass']) == (
         'generation', 'prompt')
+
+
+# --- S7a: within generation, a plain Choice goes to answer= (point r) ---------------
+
+@pytest.mark.parametrize('verbatim, called', [(False, 'answer'), (True, 'reply')],
+                         ids=['plain choice', 'verbatim choice'])
+def test_a_plain_choice_goes_to_answer_and_a_task_setting_to_reply(verbatim, called):
+    calls = []
+    model = _model(*QWEN, owners=REGISTERED_STATEMENTS[QWEN], calls=calls)
+    task = TaskContext(instruction=None if verbatim else 'Which?',
+                       response=Choice(['cat', 'dog'], verbatim=verbatim))
+    choice = _run(model, ['behavior:choice'], task).collect('behavior:choice')
+    assert calls == [called] * len(STIMULI)
+    assert choice.attrs['response']['method'] == 'generation'
+
+
+# --- review S7-02: a task that sets 'present' is not a plain Choice ------------------
+
+def _screens():
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    stimuli = StimulusSet({'stimulus_id': ['t0', 't1'], 'rule': ['animal', 'colour'],
+                           'word_1': ['/s/t0_1.png', '/s/t1_1.png'], 'word_2': ['/s/t0_2.png', '/s/t1_2.png']})
+    stimuli.identifier = 'two-screens'
+    return stimuli
+
+
+SCREENS = TaskContext(present=('image:word_1', 'image:word_2'), response=Choice(['yes', 'no']))
+
+
+def test_a_choice_that_sets_present_goes_to_the_reply_not_the_registered_answer():
+    """Notebook 14's task shape: two image screens, a plain Choice, no instruction. The
+    registered Qwen answer (it reads image_file_name) is never called."""
+    import torch
+    from brainscore.models.qwen25_vl_3b.model import _make_answer
+    registered = _make_answer(torch.nn.Linear(1, 1), object())
+    answered, shown = [], []
+
+    def answer(**kwargs):
+        answered.append(kwargs)
+        return registered(**kwargs)
+
+    def reply(prompt):
+        shown.append(prompt.parts)
+        return 'yes'
+    model = BrainScoreModel('screens', in_channels={'vision:image'}, answer=answer, reply=reply)
+    session = stimulus_session(_screens(), ['behavior:choice'], SCREENS)
+    model.participate(session)
+    assert answered == []
+    assert [[kind for kind, _ in parts] for parts in shown] == [['image', 'image', 'text']] * 2
+    assert shown[0][:2] == (('image', '/s/t0_1.png'), ('image', '/s/t0_2.png'))
+    assert session.collect('behavior:choice').values.tolist() == [[1.0, 0.0]] * 2
+
+
+def test_an_answer_part_alone_refuses_a_choice_that_sets_present_before_any_call():
+    calls = []
+    model = BrainScoreModel('answer-only', in_channels={'vision:image'},
+                            answer=lambda **kwargs: calls.append(kwargs) or 'yes')
+    with pytest.raises(ExecutionNotFeasibleError, match='present'):
+        model.participate(stimulus_session(_screens(), ['behavior:choice'], SCREENS))
+    assert calls == []

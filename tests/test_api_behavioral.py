@@ -530,7 +530,7 @@ class TestApiReply:
         assert 'behavior:text' in model.out_channels
         assert {'vision:image', 'text'} <= model.in_channels
 
-    def test_an_api_model_answers_text_and_plain_choice_tasks_through_its_reply_part(
+    def test_an_api_model_answers_text_through_its_reply_and_a_plain_choice_through_its_answer(
             self, tmp_path, monkeypatch):
         """No network: a fake adapter stands in for the provider."""
         from brainscore.model_helpers import api_behavioral
@@ -555,8 +555,10 @@ class TestApiReply:
                         else answer.values) == ['long']
         assert [call['model'] for call in calls] == ['gpt-4o-2024-08-06'] * 2
         assert calls[0]['settings'] == {'max_tokens': 8}
+        # A plain Choice goes to the answer part (point r), which phrases its own prompt.
         assert calls[1]['messages'][0]['content'][-1] == {
-            'type': 'text', 'text': 'Answer with exactly one of: short, long.'}
+            'type': 'text',
+            'text': 'xyz\n\nAnswer with exactly one of: short, long. Reply with only that word, nothing else.'}
 
     def test_an_api_reply_model_runs_coggym(self, tmp_path, monkeypatch):
         """API models run CogGym: the settings reach the provider call."""
