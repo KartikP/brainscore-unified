@@ -198,7 +198,7 @@ class TestAggregate:
         import torch.nn as nn
         w = AudioWrapper(
             model=nn.Identity(), processor=_FakeProcessor(),
-            identifier='w', layer_aggregation='time_series',
+            identifier='w', layer_aggregation='sequence',
         )
         act = np.random.randn(3, 7, 4).astype(np.float32)
         out = w._aggregate({'l': act}, attention_mask=None)
@@ -254,24 +254,24 @@ class TestPrecision:
         waves = [np.zeros(1600, np.float32), np.zeros(1600, np.float32)]
         return wrapper._get_activations_batched(waves, ['encoder'])['encoder'], network.seen
 
-    @pytest.mark.parametrize('aggregation', ['mean_time', 'time_series'])
+    @pytest.mark.parametrize('aggregation', ['mean', 'sequence'])
     @pytest.mark.parametrize('dtype_name', ['float16', 'float32', 'float64'])
     def test_activity_keeps_the_network_dtype(self, dtype_name, aggregation):
         import torch
         activity, seen = self._extract(getattr(torch, dtype_name), aggregation)
         raw = np.concatenate([tensor.numpy() for tensor in seen])
-        expected = raw if aggregation == 'time_series' else raw.mean(axis=1)
+        expected = raw if aggregation == 'sequence' else raw.mean(axis=1)
         assert activity.dtype == np.dtype(dtype_name)
         np.testing.assert_array_equal(activity, expected)
 
     def test_float64_mean_is_not_rounded(self):
         import torch
-        activity, _ = self._extract(torch.float64, 'mean_time')
+        activity, _ = self._extract(torch.float64, 'mean')
         assert activity[0, 1] == pytest.approx(2 / 3, abs=0)
 
     def test_bfloat16_becomes_float32(self):
         import torch
-        activity, seen = self._extract(torch.bfloat16, 'time_series')
+        activity, seen = self._extract(torch.bfloat16, 'sequence')
         assert activity.dtype == np.float32
         np.testing.assert_array_equal(activity, np.concatenate([t.float().numpy() for t in seen]))
 
@@ -365,7 +365,7 @@ class TestWaveformChunking:
         w = AudioWrapper(
             model=nn.Identity(), processor=_FakeProcessor(16000),
             identifier='w', max_duration_sec=60.0,
-            layer_aggregation='time_series',
+            layer_aggregation='sequence',
         )
         # 3 chunks @ T=2, H=2. Clip 0 = chunks {0,1} → T=4. Clip 1 = {2} → T=2.
         chunk_arr = np.array([
@@ -449,7 +449,7 @@ class TestTemporalCoords:
         # 1s @ 16kHz input → 50 output steps means step_ms = 1000/50 = 20
         w = AudioWrapper(
             model=model, processor=_FakeProcessor(16000),
-            identifier='strided', layer_aggregation='time_series',
+            identifier='strided', layer_aggregation='sequence',
         )
         wav = np.zeros(16000, dtype=np.float32)  # 1s
         w._run_one_batch([wav], layers=['encoder'])

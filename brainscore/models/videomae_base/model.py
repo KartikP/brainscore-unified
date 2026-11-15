@@ -27,12 +27,14 @@ to encoder layers spread through the network depth. These are placeholder
 choices; Layer Mapping Explorer would select empirically.
 """
 
+import functools
 from typing import List
 
 import numpy as np
 import torch
 
 from brainscore import BrainScoreModel
+from brainscore.models._shared import tubelet_spatial_mean
 
 
 REGION_LAYER_MAP = {
@@ -65,34 +67,9 @@ def _make_preprocessing(processor):
     return preprocess
 
 
-def _videomae_post_hook(arr: np.ndarray) -> np.ndarray:
-    """Reshape VideoMAE hook output from interleaved (B, T×S, H) to (B, T, H).
-
-    VideoMAE's encoder outputs tokens ordered as all spatial patches at
-    time 0, then all spatial patches at time 1, etc. Reshape to
-    (B, T, S, H) and mean-pool across the spatial dimension to get one
-    feature vector per temporal step.
-    """
-    B, seq_len, hidden = arr.shape
-    if seq_len != NUM_TEMPORAL_STEPS * NUM_SPATIAL_PATCHES:
-        # Defensive: if VideoMAE config ever differs, derive T and S
-        # from the sequence length (assuming 196 spatial per tubelet).
-        if seq_len % NUM_SPATIAL_PATCHES == 0:
-            t_steps = seq_len // NUM_SPATIAL_PATCHES
-            s_steps = NUM_SPATIAL_PATCHES
-        elif seq_len % NUM_TEMPORAL_STEPS == 0:
-            t_steps = NUM_TEMPORAL_STEPS
-            s_steps = seq_len // NUM_TEMPORAL_STEPS
-        else:
-            raise ValueError(
-                f"VideoMAE post-hook: unable to infer (T, S) from "
-                f"seq_len={seq_len}.")
-    else:
-        t_steps = NUM_TEMPORAL_STEPS
-        s_steps = NUM_SPATIAL_PATCHES
-
-    reshaped = arr.reshape(B, t_steps, s_steps, hidden)
-    return reshaped.mean(axis=2)  # mean over spatial patches → (B, T, H)
+# VideoMAE tokens are all spatial patches at time 0, then time 1, ...
+_videomae_post_hook = functools.partial(tubelet_spatial_mean, temporal_steps=NUM_TEMPORAL_STEPS,
+                                        spatial_patches=NUM_SPATIAL_PATCHES)
 
 
 def get_model(identifier: str) -> BrainScoreModel:

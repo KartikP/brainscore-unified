@@ -86,7 +86,7 @@ def test_a_changed_setting_changes_the_key(name):
     before = _key(wrapper, inputs)
     setting = {'text': '_max_length', 'audio': '_max_duration_sec', 'video': '_num_frames',
                'vlm_vision': '_layer_aggregation'}[name]
-    setattr(wrapper, setting, {'_layer_aggregation': 'first_patch'}.get(setting, 3))
+    setattr(wrapper, setting, {'_layer_aggregation': 'first'}.get(setting, 3))
     assert _key(wrapper, inputs) != before
 
 

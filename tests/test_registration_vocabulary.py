@@ -388,12 +388,12 @@ def test_clip_keeps_its_wrappers_and_preprocessing(build, tmp_path):
     preprocessing = vision.kwargs['preprocessing']
     assert vision.kwargs == {'identifier': 'clip-vit-b-32', 'model': clip.vision_model,
                              'preprocessing': preprocessing}
-    assert vision.image_size == 224
+    assert 'image_size' not in vars(vision)
     assert preprocessing.func is module._load_preprocess_images
-    assert preprocessing.keywords == {'processor': processor, 'image_size': 224}
+    assert preprocessing.keywords == {'processor': processor}
     assert text.kwargs == {'model': clip.text_model, 'tokenizer': processor.tokenizer,
                            'identifier': 'clip-vit-b-32-text',
-                           'layer_aggregation': 'mean_tokens', 'max_length': 77}
+                           'layer_aggregation': 'mean', 'max_length': 77}
     path = _images(tmp_path, 'pixels', [4]).stimulus_paths['pixels0']
     assert preprocessing([path]).shape == (1, 4, 4, 3)   # RGBA converted to RGB
     assert processor.images_seen[-1].mode == 'RGB'
@@ -421,18 +421,14 @@ def test_qwen_keeps_its_wrappers_dtype_and_generation(build):
     BrainScoreModel = module.BrainScoreModel
     vision, text = FakeExtractor.instances
     assert type(vision) is FakeVLMVisionWrapper and type(text) is FakeTextWrapper
-    patch_count_fn = vision.kwargs['patch_count_fn']
     # The settings each wrapper is built with, defaults included, are unchanged.
     from brainscore.model_helpers.text_wrapper import TextWrapper
     from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
     assert _effective(VLMVisionWrapper, vision.kwargs) == _effective(VLMVisionWrapper, {
         'model': qwen.model.visual, 'processor': processor,
-        'identifier': 'qwen2.5-vl-3b-vision', 'image_input_key': 'pixel_values',
-        'forward_kwargs_map': {'grid_thw': 'image_grid_thw'}, 'patch_count_fn': patch_count_fn,
-        'layer_aggregation': 'mean_patches', 'batch_size': 4})
-    assert patch_count_fn({'image_grid_thw': [(1, 2, 3), (2, 2, 2)]}) == [6, 8]
+        'identifier': 'qwen2.5-vl-3b-vision', 'layer_aggregation': 'mean', 'batch_size': 4})
     assert _effective(TextWrapper, text.kwargs) == _effective(TextWrapper, {
         'model': qwen.model.language_model, 'tokenizer': processor.tokenizer,
-        'identifier': 'qwen2.5-vl-3b-text', 'layer_aggregation': 'last_token', 'max_length': 512})
+        'identifier': 'qwen2.5-vl-3b-text', 'layer_aggregation': 'last', 'max_length': 512})
     assert model._behavioral_readout_layer == 'blocks.28'
     assert model._answer is not None

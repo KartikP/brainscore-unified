@@ -102,7 +102,7 @@ def test_both_towers_are_wired(built):
     model, _ = built
     vision, text = model.extractor['vision'], model.extractor['text']
     assert vision.kwargs['processor'] is not None
-    assert vision.kwargs['forward_kwargs_map'] == {'grid_thw': 'image_grid_thw'}
+    assert set(vision.kwargs) == {'model', 'processor', 'identifier'}
     assert isinstance(vision.kwargs['model'].blocks, torch.nn.ModuleList)
     assert len(text.kwargs['model'].layers) == 64
     # Same identifier as the earlier text-only registration.
@@ -170,8 +170,6 @@ def test_vision_extractor_keeps_its_identifier_and_cache_key(monkeypatch):
     assert type(vision) is vlm_vision_wrapper.VLMVisionWrapper
     assert vision.identifier == 'qwen3.6-27b-vision'
     settings = vision.cache_config()['settings']
-    assert {key: settings[key] for key in ('_image_input_key', '_forward_kwargs_map',
-                                           '_layer_aggregation', '_batch_size')} == {
-        '_image_input_key': 'pixel_values', '_forward_kwargs_map': {'grid_thw': 'image_grid_thw'},
-        '_layer_aggregation': 'mean_patches', '_batch_size': 4}
+    assert {key: settings[key] for key in ('_layer_aggregation', '_batch_size')} == {
+        '_layer_aggregation': 'mean', '_batch_size': 4}
     assert settings['_processor'] is processor

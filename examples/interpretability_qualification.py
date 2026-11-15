@@ -94,7 +94,7 @@ def check_model(directory: Path, model: Any, tokenizer: Any, layer: str, provena
     # Placement is a qualification control, not a change to the wrapper defaults.
     with patch('brainscore.model_helpers._device.select_device', return_value=torch.device('cpu')):
         extractor = TextWrapper(model, tokenizer, identifier='qualification',
-                                layer_aggregation='last_token', batch_size=64, max_length=64)
+                                layer_aggregation='last', batch_size=64, max_length=64)
     subject = BrainScoreModel(identifier='interpretability-qualification', extractor={'text': extractor},
                               region_layer_map={'population': layer})
     site = model.get_submodule(layer)

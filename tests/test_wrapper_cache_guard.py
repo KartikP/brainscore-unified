@@ -51,6 +51,15 @@ MODULES = {
 CLASSES = {'text': 'TextWrapper', 'audio': 'AudioWrapper', 'video': 'VideoWrapper', 'vlm_vision': 'VLMVisionWrapper'}
 
 
+# Case names are the reference keys, recorded under the layer_aggregation names
+# of that time; the values are the names of today (one value set, step 6).
+CASE_AGGREGATIONS = {
+    'text': [('last_token', 'last'), ('mean_tokens', 'mean'), ('per_token', 'sequence')],
+    'audio': [('mean_time', 'mean'), ('time_series', 'sequence')],
+    'vlm_vision': [('mean_patches', 'mean'), ('first_patch', 'first')],
+}
+
+
 @pytest.fixture(autouse=True)
 def _in_tmp(tmp_path, monkeypatch):
     monkeypatch.setenv('RESULTCACHING_DISABLE', '1')
@@ -101,9 +110,9 @@ def text_wrapper(**settings):
 
 def _text_cases():
     stimuli = _stimuli('guard-text-stimuli', sentence=['the cat sat on the mat', 'dog ran', 'the dog sat'])
-    for aggregation in ('last_token', 'mean_tokens', 'per_token'):
+    for case, aggregation in CASE_AGGREGATIONS['text']:
         wrapper = text_wrapper(layer_aggregation=aggregation, batch_size=2)
-        yield aggregation, wrapper(stimuli, layers=['enc', 'proj'])
+        yield case, wrapper(stimuli, layers=['enc', 'proj'])
 
 
 # -- audio --------------------------------------------------------------------
@@ -154,9 +163,9 @@ def _audio_files():
 
 def _audio_cases():
     stimuli = _stimuli('guard-audio-stimuli', audio_path=_audio_files())
-    for aggregation in ('mean_time', 'time_series'):
+    for case, aggregation in CASE_AGGREGATIONS['audio']:
         wrapper = audio_wrapper(layer_aggregation=aggregation, batch_size=2)
-        yield aggregation, wrapper(stimuli, layers=['frames', 'head'])
+        yield case, wrapper(stimuli, layers=['frames', 'head'])
 
 
 # -- video --------------------------------------------------------------------
@@ -235,14 +244,9 @@ class _PatchProcessor:
                 'image_grid_thw': torch.tensor(grids)}
 
 
-def _patch_count(processed):
-    return [int(t * h * w) for t, h, w in processed['image_grid_thw']]
-
-
 def vlm_vision_wrapper(**settings):
     from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
     return VLMVisionWrapper(_eighths(_PatchNet(), 5), _PatchProcessor(), identifier='guard-vlm',
-                            forward_kwargs_map={'grid_thw': 'image_grid_thw'}, patch_count_fn=_patch_count,
                             device='cpu', **settings)
 
 
@@ -266,9 +270,9 @@ def _image_files(sizes=((4, 4), (4, 6), (2, 2)), seed=6):
 
 def _vlm_vision_cases():
     stimuli = _stimuli('guard-vlm-stimuli', image_file_name=_image_files())
-    for aggregation in ('mean_patches', 'first_patch'):
+    for case, aggregation in CASE_AGGREGATIONS['vlm_vision']:
         wrapper = vlm_vision_wrapper(layer_aggregation=aggregation, batch_size=2)
-        yield aggregation, wrapper(stimuli, layers=['blocks.0', 'blocks.1'])
+        yield case, wrapper(stimuli, layers=['blocks.0', 'blocks.1'])
     # Images already apart on the first axis (no patch counts): the per-image branch.
     from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
     same_size = _stimuli('guard-vlm-per-image', image_file_name=_image_files(((4, 4),) * 3, seed=7))

@@ -54,7 +54,7 @@ def text(folder):
                                         model_max_length=64)
     network = _seeded(17, lambda: GPT2Model(GPT2Config(vocab_size=7, n_positions=64, n_embd=8,
                                                        n_layer=2, n_head=2)))
-    wrapper = TextWrapper(network, tokenizer, identifier='tiny-text', layer_aggregation='last_token',
+    wrapper = TextWrapper(network, tokenizer, identifier='tiny-text', layer_aggregation='last',
                           max_length=64, batch_size=1, device='cpu')
     stimuli = _table(['a', 'b', 'c'], 'sentence', ['the cat sat', 'the dog ran the', 'cat'], 'tiny-text-set')
     return wrapper, stimuli, _regions('text', ('h.0', 'h.1', 'ln_f', 'h.1.mlp.c_proj:input')), network
@@ -187,7 +187,7 @@ class _AudioNet(torch.nn.Module):
         return self.head(self.layer1(hidden))
 
 
-def audio(folder, aggregation='time_series'):
+def audio(folder, aggregation='sequence'):
     from brainscore.model_helpers.audio_wrapper import AudioWrapper
     network = _seeded(11, _AudioNet)
     rng = np.random.default_rng(13)

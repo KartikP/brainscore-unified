@@ -198,7 +198,7 @@ class TestInspectModel:
         assert not p.is_multimodal
         rec = p.primary
         assert rec.wrapper == 'TextWrapper'
-        assert rec.layer_aggregation == 'last_token'
+        assert rec.layer_aggregation == 'last'
         assert rec.submodule_path is None
         assert len(rec.block_layers) == 6
 

@@ -22,7 +22,7 @@ from tests.test_wrapper_cache_guard import (
 CASES = {
     'text': (text_wrapper, lambda: _stimuli('share-text', sentence=['the cat sat', 'dog ran on the mat']),
              ['enc', 'proj']),
-    'text_per_token': (lambda: text_wrapper(layer_aggregation='per_token'),
+    'text_per_token': (lambda: text_wrapper(layer_aggregation='sequence'),
                        lambda: _stimuli('share-per-token', sentence=['the cat sat', 'dog']), ['enc', 'proj']),
     'audio': (audio_wrapper, lambda: _stimuli('share-audio', audio_path=_audio_files()), ['frames', 'head']),
     'video': (video_wrapper, lambda: _stimuli('share-video', video_path=_video_files()), ['block', 'head']),

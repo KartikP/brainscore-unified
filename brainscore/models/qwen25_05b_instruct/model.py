@@ -42,4 +42,4 @@ def get_model() -> 'BrainScoreModel':
         provenance['weights_sha256'] = digest.hexdigest()
     return build_causal_lm_subject(IDENTIFIER, model, tokenizer,
                                    region_layer_map={'language_system': 'model.layers.23'},
-                                   layer_aggregation='last_token', provenance=provenance)
+                                   layer_aggregation='last', provenance=provenance)

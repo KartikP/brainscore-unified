@@ -166,7 +166,7 @@ def test_record_reads_a_module_input_as_the_passive_call_does():
 
     net = _Embed()
     wrapper = TextWrapper(model=net, tokenizer=_IdsTokenizer(), identifier='input-site',
-                          layer_aggregation='mean_tokens', device='cpu')
+                          layer_aggregation='mean', device='cpu')
     passive = wrapper(['abc'], layers=['layer:input']).values
     with wrapper.record(['layer:input']) as recording:
         net(**_IdsTokenizer()(['abc']))

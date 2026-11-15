@@ -60,11 +60,11 @@ DEFAULT_AUDIO_REGIONS: Tuple[str, ...] = ('A1',)
 # the brain regions a provisional map spaces over).
 _MODALITY_WRAPPER = {
     'vision':       ('PytorchWrapper',   None,           DEFAULT_VISION_REGIONS),
-    'vision_flat':  ('VLMVisionWrapper', 'mean_patches', DEFAULT_VISION_REGIONS),
+    'vision_flat':  ('VLMVisionWrapper', 'mean', DEFAULT_VISION_REGIONS),
     'video':        ('VideoWrapper',     None,           DEFAULT_VISION_REGIONS),
-    'audio':        ('AudioWrapper',     'mean_time',    DEFAULT_AUDIO_REGIONS),
-    'text_causal':  ('TextWrapper',      'last_token',   DEFAULT_LANGUAGE_REGIONS),
-    'text_encoder': ('TextWrapper',      'mean_tokens',  DEFAULT_LANGUAGE_REGIONS),
+    'audio':        ('AudioWrapper',     'mean',    DEFAULT_AUDIO_REGIONS),
+    'text_causal':  ('TextWrapper',      'last',   DEFAULT_LANGUAGE_REGIONS),
+    'text_encoder': ('TextWrapper',      'mean',  DEFAULT_LANGUAGE_REGIONS),
 }
 
 # Substring signals (matched case-insensitively against class name + HF
@@ -449,9 +449,9 @@ def inspect_model(model: Any, processor: Any = None,
             "(B, T, S, H) → mean-over-space → (B, T, H).")
     if any(r.modality == 'vision_flat' for r in recommendations):
         notes.append(
-            "Flattened-patch VLM vision: VLMVisionWrapper needs "
-            "patch_count_fn + forward_kwargs_map (e.g. grid_thw) to segment "
-            "patches back to images. See qwen25_vl_3b for a worked example.")
+            "Flattened-patch VLM vision: VLMVisionWrapper segments patches "
+            "back to images from the processor's image_grid_thw (the Qwen-VL "
+            "layout). See qwen25_vl_3b for a worked example.")
 
     return ModelProfile(identifier=ident, n_parameters=n_params, dtype=dtype,
                         recommendations=recommendations,
@@ -602,7 +602,7 @@ def auto_register(model: Any,
         from brainscore.model_helpers.text_wrapper import TextWrapper
         text_wrapper = TextWrapper(
             model=model, tokenizer=tokenizer, identifier=identifier,
-            layer_aggregation=rec.layer_aggregation or 'last_token')
+            layer_aggregation=rec.layer_aggregation or 'last')
         return BrainScoreModel(
             identifier=identifier,
             model=model,

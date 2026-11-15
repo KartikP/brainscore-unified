@@ -106,7 +106,7 @@ def text_stimuli():
 
 
 @pytest.mark.parametrize('streaming', [False, True], ids=['table', 'stream'])
-@pytest.mark.parametrize('aggregation', ['last_token', 'per_token'])
+@pytest.mark.parametrize('aggregation', ['last', 'sequence'])
 def test_text_regions_share_one_call_and_equal_each_region_alone(aggregation, streaming):
     make = lambda: text_model(aggregation)
     calls = assert_each_channel_alone(make, text_stimuli(), list(TEXT_REGIONS), streaming)
@@ -116,7 +116,7 @@ def test_text_regions_share_one_call_and_equal_each_region_alone(aggregation, st
 
 
 def test_a_passive_task_still_shares_the_call():
-    calls = assert_each_channel_alone(lambda: text_model('last_token'), text_stimuli(), ['V1', 'IT', 'MIX'],
+    calls = assert_each_channel_alone(lambda: text_model('last'), text_stimuli(), ['V1', 'IT', 'MIX'],
                                       False, task=TaskContext(task_type='passive'))
     assert len(calls) == 1
 
@@ -126,7 +126,7 @@ def test_a_composite_region_in_another_layer_order_gets_its_own_call():
     regions = dict(TEXT_REGIONS, BACK=CompositeSelector((('ln_f', (0,)), ('h.0', None)), modality='text'))
 
     def make():
-        model, calls = text_model('last_token')
+        model, calls = text_model('last')
         model = BrainScoreModel('tiny-text', extractor=dict(model._extractors), region_layer_map=regions)
         return model, calls
     calls = assert_each_channel_alone(make, text_stimuli(), ['V1', 'IT', 'BACK'], False)

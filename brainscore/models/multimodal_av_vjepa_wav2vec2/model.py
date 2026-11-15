@@ -16,18 +16,13 @@ Reuses the V-JEPA v1 ViT-L backbone vendored under
 ``brainscore.models.vjepa_v1.backbone`` (no second download).
 """
 
-from typing import List
-
-import numpy as np
-import torch
-import torch.nn as nn
-
 from brainscore import BrainScoreModel
+from brainscore.models._shared import build_audio_wrapper
 
 
 # ── Audio tower config ─────────────────────────────────────────────
 
-AUDIO_HF_ID = 'facebook/wav2vec2-base'
+# The audio tower is the shared Wav2Vec2-base (``_shared.build_audio_wrapper``).
 # Wav2Vec2-base output is (B, T_out, 768) where T_out = floor(samples / 320).
 # At 16 kHz that's a 50 Hz step → 20 ms per token. Lahner clips are 3s,
 # so each clip yields ~150 audio tokens before chunking; AudioWrapper's
@@ -83,57 +78,6 @@ def _build_video_wrapper(identifier: str, random_init: bool = False):
     return wrapper, model
 
 
-def _build_audio_wrapper(identifier: str, random_init: bool = False):
-    """Wrap Wav2Vec2-base with AudioWrapper. AudioWrapper handles the
-    whole audio pipeline (load WAV, resample, processor, hook, batch,
-    cache, package) — symmetric with the other wrappers.
-
-    ``random_init=True`` constructs from config (random weights,
-    deterministic seed) instead of loading the pretrained checkpoint.
-    """
-    from transformers import (
-        Wav2Vec2Model, Wav2Vec2Config, Wav2Vec2FeatureExtractor)
-    from brainscore.model_helpers.audio_wrapper import AudioWrapper
-    from scipy.io import wavfile
-    import torch
-
-    if random_init:
-        config = Wav2Vec2Config.from_pretrained(AUDIO_HF_ID)
-        torch.manual_seed(0)
-        model = Wav2Vec2Model(config).eval()
-    else:
-        model = Wav2Vec2Model.from_pretrained(AUDIO_HF_ID).eval()
-    processor = Wav2Vec2FeatureExtractor.from_pretrained(AUDIO_HF_ID)
-
-    def _wav_loader(audio_path: str, target_rate: int) -> np.ndarray:
-        sr, wav = wavfile.read(audio_path)
-        if sr != target_rate:
-            raise ValueError(
-                f"WAV at {audio_path} has sr={sr}, expected {target_rate}. "
-                f"Re-extract via prepare_audio_tracks.py with --target-rate "
-                f"{target_rate}."
-            )
-        # int16 → float32 in [-1, 1]
-        if wav.dtype.kind == 'i':
-            max_val = np.iinfo(wav.dtype).max
-            wav = wav.astype(np.float32) / max_val
-        else:
-            wav = wav.astype(np.float32)
-        # Wav2Vec2 expects mono
-        if wav.ndim > 1:
-            wav = wav.mean(axis=-1)
-        return wav
-
-    wrapper = AudioWrapper(
-        model=model,
-        processor=processor,
-        identifier=f'{identifier}-audio',
-        layer_aggregation='time_series',  # keep T axis for temporal alignment
-        audio_loader=_wav_loader,
-    )
-    return wrapper, model
-
-
 from ._ids import SUPPORTED_IDENTIFIERS
 
 
@@ -147,7 +91,7 @@ def get_model(identifier: str) -> BrainScoreModel:
 
     video_wrapper, video_model = _build_video_wrapper(
         identifier, random_init=random_video)
-    audio_wrapper, audio_model = _build_audio_wrapper(
+    audio_wrapper, audio_model = build_audio_wrapper(
         identifier, random_init=random_audio)
 
     return BrainScoreModel(

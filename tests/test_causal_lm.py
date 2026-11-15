@@ -267,7 +267,7 @@ def test_caller_provenance_is_copied_at_registration(subject):
 def test_text_wrapper_adds_no_provenance_by_default(subject):
     from brainscore.model_helpers.text_wrapper import TextWrapper
     _, net, tok = subject
-    assembly = TextWrapper(net, tok, identifier='plain', layer_aggregation='per_token')(_stimuli(), [NEURON_IN])
+    assembly = TextWrapper(net, tok, identifier='plain', layer_aggregation='sequence')(_stimuli(), [NEURON_IN])
     assert 'provenance' not in assembly.attrs
 
 
@@ -277,7 +277,7 @@ def test_recording_rejects_malformed_sites(subject, layer):
     from brainscore.model_helpers.text_wrapper import TextWrapper
     _, net, tok = subject
     with pytest.raises(ValueError, match='site|empty module path'):
-        TextWrapper(net, tok, identifier='strict', layer_aggregation='per_token')(_stimuli(), [layer])
+        TextWrapper(net, tok, identifier='strict', layer_aggregation='sequence')(_stimuli(), [layer])
     assert not any(m._forward_hooks or m._forward_pre_hooks for m in net.modules())
 
 

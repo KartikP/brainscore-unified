@@ -178,7 +178,7 @@ class _Tokens:
 
 
 @pytest.mark.parametrize('batch', [1, 3])
-@pytest.mark.parametrize('aggregation', ['last_token', 'mean_tokens'])
+@pytest.mark.parametrize('aggregation', ['last', 'mean'])
 @pytest.mark.parametrize('side', ['left', 'right'])
 def test_text_of_unequal_length_padded_on_either_side(monkeypatch, side, aggregation, batch):
     """The last real token and the mean of the real tokens, whatever the padding side and batch."""
@@ -196,14 +196,14 @@ def test_text_of_unequal_length_padded_on_either_side(monkeypatch, side, aggrega
     model = BrainScoreModel('ids', extractor={'text': wrapper}, region_layer_map={'L': 'layer'}, reply=reply)
     task, passive = _sessions(model, stimuli, ['L'], monkeypatch, 'all')['neural:L']
     assert_equal(task, passive)
-    expected = {'last_token': [2.0, 3.0, 5.0], 'mean_tokens': [1.5, 2.0, 5.0]}[aggregation]
+    expected = {'last': [2.0, 3.0, 5.0], 'mean': [1.5, 2.0, 5.0]}[aggregation]
     assert passive.values[:, 0].tolist() == expected
 
 
 def test_the_mask_of_the_pass_decides_the_text_reduction():
     """Token values [1, 2, 0] with mask [1, 1, 0]: last_token 2.0, mean_tokens 1.5, as __call__ gives."""
     from brainscore.model_helpers.text_wrapper import TextWrapper
-    for aggregation, expected in (('last_token', 2.0), ('mean_tokens', 1.5)):
+    for aggregation, expected in (('last', 2.0), ('mean', 1.5)):
         network = _Ids()
         wrapper = TextWrapper(network, _Tokens('right'), identifier='ids', layer_aggregation=aggregation,
                               device='cpu')
@@ -286,7 +286,7 @@ def test_an_audio_clip_of_several_chunks_is_refused_before_any_pass():
 
 
 @pytest.mark.parametrize('plan', ['all', 'one'])
-@pytest.mark.parametrize('aggregation', ['mean_time', 'time_series'])
+@pytest.mark.parametrize('aggregation', ['mean', 'sequence'])
 def test_audio_layers_of_different_dtypes_keep_their_dtype_during_a_task(monkeypatch, plan, aggregation):
     waves = {'a': np.array([0.1, 0.2, 0.3, 0.4], np.float32), 'b': np.array([1, 2, 3, 4], np.float32)}
     model, stimuli, passes = _sound_subject(waves, layer_aggregation=aggregation)
@@ -479,7 +479,7 @@ def test_a_later_pass_does_not_change_the_kept_first_pass(layer):
         assert recording.take()[layer].values[0, 0] == 1.0
 
 
-@pytest.mark.parametrize('aggregation, expected', [('last_token', 2.0), ('mean_tokens', 1.5)])
+@pytest.mark.parametrize('aggregation, expected', [('last', 2.0), ('mean', 1.5)])
 def test_a_positional_attention_mask_reduces_the_text_as_a_keyword_mask(aggregation, expected):
     from brainscore.model_helpers.text_wrapper import TextWrapper
     network = _Ids()
@@ -521,7 +521,7 @@ class _Decorated(_Ids):
     forward = _passes_on(_Ids.forward)
 
 
-@pytest.mark.parametrize('aggregation, expected', [('last_token', 2.0), ('mean_tokens', 1.5)])
+@pytest.mark.parametrize('aggregation, expected', [('last', 2.0), ('mean', 1.5)])
 @pytest.mark.parametrize('network, layer, call, refused', [
     (_Ids, 'layer', 'positional', False),
     (_Decorated, 'layer', 'positional', False),

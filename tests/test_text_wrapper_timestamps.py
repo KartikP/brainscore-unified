@@ -96,7 +96,7 @@ def tiny_wrapper():
 
     net = Net(model.enc)
     return TextWrapper(model=net, tokenizer=tok, identifier='tiny',
-                       layer_aggregation='per_token', max_length=64)
+                       layer_aggregation='sequence', max_length=64)
 
 
 def _stim(sentence):

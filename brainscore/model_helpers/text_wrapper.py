@@ -10,7 +10,7 @@ Usage:
         model=clip_model.text_model,
         tokenizer=clip_tokenizer,
         identifier='clip-vit-b-32-text',
-        layer_aggregation='mean_tokens',
+        layer_aggregation='mean',
     )
     assembly = text_wrapper(stimulus_set, layers=['encoder.layers.10'])
 """
@@ -27,8 +27,8 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.extraction_cache import store_xarray
 from brainscore.model_helpers import _extractors
 from brainscore.model_helpers._extractors import (
-    LiveRecording, as_array, attach_stimulus_set, attention_mask, cache_signature, in_layer_order, labelled,
-    layer_assembly, one_dtype, run_batches,
+    LiveRecording, as_array, attach_stimulus_set, attention_mask, cache_signature, checked_aggregation,
+    in_layer_order, labelled, layer_assembly, one_dtype, run_batches,
 )
 
 
@@ -135,7 +135,7 @@ class TextWrapper:
             Defaults to the class name. It is not part of the cache key: two
             registrations with the same weights and settings share one entry.
         layer_aggregation: How to reduce (batch, seq_len, hidden) to (batch, hidden).
-            'last_token' for causal models, 'mean_tokens' for encoders.
+            'last' for causal models, 'mean' for encoders.
         max_length: Max token length for truncation.
         batch_size: Number of texts per forward pass.
         provenance: Optional model provenance (revision, dtype, settings). When
@@ -156,23 +156,19 @@ class TextWrapper:
     # call (brainscore._model.channels).
     independent_layers = True
 
-    VALID_AGGREGATIONS = ('last_token', 'mean_tokens', 'per_token')
+    VALID_AGGREGATIONS = ('last', 'mean', 'sequence')
 
     def __init__(self, model, tokenizer, identifier=None,
-                 layer_aggregation='last_token', max_length=512,
+                 layer_aggregation='last', max_length=512,
                  batch_size=32, provenance=None, device=None):
         import torch
-        if layer_aggregation not in self.VALID_AGGREGATIONS:
-            raise ValueError(
-                f"layer_aggregation must be one of {self.VALID_AGGREGATIONS}; "
-                f"got {layer_aggregation!r}."
-            )
+        checked_aggregation(layer_aggregation, self.VALID_AGGREGATIONS)
         self._model = model
         self._tokenizer = tokenizer
         # Truncate the OLDEST tokens, not the newest. With passage context the
         # text handed to a model is the running prefix, so it is the tail that
         # names the row being scored: right truncation would silently return a
-        # representation of some earlier sentence, and `last_token` would read a
+        # representation of some earlier sentence, and `last` would read a
         # token from the middle of the passage. The legacy language path makes
         # the same choice (`truncation_side='left'` in its huggingface helper),
         # so matching it is also what keeps native and adapter scoring aligned.
@@ -215,8 +211,8 @@ class TextWrapper:
 
         Returns:
             NeuroidAssembly with dims ``(presentation, neuroid)`` for
-            ``last_token`` and ``mean_tokens``, or
-            ``(presentation, time_bin, neuroid)`` for ``per_token``.
+            ``last`` and ``mean``, or
+            ``(presentation, time_bin, neuroid)`` for ``sequence``.
         """
         if isinstance(stimuli, StimulusSet):
             assembly = self._from_stimulus_set(stimuli, layers, stimuli_identifier)
@@ -232,9 +228,9 @@ class TextWrapper:
 
         texts = self._extract_texts(stimulus_set)
         if 'context_id' in stimulus_set.columns:
-            if self._layer_aggregation == 'per_token':
-                raise ValueError('context_id passage grouping requires last_token or mean_tokens; '
-                                 'per_token inputs must supply their complete text explicitly.')
+            if self._layer_aggregation == 'sequence':
+                raise ValueError('context_id passage grouping requires last or mean; '
+                                 'sequence inputs must supply their complete text explicitly.')
         activations = self._from_texts_cached(
             texts, layers, stimuli_identifier)
         return attach_stimulus_set(activations, stimulus_set)
@@ -276,12 +272,12 @@ class TextWrapper:
         return self._package(layer_activations, texts)
 
     def _get_activations_batched(self, texts, layers):
-        if self._layer_aggregation == 'per_token':
+        if self._layer_aggregation == 'sequence':
             return self._get_per_token_activations(texts, layers)
         return run_batches(texts, self._batch_size, lambda batch: self.get_activations(batch, layers),
                            'text activations')
 
-    # ── per_token path: chunked, per-input forward passes ──────────────
+    # ── sequence path: chunked, per-input forward passes ──────────────
 
     def _get_per_token_activations(self, texts, layers):
         """Run forward pass per text, chunking inputs longer than
@@ -309,7 +305,7 @@ class TextWrapper:
                 per_input_layer_arrays[layer_name].append(arr)
 
         if len(token_lengths) == 0:
-            raise ValueError("per_token TextWrapper got zero texts")
+            raise ValueError("sequence TextWrapper got zero texts")
         t_max = int(token_lengths.max())
 
         layer_outputs = OrderedDict()
@@ -405,7 +401,7 @@ class TextWrapper:
         for layer_name, act in layer_results.items():
             if act.ndim != 3:
                 raise ValueError(
-                    f"per_token mode needs (B, T, H) hook output for layer "
+                    f"sequence mode needs (B, T, H) hook output for layer "
                     f"{layer_name!r}; got rank {act.ndim}."
                 )
             if attention_mask is not None:
@@ -465,13 +461,13 @@ class TextWrapper:
         for layer_name in layer_results:
             act = layer_results[layer_name]
             if act.ndim == 3:
-                if self._layer_aggregation == 'last_token':
+                if self._layer_aggregation == 'last':
                     if mask is not None:     # the last kept position, with left or right padding
                         last = mask.shape[1] - 1 - np.argmax(mask[:, ::-1], axis=1)
                         act = act[np.arange(act.shape[0]), last]
                     else:
                         act = act[:, -1, :]
-                elif self._layer_aggregation == 'mean_tokens':
+                elif self._layer_aggregation == 'mean':
                     if mask is not None:
                         mask_expanded = mask[:, :, np.newaxis].astype(act.dtype)
                         act = (act * mask_expanded).sum(axis=1) / mask.sum(axis=1, keepdims=True)
@@ -486,12 +482,12 @@ class TextWrapper:
         Returns a ``LiveRecording``; its ``take()`` gives ``{layer: assembly}`` for the
         first forward pass since the previous take (of a generating model, the prompt
         pass), reduced with the ``attention_mask`` of that pass and packaged by the
-        functions of ``__call__``. ``per_token`` is refused before any pass, and a
+        functions of ``__call__``. ``sequence`` is refused before any pass, and a
         pass of several prompts before it runs.
         """
-        if self._layer_aggregation == 'per_token':
+        if self._layer_aggregation == 'sequence':
             raise NotImplementedError(
-                'A recording during a task supports last_token or mean_tokens, not per_token.')
+                'A recording during a task supports last or mean, not sequence.')
 
         def inputs(args, kwargs):
             shown = kwargs.get('input_ids')
@@ -512,9 +508,9 @@ class TextWrapper:
         """Package layer activations into NeuroidAssembly.
 
         Handles two output shapes:
-          - 2D (n_texts, hidden_dim) for last_token / mean_tokens →
+          - 2D (n_texts, hidden_dim) for last / mean →
             dims=(presentation, neuroid)
-          - 3D (n_texts, t_max, hidden_dim) for per_token →
+          - 3D (n_texts, t_max, hidden_dim) for sequence →
             dims=(presentation, time_bin, neuroid). NaN-padded past each
             input's token_lengths[i]; an extra ``token_length``
             presentation coord is attached so callers can mask.
@@ -524,7 +520,7 @@ class TextWrapper:
             return layer_assemblies[0]
         one_dtype(layer_activations)
 
-        # Multi-layer: concat along the neuroid axis. The per_token 3D
+        # Multi-layer: concat along the neuroid axis. The sequence 3D
         # path uses xarray.concat (handles the time_bin axis correctly);
         # the 2D path keeps the original numpy concat for bit-for-bit BC.
         if 'time_bin' in layer_assemblies[0].dims:
@@ -534,7 +530,7 @@ class TextWrapper:
 
     def _layers(self, layer_activations, texts):
         """One assembly per layer, in order: ``(presentation, neuroid)``, or
-        ``(presentation, time_bin, neuroid)`` for per_token activations."""
+        ``(presentation, time_bin, neuroid)`` for sequence activations."""
         token_lengths = layer_activations.pop('_token_lengths', None)
         word_ids = layer_activations.pop('_word_ids', None)
         return OrderedDict(
@@ -589,13 +585,13 @@ class TextWrapper:
 
         For a single-presentation assembly pass flat per-word arrays; for several
         presentations pass a list of per-word arrays (one per presentation). The
-        assembly must come from a ``per_token`` extraction with a fast tokenizer
+        assembly must come from a ``sequence`` extraction with a fast tokenizer
         on a non-chunked input (so the ``word_id`` coord is present).
         """
         if 'word_id' not in assembly.coords:
             raise ValueError(
                 "assembly carries no word_id coord; per-token timestamps require "
-                "a per_token extraction with a fast tokenizer on a non-chunked "
+                "a sequence extraction with a fast tokenizer on a non-chunked "
                 "input. (Raise max_length so the transcript isn't chunked, or "
                 "use a fast tokenizer.)")
         n_pres = assembly.sizes['presentation']

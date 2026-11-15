@@ -15,25 +15,14 @@ Deterministic seed so re-runs are reproducible.
 import functools
 
 import torch
-from PIL import Image
 from transformers import CLIPConfig, CLIPModel, CLIPProcessor
 
 from brainscore.model_helpers.text_wrapper import TextWrapper
 from brainscore import BrainScoreModel, LayerSelector
 from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
 from brainscore_core.hf_compat import pin_image_processor
+from brainscore.models._shared import _load_preprocess_images
 from brainscore.models.clip_vit_b_32.model import REGION_LAYER_MAP
-
-
-def _load_preprocess_images(image_filepaths, processor, image_size=224):
-    images = []
-    for path in image_filepaths:
-        with Image.open(path) as img:
-            if img.mode not in ('RGB',):
-                img = img.convert('RGB')
-            images.append(img.copy())
-    processed = processor(images=images, return_tensors='pt')
-    return processed['pixel_values'].numpy()
 
 
 def get_model(identifier: str) -> BrainScoreModel:
@@ -58,7 +47,6 @@ def get_model(identifier: str) -> BrainScoreModel:
     preprocessing = functools.partial(
         _load_preprocess_images,
         processor=clip_processor,
-        image_size=224,
     )
 
     vision_wrapper = PytorchWrapper(
@@ -66,13 +54,12 @@ def get_model(identifier: str) -> BrainScoreModel:
         model=clip_model.vision_model,
         preprocessing=preprocessing,
     )
-    vision_wrapper.image_size = 224
 
     text_wrapper = TextWrapper(
         model=clip_model.text_model,
         tokenizer=clip_processor.tokenizer,
         identifier=f'{identifier}-text',
-        layer_aggregation='mean_tokens',
+        layer_aggregation='mean',
         max_length=77,
     )
 

@@ -20,7 +20,7 @@ import functools
 import torch
 
 from brainscore import BrainScoreModel, LayerSelector
-from brainscore.models._multimodal_av_shared import (
+from brainscore.models._shared import (
     _load_preprocess_images, build_audio_wrapper)
 from brainscore_core.hf_compat import pin_image_processor
 
@@ -62,7 +62,7 @@ def get_model(identifier: str) -> BrainScoreModel:
         'Salesforce/blip2-opt-2.7b', torch_dtype=torch.float32, **download)
 
     preprocessing = functools.partial(
-        _load_preprocess_images, processor=blip_processor, image_size=224)
+        _load_preprocess_images, processor=blip_processor)
     # The activations carry the reduced backbone's name; the cache key is the combo's.
     vision_wrapper = PytorchWrapper(
         identifier='blip2-vision-pca1000',
@@ -70,7 +70,6 @@ def get_model(identifier: str) -> BrainScoreModel:
         model=blip_model.vision_model,
         preprocessing=preprocessing,
     )
-    vision_wrapper.image_size = 224
     LayerPCA.hook(vision_wrapper, n_components=1000)
 
     audio_wrapper, _ = build_audio_wrapper(identifier, random_init=False)

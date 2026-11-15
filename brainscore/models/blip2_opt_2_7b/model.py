@@ -31,6 +31,7 @@ from brainscore import BrainScoreModel
 from brainscore_vision.model_helpers.activations.pca import LayerPCA
 from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
 from brainscore_core.hf_compat import pin_image_processor
+from brainscore.models._shared import _load_preprocess_images
 
 
 REGION_LAYER_MAP = {
@@ -95,20 +96,6 @@ def _make_answer(blip_model, blip_processor, max_new_tokens: int = 8):
     return generate
 
 
-def _load_preprocess_images(image_filepaths, processor, image_size=224):
-    """Load and preprocess images using BLIP-2's processor."""
-    images = []
-    for path in image_filepaths:
-        with Image.open(path) as img:
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            images.append(img.copy())
-
-    # BLIP-2 processor with images-only input
-    processed = processor(images=images, return_tensors='pt')
-    return processed['pixel_values'].numpy()
-
-
 def get_model(identifier: str) -> BrainScoreModel:
     assert identifier == 'blip2-opt-2.7b'
     from brainscore.models._downloads import hf_preflight
@@ -127,7 +114,6 @@ def get_model(identifier: str) -> BrainScoreModel:
     preprocessing = functools.partial(
         _load_preprocess_images,
         processor=blip_processor,
-        image_size=224,
     )
 
     # Vision: PytorchWrapper wraps vision_model. BLIP-2's vision_model can be
@@ -138,7 +124,6 @@ def get_model(identifier: str) -> BrainScoreModel:
         model=blip_model.vision_model,
         preprocessing=preprocessing,
     )
-    vision_wrapper.image_size = 224
 
     # ViT-G hook outputs (batch, 257, 1408) flatten to 361K features per image.
     # That's too many for sklearn PLS at scoring time. LayerPCA(1000) is the
@@ -147,7 +132,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     # First-time overhead is ~1-2 min per layer; result cached to disk.
     LayerPCA.hook(vision_wrapper, n_components=1000)
 
-    # Text: TextWrapper wraps the OPT decoder. Causal LM → last_token aggregation.
+    # Text: TextWrapper wraps the OPT decoder. Causal LM → last aggregation.
     # Wrap language_model.model.decoder so layer paths are 'layers.{N}'.
     text_wrapper = TextWrapper(
         model=blip_model.language_model.model.decoder,

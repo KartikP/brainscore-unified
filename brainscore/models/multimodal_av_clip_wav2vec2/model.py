@@ -22,7 +22,7 @@ import functools
 import torch
 
 from brainscore import BrainScoreModel, LayerSelector
-from brainscore.models._multimodal_av_shared import (
+from brainscore.models._shared import (
     _load_preprocess_images, build_audio_wrapper)
 
 from ._ids import SUPPORTED_IDENTIFIERS
@@ -65,7 +65,7 @@ def _build_vision_wrapper(combo_identifier: str, random_init: bool = False):
             p.data.normal_(mean=0.0, std=0.02)
 
     preprocessing = functools.partial(
-        _load_preprocess_images, processor=processor, image_size=224)
+        _load_preprocess_images, processor=processor)
     # The activations carry the backbone's name; the cache key is the combo's.
     vision_wrapper = PytorchWrapper(
         identifier='random-clip-vit-b-32' if random_init else 'clip-vit-b-32',
@@ -73,7 +73,6 @@ def _build_vision_wrapper(combo_identifier: str, random_init: bool = False):
         model=clip_model.vision_model,
         preprocessing=preprocessing,
     )
-    vision_wrapper.image_size = 224
     return preprocessing, vision_wrapper
 
 

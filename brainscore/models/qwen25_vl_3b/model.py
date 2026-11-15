@@ -4,7 +4,7 @@ encoder feeds into a causal language model.
 
 Uses VLMVisionWrapper for the vision path (it handles Qwen's flattened-patch
 layout with image_grid_thw metadata) and TextWrapper for the text path
-(causal mode with last_token aggregation). Both are class-based, cached via
+(causal mode with last aggregation). Both are class-based, cached via
 @store_xarray, and symmetric in their calling convention.
 
 Architecture:
@@ -165,18 +165,16 @@ def get_model(identifier: str) -> Subject:
     qwen_processor = AutoProcessor.from_pretrained(hf_id, **download)
     qwen_processor = pin_image_processor(qwen_processor, hf_id, **download)
 
-    # Vision: VLMVisionWrapper handles Qwen's flattened-patch layout.
-    # image_grid_thw tells the wrapper how to segment patches back to images.
+    # Vision: VLMVisionWrapper handles Qwen's flattened-patch layout by default
+    # (image_grid_thw segments the patches back to images).
     vision_wrapper = VLMVisionWrapper(
         model=qwen_model.model.visual,
         processor=qwen_processor,
         identifier=f'{identifier}-vision',
-        forward_kwargs_map={'grid_thw': 'image_grid_thw'},
-        patch_count_fn=lambda out: [int(t * h * w) for t, h, w in out['image_grid_thw']],
     )
 
     # Text: TextWrapper wraps model.language_model (causal decoder).
-    # last_token aggregation with attention_mask handles padded batches.
+    # last aggregation with attention_mask handles padded batches.
     text_wrapper = TextWrapper(
         model=qwen_model.model.language_model,
         tokenizer=qwen_processor.tokenizer,

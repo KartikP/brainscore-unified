@@ -6,8 +6,8 @@ Wraps an audio backbone (Wav2Vec2, HuBERT, Wav2Vec-Bert, SeamlessM4T, Whisper,
 AudioMAE, etc.), handles waveform loading + processor invocation, runs a
 forward pass with hook-based layer extraction, batches across clips, caches
 via ``@store_xarray``, and packages into a NeuroidAssembly that slots into the
-standard Brain-Score scoring pipeline. The default ``mean_time`` aggregation
-returns ``(presentation, neuroid)``; ``time_series`` additionally preserves a
+standard Brain-Score scoring pipeline. The default ``mean`` aggregation
+returns ``(presentation, neuroid)``; ``sequence`` additionally preserves a
 ``time_bin`` dimension.
 
 Design:
@@ -15,9 +15,9 @@ Design:
 - ``__call__(stimuli, layers)`` — accepts a StimulusSet with ``audio_path``
   column (or a list of paths).
 - Layer aggregation modes:
-    ``mean_time`` (default): reduce (B, T, H) → (B, H). Matches frame-based
+    ``mean`` (default): reduce (B, T, H) → (B, H). Matches frame-based
         extraction patterns used by TextWrapper for classification benchmarks.
-    ``time_series``: keep (B, T, H), produces a temporal assembly suitable
+    ``sequence``: keep (B, T, H), produces a temporal assembly suitable
         for naturalistic benchmarks that want per-frame alignment.
 - Waveform loading uses torchaudio when available, falling back to librosa.
     The ``audio_loader`` constructor argument allows injection of a custom
@@ -50,8 +50,8 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.extraction_cache import store_xarray, file_inputs
 from brainscore.model_helpers import _extractors
 from brainscore.model_helpers._extractors import (
-    LiveRecording, as_numpy, attach_stimulus_set, attention_mask, cache_signature, in_layer_order, labelled,
-    one_dtype, run_batches,
+    LiveRecording, as_numpy, attach_stimulus_set, attention_mask, cache_signature, checked_aggregation, in_layer_order,
+    labelled, one_dtype, run_batches,
 )
 
 
@@ -107,8 +107,8 @@ class AudioWrapper:
             coordinate); not part of the cache key.
         target_sample_rate: Override the processor's expected sample rate.
             Usually unnecessary — read from ``processor.sampling_rate``.
-        layer_aggregation: ``'mean_time'`` (default) reduces (B, T, H) →
-            (B, H); ``'time_series'`` keeps the temporal axis.
+        layer_aggregation: ``'mean'`` (default) reduces (B, T, H) →
+            (B, H); ``'sequence'`` keeps the temporal axis.
         max_duration_sec: Maximum non-overlapping chunk length, in seconds.
             Longer clips are processed in consecutive chunks and recombined;
             None disables chunking.
@@ -128,7 +128,7 @@ class AudioWrapper:
     # call (brainscore._model.channels).
     independent_layers = True
 
-    VALID_AGGREGATIONS = ('mean_time', 'time_series')
+    VALID_AGGREGATIONS = ('mean', 'sequence')
 
     def __init__(
         self,
@@ -136,7 +136,7 @@ class AudioWrapper:
         processor,
         identifier: Optional[str] = None,
         target_sample_rate: Optional[int] = None,
-        layer_aggregation: str = 'mean_time',
+        layer_aggregation: str = 'mean',
         max_duration_sec: Optional[float] = 60.0,
         batch_size: int = 4,
         audio_loader: Optional[Callable[[str, int], np.ndarray]] = None,
@@ -144,11 +144,7 @@ class AudioWrapper:
     ):
         import torch
 
-        if layer_aggregation not in self.VALID_AGGREGATIONS:
-            raise ValueError(
-                f"layer_aggregation must be one of {self.VALID_AGGREGATIONS}, "
-                f"got {layer_aggregation!r}"
-            )
+        checked_aggregation(layer_aggregation, self.VALID_AGGREGATIONS)
 
         self._model = model
         self._processor = processor
@@ -178,7 +174,7 @@ class AudioWrapper:
         self._identifier = identifier or model.__class__.__name__
         # Per-step duration in ms, derived from the first forward pass.
         # Used to attach time_bin_start_ms / time_bin_end_ms coords to
-        # time_series outputs. Stays None until at least one batch has
+        # sequence outputs. Stays None until at least one batch has
         # been processed.
         self._step_ms: Optional[float] = None
 
@@ -318,11 +314,11 @@ class AudioWrapper:
     ) -> OrderedDict:
         """Recombine per-chunk activations back to per-clip arrays.
 
-        - ``mean_time`` (and pooled-output (B, H)): per-clip mean across
+        - ``mean`` (and pooled-output (B, H)): per-clip mean across
           the clip's chunks. (Each chunk already had its time axis
           reduced via attention-masked mean; combining means across
           chunks of similar length is a close enough approximation.)
-        - ``time_series``: per-clip concat along the time axis. Returns
+        - ``sequence``: per-clip concat along the time axis. Returns
           a (n_clips, T_max, H) array NaN-padded for shorter clips so
           downstream packaging gets a regular tensor.
 
@@ -337,10 +333,10 @@ class AudioWrapper:
 
         out: OrderedDict = OrderedDict()
         for layer_name, chunk_arr in chunk_activations.items():
-            if chunk_arr.ndim == 2:  # (n_chunks, H) — pooled or mean_time
+            if chunk_arr.ndim == 2:  # (n_chunks, H) — pooled or mean
                 out[layer_name] = self._recombine_2d(
                     chunk_arr, clip_chunks, n_clips)
-            elif chunk_arr.ndim == 3:  # (n_chunks, T, H) — time_series
+            elif chunk_arr.ndim == 3:  # (n_chunks, T, H) — sequence
                 out[layer_name] = self._recombine_3d(
                     chunk_arr, clip_chunks, n_clips)
             else:
@@ -432,7 +428,7 @@ class AudioWrapper:
         It is stable across passes when the model has a uniform convolution
         stride (Wav2Vec2, Wav2Vec-Bert, HuBERT), so the first measurement is
         kept. It gives ``time_bin_start_ms`` and ``time_bin_end_ms`` of
-        ``time_series`` outputs.
+        ``sequence`` outputs.
         """
         if self._step_ms is not None:
             return
@@ -458,10 +454,10 @@ class AudioWrapper:
                     f"Unexpected activation rank {act.ndim} for layer "
                     f"{layer_name!r}; expected (B, T, H) or (B, H)."
                 )
-            if self._layer_aggregation == 'time_series':
+            if self._layer_aggregation == 'sequence':
                 out[layer_name] = act  # keep (B, T, H)
                 continue
-            # mean_time
+            # mean
             if attention_mask is not None:
                 # attention_mask is over audio input; hook output may have
                 # already downsampled T by the model's conv stride. If T_out
@@ -485,7 +481,7 @@ class AudioWrapper:
         Returns a ``LiveRecording``; its ``take(row)`` gives ``{layer: assembly}``
         for the first forward pass since the previous take, aggregated with the
         attention mask of that pass and packaged by the functions of ``__call__``;
-        the step of ``time_series`` outputs is measured from the clip of ``row``
+        the step of ``sequence`` outputs is measured from the clip of ``row``
         (else ``input_values``) when no pass measured it before. ``__call__`` pads
         the clips of ``stimuli`` to the longest and cuts a clip longer than
         ``max_duration_sec`` into chunks, so clips of other lengths or of several
@@ -531,8 +527,8 @@ class AudioWrapper:
     def _package(self, layer_activations, paths) -> NeuroidAssembly:
         """Assemble layer outputs into a NeuroidAssembly.
 
-        ``mean_time`` → dims = (presentation, neuroid)
-        ``time_series`` → dims = (presentation, time_bin, neuroid)
+        ``mean`` → dims = (presentation, neuroid)
+        ``sequence`` → dims = (presentation, time_bin, neuroid)
         """
         layer_assemblies = list(self._layers(layer_activations, paths).values())
         if len(layer_assemblies) == 1:
