@@ -421,16 +421,12 @@ def test_qwen_keeps_its_wrappers_dtype_and_generation(build):
     BrainScoreModel = module.BrainScoreModel
     vision, text = FakeExtractor.instances
     assert type(vision) is FakeVLMVisionWrapper and type(text) is FakeTextWrapper
-    patch_count_fn = vision.kwargs['patch_count_fn']
     # The settings each wrapper is built with, defaults included, are unchanged.
     from brainscore.model_helpers.text_wrapper import TextWrapper
     from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
     assert _effective(VLMVisionWrapper, vision.kwargs) == _effective(VLMVisionWrapper, {
         'model': qwen.model.visual, 'processor': processor,
-        'identifier': 'qwen2.5-vl-3b-vision', 'image_input_key': 'pixel_values',
-        'forward_kwargs_map': {'grid_thw': 'image_grid_thw'}, 'patch_count_fn': patch_count_fn,
-        'layer_aggregation': 'mean_patches', 'batch_size': 4})
-    assert patch_count_fn({'image_grid_thw': [(1, 2, 3), (2, 2, 2)]}) == [6, 8]
+        'identifier': 'qwen2.5-vl-3b-vision', 'layer_aggregation': 'mean_patches', 'batch_size': 4})
     assert _effective(TextWrapper, text.kwargs) == _effective(TextWrapper, {
         'model': qwen.model.language_model, 'tokenizer': processor.tokenizer,
         'identifier': 'qwen2.5-vl-3b-text', 'layer_aggregation': 'last_token', 'max_length': 512})

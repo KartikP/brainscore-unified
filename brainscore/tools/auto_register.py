@@ -449,9 +449,9 @@ def inspect_model(model: Any, processor: Any = None,
             "(B, T, S, H) → mean-over-space → (B, T, H).")
     if any(r.modality == 'vision_flat' for r in recommendations):
         notes.append(
-            "Flattened-patch VLM vision: VLMVisionWrapper needs "
-            "patch_count_fn + forward_kwargs_map (e.g. grid_thw) to segment "
-            "patches back to images. See qwen25_vl_3b for a worked example.")
+            "Flattened-patch VLM vision: VLMVisionWrapper segments patches "
+            "back to images from the processor's image_grid_thw (the Qwen-VL "
+            "layout). See qwen25_vl_3b for a worked example.")
 
     return ModelProfile(identifier=ident, n_parameters=n_params, dtype=dtype,
                         recommendations=recommendations,

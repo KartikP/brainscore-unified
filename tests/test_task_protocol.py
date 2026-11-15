@@ -199,9 +199,7 @@ def test_text_wrapper_records_the_prompt_pass_not_generated_tokens():
 def _grid_wrapper(model):
     """A Qwen-style registration: patch counts read from the grid the tower is given."""
     from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
-    return VLMVisionWrapper(model=model, processor=None, identifier='tiny-vision',
-                            forward_kwargs_map={'grid_thw': 'image_grid_thw'},
-                            patch_count_fn=lambda out: [int(t * h * w) for t, h, w in out['image_grid_thw']])
+    return VLMVisionWrapper(model=model, processor=None, identifier='tiny-vision')
 
 
 def test_vlm_vision_wrapper_records_the_mean_over_patches():

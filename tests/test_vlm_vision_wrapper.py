@@ -36,9 +36,6 @@ def qwen_vision_wrapper(request):
         model=qwen_model.model.visual,
         processor=qwen_processor,
         identifier='qwen2.5-vl-3b-vision-test',
-        image_input_key='pixel_values',
-        forward_kwargs_map={'grid_thw': 'image_grid_thw'},
-        patch_count_fn=lambda out: [int(t * h * w) for t, h, w in out['image_grid_thw']],
         layer_aggregation='mean_patches',
         batch_size=2,
     )

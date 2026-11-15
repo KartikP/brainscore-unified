@@ -165,14 +165,12 @@ def get_model(identifier: str) -> Subject:
     qwen_processor = AutoProcessor.from_pretrained(hf_id, **download)
     qwen_processor = pin_image_processor(qwen_processor, hf_id, **download)
 
-    # Vision: VLMVisionWrapper handles Qwen's flattened-patch layout.
-    # image_grid_thw tells the wrapper how to segment patches back to images.
+    # Vision: VLMVisionWrapper handles Qwen's flattened-patch layout by default
+    # (image_grid_thw segments the patches back to images).
     vision_wrapper = VLMVisionWrapper(
         model=qwen_model.model.visual,
         processor=qwen_processor,
         identifier=f'{identifier}-vision',
-        forward_kwargs_map={'grid_thw': 'image_grid_thw'},
-        patch_count_fn=lambda out: [int(t * h * w) for t, h, w in out['image_grid_thw']],
     )
 
     # Text: TextWrapper wraps model.language_model (causal decoder).

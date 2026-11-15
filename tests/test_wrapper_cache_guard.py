@@ -235,14 +235,9 @@ class _PatchProcessor:
                 'image_grid_thw': torch.tensor(grids)}
 
 
-def _patch_count(processed):
-    return [int(t * h * w) for t, h, w in processed['image_grid_thw']]
-
-
 def vlm_vision_wrapper(**settings):
     from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
     return VLMVisionWrapper(_eighths(_PatchNet(), 5), _PatchProcessor(), identifier='guard-vlm',
-                            forward_kwargs_map={'grid_thw': 'image_grid_thw'}, patch_count_fn=_patch_count,
                             device='cpu', **settings)
 
 

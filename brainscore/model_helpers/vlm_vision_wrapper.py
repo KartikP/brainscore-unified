@@ -12,15 +12,13 @@ Usage (Qwen2.5-VL):
         model=qwen_model.model.visual,
         processor=qwen_processor,
         identifier='qwen2.5-vl-3b-vision',
-        forward_kwargs_map={'grid_thw': 'image_grid_thw'},
-        patch_count_fn=lambda out: [int(t*h*w) for t, h, w in out['image_grid_thw']],
     )
     assembly = wrapper(stimulus_set, layers=['blocks.28'])
 """
 
 import logging
 from collections import OrderedDict
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from PIL import Image
@@ -40,22 +38,19 @@ logger = logging.getLogger(__name__)
 class VLMVisionWrapper:
     """Extractor for VLM vision encoders with flattened-patch layouts.
 
+    The layout is the Qwen-VL one: the encoder takes the processor's
+    ``pixel_values``; when the processor also gives ``image_grid_thw``, it is
+    passed as ``grid_thw`` and segments the flattened patches per image
+    (``t * h * w`` patches each). Without ``image_grid_thw`` each output row is
+    one image. Another layout is a subclass that overrides ``_forward`` and
+    ``_patch_counts`` (with its own ``_VERSION``).
+
     Args:
         model: The vision sub-module of a VLM (e.g., qwen_model.model.visual).
         processor: A HuggingFace AutoProcessor (or equivalent) whose output
             contains the input tensor and any auxiliary grouping metadata.
         identifier: Human-readable model identifier (the ``model``
             coordinate); not part of the cache key.
-        image_input_key: Key in processor output for the main pixel tensor.
-            Defaults to 'pixel_values'.
-        forward_kwargs_map: Optional dict mapping model forward-kwarg name ->
-            processor output key. E.g., {'grid_thw': 'image_grid_thw'} for Qwen.
-            Values are moved to device and passed by name to the model.
-        patch_count_fn: Callable(processor_output) -> list of patches per image.
-            Required for per-image aggregation when the model output is
-            patch-flattened. E.g., for Qwen:
-                lambda out: [int(t*h*w) for t, h, w in out['image_grid_thw']]
-            If None, assumes hook output is already (n_images, ...) shape.
         layer_aggregation: How to reduce per-image patches to one vector.
             'mean_patches' (default), 'first_patch' (CLS-style), or 'none'.
         batch_size: Number of images per forward pass.
@@ -72,17 +67,11 @@ class VLMVisionWrapper:
     independent_layers = True
 
     def __init__(self, model, processor, identifier: Optional[str] = None,
-                 image_input_key: str = 'pixel_values',
-                 forward_kwargs_map: Optional[Dict[str, str]] = None,
-                 patch_count_fn: Optional[Callable] = None,
                  layer_aggregation: str = 'mean_patches',
                  batch_size: int = 4, device: Optional[str] = None):
         import torch
         self._model = model
         self._processor = processor
-        self._image_input_key = image_input_key
-        self._forward_kwargs_map = forward_kwargs_map or {}
-        self._patch_count_fn = patch_count_fn
         self._layer_aggregation = layer_aggregation
         self._batch_size = batch_size
         from brainscore.model_helpers._device import select_device
@@ -134,9 +123,6 @@ class VLMVisionWrapper:
 
     CACHE_FIELDS = (
         '_processor',
-        '_image_input_key',
-        '_forward_kwargs_map',
-        '_patch_count_fn',
         '_layer_aggregation',
         '_batch_size',
     )
@@ -199,8 +185,10 @@ class VLMVisionWrapper:
         return self._per_image(layer_results, len(images), self._patch_counts(processed))
 
     def _patch_counts(self, processed) -> Optional[List[int]]:
-        """Patches per image, read from processor outputs; None when each output row is an image."""
-        return None if self._patch_count_fn is None else self._patch_count_fn(processed)
+        """Patches per image from the processor's ``image_grid_thw``; None (each output row is an
+        image) without it."""
+        grid = processed.get('image_grid_thw')
+        return None if grid is None else [int(t * h * w) for t, h, w in grid]
 
     def _per_image(self, layer_results, n_images, patch_counts):
         """Segment each layer's patches into per-image activations and aggregate them."""
@@ -231,19 +219,15 @@ class VLMVisionWrapper:
 
     def _forward(self, processed: Dict[str, Any]) -> None:
         """Run the vision encoder forward pass with auxiliary kwargs."""
-        image_input = processed[self._image_input_key]
+        image_input = processed['pixel_values']
 
         # Match input dtype to model dtype (FP16 VLMs)
         model_dtype = next(self._model.parameters()).dtype
         if image_input.dtype != model_dtype:
             image_input = image_input.to(model_dtype)
 
-        forward_kwargs = {}
-        for model_arg, proc_key in self._forward_kwargs_map.items():
-            if proc_key in processed:
-                forward_kwargs[model_arg] = processed[proc_key]
-
-        self._model(image_input, **forward_kwargs)
+        grid = processed.get('image_grid_thw')
+        self._model(image_input, **({} if grid is None else {'grid_thw': grid}))
 
     def _aggregate_per_image(self, activations: np.ndarray, n_images: int,
                              patch_counts: Optional[List[int]]) -> np.ndarray:
@@ -298,24 +282,18 @@ class VLMVisionWrapper:
 
         Returns a ``LiveRecording``; its ``take()`` gives ``{layer: assembly}`` for
         the first forward pass since the previous take, segmented and aggregated
-        per image by the functions of ``__call__``: ``patch_count_fn`` reads the
-        processor outputs that the pass received through ``forward_kwargs_map``.
-        One image gives ``(presentation, neuroid)``; a pass over several images (a
+        per image by the functions of ``__call__``: the ``grid_thw`` the pass
+        received gives the patches of each image. One image gives ``(presentation, neuroid)``; a pass over several images (a
         trial showing a sequence) gives one step per image, ``(presentation, part,
-        neuroid)``, in the order shown. A pass without the inputs
-        ``patch_count_fn`` reads, and a later pass of the same presentation with
-        other images, are refused before they run.
+        neuroid)``, in the order shown. A pass without ``grid_thw`` gives one output
+        row per image. A later pass of the same presentation with other images is
+        refused before it runs.
         """
         def inputs(args, kwargs):
-            outputs = {key: kwargs[name] for name, key in self._forward_kwargs_map.items() if name in kwargs}
-            try:
-                counts = self._patch_counts(outputs)
-            except KeyError as missing:
-                raise ValueError(f'patch_count_fn reads {missing}, which this pass was not given '
-                                 f'through forward_kwargs_map={self._forward_kwargs_map}.') from None
+            counts = self._patch_counts({'image_grid_thw': kwargs.get('grid_thw')})
             if counts is not None:
                 return [int(c) for c in counts], len(counts)
-            return None, (args[0] if args else kwargs[self._image_input_key]).shape[0]
+            return None, (args[0] if args else kwargs['pixel_values']).shape[0]
 
         def package(activity, read, _row):
             per_image = self._per_image(activity, read[1], read[0])

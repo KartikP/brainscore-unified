@@ -49,9 +49,6 @@ def get_model(identifier: str) -> BrainScoreModel:
         model=qwen_model.model.visual,
         processor=qwen_processor,
         identifier=f'{identifier}-vision',
-        forward_kwargs_map={'grid_thw': 'image_grid_thw'},
-        patch_count_fn=lambda out: [
-            int(t * h * w) for t, h, w in out['image_grid_thw']],
     )
     audio_wrapper, _ = build_audio_wrapper(identifier, random_init=False)
 
