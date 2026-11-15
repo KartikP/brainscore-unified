@@ -516,6 +516,9 @@ class BrainScoreModel(UnifiedModel):
         if isinstance(task, TaskContext):
             if (self._behavioral.is_configured_for(task)
                     or self._behavioral.recall(task)):
+                # A session that requests a format the readout serves fits it now, once.
+                if self._behavioral.fit_for(kwargs.get('formats')):
+                    self._behavioral.mark_configured(self._behavioral.configured_from or task)
                 return
             fitting = task.fitting_stimuli
             projected = declared_only(fitting, self.in_channels)

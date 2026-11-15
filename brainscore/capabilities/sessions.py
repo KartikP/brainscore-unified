@@ -295,7 +295,8 @@ def drive_behavior_and_neural_session(subject, session, driver: str = "interact"
     if task.response is not None:
         # The requested formats decide the answering parts; refused here before any compute.
         subject._behavioral._choose_path(task, answers)
-    subject.start_task(task)
+    # The requested outputs decide whether the readout is fitted (as they decide the parts).
+    subject.start_task(task, formats=answers)
     # A streaming session reads one trial, answers it and sends its outputs, then
     # reads the next. Otherwise the inputs are read first. A subject without the
     # trait keeps no history, so it can answer the whole table at once; one that

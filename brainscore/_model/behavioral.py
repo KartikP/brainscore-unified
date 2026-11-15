@@ -231,8 +231,14 @@ class BehavioralReadout:
         self._restore(current)
         return False
 
-    def start_task(self, task_or_type, fitting_stimuli=None,
+    def start_task(self, task_or_type, fitting_stimuli=None, formats=None,
                    **kwargs) -> None:
+        """Configure ``task``; fit the readout when it serves the requested ``formats``.
+
+        ``formats`` are the outputs a session requests (``None``: every format
+        of the task, as for a direct call). A later session that requests a
+        format the readout serves fits it then (``fit_for``).
+        """
         del kwargs
         if isinstance(task_or_type, TaskContext):
             task = task_or_type
@@ -273,8 +279,26 @@ class BehavioralReadout:
         self.response_path = picks[0][0]
         self.probability_source = next((source for _, source in picks if source), None)
         self.readout_classifier = None
-        if any('readout' in pick for pick in picks):
-            self.fit_behavioral_readout(task.fitting_stimuli)
+        self.fit_for(formats, picks)
+
+    def fit_for(self, formats=None, picks=None) -> bool:
+        """Fit the readout of the configured task once, when ``formats`` need it.
+
+        The readout is needed when it answers the task or owns a requested
+        format (``formats=None``: any format of the task). Returns whether it fitted.
+        """
+        if self.task is None or self.readout_classifier is not None:
+            return False
+        if formats is None:
+            from brainscore_core.responses import response_channels
+            picks = picks or [self._choose_path(self.task, [output]) for output in
+                              (response_channels(self.task.response) or ('behavior',))]
+        else:
+            picks = [self._choose_path(self.task, formats)]
+        if not any('readout' in pick for pick in picks):
+            return False
+        self.fit_behavioral_readout(self.task.fitting_stimuli)
+        return True
 
     def _clear_task(self) -> None:
         self.history = []
@@ -417,6 +441,12 @@ class BehavioralReadout:
 
     def _choose_path(self, task, formats=()) -> Tuple[str, Optional[str]]:
         """The part that answers ``task`` on the requested ``formats`` and the probability source.
+
+        The task decides what the subject does; the requested outputs decide what
+        is measured (Contract Rule 4.5). Under a choice task the owner of the
+        choice always gives its answer; the owner of the probabilities runs in
+        addition when, and only when, the session requests probabilities or a
+        reaction time.
 
         A task with a response is answered by the owner of its answer format
         (the raw scores of a raw-scores Choice, else the response kind's own

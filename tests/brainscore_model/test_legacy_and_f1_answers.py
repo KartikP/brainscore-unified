@@ -63,11 +63,9 @@ def test_the_legacy_one_hot_of_an_answer_part_equals_the_choice_one_hot(parts):
 
 
 def test_answer_and_readout_set_answers_both_forms_through_the_answer_part():
-    # A Choice task can be answered in probabilities, which the readout owns here, so
-    # the setup fits it once (keyed by the task alone); the answers come from answer.
-    for outputs, task, fit in ((['behavior'], LEGACY, []), (['behavior:choice'], PLAIN, ['extract'])):
+    for outputs, task in ((['behavior'], LEGACY), (['behavior:choice'], PLAIN)):
         answer, calls = _answers(BLIP2, outputs, task)
-        assert calls == fit + ['answer'] * 3
+        assert calls == ['answer'] * 3 and 'extract' not in calls
 
 
 def test_the_full_part_set_answers_legacy_through_answer_and_the_choice_through_reply_today():
@@ -77,3 +75,41 @@ def test_the_full_part_set_answers_legacy_through_answer_and_the_choice_through_
     assert legacy_calls == ['answer'] * 3
     assert choice_calls == ['reply'] * 3
     assert choice.attrs['response']['method'] == 'generation' and choice.attrs['response']['origin'] == 'native'
+
+
+def _counting_fits(model):
+    fits, fit = [], model._behavioral.fit_behavioral_readout
+    model._behavioral.fit_behavioral_readout = lambda fitting: fits.append(len(fitting)) or fit(fitting)
+    return fits
+
+
+def test_the_readout_is_fitted_by_the_first_session_that_requests_its_format():
+    """The requested formats decide the fit, as they decide the passes: one fit per
+    configured task, at the start of the first session that needs the readout."""
+    calls = []
+    model = _model(*BLIP2, owners=REGISTERED_STATEMENTS[BLIP2], calls=calls)
+    fits = _counting_fits(model)
+    choice = _run(model, ['behavior:choice'], PLAIN).collect('behavior:choice')
+    assert fits == [] and calls == ['answer'] * 3                  # no fit, no extraction
+    assert choice.values.tolist() == [[1.0, 0.0]] * 3
+    probabilities = _run(model, ['behavior:probabilities'], PLAIN).collect('behavior:probabilities')
+    assert fits == [len(FITTING)]
+    assert probabilities.attrs['response']['method'] == 'readout'
+    _run(model, ['behavior:choice', 'behavior:probabilities'], PLAIN)
+    assert fits == [len(FITTING)]                                   # still one fit
+
+
+def test_a_readout_that_derives_the_choice_is_fitted_for_a_choice_session():
+    model = _model(*READOUT, owners=REGISTERED_STATEMENTS[READOUT])
+    fits = _counting_fits(model)
+    choice = _run(model, ['behavior:choice'], PLAIN).collect('behavior:choice')
+    assert fits == [len(FITTING)] and choice.attrs['response']['method'] == 'readout'
+
+
+@pytest.mark.parametrize('parts, fitted', [(BLIP2, []), (QWEN, []), (READOUT, [len(FITTING)])],
+                         ids=['answer+readout', 'answer+reply+likelihood+readout', 'readout'])
+def test_a_legacy_task_is_fitted_as_before(parts, fitted):
+    model = _model(*parts, owners=REGISTERED_STATEMENTS[parts])
+    fits = _counting_fits(model)
+    _run(model, ['behavior'], LEGACY)
+    assert fits == fitted
