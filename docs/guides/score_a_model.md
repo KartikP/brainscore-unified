@@ -18,10 +18,10 @@ from brainscore.harnesses.grid_game import random_action_policy
 subject = BrainScoreModel(identifier='random-moves', policy=random_action_policy(seed=0))
 score = brainscore.score(subject, 'GridGame-reach-5x5')
 print(float(score), score.attrs['success_rate'], score.attrs['random_floor'])
-# 0.2 0.2 0.2
+# 0.5333333333333333 0.5333333333333333 0.5333333333333333
 ```
 
-The random subject reaches the goal on 3 of the 15 boards, the same rate as the floor
+The random subject reaches the goal on 8 of the 15 boards, the same rate as the floor
 that the benchmark measures with its own random policy. A subject with no `policy` part,
 such as `chance-baseline`, does not give the `motor` output, so this pair is N/A.
 
@@ -45,6 +45,9 @@ benchmark = brainscore.load_benchmark('GridGame-reach-5x5')
 subject = BrainScoreModel(identifier='random-moves', policy=random_action_policy(seed=0))
 score = brainscore.score(subject, benchmark)
 ```
+
+The two arguments also have names: `brainscore.score(model_identifier=..., benchmark_identifier=...)`
+takes the same registered names or objects.
 
 What happens:
 
