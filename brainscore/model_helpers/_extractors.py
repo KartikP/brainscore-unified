@@ -17,6 +17,7 @@ under an unchanged ``_VERSION``.
 """
 import inspect
 import sys
+import warnings
 from collections import OrderedDict
 from typing import Callable, List
 
@@ -308,8 +309,9 @@ def cache_config(wrapper, fields):
     adds the inputs. No source text is part of it, so an edit that keeps values
     (a comment, a docstring, a move) keeps the key.
 
-    ``_VERSION`` is read from the first module along the class's MRO that has
-    one, so a subclass in another module shares its parent's version.
+    ``_VERSION`` belongs to the wrapper's own class: its class body, or the
+    module that defines the class. A subclass does not inherit it, since its
+    own code can change values (``cache_signature`` does not cache it).
 
     A torch autocast context around the call changes the values, so when
     autocast is enabled for the input device type, its dtype is part of the
@@ -337,12 +339,14 @@ def _autocast(device):
         return None
 
 
-def _version(cls) -> int:
-    for base in cls.__mro__:
-        version = getattr(sys.modules.get(base.__module__), '_VERSION', None)
-        if version is not None:
-            return version
-    raise TypeError(f'{cls.__qualname__} caches activations, and no module of its classes has a _VERSION.')
+def _version(cls):
+    """The ``_VERSION`` of ``cls`` itself (class body, else its own module), or None; never inherited."""
+    if '_VERSION' in vars(cls):
+        return vars(cls)['_VERSION']
+    return getattr(sys.modules.get(cls.__module__), '_VERSION', None)
+
+
+_UNVERSIONED = set()        # classes already warned about
 
 
 def cache_signature(wrapper, stored: str, inputs, stimuli_identifier):
@@ -352,6 +356,15 @@ def cache_signature(wrapper, stored: str, inputs, stimuli_identifier):
     the fingerprint reads for the stimuli (the texts, or the files behind paths).
     """
     if not stimuli_identifier:
+        return None
+    if _version(type(wrapper)) is None:
+        cls = type(wrapper)
+        if cls not in _UNVERSIONED:
+            _UNVERSIONED.add(cls)
+            warnings.warn(
+                f'{kind(wrapper)} has no _VERSION of its own, so it extracts every time and does not use '
+                f'the activation cache. To cache it, add _VERSION = 1 to its class body and a guard test '
+                f'that pins its values (see tests/test_wrapper_cache_guard.py).', stacklevel=3)
         return None
     return extraction_fingerprint({'configuration': wrapper.cache_config(), 'inputs': inputs},
                                   cache_identifier=f'{kind(wrapper)}.{stored}')

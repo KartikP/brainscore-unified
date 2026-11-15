@@ -40,7 +40,7 @@ def store(monkeypatch):
     state = type('Store', (), {'enabled': True, 'folder': Path(folder.name)})()
 
     def enable(identifier):
-        return state.enabled and identifier.startswith('brainscore.model_helpers.')
+        return state.enabled and identifier.startswith(('brainscore.model_helpers.', __name__ + '.'))
     monkeypatch.setattr(result_caching, 'is_enabled', enable)
     monkeypatch.setattr('brainscore_core.extraction_cache.is_enabled', enable)
 
@@ -70,3 +70,61 @@ def test_a_second_identifier_gets_its_own_labels_from_a_warm_cache(name, store, 
     assert set(second_cold['model'].values) == {'second'}
     assert digest(second_warm) == digest(second_cold)
     assert digest(first(stimuli, layers=layers)) == digest(first_cold)
+
+
+class _Unversioned(__import__('brainscore.model_helpers.text_wrapper', fromlist=['TextWrapper']).TextWrapper):
+    """A subclass with code of its own and no ``_VERSION`` of its own."""
+
+    def _reduce(self, layer_results, mask, _row=None):
+        return super()._reduce(layer_results, mask, _row)
+
+
+class _Versioned(_Unversioned):
+    _VERSION = 1
+
+
+def _subclass(cls):
+    wrapper = text_wrapper()
+    wrapper.__class__ = cls
+    return wrapper
+
+
+def test_a_subclass_without_its_own_version_does_not_use_the_cache(store, tmp_path, monkeypatch):
+    from brainscore.model_helpers import _extractors
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(_extractors, '_UNVERSIONED', set())
+    stimuli = _stimuli('share-subclass', sentence=['the cat sat', 'dog ran'])
+    wrapper = _subclass(_Unversioned)
+    store.install(wrapper)
+    calls = []
+    extract = wrapper._from_texts
+    monkeypatch.setattr(wrapper, '_from_texts', lambda *a, **k: calls.append(1) or extract(*a, **k))
+    with pytest.warns(UserWarning, match=r'_Unversioned has no _VERSION of its own') as warned:
+        first = wrapper(stimuli, layers=['enc'])
+        second = wrapper(stimuli, layers=['enc'])
+    assert len([w for w in warned if '_VERSION' in str(w.message)]) == 1
+    assert 'add _VERSION = 1 to its class body and a guard test' in str(warned[0].message)
+    assert len(calls) == 2 and digest(first) == digest(second)
+    assert list(store.folder.rglob('*.pkl')) == []
+
+
+def test_a_subclass_with_its_own_version_is_cached_under_its_own_key(store, tmp_path, monkeypatch):
+    import warnings
+    from brainscore.model_helpers._extractors import cache_signature
+    monkeypatch.chdir(tmp_path)
+    stimuli = _stimuli('share-versioned', sentence=['the cat sat', 'dog ran'])
+    wrapper, parent = _subclass(_Versioned), text_wrapper()
+    store.install(wrapper)
+    calls = []
+    extract = wrapper._from_texts
+    monkeypatch.setattr(wrapper, '_from_texts', lambda *a, **k: calls.append(1) or extract(*a, **k))
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        first = wrapper(stimuli, layers=['enc'])
+        second = wrapper(stimuli, layers=['enc'])
+    assert len(calls) == 1 and digest(first) == digest(second)
+    assert len(list(store.folder.rglob('*.pkl'))) == 1
+    texts = list(stimuli['sentence'])
+    assert cache_signature(wrapper, '_from_texts_stored', texts, 'x') != \
+        cache_signature(parent, '_from_texts_stored', texts, 'x')
+    assert wrapper.cache_config()['version'] == 1
