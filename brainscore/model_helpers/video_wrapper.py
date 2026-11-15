@@ -309,8 +309,14 @@ class VideoWrapper:
         signature = cache_signature(self, '_from_paths_stored', file_inputs(paths), stimuli_identifier)
         if signature is None:
             return self._from_paths(paths, layers, stimuli_identifier)
-        return labelled(self._from_paths_stored(stimuli_identifier=stimuli_identifier, layers=layers, paths=paths,
-                                                extraction_fingerprint=signature), self._identifier)
+        stored = self._from_paths_stored(stimuli_identifier=stimuli_identifier, layers=layers, paths=paths,
+                                         extraction_fingerprint=signature)
+        # ``_package`` stacks the layers in the requested order; the store merges a
+        # cached layer and a new one in its own order, so restore the requested one.
+        position = [list(layers).index(layer) for layer in stored['layer'].values]
+        if position != sorted(position):
+            stored = stored.isel(neuroid=np.argsort(position, kind='stable'))
+        return labelled(stored, self._identifier)
 
     @store_xarray(identifier_ignore=['paths', 'layers'],
                   combine_fields={'layers': 'layer'})

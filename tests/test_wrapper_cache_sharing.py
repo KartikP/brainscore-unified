@@ -79,6 +79,20 @@ def test_a_second_identifier_gets_its_own_labels_from_a_warm_cache(name, store, 
     xarray.testing.assert_identical(first_warm, first_cold)
 
 
+def test_a_warm_video_result_keeps_the_requested_layer_order(store, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    stimuli = _stimuli('share-video-order', video_path=_video_files())
+    first, second = video_wrapper(), video_wrapper()
+    second._identifier = 'second'
+    store.install(first)
+    first(stimuli, layers=['block'])
+    second_warm = second(stimuli, layers=['head', 'block'])
+    store.enabled = False
+    second_cold = second(stimuli, layers=['head', 'block'])
+    assert list(second_cold['layer'].values) == ['head'] * 2 + ['block'] * 4
+    xarray.testing.assert_identical(second_warm, second_cold)
+
+
 class _Unversioned(__import__('brainscore.model_helpers.text_wrapper', fromlist=['TextWrapper']).TextWrapper):
     """A subclass with code of its own and no ``_VERSION`` of its own."""
 
