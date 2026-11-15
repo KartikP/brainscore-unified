@@ -274,6 +274,21 @@ class BehavioralReadout:
                 f"answer and readout models both use 'probabilities'."
             )
 
+    def by_answer(self, task) -> bool:
+        """Within generation, whether the ``answer`` part answers ``task`` (else the ``reply`` part).
+
+        A plain Choice goes to answer= when it is wired (point r): the call a
+        registration makes for a choice. The reply, which receives the full prompt,
+        answers task settings (verbatim, present, options per row), a Scale or a
+        Text, trial history, or when answer= is absent. A session decides it once,
+        in its plan.
+        """
+        from brainscore_core.responses import Choice
+        owner, response = self.owner, task.response
+        return (owner._answer is not None and isinstance(response, Choice)
+                and not response.verbatim and task.present is None
+                and not isinstance(response.labels, str) and owner._memory != 'trial_history')
+
     def _planned(self, task, formats):
         """The answering part the running session's plan chose for ``task`` and ``formats``, or None."""
         plan = self.owner._session_plan
@@ -599,9 +614,9 @@ class BehavioralReadout:
         from brainscore_core.responses import Choice, Scale, Text, labels_of
         owner, task = self.owner, self.task
         response, path, probability_source = task.response, self.response_path, self.probability_source
+        planned = self._planned(task, channels) if response is not None else None
         if response is not None:
-            path, probability_source = (self._planned(task, channels)
-                                        or self._choose_path(task, channels))
+            path, probability_source = planned or self._choose_path(task, channels)
         layers = {region: list(region_selector(owner, region).layer_paths) for region in regions}
         if response is None:
             behavior, neural = self._answer_legacy_task(stimuli, layers)
@@ -641,19 +656,19 @@ class BehavioralReadout:
                         outputs, answers.in_order(values, labels), stimuli)
         else:
             score_first = path == 'generation' and probability_source == 'likelihood'
-            # Trial history without a reply or likelihood part was refused by the session's plan.
+            # Trial history without a reply or likelihood part: a session's plan refused it
+            # before any set-up; a direct call with no matching plan is refused here.
             remember = owner._memory == 'trial_history'
+            if planned is None and remember and owner._reply is None and owner._likelihood is None:
+                raise ValueError("memory='trial_history' needs reply= or likelihood=; answer= cannot see "
+                                 'earlier trials.')
 
             def with_history(prompt):
                 return replace(prompt, history=tuple(self.history)) if remember else prompt
 
-            # Within generation a plain Choice goes to answer= when it is wired (point r): the
-            # call a registration makes for a choice. The reply, which receives the full
-            # prompt, answers task settings (verbatim, present, options per row), a Scale or
-            # a Text, trial history, or when answer= is absent.
-            by_answer = (owner._answer is not None and isinstance(response, Choice)
-                         and not response.verbatim and task.present is None
-                         and not isinstance(response.labels, str) and not remember)
+            # Within generation: the answer part or the reply part (the plan's decision).
+            by_answer = (self.owner._session_plan.by_answer if planned is not None
+                         else self.by_answer(task))
             if path == 'likelihood':
                 def call(row, prompt):
                     scores = owner._likelihood(with_history(prompt), list(prompt.response.labels))

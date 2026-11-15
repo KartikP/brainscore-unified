@@ -128,7 +128,8 @@ class _LegacyTaskAnswers:
         return self.subject.identifier
 
     def start_task(self, task) -> None:
-        self.subject.start_task(task)
+        # The session's plan chose the part of bare behavior (formats: ['behavior']).
+        self.subject.start_task(task, formats=['behavior'])
 
     def process(self, stimuli):
         behavior, _ = self.subject._behavioral.respond(stimuli, ['behavior'])

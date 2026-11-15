@@ -28,6 +28,7 @@ class SessionPlan:
     delivery: str                       # 'table', 'per_trial' (one trial at a time) or 'stream'
     pick: Optional[Tuple[str, Optional[str]]] = None    # (answering part, probability source)
     pick_key: Optional[tuple] = None    # the task and formats the pick was made for
+    by_answer: Optional[bool] = None    # within generation: the answer part (True) or the reply part
 
     def pick_for(self, task, formats) -> Optional[Tuple[str, Optional[str]]]:
         """The planned pick when ``task`` and ``formats`` are the ones it was made for, else None."""
@@ -80,21 +81,30 @@ def plan_session(model, session, passes: str) -> SessionPlan:
     else:
         task_path = False
 
-    pick = pick_key = None
+    pick = pick_key = by_answer = None
     if task_path:
         _refuse_task_session(model, session, task, answers, regions)
         delivery = 'stream' if streaming else 'per_trial' if history else 'table'
         if task.response is not None or task.task_type != 'passive':
             pick = _choose_answering_part(model, session, task, answers, regions, delivery)
             pick_key = _pick_key(task, answers)
+            if task.response is not None:
+                by_answer = model._behavioral.by_answer(task)
     elif handler is _NEURAL:
         refuse_variance(model, session)
         per_trial = history and (task is None or task.trial_memory == 'none')
         delivery = 'stream' if streaming else 'per_trial' if per_trial else 'table'
     else:
         delivery = 'stream' if streaming else 'table'
+        if handler is _BEHAVIOR and task is not None and task.task_type != 'passive':
+            # Bare behavior of a legacy task (core's typed driver): its part is chosen here too.
+            refuse_variance(model, session)
+            model._behavioral.validate_task(task)
+            pick = model._behavioral._choose_path(task, ['behavior'])
+            pick_key = _pick_key(task, ['behavior'])
     return SessionPlan(handler=handler, regions_per_pass=passes, answers=answers, regions=regions,
-                       task_path=task_path, delivery=delivery, pick=pick, pick_key=pick_key)
+                       task_path=task_path, delivery=delivery, pick=pick, pick_key=pick_key,
+                       by_answer=by_answer)
 
 
 def _refuse_task_session(model, session, task, answers, regions) -> None:
@@ -126,7 +136,8 @@ def _choose_answering_part(model, session, task, answers, regions, delivery):
     was fitted are raised here: trial history without a reply or likelihood part,
     and, when the session has its table, a region the readout cannot record from
     the input it presents, a bad prompt layout and rows with different numbers of
-    options (whole table only; one trial at a time compares nothing across trials).
+    options (whole table only; one trial at a time or a stream compares nothing
+    across trials). A source with no table is checked per trial (stated limit, O2).
     """
     readout = model._behavioral
     readout.validate_task(task)
@@ -138,8 +149,10 @@ def _choose_answering_part(model, session, task, answers, regions, delivery):
             "memory='trial_history' needs reply= or likelihood=; answer= cannot see earlier trials.",
             channels=set(answers), task_type=task.task_type)
     stimuli = getattr(session, 'stimuli', None)
-    if stimuli is None or delivery == 'stream':
+    if stimuli is None:
         return pick                     # only the trials show their columns (rule 5.14, stated limit)
+    # A known table is checked whole, also for a streamed delivery (core keeps the table);
+    # options are compared across rows only when the whole table is answered at once.
     if path == 'readout' and regions:
         readout.refuse_readout_regions(stimuli, regions)
     if task.response is not None:
