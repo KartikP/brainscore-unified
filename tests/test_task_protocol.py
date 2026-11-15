@@ -649,62 +649,30 @@ def test_save_keeps_a_temporary_run_and_refuses_an_existing_folder(tmp_path):
 def test_the_result_is_the_only_owner_of_its_run_folder(tmp_path, monkeypatch):
     """The experiment keeps no reference after run(): dropping the result removes the folder."""
     import gc
-    import os
     import tempfile
     monkeypatch.setattr(tempfile, 'tempdir', str(tmp_path))
     experiment = Experiment(subject=_subject(Net()), protocol=TaskProtocol(STIMULI, TASK),
                             tools=[RecordBehavior()])
     result = experiment.run()
     folder = result.directory.parent
-    assert folder.name.startswith(f'umi-run-{os.getpid()}-')
-    import socket
-    assert (folder / '.umi-run-owner').read_text() == f'{socket.gethostname()} {os.getpid()}'
+    assert folder.parent == tmp_path and folder.name.startswith('umi-run-')
     del result
     gc.collect()
     assert not folder.exists()          # the experiment object is still alive here
     assert experiment is not None
 
 
-def _ended_process_id():
-    import subprocess
-    import sys
-    process = subprocess.Popen([sys.executable, '-c', 'pass'])
-    process.wait()
-    return process.pid
-
-
-def test_a_run_removes_folders_of_ended_processes_only(tmp_path, monkeypatch):
-    import os
+def test_a_run_touches_no_other_folder_in_the_temporary_folder(tmp_path, monkeypatch):
+    """No clean-up by inference: other run folders, whoever made them, stay."""
     import tempfile
     monkeypatch.setattr(tempfile, 'tempdir', str(tmp_path))
-
-    import socket
-    host = socket.gethostname()
-
-    def folder(name, owner=None):
-        path = tmp_path / name
-        (path / 'run').mkdir(parents=True)
-        if owner is not None:
-            (path / '.umi-run-owner').write_text(owner)
-        return path
-
-    ended = _ended_process_id()
-    dead = folder(f'umi-run-{ended}-abc', owner=f'{host} {ended}')
-    live = folder(f'umi-run-{os.getppid()}-def', owner=f'{host} {os.getppid()}')
-    other_host = folder(f'umi-run-{ended}-ghi', owner=f'another-container {ended}')
-    old_form = folder(f'umi-run-{ended}-jkl', owner=str(ended))   # a bare number
-    unmarked = folder('umi-run-old')                   # made before the marker existed
-    named = folder(f'umi-run-{ended}-mine')            # a user's own folder: no marker
+    other = tmp_path / 'umi-run-left-by-a-killed-process' / 'run'
+    other.mkdir(parents=True)
+    (other / 'experiment.json').write_text('{}')
     result = Experiment(subject=_subject(Net()), protocol=TaskProtocol(STIMULI, TASK),
                         tools=[RecordBehavior()]).run()
-    assert not dead.exists()
-    assert live.exists() and unmarked.exists() and named.exists()
-    assert other_host.exists() and old_form.exists()   # process ids of another host mean nothing here
+    assert (other / 'experiment.json').read_text() == '{}'
     assert result.directory.exists()
-    explicit = tmp_path / f'umi-run-{ended}-explicit'
-    Experiment(subject=_subject(Net()), protocol=TaskProtocol(STIMULI, TASK),
-               tools=[RecordBehavior()], output_dir=explicit).run()
-    assert explicit.exists()                           # output_dir is never a temporary run
 
 
 def test_without_output_dir_each_run_gets_its_own_folder(tmp_path):
