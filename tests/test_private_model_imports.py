@@ -51,10 +51,6 @@ ALLOWED = {
     ('benchmarks/pereira2018/benchmark.py', 'call candidate.process'): _TYPED,
     ('benchmarks/coggym/benchmark.py', 'private brainscore.harnesses.coggym._PROMPT_NOTE'):
         'the CogGym benchmark reuses the prompt note of the CogGym harness',
-    ('harnesses/adapter.py', 'private brainscore.benchmarks._score'):
-        'the external-library adapter builds its score with benchmark_score (R15 owner)',
-    ('harnesses/human_replay.py', 'private brainscore.benchmarks._score'):
-        'human replay builds its score with benchmark_score (R15 owner)',
     ('experiments/tools.py', 'private brainscore.activation_window._first_tensor_out'):
         'TorchInstrumentation shares the tensor unwrapping of ActivationWindow',
 }

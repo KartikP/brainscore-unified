@@ -150,7 +150,7 @@ class HumanAgreementBenchmark(BenchmarkBase):
             actions += replay_actions(subject, [s for s, _ in episode], self.n_actions)
             counts += [c for _, c in episode]
         result = human_agreement(actions, counts)
-        from brainscore.benchmarks._score import benchmark_score
+        from brainscore.benchmarks import benchmark_score
         # The ceiling depends only on the human data: it is the benchmark's ceiling.
         score = benchmark_score(self, raw=result['raw'], metric='human_choice_agreement')
         score.attrs['chance_floor'] = result['chance']
