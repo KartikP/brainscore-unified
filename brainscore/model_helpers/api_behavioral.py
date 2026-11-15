@@ -36,26 +36,37 @@ from typing import Callable, Optional, Sequence, Tuple, Union
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.responses import Choice
 
-# Stimulus-set columns we know how to read, in priority order. Mirrors the
-# column conventions the wrappers use elsewhere; vision wins over text.
-IMAGE_COLUMNS = ('image_file_name', 'image_path', 'image_file', 'filepath',
-                 'stimulus_path')
-TEXT_COLUMNS = ('sentence', 'text', 'word', 'transcript', 'stimulus')
-
 _IMG_MIME = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
              '.gif': 'image/gif', '.webp': 'image/webp'}
 
 
-def _find_column(row, candidates: Sequence[str]) -> Optional[str]:
-    for c in candidates:
+def _find_column(row, kind: str) -> Optional[str]:
+    """The first column of ``row`` that the core catalog binds to the part ``kind``
+    (``'image'``, ``'text'``, ...), in the catalog's order, with a usable value.
+
+    It is the rule a trial's prompt uses (``brainscore_core.responses.part_columns``),
+    so an ``answer`` part reads the same column as a ``reply`` part.
+    """
+    from brainscore_core.responses import part_columns
+    for column in part_columns(kind):
         try:
-            val = row[c]
-        except (KeyError, TypeError):
+            value = row[column]
+        except (KeyError, TypeError, IndexError):
             continue
         # pandas Series rows: a missing/NaN cell is not a usable path/string
-        if val is not None and not (isinstance(val, float) and val != val):
-            return c
+        if value is not None and not (isinstance(value, float) and value != value):
+            return column
     return None
+
+
+def _required_column(row, kind: str, part: str) -> str:
+    """``_find_column``, or a ValueError that names the accepted columns."""
+    from brainscore_core.responses import part_columns
+    column = _find_column(row, kind)
+    if column is None:
+        raise ValueError(f"{part}: the stimulus row has no {kind} column; accepted columns, "
+                         f"in order: {list(part_columns(kind))}.")
+    return column
 
 
 def _encode_image(path: Union[str, Path]) -> Tuple[str, str]:
@@ -260,8 +271,6 @@ def build_api_generation_fn(
     system_prompt: Optional[str] = None,
     max_tokens: int = 16,
     cache_dir: Optional[Union[str, Path]] = None,
-    image_columns: Sequence[str] = IMAGE_COLUMNS,
-    text_columns: Sequence[str] = TEXT_COLUMNS,
 ) -> Callable:
     """Build an ``answer(stimulus_row, instruction, label_set) -> str``
     that answers a forced-choice behavioral task via a closed-weight API model.
@@ -288,12 +297,9 @@ def build_api_generation_fn(
         label_set = list(label_set)
         prompt = _answer_text(instruction, label_set)
 
-        img_col = _find_column(stimulus_row, image_columns)
-        txt_col = None if img_col else _find_column(stimulus_row, text_columns)
-        if img_col is None and txt_col is None:
-            raise ValueError(
-                f"api_behavioral: stimulus row has no readable image column "
-                f"({image_columns}) or text column ({text_columns}).")
+        img_col = _find_column(stimulus_row, 'image')
+        txt_col = None if img_col else _required_column(
+            stimulus_row, 'text', 'api_behavioral (no image column either)')
 
         # stimulus identity for the cache key
         try:

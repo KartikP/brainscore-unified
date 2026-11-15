@@ -65,19 +65,19 @@ def _make_answer(model, processor, max_new_tokens: int = 16):
     import torch
     from PIL import Image
     from brainscore.model_helpers.api_behavioral import (
-        IMAGE_COLUMNS, TEXT_COLUMNS, _answer_text, _find_column, _label_or_reply)
+        _answer_text, _find_column, _label_or_reply, _required_column)
 
     def answer(stimulus_row, instruction, label_set):
         prompt = _answer_text(instruction, label_set)
-        image_column = _find_column(stimulus_row, IMAGE_COLUMNS)
+        image_column = _find_column(stimulus_row, 'image')
         content, images = [], None
         if image_column:
             images = [Image.open(stimulus_row[image_column]).convert('RGB')]
             content.append({'type': 'image', 'image': images[0]})
         else:
-            text_column = _find_column(stimulus_row, TEXT_COLUMNS)
-            if text_column:
-                prompt = f'{stimulus_row[text_column]}\n\n{prompt}'
+            text_column = _required_column(stimulus_row, 'text',
+                                           'Qwen3.6-27B answer (no image column either)')
+            prompt = f'{stimulus_row[text_column]}\n\n{prompt}'
         content.append({'type': 'text', 'text': prompt})
         text = processor.apply_chat_template(
             [{'role': 'user', 'content': content}], tokenize=False,

@@ -53,10 +53,12 @@ def _make_answer(blip_model, blip_processor, max_new_tokens: int = 8):
     "Question: {instruction} Answer:" → model completes with label.
     """
     from brainscore_core.responses import Choice
+    from brainscore.model_helpers.api_behavioral import _required_column
     device = next(blip_model.parameters()).device
 
     def generate(stimulus_row, instruction: str, label_set: List[str]) -> str:
-        image = Image.open(stimulus_row['image_file_name']).convert('RGB')
+        image = Image.open(stimulus_row[_required_column(
+            stimulus_row, 'image', 'BLIP-2 answer')]).convert('RGB')
         # BLIP-2 OPT responds best to "Question: ... Answer:" template; with no
         # instruction there is no question.
         prompt = ((f"Question: {instruction} " if instruction else '')

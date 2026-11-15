@@ -9,8 +9,7 @@ import pytest
 
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore.model_helpers.api_behavioral import (
-    build_api_generation_fn, _label_or_reply, _find_column, _answer_text,
-    IMAGE_COLUMNS, TEXT_COLUMNS,
+    build_api_generation_fn, _label_or_reply, _find_column, _answer_text, _required_column,
 )
 
 
@@ -33,16 +32,24 @@ class TestPureHelpers:
             'Is this a real word?\n\nAnswer with exactly one of: real, pseudo.')
         assert _answer_text(None, ['real', 'pseudo']) == 'Answer with exactly one of: real, pseudo.'
 
-    def test_find_column_prefers_image_then_text(self):
+    def test_find_column_reads_the_catalog_columns_in_order(self):
         row = pd.Series({'image_file_name': '/x.png', 'sentence': 'hi'})
-        assert _find_column(row, IMAGE_COLUMNS) == 'image_file_name'
+        assert _find_column(row, 'image') == 'image_file_name'
+        assert _find_column(pd.Series({'image_path': '/x.png'}), 'image') == 'image_path'
         text_only = pd.Series({'sentence': 'hi'})
-        assert _find_column(text_only, IMAGE_COLUMNS) is None
-        assert _find_column(text_only, TEXT_COLUMNS) == 'sentence'
+        assert _find_column(text_only, 'image') is None
+        assert _find_column(text_only, 'text') == 'sentence'
+        # a name outside the catalog is not read (stated change: the old lists had it)
+        assert _find_column(pd.Series({'filepath': '/x.png', 'word': 'hi'}), 'image') is None
 
     def test_find_column_skips_nan(self):
         row = pd.Series({'image_file_name': float('nan'), 'sentence': 'hi'})
-        assert _find_column(row, IMAGE_COLUMNS) is None  # NaN is not a usable path
+        assert _find_column(row, 'image') is None  # NaN is not a usable path
+
+    def test_required_column_names_the_accepted_columns(self):
+        with pytest.raises(ValueError, match=r"part: the stimulus row has no text column; "
+                                             r"accepted columns, in order: \['sentence', 'text'\]"):
+            _required_column(pd.Series({'notes': 'x'}), 'text', 'part')
 
 
 def _turn(messages):
@@ -90,7 +97,7 @@ class TestGenerationClosure:
     def test_missing_modality_column_raises(self):
         gen = build_api_generation_fn(self._mock(), 'mock')
         row = pd.Series({'unrelated': 7, 'stimulus_id': 's1'})
-        with pytest.raises(ValueError, match='no readable image column'):
+        with pytest.raises(ValueError, match='no text column; accepted columns'):
             gen(row, 'Is this real?', ['real', 'pseudo'])
 
     def test_cache_avoids_resecond_call(self, tmp_path):

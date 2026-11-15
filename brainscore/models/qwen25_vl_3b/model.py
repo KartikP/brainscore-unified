@@ -92,10 +92,12 @@ def _make_answer(qwen_model, qwen_processor, max_new_tokens: int = 8):
     Signature (the ``answer`` part of BrainScoreModel):
         fn(stimulus_row, instruction, label_set) -> predicted_label
     """
+    from brainscore.model_helpers.api_behavioral import _required_column
     device = next(qwen_model.parameters()).device
 
     def generate(stimulus_row, instruction: str, label_set: List[str]) -> str:
-        image = Image.open(stimulus_row['image_file_name']).convert('RGB')
+        image = Image.open(stimulus_row[_required_column(
+            stimulus_row, 'image', 'Qwen2.5-VL answer')]).convert('RGB')
         messages = [{
             'role': 'user',
             'content': [
