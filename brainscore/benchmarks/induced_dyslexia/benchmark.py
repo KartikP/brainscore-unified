@@ -22,8 +22,9 @@ benchmark runs any subject through ``participate`` only (Contract Rules 1.1,
 2.1): it records ``neural:<region>`` for the localizer, sends the lesions as
 ``lesion`` events and reads through ``behavior``. It requests those outputs, so
 a subject that cannot record the region or report a lesion (no ``perturbation``
-output) is N/A in pre-flight; one that does not take ``lesion`` input is refused
-at the start of the call, before any compute (``ExecutionNotFeasibleError``). Reading is cleanest on the
+output) is N/A in pre-flight, and so is one that does not take ``lesion`` input:
+a ``perturbation`` record is answered only from the intervention inputs a subject
+takes (pre-flight rule 4). Reading is cleanest on the
 generation path (instruction-following), matching the paper; a readout-path
 model re-fits its linear readout each call (a valid but different measure).
 
@@ -46,7 +47,6 @@ the project's K-sweep finding. Different localizer, same API.
 from typing import List, Sequence
 
 from brainscore_core.benchmarks import BenchmarkBase
-from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.metrics import Score
 from brainscore import FunctionalSelection, RandomSelection
 from brainscore_core.events import StateChange, Selection, Perturbation
@@ -54,7 +54,7 @@ from brainscore_core.streaming_helpers import apply_state_change
 from brainscore.benchmarks._score import benchmark_score, not_estimated
 
 from ..roar_yeatman2021.benchmark import (
-    Yeatman2021LexicalDecision, DYSLEXIA_THRESHOLD, BIBTEX, _CHANNEL_SUFFIX,
+    Yeatman2021LexicalDecision, DYSLEXIA_THRESHOLD, BIBTEX, _CHANNEL_COLUMNS,
 )
 
 
@@ -68,6 +68,7 @@ class InducedDyslexia(BenchmarkBase):
     :param n_units: how many top-selective units to ablate per layer.
     :param control_seed: seed for the matched :class:`RandomSelection` control.
     :param channels: ``('vision:image',)`` (word images) or ``('text',)`` (word strings).
+    :param identifier: the benchmark identifier (required; a registry line passes its key).
     """
 
     # One lesion experiment is one pass; the reading trials inside it are independent.
@@ -75,20 +76,21 @@ class InducedDyslexia(BenchmarkBase):
 
     def __init__(self, localizer_region: str = 'VWFA', n_units: int = 500,
                  control_seed: int = 0, channels: Sequence[str] = ('vision:image',),
-                 reading_benchmark=None, localizer_stimuli=None):
+                 reading_benchmark=None, localizer_stimuli=None, *, identifier: str):
         self.localizer_region = localizer_region
         self.n_units = n_units
         self.control_seed = control_seed
         channels = tuple(channels)
-        if len(channels) != 1 or channels[0] not in _CHANNEL_SUFFIX:
+        if len(channels) != 1 or channels[0] not in _CHANNEL_COLUMNS:
             raise ValueError(
-                f"channels must be one of {[(c,) for c in _CHANNEL_SUFFIX]}; "
+                f"channels must be one of {[(c,) for c in _CHANNEL_COLUMNS]}; "
                 f"got {channels!r}")
         channel = channels[0]
         # Declarations decide compatibility (rule 5): the benchmark sends the
         # words, the reading question and the lesions, and needs the region's activity, the lesion
         # record and the reading answers back. A subject without any of these
-        # outputs is N/A before any compute.
+        # outputs, or without the lesion input that the lesion record answers, is
+        # N/A before any compute.
         self.required_input_channels = frozenset(
             {channel, 'instruction', 'lesion'})
         self.requested_output_channels = frozenset(
@@ -101,11 +103,12 @@ class InducedDyslexia(BenchmarkBase):
             self._reading = reading_benchmark
             self._localizer_stimuli = localizer_stimuli
         else:
-            self._reading = Yeatman2021LexicalDecision(channels=channels)
+            # Part of this benchmark: its scores are not returned, so it carries this identifier.
+            self._reading = Yeatman2021LexicalDecision(channels=channels, identifier=identifier)
             self._localizer_stimuli = self._reading._train_stimuli
 
         super().__init__(
-            identifier=f'Yeatman2021-induced_dyslexia-{_CHANNEL_SUFFIX[channel]}',
+            identifier=identifier,
             version=1,
             parent='perturbation',
             ceiling=not_estimated(),   # the reference is "no deficit"; the floor is the chance reader
@@ -162,16 +165,6 @@ class InducedDyslexia(BenchmarkBase):
             raise errors[0]
 
     def __call__(self, subject) -> Score:
-        # The subject must declare `lesion` to receive the lesions. Pre-flight
-        # needs only one benchmark input, so this run is refused before any compute.
-        if 'lesion' not in set(subject.in_channels):
-            raise ExecutionNotFeasibleError(
-                f"Subject '{subject.identifier}' does not declare the 'lesion' family, "
-                f"which benchmark '{self.identifier}' needs to apply and undo lesions; in_channels: "
-                f"{sorted(subject.in_channels)}.", channels={'lesion'})
-        return self._score(subject)
-
-    def _score(self, subject) -> Score:
         baseline_acc = self._reading_accuracy(subject)
 
         # word-form lesion

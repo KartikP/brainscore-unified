@@ -31,7 +31,7 @@ print(score.attrs['metric'], score.attrs['normalized'])   # linear_predictivity 
 
 This template records responses with `neural_response(subject, stimuli, ['neural:IT'], time_bins=...)`, which runs a session through `subject.participate(session)`. Any `Subject` can be scored: a `BrainScoreModel`, a legacy adapter, or a subject that implements only `participate`. For behavioral tasks use `behavioral_response(subject, stimuli, task)`. Do not call `start_recording`, `start_task` or `process` directly; a session-native `Subject` does not promise them.
 
-The benchmark declares its input channels (`required_input_channels`), its requested output channels (`requested_output_channels`) and its `trial_memory` (`'none'` or `'history'`). `score()` refuses a benchmark that declares no inputs.
+The benchmark keeps the table it presents as `stimulus_set` (and a behavioral task as `task`); pre-flight reads its input channels from them. It declares its requested output channels (`requested_output_channels`) and its `trial_memory` (`'none'` or `'history'`). A benchmark whose inputs do not come from one kept table declares them in `required_input_channels`. `score()` refuses a benchmark with neither.
 
 Before opening a PR, complete the
 [benchmark addition checklist](../../docs/archive/benchmark_addition_checklist.md) and attach the evidence

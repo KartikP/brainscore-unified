@@ -270,7 +270,9 @@ def drive_behavior_and_neural_session(subject, session, driver: str = "interact"
     """
     task = getattr(session, "task", None)
     if task is None:
-        raise ValueError("A behavior session needs session.task.")
+        raise ValueError(
+            "A behavior session needs a task: build it with one, for example "
+            "stimulus_session(stimuli, outputs, TaskContext(response=Choice([...]))).")
     time_bins = getattr(session, "time_bins", None)
     if time_bins is not None and len(time_bins) > 1:
         raise NotImplementedError(

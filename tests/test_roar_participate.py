@@ -9,14 +9,14 @@ from tests.test_induced_dyslexia import _ReaderSubject, synthetic_roar  # noqa: 
 
 @pytest.mark.parametrize('word', ['vision:image', 'text'])
 def test_declares_the_word_and_the_question_in_and_the_choice_out(synthetic_roar, word):
-    benchmark = Yeatman2021LexicalDecision(channels=(word,))
+    benchmark = Yeatman2021LexicalDecision(channels=(word,), identifier='Yeatman2021-test')
     assert_declares(benchmark, {word, 'instruction'}, {'behavior:choice'})
     assert_preflight(benchmark)
 
 
 def test_a_participate_only_subject_gets_a_score(synthetic_roar):
     subject = _ReaderSubject()
-    score = Yeatman2021LexicalDecision(channels=('text',))(subject)
+    score = Yeatman2021LexicalDecision(channels=('text',), identifier='Yeatman2021-lexical_decision-text')(subject)
     assert float(score.attrs['raw']) == 1.0
     assert score.attrs['n_test_stimuli'] == 100
 
@@ -49,13 +49,13 @@ def test_the_choice_request_scores_what_the_legacy_request_scored(synthetic_roar
     import numpy as np
     from brainscore_core.contract import TaskContext
     from brainscore_core.streaming_helpers import behavioral_response
-    benchmark = Yeatman2021LexicalDecision(channels=('text',))
+    benchmark = Yeatman2021LexicalDecision(channels=('text',), identifier='Yeatman2021-lexical_decision-text')
     new = float(benchmark(_noisy_readout_model()).attrs['raw'])
     legacy = TaskContext(task_type='probabilities', fitting_stimuli=benchmark._train_stimuli,
                          label_set=['real', 'pseudo'], instruction='Is this a real word or a pseudo word?')
-    rows = behavioral_response(_noisy_readout_model(), benchmark._test_stimuli, legacy)
+    rows = behavioral_response(_noisy_readout_model(), benchmark.stimulus_set, legacy)
     labels = list(rows['choice'].values)
-    truth = dict(zip(benchmark._test_stimuli['stimulus_id'], benchmark._test_stimuli['image_label']))
+    truth = dict(zip(benchmark.stimulus_set['stimulus_id'], benchmark.stimulus_set['image_label']))
     old = float(np.mean([labels[i] == truth[sid] for sid, i in
                          zip(rows['stimulus_id'].values, np.asarray(rows.values).argmax(axis=1))]))
     assert 0.5 < new < 1.0
@@ -69,4 +69,4 @@ def test_a_readout_without_its_choice_statement_is_not_applicable(synthetic_roar
                             in_channels={'text'}, behavioral_readout_layer='late')
     import pytest as _pytest
     with _pytest.raises(CompatibilityError, match='behavior:choice'):
-        check_channel_compatibility(model, Yeatman2021LexicalDecision(channels=('text',)))
+        check_channel_compatibility(model, Yeatman2021LexicalDecision(channels=('text',), identifier='Yeatman2021-lexical_decision-text'))

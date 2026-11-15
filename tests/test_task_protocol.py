@@ -557,7 +557,7 @@ def test_partial_inputs_match_scoring_and_preserve_responses(tmp_path):
                                 requested_output_channels=protocol.requested_output_channels)
     expected = check_compatibility(subject, benchmark).as_attrs()
     assert expected['match'] == 'partial'
-    assert expected['consumed_inputs'] == ['text']
+    assert expected['consumed_inputs'] == ['instruction', 'text']    # the task gives an instruction
     assert expected['dropped_inputs'] == ['vision:image']
     assert plan['protocol']['config']['compatibility'] == expected
     assert net.passes == 0

@@ -261,14 +261,14 @@ def test_benchmark_keeps_its_identity_and_scores_a_participate_only_subject(benc
     assert (benchmark.identifier, benchmark.version) == ('your-benchmark', 1)
     assert benchmark.ceiling.attrs['status'] == 'not_estimated'
     assert benchmark.parent == 'neural'
-    assert len(benchmark._stimulus_set) == 32
+    assert len(benchmark.stimulus_set) == 32
     subject = ParticipateOnlySubject()
     assert not hasattr(subject, 'process') and not hasattr(subject, 'start_recording')
     check_compatibility(subject, benchmark)
-    responses = neural_response(subject=subject, stimuli=benchmark._stimulus_set,
+    responses = neural_response(subject=subject, stimuli=benchmark.stimulus_set,
                                 outputs=['neural:IT'], time_bins=[(70, 170)])
     assert dict(responses.sizes) == {'presentation': 32, 'neuroid': 16}
-    assert list(responses['stimulus_id'].values) == list(benchmark._stimulus_set['stimulus_id'])
+    assert list(responses['stimulus_id'].values) == list(benchmark.stimulus_set['stimulus_id'])
     score = benchmark(subject)
     assert np.isfinite(float(score))
     assert score.attrs['ceiling'] is benchmark.ceiling and 'raw' in score.attrs
@@ -283,7 +283,7 @@ def test_benchmark_scores_a_model_as_the_earlier_template_did(benchmark):
                                extractor={'vision': StimulusExtractor()})
     earlier = subject()
     earlier.start_recording('IT', time_bins=[(70, 170)])
-    expected = benchmark._metric(earlier.process(benchmark._stimulus_set), benchmark._assembly)
+    expected = benchmark._metric(earlier.process(benchmark.stimulus_set), benchmark._assembly)
 
     current = subject()
     check_compatibility(current, benchmark)
@@ -291,7 +291,7 @@ def test_benchmark_scores_a_model_as_the_earlier_template_did(benchmark):
     assert float(score) == float(expected)   # the ceiling is not estimated: the score is raw
     np.testing.assert_array_equal(score.attrs['raw'].values, expected.values)
     extractor = current._extractors['vision']
-    assert extractor.calls == [(list(benchmark._stimulus_set['stimulus_id']), ['layer2'])]
+    assert extractor.calls == [(list(benchmark.stimulus_set['stimulus_id']), ['layer2'])]
     assert current._recorder.time_bins == [(70, 170)]
 
 

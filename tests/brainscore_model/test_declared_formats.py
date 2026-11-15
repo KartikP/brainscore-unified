@@ -17,7 +17,7 @@ import pytest
 import brainscore
 from brainscore import BrainScoreModel
 from brainscore_core.compatibility import (CompatibilityError, ExecutionNotFeasibleError,
-                                           check_channel_compatibility)
+                                           benchmark_required_input_channels, check_channel_compatibility)
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice, Scale, Text
 from brainscore_core.streaming_helpers import stimulus_session
@@ -163,8 +163,8 @@ def test_no_pair_that_answers_today_becomes_not_applicable():
 def test_the_benchmark_declarations_match_the_matrix(synthetic_roar, prepared):
     from brainscore.benchmarks.roar_yeatman2021.benchmark import Yeatman2021LexicalDecision
     for word, name in (('vision:image', 'ROAR image'), ('text', 'ROAR text')):
-        roar = Yeatman2021LexicalDecision(channels=(word,))
-        assert (set(roar.required_input_channels), set(roar.requested_output_channels)) == BENCHMARKS[name]
+        roar = Yeatman2021LexicalDecision(channels=(word,), identifier='Yeatman2021-test')
+        assert (benchmark_required_input_channels(roar), set(roar.requested_output_channels)) == BENCHMARKS[name]
     for mode in ('choice', 'logprobs'):
         ewok = brainscore.load_benchmark(f'EWoK-core-1.0-{mode}', root=prepared)
         assert (set(ewok.required_input_channels), set(ewok.requested_output_channels)) == \
@@ -192,7 +192,7 @@ def test_causal_lm_answers_roar_text_through_its_reply(causal_lm, synthetic_roar
     sessions = []
     participate = model.participate
     model.participate = lambda session: sessions.append(session) or participate(session)
-    score = brainscore.score(model, Yeatman2021LexicalDecision(channels=('text',)), check_mem=False)
+    score = brainscore.score(model, Yeatman2021LexicalDecision(channels=('text',), identifier='Yeatman2021-lexical_decision-text'), check_mem=False)
     assert score.attrs['n_test_stimuli'] == 100
     assert sessions[0].collect(CH).attrs['response']['parsed_by'] == 'model'
 
@@ -245,3 +245,15 @@ def test_every_declared_format_is_answered(where, wired, stated):
         session = stimulus_session(STIMULI, [channel], SESSIONS[channel])
         model.participate(session)
         assert session.collect(channel).sizes['presentation'] == len(STIMULI), (where, channel)
+
+
+def test_a_behavior_request_without_a_task_shows_the_line_to_write_before_any_answer():
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    calls = []
+    model = BrainScoreModel('answers', in_channels={'text'},
+                            answer=lambda stimulus_row, instruction, label_set: calls.append(1) or 'a')
+    table = StimulusSet({'stimulus_id': ['s'], 'sentence': ['x']})
+    table.identifier = 'no-task'
+    with pytest.raises(ValueError, match=r'needs a task.*TaskContext\(response=Choice\(\[\.\.\.\]\)\)'):
+        model.participate(stimulus_session(table, ['behavior:choice']))
+    assert calls == []

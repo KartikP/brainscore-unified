@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from brainscore_core import Subject
-from brainscore_core.compatibility import CompatibilityError, check_compatibility, ExecutionNotFeasibleError
+from brainscore_core.compatibility import CompatibilityError, check_compatibility
 from brainscore_core.metrics import Score
 from brainscore import RandomSelection
 from brainscore_core.events import PerturbationApplied, Selection
@@ -87,7 +87,7 @@ class _Reader:
 def _make(accs, monkeypatch, canned):
     cand = _Subject()
     reader = _Reader(accs)
-    bench = InducedDyslexia(n_units=3, channels=('text',),
+    bench = InducedDyslexia(identifier='Yeatman2021-induced_dyslexia-text', n_units=3, channels=('text',),
                             reading_benchmark=reader, localizer_stimuli=None)
     monkeypatch.setattr(bench, '_localize', lambda c: canned)
     return bench, cand, reader
@@ -199,7 +199,7 @@ class TestScoring:
 
 class TestPreflight:
     def _bench(self):
-        return InducedDyslexia(channels=('text',), reading_benchmark=_Reader({}),
+        return InducedDyslexia(identifier='Yeatman2021-induced_dyslexia-text', channels=('text',), reading_benchmark=_Reader({}),
                                localizer_stimuli=None)
 
     def test_declares_what_it_sends_and_needs(self):
@@ -221,16 +221,30 @@ class TestPreflight:
         assert subject.sessions == 0
 
     @pytest.mark.parametrize('in_channels', [{'text', 'stimulation'}, {'text'}])
-    def test_subject_without_lesion_input_is_refused_before_compute(self, in_channels):
-        # Declares every requested output, but not the lesion input. Pre-flight
-        # passes (inputs need only overlap, rule 5.2), so the benchmark refuses
-        # it from the declaration before any session.
+    def test_subject_without_lesion_input_is_na_in_pre_flight(self, in_channels):
+        # Declares every requested output, but not the lesion input: its lesion
+        # record is answered only from the intervention inputs it takes (pre-flight
+        # rule 4), and the benchmark sends none of them, so the pair is N/A.
         subject = _Subject()
         subject.in_channels = in_channels
-        check_compatibility(subject, self._bench())
-        with pytest.raises(ExecutionNotFeasibleError, match='lesion'):
-            self._bench()(subject)
+        with pytest.raises(CompatibilityError, match="'perturbation'"):
+            check_compatibility(subject, self._bench())
         assert subject.sessions == 0
+
+    @pytest.mark.parametrize('listed', [{'text'}, {'text', 'lesion'}])
+    def test_a_subject_that_lists_its_lesion_record_from_text_is_refused_before_compute(self, listed):
+        # The record answers the lesion in every case: a stated map that gives it from
+        # another input is a malformed declaration, refused by pre-flight in score().
+        import brainscore
+
+        class _ListsText(_Subject):
+            output_inputs = property(lambda self: {'perturbation': frozenset(listed)})
+        subject = _ListsText()
+        with pytest.raises(ValueError, match="lists 'perturbation' in output_inputs from"):
+            check_compatibility(subject, self._bench())
+        with pytest.raises(ValueError, match='list only intervention inputs'):
+            brainscore.score(subject, self._bench(), check_mem=False)
+        assert subject.sessions == 0 and subject.applies == 0
 
     def test_an_addressed_lesion_declaration_is_refused_by_pre_flight(self):
         # The lesion channel has no address: the target is in the StateChange.
@@ -274,7 +288,7 @@ class TestCompositeLocalize:
 
     def test_picks_real_selective_per_layer(self):
         cand = _Subject(recording=self._assembly())
-        bench = InducedDyslexia(localizer_region='VWFA', n_units=1, channels=('text',),
+        bench = InducedDyslexia(identifier='Yeatman2021-induced_dyslexia-text', localizer_region='VWFA', n_units=1, channels=('text',),
                                 reading_benchmark=_Reader({}),
                                 localizer_stimuli=self._stimuli())
         sels = bench._localize(cand)
@@ -287,7 +301,7 @@ class TestCompositeLocalize:
 
     def test_recording_without_layer_is_refused_before_any_lesion(self):
         cand = _Subject(recording=self._assembly(with_layer=False))
-        bench = InducedDyslexia(n_units=1, channels=('text',), reading_benchmark=_Reader({}),
+        bench = InducedDyslexia(identifier='Yeatman2021-induced_dyslexia-text', n_units=1, channels=('text',), reading_benchmark=_Reader({}),
                                 localizer_stimuli=self._stimuli())
         with pytest.raises(ValueError, match="no 'layer' coord"):
             bench._localize(cand)
@@ -363,7 +377,9 @@ def synthetic_roar(monkeypatch):
     ids = [f's{i}' for i in range(500)]
     labels = ['real'] * 250 + ['pseudo'] * 250
     words = [f'{label}-{i}' for i, label in enumerate(labels)]
-    stimuli = StimulusSet({'stimulus_id': ids, 'sentence': words, 'image_label': labels})
+    # As the data plugin gives it: the word as an image file and as a string.
+    stimuli = StimulusSet({'stimulus_id': ids, 'image_file_name': [f'{sid}.png' for sid in ids],
+                           'sentence': words, 'image_label': labels})
     stimuli.identifier = 'synthetic-roar-dyslexia'
     stimuli.stimulus_paths = {sid: sid for sid in ids}
     monkeypatch.setattr(roar, 'load_stimulus_set', lambda identifier: stimuli)
@@ -373,7 +389,7 @@ def synthetic_roar(monkeypatch):
 
 def test_participate_only_subject_runs_the_benchmark(synthetic_roar):
     subject = _ReaderSubject()
-    bench = InducedDyslexia(n_units=2, channels=('text',))
+    bench = InducedDyslexia(identifier='Yeatman2021-induced_dyslexia-text', n_units=2, channels=('text',))
     check_compatibility(subject, bench)
     score = bench(subject)
     assert score.attrs['baseline_accuracy'] == 1.0

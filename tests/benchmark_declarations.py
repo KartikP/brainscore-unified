@@ -7,7 +7,8 @@ by exact channel name, so the tests below need no model, no data and no session.
 """
 import pytest
 
-from brainscore_core.compatibility import CompatibilityError, check_compatibility
+from brainscore_core.compatibility import (
+    CompatibilityError, benchmark_required_input_channels, check_compatibility)
 from brainscore_core.contract import Subject
 
 
@@ -33,15 +34,15 @@ class Declared(Subject):
 
 
 def assert_declares(benchmark, inputs, outputs, protocol='none'):
-    """The declarations are present and exactly these."""
-    assert set(benchmark.required_input_channels) == set(inputs)
+    """The declarations, as pre-flight reads them, are present and exactly these."""
+    assert benchmark_required_input_channels(benchmark) == set(inputs)
     assert set(benchmark.requested_output_channels) == set(outputs)
     assert benchmark.trial_memory == protocol
 
 
 def assert_preflight(benchmark):
     """A matching subject passes; a subject without the inputs or an output is N/A."""
-    inputs = set(benchmark.required_input_channels)
+    inputs = benchmark_required_input_channels(benchmark)
     outputs = set(benchmark.requested_output_channels)
     assert check_compatibility(Declared(inputs, outputs), benchmark).kind == 'full'
     with pytest.raises(CompatibilityError, match='takes in none of the inputs'):

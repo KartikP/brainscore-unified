@@ -90,7 +90,7 @@ def test_an_old_vision_model_scores_roar_image_as_before(roar_words):
     sessions = []
     participate = subject.participate
     subject.participate = lambda session: sessions.append(session) or participate(session)
-    score = brainscore.score(subject, Yeatman2021LexicalDecision(channels=(channel,)), check_mem=False)
+    score = brainscore.score(subject, Yeatman2021LexicalDecision(channels=(channel,), identifier='Yeatman2021-test'), check_mem=False)
     assert 'status' not in score.attrs
     assert (float(score.attrs['raw']), score.attrs['accuracy_real'], score.attrs['accuracy_pseudo']) == (
         0.51, 0.68, 0.34)
@@ -105,7 +105,7 @@ def test_an_old_language_model_is_not_applicable_on_roar_text_before_any_call(ro
     legacy = LegacyLanguageModel()
     subject = LanguageModelAdapter(legacy)
     assert 'behavior:choice' not in subject.out_channels
-    score = brainscore.score(subject, Yeatman2021LexicalDecision(channels=('text',)), check_mem=False)
+    score = brainscore.score(subject, Yeatman2021LexicalDecision(channels=('text',), identifier='Yeatman2021-lexical_decision-text'), check_mem=False)
     assert score.attrs['status'] == 'N/A' and 'behavior:choice' in score.attrs['reason']
     assert legacy.tasks == []
 
@@ -113,7 +113,7 @@ def test_an_old_language_model_is_not_applicable_on_roar_text_before_any_call(ro
 def test_an_old_model_with_no_behavior_task_stays_not_applicable(roar_words):
     from brainscore_language.compat.unified_adapter import LanguageModelAdapter
     subject = LanguageModelAdapter(LegacyLanguageModel(), out_channels={'neural:language_system'})
-    score = brainscore.score(subject, Yeatman2021LexicalDecision(channels=('text',)), check_mem=False)
+    score = brainscore.score(subject, Yeatman2021LexicalDecision(channels=('text',), identifier='Yeatman2021-lexical_decision-text'), check_mem=False)
     assert score.attrs['status'] == 'N/A' and subject._legacy.tasks == []
 
 

@@ -101,10 +101,10 @@ def _ceiling() -> Score:
 
 class YourBenchmark(BenchmarkBase):
     # What the benchmark shows and what it asks for, checked before any compute.
-    # Inputs: the channel names of what the human participants received, by
-    # name ('vision:image', 'vision:video', 'text', 'audio'); a subject matches each
-    # name exactly. A visual input names its form: an image or a video.
-    required_input_channels = frozenset({'vision:image'})
+    # Inputs: pre-flight reads them from `self.stimulus_set` (set in __init__): each
+    # stimulus column feeds one channel ('image_path' feeds 'vision:image', 'sentence'
+    # feeds 'text'). A benchmark with a task keeps it as `self.task`; its instruction is
+    # one more input.
     # Outputs: the exact channel you request, e.g. 'neural:<region>' or 'behavior'.
     requested_output_channels = frozenset({'neural:IT'})   # TODO: your region
     # 'none': every trial starts empty. 'history' needs memory:trial_history.
@@ -116,7 +116,7 @@ class YourBenchmark(BenchmarkBase):
                          parent='neural',            # 'neural' | 'behavioral' | 'engineering'
                          bibtex=BIBTEX)
         self._assembly = _load_assembly()
-        self._stimulus_set = self._assembly.attrs['stimulus_set']
+        self.stimulus_set = self._assembly.attrs['stimulus_set']
         # TODO: your metric. A predictivity metric REGRESSES model units onto target
         # units, so the two need not have matching unit counts — that is what lets any
         # model be scored against fixed measurements. An element-wise metric such as
@@ -141,13 +141,13 @@ class YourBenchmark(BenchmarkBase):
         # 1) show the stimuli and record the subject's IT response, 70-170 ms after onset
         predictions = neural_response(
             subject=subject,
-            stimuli=self._stimulus_set,
+            stimuli=self.stimulus_set,
             outputs=['neural:IT'],    # TODO: your region
             time_bins=[(70, 170)],    # TODO: your time window, in ms
         )
         # 2) label each response with its stimulus category, matched by stimulus_id;
         #    the metric's cross-validation keeps categories balanced across folds
-        categories = dict(zip(self._stimulus_set['stimulus_id'], self._stimulus_set['object_name']))
+        categories = dict(zip(self.stimulus_set['stimulus_id'], self.stimulus_set['object_name']))
         predictions = replace_presentation_coord(
             predictions,
             coord_name='object_name',

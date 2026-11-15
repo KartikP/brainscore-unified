@@ -11,16 +11,16 @@ from brainscore.benchmarks import benchmark_score
 
 
 class MyITBenchmark(BenchmarkBase):
-    required_input_channels = {'vision:image'}    # what the benchmark provides
     requested_output_channels = {'neural:IT'}     # what it needs back
 
     def __init__(self, stimuli, measured, metric, ceiling):
         super().__init__(identifier='MyLab2026.IT-pls', version=1, ceiling=ceiling,  # ceiling: a Score
                          parent='neural', bibtex='')
-        self._stimuli, self._measured, self._metric = stimuli, measured, metric
+        self.stimulus_set = stimuli                # what it provides: pre-flight reads the inputs here
+        self._measured, self._metric = measured, metric
 
     def __call__(self, subject):
-        session = stimulus_session(self._stimuli, ['neural:IT'], time_bins=[(70, 170)])
+        session = stimulus_session(self.stimulus_set, ['neural:IT'], time_bins=[(70, 170)])
         subject.participate(session)
         raw = self._metric(session.collect('neural:IT'), self._measured)
         return benchmark_score(self, raw=raw, metric='pls')
@@ -85,7 +85,7 @@ gives 1.25: a ceiled score can exceed 1.
 | Part | What to provide |
 | --- | --- |
 | Stimuli | A `StimulusSet` (one row per stimulus, a `stimulus_id` column, and a column per input type such as `image_path` or `sentence`), or your own list of `StreamEvent`s. |
-| Declarations | `required_input_channels`, `requested_output_channels`, and any `required_traits` such as `memory:trial_history`. Channels match by exact name. Compatibility compares these with the subject's declarations. |
+| Declarations | `requested_output_channels`, and any `required_traits` such as `memory:trial_history`. The inputs: keep the table as `stimulus_set` (and a behavioral `TaskContext` as `task`) and pre-flight reads them from its columns and the task's instruction; a benchmark without one kept table declares `required_input_channels`. Channels match by exact name. Compatibility compares these with the subject's declarations. |
 | Session | Usually `stimulus_session(stimuli, outputs)`. Add a `TaskContext(...)` as the third argument for behavior; `TaskContext(trial_memory='history')` keeps the subject's history across trials. With the default `trial_memory`, a second answer to one trial is an error; an answer belongs to the trial named by the row identity in its metadata. For closed-loop tasks, use `run_environment` ([Closed loop](closed_loop.md)). |
 | Metric | Any function of model output and measured data, or a shipped metric loaded with `brainscore.load_metric` (see [Metrics](#metrics)). |
 | Ceiling | An estimate of how well the data can be predicted, for example split-half reliability. With none, use `not_estimated()`; the score is then the raw value (`normalized=False`). |

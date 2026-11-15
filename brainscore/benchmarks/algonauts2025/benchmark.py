@@ -124,11 +124,10 @@ class Algonauts2025(BenchmarkBase):
         _VIDEO: ('IT', 'V1', 'V4'),
         _VIDEO_AUDIO: ('A1', 'IT', 'V1', 'V4'),
     }
-    _CHANNEL_SUFFIX = {_IMAGE: '', _VIDEO: '-video', _VIDEO_AUDIO: '-video-audio'}
     # The prepared files of one row (see brainscore.data.algonauts2025.MEDIA).
     _CHANNEL_MEDIA = {_IMAGE: ['frames'], _VIDEO: ['clips'], _VIDEO_AUDIO: ['clips', 'sound']}
-    # The identifier ends in a suffix for the split.
-    _SPLIT_SUFFIX = {'friends': '', 'friends_s7': '-test', 'ood': '-ood'}
+    # The training films (measured) and the two held-out sets (no released fMRI).
+    _SPLITS = ('friends', 'friends_s7', 'ood')
     required_input_channels = _IMAGE
     requested_output_channels = frozenset(f'neural:{r}' for r in CHANNEL_REGIONS[_IMAGE])
     trial_memory = 'none'
@@ -146,13 +145,15 @@ class Algonauts2025(BenchmarkBase):
         channels: Sequence[str] = ('vision:image',),
         streaming: bool = False,
         movies: Optional[Sequence[str]] = None,
+        *,
+        identifier: str,
     ):
         if participant not in (1, 2, 3, 5):
             raise ValueError(
                 f"Algonauts participants are {{1, 2, 3, 5}}; got {participant}.")
-        if split not in self._SPLIT_SUFFIX:
+        if split not in self._SPLITS:
             raise ValueError(
-                f"split must be one of {tuple(self._SPLIT_SUFFIX)}; got {split!r}.")
+                f"split must be one of {self._SPLITS}; got {split!r}.")
         channels = frozenset(channels)
         if channels not in self.CHANNEL_REGIONS:
             raise ValueError(
@@ -190,8 +191,7 @@ class Algonauts2025(BenchmarkBase):
         self._stimulus_set = None
 
         super().__init__(
-            identifier=(f'Algonauts2025-{split}-sub{participant:02d}'
-                        f'{self._SPLIT_SUFFIX[split]}{self._CHANNEL_SUFFIX[channels]}'),
+            identifier=identifier,
             version=2,
             parent='naturalistic',
             ceiling=not_estimated(),   # the score is the raw correlation

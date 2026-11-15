@@ -44,8 +44,8 @@ class TaskProtocol(SessionProtocol):
 
     def __init__(self, stimuli, task, *, identifier='task', conditions=None,
                  repetitions=(0,), required_traits=(), metadata=None):
-        # The inputs the task presents from the table: its 'present' entries when it
-        # names them (a 'kind:column' entry presents that column), else the catalog columns.
+        # The inputs the task presents from the table (core, the one derivation a benchmark uses too):
+        # its present entries or the catalog columns, and the instruction when the task gives one.
         inputs = task_input_channels(stimuli, task)
         self.stimuli = stimuli
         self.task = task

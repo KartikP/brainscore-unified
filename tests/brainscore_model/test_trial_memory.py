@@ -174,7 +174,7 @@ def test_replay_keeps_a_lesion_and_clears_the_policy_between_episodes():
 class _Benchmark:
     identifier = 'applies-a-lesion'
     version = 1
-    required_input_channels = {'text'}
+    required_input_channels = {'text', 'lesion'}    # the lesion record answers the lesion input
     requested_output_channels = {'perturbation'}
 
     def __init__(self, undo):
