@@ -853,4 +853,61 @@ def test_the_log_probability_form_writes_the_counts_and_its_policy(prepared, tmp
     assert (value.attrs['n_invalid'], value.attrs['n_missing']) == (0, 0)
     assert value.attrs['answer_policy'] == (
         'non-finite or missing: an error of the run (an item needs four finite values); '
-        'a finite value above 0: scored as given, counted as invalid')
+        'every finite value is scored as given; the counts are the states core gives '
+        '(invalid: above 0 beyond its tolerance, or marked by the producer)')
+
+
+class _ChoiceCells(Subject):
+    """Answers EWoK's choice requests with one choice cell per question, except the
+    questions ``skip`` names (the whole first request in M9-02); ``answer`` gives the cell."""
+    identifier = 'choice-cells'
+    in_channels = {'text'}
+    out_channels = {'behavior:choice'}
+    required_channels = set()
+
+    def __init__(self, skip=lambda stimulus_id: False, answer=lambda stimulus_id: '1'):
+        self.skip, self.answer = skip, answer
+
+    def participate(self, session):
+        from brainscore_core.streaming import StreamEvent
+        while (event := session.next_input()) is not None:
+            stimulus_id = event.meta.get('stimulus_id')
+            if stimulus_id is None or self.skip(stimulus_id):
+                continue
+            session.respond(StreamEvent('behavior:choice', self.answer(stimulus_id), event.t_ms,
+                                        {'stimulus_id': stimulus_id}))
+
+    def reset(self):
+        pass
+
+
+def _native_cell(stimulus_id):
+    """The right answer of each question: '1' for target 1, '2' for target 2."""
+    return '1' if stimulus_id.endswith('target1') else '2'
+
+
+def test_a_choice_request_with_no_answer_at_all_gives_missing_rows_that_count_wrong(prepared, tmp_path):
+    """M9-02: the completed session gives its missing rows also when nothing was answered."""
+    b = brainscore.load_benchmark('EWoK-core-1.0-choice', root=prepared, batch_size=3,
+                                  output_dir=tmp_path / 'run')
+    value = b(_ChoiceCells(skip=lambda sid: sid.endswith('target1'), answer=_native_cell))
+    assert float(value) == 0.5                        # each item: target 2 right, target 1 missing
+    assert (value.attrs['n_trials'], value.attrs['n_valid'], value.attrs['n_invalid'],
+            value.attrs['n_missing']) == (6, 3, 0, 3)
+
+
+def test_a_log_probability_request_with_no_answer_stays_an_error(prepared, tmp_path):
+    class _Silent(_ChoiceCells):
+        out_channels = {'behavior:log_probabilities'}
+    b = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared, output_dir=tmp_path / 'run')
+    with pytest.raises(TypeError, match='requires an answer on behavior:log_probabilities'):
+        b(_Silent(skip=lambda sid: True))
+
+
+def test_a_value_within_cores_tolerance_above_0_is_valid(prepared, tmp_path):
+    """M9-04: the counts are core's states; 5e-7 nats is a rounded 0 (valid), 0.01 is invalid."""
+    for value, invalid in ((5e-7, 0), (0.01, 6)):
+        b = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared,
+                                      output_dir=tmp_path / f'run-{invalid}')
+        score = b(likelihood_subject(lambda prompt, candidates: {c: value for c in candidates}))
+        assert float(score) == 0.5 and score.attrs['n_invalid'] == invalid

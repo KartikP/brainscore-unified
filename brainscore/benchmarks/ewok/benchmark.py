@@ -75,7 +75,8 @@ _TASKS = {
 # What each form does with a trial that has no usable answer (Contract Rule 6.2).
 CHOICE_POLICY = 'invalid: wrong, counted; missing: wrong, counted'
 LOGPROBS_POLICY = ('non-finite or missing: an error of the run (an item needs four finite values); '
-                   'a finite value above 0: scored as given, counted as invalid')
+                   'every finite value is scored as given; the counts are the states core gives '
+                   '(invalid: above 0 beyond its tolerance, or marked by the producer)')
 
 
 def _choice_item(heading, context1, context2, target, response):
@@ -133,8 +134,10 @@ def _answers(subject: Subject, context, stimuli, mode: str, repetition: int) -> 
     response, channel = _TASKS[mode]
     session = run_request(subject, context, repetition, stimuli, [channel],
                           TaskContext(response=response, trial_memory='none'))
-    if not any(event.channel == channel for event in session.emitted):
+    if mode == 'logprobs' and not any(event.channel == channel for event in session.emitted):
         raise TypeError(f'EWoK {mode} requires an answer on {channel}')
+    # The completed choice session gives a missing row for each question with no answer,
+    # also when no question was answered; those rows are wrong and counted (CHOICE_POLICY).
     answers = session.collect(channel)
     if 'choice' not in getattr(answers, 'dims', ()):
         raise TypeError(f'EWoK {mode} requires one row of option values per question')
