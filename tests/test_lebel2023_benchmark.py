@@ -243,7 +243,8 @@ class TestScoringEndToEnd:
         score = self._benchmark()(subject=None)
         assert np.isclose(float(score), np.median(np.asarray(score.attrs['per_vertex_r'])))
         assert float(score.attrs['raw']) == float(score)
-        assert score.attrs['normalized'] is False and float(score.attrs['ceiling']) == 1.0
+        assert score.attrs['normalized'] is False
+        assert score.attrs['ceiling'].attrs['status'] == 'not_estimated'
 
     def test_max_targets_subsamples_and_records_the_index(self):
         score = self._benchmark(n_vertices=8, max_targets=4)(subject=None)

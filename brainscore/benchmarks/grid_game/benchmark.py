@@ -83,8 +83,7 @@ class GridGameBenchmark(BenchmarkBase):
     def __call__(self, subject) -> Score:
         rate, eff = _run(subject, n_episodes=self.n_episodes, size=self.size,
                          max_steps=self.max_steps, base_seed=self.base_seed)
-        score = benchmark_score(self, rate / float(self.ceiling), raw=rate,
-                                metric='success_rate', normalized=True)
+        score = benchmark_score(self, raw=rate, metric='success_rate')
         score.attrs['success_rate'] = rate
         score.attrs['mean_efficiency'] = eff
         score.attrs['random_floor'] = self._random_floor

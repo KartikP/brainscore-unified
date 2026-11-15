@@ -152,8 +152,7 @@ class HumanAgreementBenchmark(BenchmarkBase):
         result = human_agreement(actions, counts)
         from brainscore.benchmarks._score import benchmark_score
         # The ceiling depends only on the human data: it is the benchmark's ceiling.
-        score = benchmark_score(self, result['raw'] / result['ceiling'], raw=result['raw'],
-                                metric='human_choice_agreement', normalized=True)
+        score = benchmark_score(self, raw=result['raw'], metric='human_choice_agreement')
         score.attrs['chance_floor'] = result['chance']
         score.attrs['n_scored_states'] = result['n_scored']
         score.attrs['above_floor'] = bool(result['raw'] > result['chance'])

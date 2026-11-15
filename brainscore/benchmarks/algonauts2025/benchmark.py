@@ -455,7 +455,7 @@ class Algonauts2025(BenchmarkBase):
         finite, median_r, mean_r = summarize(per_parcel_r)
         # No ceiling is measured: the score is the raw median correlation.
         score = benchmark_score(
-            self, median_r, raw=median_r, normalized=False,
+            self, raw=median_r,
             metric='median_per_parcel_pearson_r',
             mean_r=mean_r,
             n_parcels_scored=int(len(finite)),

@@ -69,7 +69,7 @@ from brainscore_core.supported_data_standards.brainio.assemblies import (
     NeuronRecordingAssembly,
 )
 from brainscore import load_dataset, load_stimulus_set
-from brainscore.benchmarks._score import benchmark_score
+from brainscore.benchmarks._score import benchmark_score, not_estimated
 from brainscore.metrics.encoding import SklearnRidge, cross_validated_r, ridge, row_kfold
 from ._util import (
     DEFAULT_AUDIO_DIR,
@@ -106,10 +106,10 @@ _VISUAL = ('vision:image', 'vision:video')
 def _ceiling_measured(benchmark) -> bool:
     """Whether a Lahner2024 benchmark normalizes by a measured ceiling.
 
-    A benchmark built without a ceiling keeps ``Score(1.0)`` and reports the raw
-    correlation; only one given a measured ceiling normalizes.
+    A benchmark built without a ceiling holds ``not_estimated()`` (NaN) and
+    reports the raw correlation; only one given a measured ceiling normalizes.
     """
-    return float(benchmark.ceiling) != 1.0
+    return not np.isnan(float(benchmark.ceiling))
 
 
 def _split_half_reliability(assembly, n_splits: int = 20, random_state: int = 0) -> np.ndarray:
@@ -187,7 +187,7 @@ def voxel_score(benchmark, per_voxel_r, ceiling_per_voxel: Optional[np.ndarray] 
 
     With ``ceiling_per_voxel`` the score is ``median(r_i / c_i)``, not
     ``median(r_i) / median(c_i)``: the repository convention. Without it the
-    raw median is divided by ``benchmark.ceiling``.
+    raw median is divided by ``benchmark.ceiling`` when it is measured.
     """
     r = np.asarray(per_voxel_r)
     counts = np.isfinite(r)
@@ -198,14 +198,13 @@ def voxel_score(benchmark, per_voxel_r, ceiling_per_voxel: Optional[np.ndarray] 
     median_r = float(np.median(kept))
     if ceiling_per_voxel is not None:
         score = benchmark_score(
-            benchmark, float(np.median(np.asarray(kept, dtype=float) / ceiling_per_voxel[counts])),
-            raw=median_r, metric='median_per_voxel_pearson_r', normalized=True,
+            benchmark, value=float(np.median(np.asarray(kept, dtype=float) / ceiling_per_voxel[counts])),
+            raw=median_r, metric='median_per_voxel_pearson_r',
             ceiling=Score(float(np.median(ceiling_per_voxel[counts]))),
             ceiling_aggregation='per_voxel')
     else:
         score = benchmark_score(
-            benchmark, median_r / float(benchmark.ceiling), raw=median_r,
-            metric='median_per_voxel_pearson_r', normalized=_ceiling_measured(benchmark),
+            benchmark, raw=median_r, metric='median_per_voxel_pearson_r',
             ceiling_aggregation='scalar')
     score.attrs['mean_r'] = float(np.mean(kept))
     score.attrs['n_voxels_scored'] = int(counts.sum())
@@ -279,7 +278,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
             identifier=identifier,
             version=2,
             parent='naturalistic',
-            ceiling=Score(1.0 if ceiling is None else float(ceiling)),
+            ceiling=not_estimated() if ceiling is None else Score(float(ceiling)),
             bibtex=BIBTEX,
         )
 
@@ -315,8 +314,8 @@ class Lahner2024BOLDMoments(BenchmarkBase):
     def _per_voxel_ceiling(self, mask):
         """sqrt(reliability) per scored voxel; ``None`` without a measured ceiling.
 
-        Whole cortex and every variant without a measured ceiling keep
-        ``ceiling=1.0`` and take the scalar path. A ceiling of zero (reliability
+        Whole cortex and every variant without a measured ceiling hold
+        ``not_estimated()`` and take the scalar path. A ceiling of zero (reliability
         at or below zero) leaves the voxel out (``voxel_score``).
         """
         if not _ceiling_measured(self):

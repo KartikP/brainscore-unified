@@ -212,9 +212,9 @@ def test_a_voxel_is_preprocessed_alike_in_any_selection(monkeypatch, tmp_path, c
 ])
 def test_only_finite_r_and_valid_ceilings_count(r, ceiling, kept):
     from types import SimpleNamespace
-    from brainscore_core.metrics import Score
+    from brainscore.benchmarks import not_estimated
     from brainscore.benchmarks.lahner2024.benchmark import voxel_score
-    benchmark = SimpleNamespace(ceiling=Score(1.0), version=2, voxel_mask=None)
+    benchmark = SimpleNamespace(ceiling=not_estimated(), version=2, voxel_mask=None)
     score = voxel_score(benchmark, np.array(r), None if ceiling is None else np.array(ceiling))
     assert score.attrs['n_voxels_scored'] == len(kept)
     assert score.attrs['n_voxels_excluded'] == len(r) - len(kept)
