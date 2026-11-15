@@ -428,7 +428,7 @@ class CachingExtractor:
             return in_layer_order(getattr(self, f'_from_{self._INPUTS}')(inputs, layers, stimuli_identifier), layers)
         result = getattr(self, stored)(stimuli_identifier=stimuli_identifier, layers=layers,
                                        extraction_fingerprint=signature, **{self._INPUTS: inputs})
-        return in_layer_order(labelled(result, self._identifier), layers)
+        return in_layer_order(labelled(c_order(result), self._identifier), layers)
 
     def _key_inputs(self, inputs):
         """What the cache key reads of the inputs: the bytes of the files behind paths."""
@@ -439,6 +439,22 @@ class CachingExtractor:
 
     def _finish(self, assembly):
         return assembly
+
+
+def c_order(assembly):
+    """``assembly`` with its values in C order, the layout the wrappers compute.
+
+    The store selects the requested layers with an integer index along
+    ``neuroid`` (``result_caching``'s ``filter_data``), which returns the same
+    values in another memory layout. A reduction rounds by the layout (numpy
+    sums a strided axis in another order than a contiguous one), so a score with
+    the store on would differ from the score with the store off in the last
+    digits. Values, coordinates and attributes are kept.
+    """
+    values = assembly.values
+    if values.flags['C_CONTIGUOUS']:
+        return assembly
+    return assembly.copy(data=np.ascontiguousarray(values))
 
 
 def labelled(assembly, identifier: str):

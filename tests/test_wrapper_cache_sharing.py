@@ -219,3 +219,29 @@ def test_layers_other_than_a_list_of_names_are_refused_before_any_pass(name, sto
         with pytest.raises(ValueError, match='non-empty list of layer names'):
             wrapper(inputs, layers=bad, stimuli_identifier='share-layers')
     assert passes == []
+
+
+@pytest.mark.parametrize('name', sorted(CASES))
+def test_the_store_on_gives_what_the_store_off_gives_also_in_memory_layout(name, store, tmp_path, monkeypatch):
+    """Store off, store on cold, store on warm: identical assemblies, values in the same C order, so a
+    reduction over any axis gives the same bits (float weights, not the exact guard stand-ins)."""
+    import numpy as np
+    import torch
+    monkeypatch.chdir(tmp_path)
+    build, stimuli, layers = CASES[name]
+    stimuli = stimuli()
+    wrapper = build()
+    with torch.no_grad():                                 # weights that round: sums depend on their order
+        for parameter in wrapper._model.parameters():
+            parameter.add_(torch.linspace(0.013, 0.071, parameter.numel()).reshape(parameter.shape))
+    store.install(wrapper)
+    store.enabled = False
+    off = wrapper(stimuli, layers=layers)
+    store.enabled = True
+    cold = wrapper(stimuli, layers=layers)
+    warm = wrapper(stimuli, layers=layers)
+    for result in (cold, warm):
+        xarray.testing.assert_identical(result, off)
+        assert result.values.flags['C_CONTIGUOUS'] and result.values.strides == off.values.strides
+        for axis in range(off.ndim):
+            np.testing.assert_array_equal(np.nansum(result.values, axis=axis), np.nansum(off.values, axis=axis))
