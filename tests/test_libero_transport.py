@@ -437,7 +437,7 @@ def test_server_failure_releases_the_idle_watchdog(tmp_path, monkeypatch):
 def test_repeated_stop_after_the_loop_closed_is_ignored(tmp_path, monkeypatch):
     with faulty_bridge_session(tmp_path, monkeypatch, 'slow-upstream') as (process, log):
         process.send_signal(signal.SIGTERM)
-        wait_until(lambda: 'upstream socket closed' in log.read_text(), timeout=20)
+        wait_until(lambda: 'upstream socket closed' in log.read_text(), timeout=5)
         process.send_signal(signal.SIGTERM)  # while main() is cleaning up; the loop is closed
         process.send_signal(signal.SIGINT)
         assert process.wait(timeout=9) == 0
