@@ -1,7 +1,9 @@
-"""The provenance entry of a score (rule 6.3): one note per session, through the public score path.
+"""The provenance entry of a score (rule 6.3): the parts each session called, through the public score path.
 
-Each test asserts the complete entry. A part states kind, settings, dtype, device and batch
-size; a fact it cannot give is 'not stated'. No response is changed for it.
+Each test asserts the complete entry. Each item is a part that ran, with the requested outputs its calls
+served, the layers they read, the conversion applied to its answer and its facts (settings, where its
+parameters are, their dtypes, batch size); a fact a part cannot give is 'not stated'. No response is
+changed for it.
 """
 from types import SimpleNamespace
 
@@ -70,6 +72,18 @@ def _store_off(tmp_path, monkeypatch):
         monkeypatch.setattr(storage, '_storage_directory', str(tmp_path / 'store'))
 
 
+def _item(part, kind, serves, layers=(), conversion=None, settings=NS, devices=NS, dtypes=NS, batch=NS):
+    """One complete part item of an entry."""
+    return {'part': part, 'kind': kind, 'serves': list(serves), 'layers': sorted(layers),
+            'conversion': conversion or {}, 'settings': settings, 'parameter_devices': devices,
+            'parameter_dtypes': dtypes, 'batch_size': batch}
+
+
+def _text(serves, layers=('proj',), settings=STORE_OFF, batch=2):
+    return _item('extractor', TEXT, serves, layers, settings=settings, devices='cpu', dtypes='torch.float32',
+                 batch=batch)
+
+
 def _text_model(**settings):
     return BrainScoreModel('provenance-text', extractor={'text': text_wrapper(**settings)},
                            region_layer_map={'IT': 'proj'})
@@ -79,8 +93,7 @@ def test_a_neural_score_from_one_extractor_states_it():
     score = _score(_text_model(batch_size=2), _Neural(_sentences(), {'neural:IT'}))
     assert score.attrs['provenance'] == ({
         'subject': 'provenance-text', 'activation_store': 'off',
-        'parts': [{'serves': 'neural:IT', 'part': 'extractor', 'kind': TEXT, 'settings': STORE_OFF,
-                   'parameter_devices': 'cpu', 'parameter_dtypes': 'torch.float32', 'batch_size': 2}]},)
+        'parts': [_text(['neural:IT'])]},)
 
 
 def test_with_the_store_on_the_settings_are_the_cache_key_without_inputs(monkeypatch):
@@ -93,8 +106,7 @@ def test_with_the_store_on_the_settings_are_the_cache_key_without_inputs(monkeyp
     assert expected.startswith('v2-')
     assert score.attrs['provenance'] == ({
         'subject': 'provenance-text', 'activation_store': 'on',
-        'parts': [{'serves': 'neural:IT', 'part': 'extractor', 'kind': TEXT, 'settings': expected,
-                   'parameter_devices': 'cpu', 'parameter_dtypes': 'torch.float32', 'batch_size': 2}]},)
+        'parts': [_text(['neural:IT'], settings=expected)]},)
     # Another batch size is another setting; the value does not move.
     other = _score(_text_model(batch_size=3), _Neural(_sentences(), {'neural:IT'}))
     assert other.attrs['provenance'][0]['parts'][0]['settings'] != expected
@@ -124,15 +136,16 @@ def test_a_picture_and_sound_score_lists_both_towers(tmp_path):
     score = _score(model, _Neural(stimuli, {'neural:IT', 'neural:A1'}))
     assert score.attrs['provenance'] == ({
         'subject': 'provenance-av', 'activation_store': 'off',
-        'parts': [{'serves': 'neural:A1', 'part': 'extractor', 'kind': AUDIO, 'settings': STORE_OFF,
-                   'parameter_devices': 'cpu', 'parameter_dtypes': 'torch.float32', 'batch_size': 2},
-                  {'serves': 'neural:IT', 'part': 'extractor', 'kind': f'{__name__}._picture',
-                   'settings': NS, 'parameter_devices': NS, 'parameter_dtypes': NS, 'batch_size': NS}]},)
+        'parts': [_item('extractor', AUDIO, ['neural:A1'], ['head'], settings=STORE_OFF, devices='cpu',
+                        dtypes='torch.float32', batch=2),
+                  _item('extractor', f'{__name__}._picture', ['neural:IT'], ['picture'])]},)
 
 
-def _part(name, kind):
-    return {'serves': 'behavior:choice', 'part': name, 'kind': kind, 'settings': NS, 'parameter_devices': NS,
-            'parameter_dtypes': NS, 'batch_size': NS}
+def _qualified(function):
+    return f'{function.__module__}.{function.__qualname__}'
+
+
+READOUT = 'brainscore._model.behavior.ProbabilitiesClassifier'
 
 
 def _answer_model():
@@ -143,20 +156,27 @@ def _answer_model():
 
 @pytest.mark.parametrize('part', ['reply', 'likelihood', 'answer', 'readout'])
 def test_a_behavior_score_states_the_part_that_answered(part):
+    choice = ['behavior:choice']
     if part == 'answer':
         subject, function = _answer_model()
-        expected = _part('answer', f'{function.__module__}.{function.__qualname__}')
+        expected = [_item('answer', _qualified(function), choice)]
+    elif part == 'reply':
+        subject = pseudo.reply_model()
+        expected = [_item('reply', _qualified(subject._reply), choice)]
+    elif part == 'likelihood':
+        subject = pseudo.likelihood_model()
+        expected = [_item('likelihood', _qualified(subject._likelihood), choice,
+                          conversion={'behavior:choice': 'softmax_argmax'})]
     else:
-        subject = {'reply': pseudo.reply_model, 'likelihood': pseudo.likelihood_model,
-                   'readout': pseudo.readout_model}[part]()
-        wired = {'reply': subject._reply, 'likelihood': subject._likelihood,
-                 'readout': subject._extractors.get('text')}[part]
-        expected = _part(part, f'{wired.__module__}.{wired.__qualname__}')
-        if part == 'readout':
-            expected = {**expected, 'layer': 'late'}
+        subject = pseudo.readout_model()
+        extract = _qualified(subject._extractors['text'])
+        expected = [_item('extractor', extract, [], ['late']),                       # the fit's features
+                    _item('readout', READOUT, [], ['late']),                         # the fit
+                    _item('extractor', extract, choice, ['late']),
+                    _item('readout', READOUT, choice, ['late'], conversion={'behavior:choice': 'argmax'})]
     score = _score(subject, pseudo.PseudoChoice())
     assert score.attrs['provenance'] == (
-        {'subject': subject.identifier, 'activation_store': 'off', 'parts': [expected]},)
+        {'subject': subject.identifier, 'activation_store': 'off', 'parts': expected},)
 
 
 def test_a_registration_adds_its_own_entry_and_keeps_the_parts():
@@ -164,8 +184,7 @@ def test_a_registration_adds_its_own_entry_and_keeps_the_parts():
     score = _score(ProvenanceSubject(_text_model(batch_size=2), registration), _Neural(_sentences(), {'neural:IT'}))
     assert score.attrs['provenance'] == (
         {'subject': 'provenance-text', 'activation_store': 'off',
-         'parts': [{'serves': 'neural:IT', 'part': 'extractor', 'kind': TEXT, 'settings': STORE_OFF,
-                    'parameter_devices': 'cpu', 'parameter_dtypes': 'torch.float32', 'batch_size': 2}]},
+         'parts': [_text(['neural:IT'])]},
         {'subject': 'provenance-text', 'activation_store': 'off', 'registration': registration})
 
 
@@ -217,7 +236,7 @@ def _store_in(monkeypatch, folder):
 def _without_the_note(monkeypatch):
     """The cache signature alone, as before the note: the baseline count."""
     from brainscore.model_helpers._extractors import CachingExtractor, cache_signature
-    monkeypatch.setattr(CachingExtractor, '_signature_and_facts', lambda self, stored, inputs, identifier:
+    monkeypatch.setattr(CachingExtractor, '_signature_and_facts', lambda self, log, stored, inputs, identifier:
                         cache_signature(self, stored, self._key_inputs(inputs), identifier))
 
 
@@ -337,10 +356,10 @@ class _Placed:
     ([], NS, NS),
 ], ids=['two GPUs', 'mixed precision', 'cpu offload', 'meta offload', 'no parameters'])
 def test_a_part_states_where_its_parameters_are(placements, devices, dtypes):
-    from brainscore.model_helpers.provenance import _extractor_facts
+    from brainscore.model_helpers.provenance import _facts
     wrapper = text_wrapper(batch_size=2)
     wrapper._model, wrapper._device = _Placed(*placements), 'cuda:0'     # the input device is not the part's
-    facts = _extractor_facts(wrapper, {'not hashed (store off)'})
+    facts = _facts(wrapper, {'not hashed (store off)'})
     assert (facts['parameter_devices'], facts['parameter_dtypes']) == (devices, dtypes)
     assert 'device' not in facts and 'dtype' not in facts
 
@@ -376,5 +395,4 @@ def test_a_conversation_states_the_model_parts_and_the_silent_partner():
     assert score.attrs['provenance'] == (
         {'subject': 'provenance-partner', 'parts': NS, 'activation_store': 'off'},
         {'subject': 'provenance-talker', 'activation_store': 'off',
-         'parts': [{'serves': 'behavior:text', 'part': 'policy', 'kind': f'{__name__}._say_hello',
-                    'settings': NS, 'parameter_devices': NS, 'parameter_dtypes': NS, 'batch_size': NS}]})
+         'parts': [_item('policy', f'{__name__}._say_hello', ['behavior:text'])]})

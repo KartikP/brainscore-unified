@@ -426,24 +426,22 @@ class CachingExtractor:
     def cache_config(self):
         return cache_config(self, self.CACHE_FIELDS)
 
-    # While a model notes a session, the set of (settings, store use) of each call;
-    # None otherwise, so a call outside a noted session does no extra work.
-    _session_facts = None
-
     def _cached(self, inputs, layers, stimuli_identifier=None):
+        from brainscore._model import parts
         stored = f'_from_{self._INPUTS}_stored'
-        if self._session_facts is None:
+        log = parts.active()
+        if log is None:
             signature = cache_signature(self, stored, self._key_inputs(inputs), stimuli_identifier)
         else:
-            signature = self._signature_and_facts(stored, inputs, stimuli_identifier)
+            signature = self._signature_and_facts(log, stored, inputs, stimuli_identifier)
         if signature is None:
             return in_layer_order(getattr(self, f'_from_{self._INPUTS}')(inputs, layers, stimuli_identifier), layers)
         result = getattr(self, stored)(stimuli_identifier=stimuli_identifier, layers=layers,
                                        extraction_fingerprint=signature, **{self._INPUTS: inputs})
         return in_layer_order(labelled(c_order(result), self._identifier), layers)
 
-    def _signature_and_facts(self, stored, inputs, stimuli_identifier):
-        """The cache signature, and this call's settings fingerprint in ``_session_facts``.
+    def _signature_and_facts(self, log, stored, inputs, stimuli_identifier):
+        """The cache signature, and this call's settings fingerprint in the session's part log.
 
         The settings fingerprint is the cache key without the inputs, taken from the
         traversal that makes the signature: no tensor is read a second time. With the
@@ -454,7 +452,7 @@ class CachingExtractor:
         if signature is None:
             settings = ('not hashed (store off)' if not is_enabled(f'{kind(self)}.{stored}')
                         else 'not hashed (store not used)')
-        self._session_facts.add(settings)
+        log.settings.setdefault(id(self), set()).add(settings)
         return signature
 
     def _key_inputs(self, inputs):

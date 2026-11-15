@@ -134,10 +134,15 @@ def open_recordings(owner, stimuli, layers, groups=None):
     """
     groups = plan_recordings(owner, stimuli, layers) if groups is None else groups
     recordings = {}
+    from . import parts
     for extractor, group_layers, regions in groups:
         record = record_part(extractor)
         recordings[tuple(regions)] = (record(list(group_layers), stimuli) if record is not None else
                                       _hook_recording(owner._model, list(group_layers), owner.identifier))
+        # The recording runs during the answering pass: listed for the regions it records.
+        parts.note('extractor' if record is not None else 'model hooks',
+                   extractor if record is not None else owner._model, group_layers,
+                   serves=[f'neural:{region}' for region in regions])
     return recordings
 
 

@@ -30,6 +30,7 @@ import os
 from typing import Dict, List, Sequence, Tuple
 
 from brainscore_core.io_catalog import canonical_modality
+from . import parts
 from .dispatch import extractor_for, one_call_per_extractor, record
 from .recording import region_modality, region_selector
 
@@ -99,7 +100,8 @@ def run_neural_channels(model, stimuli, channel_regions: Sequence[Tuple[str, str
         with one_call_per_extractor(model, stimuli, shared):
             for region in order:
                 _start(model, region, time_bins)
-                output = record(model, stimuli, multi_modality)
+                with parts.serving([channel for channel, r in channel_regions if r == region]):
+                    output = record(model, stimuli, multi_modality)
                 check_layer_provenance(model, output, region)
                 payloads[region] = output
         return {channel: payloads[region] for channel, region in channel_regions}

@@ -472,7 +472,7 @@ class BrainScoreModel(Subject):
         from brainscore_core.score_metadata import note_session
         from ._model.channels import regions_per_pass
         from .model_helpers import provenance
-        from .model_helpers._extractors import CachingExtractor
+        from ._model import parts
         from ._model.plan import plan_session
         passes = regions_per_pass()
         note_session(session, passes)   # this model owns the plan, so the run record gets it from here
@@ -481,26 +481,17 @@ class BrainScoreModel(Subject):
             self._session_plan = plan_session(self, session, passes)
             try:
                 from .capabilities.registry import _setup_once
-                _setup_once(self, self._session_plan.handler)
-                # A task the session configures ends with the session (rule 4.5).
-                # Weights are hashed once per session for the activation cache key;
-                # inside score() the run's scope is reused.
-                with self._behavioral.session_scope(), weight_fingerprint_scope():
-                    extractors = provenance.noted_extractors(self)
-                    facts = {id(extractor): set() for extractor in extractors
-                             if isinstance(extractor, CachingExtractor)}
-                    for extractor in extractors:
-                        if id(extractor) in facts:
-                            extractor._session_facts = facts[id(extractor)]
-                    try:
+                # Every part notes its calls in the session's log, from set-up (a readout fit) on.
+                with parts.session_log() as log:
+                    _setup_once(self, self._session_plan.handler)
+                    # A task the session configures ends with the session (rule 4.5).
+                    # Weights are hashed once per session for the activation cache key;
+                    # inside score() the run's scope is reused.
+                    with self._behavioral.session_scope(), weight_fingerprint_scope():
                         self._session_plan.handler.participate(self, session)
-                        # Once per session, inside the session's task and weight scope: the parts
-                        # it used and their facts, to the run record (no response is changed).
-                        note_session(session, provenance=provenance.session_entry(self, session, facts))
-                    finally:
-                        for extractor in extractors:
-                            if id(extractor) in facts:
-                                extractor._session_facts = None
+                        # Once per session: the parts that ran and their facts, to the run
+                        # record (no response is changed). A failed session sends nothing.
+                        note_session(session, provenance=provenance.session_entry(self, session, log))
             finally:
                 self._session_plan = None
 
