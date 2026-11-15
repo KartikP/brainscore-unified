@@ -43,28 +43,40 @@ def per_voxel_train_test(X_tr, Y_tr, X_te, Y_te,
                          alpha: Union[float, Sequence[float]] = 1.0) -> np.ndarray:
     """Fit ridge on the localizer rows, score per-voxel Pearson r on the test rows.
 
-    The fit is ``ridge(penalty, NormalEquations())`` of
-    :mod:`brainscore.metrics.encoding`: a ridge with an unpenalized intercept and
+    The fit is ``ridge(penalty, NormalEquations(shape_aware=True))`` of
+    :mod:`brainscore.metrics.encoding`: a ridge with an unpenalized intercept,
+    solved in the dual form when features outnumber rows (a wide layer), and
     no feature scaler (an explicit StandardScaler over-rescales
     heterogeneous-variance features and depresses the fit, established in the
     Lahner scoring work).
 
     :param alpha: a single ridge penalty, OR a sequence of candidate penalties,
         in which case ``grid_search(per_target=True)`` chooses the penalty of
-        each voxel on a 5-fold split of the localizer rows. Per-voxel choice is
+        each voxel on a split of the localizer rows (5 folds, fewer when a fold
+        would hold fewer than 3 rows; at least 6 rows). Per-voxel choice is
         the right one when feature sets differ in size, since a fixed penalty
         otherwise flatters smaller feature sets (the layer-mapping
         feature-count confound).
     """
+    return per_unit_pearson(np.asarray(Y_te, np.float64), _predict(X_tr, Y_tr, X_te, alpha))
+
+
+def _predict(X_tr, Y_tr, X_te, alpha) -> np.ndarray:
+    """Predictions of ``X_te`` from a ridge fitted on the localizer rows."""
     X_tr = np.asarray(X_tr, np.float64); Y_tr = np.asarray(Y_tr, np.float64)
-    X_te = np.asarray(X_te, np.float64); Y_te = np.asarray(Y_te, np.float64)
+    X_te = np.asarray(X_te, np.float64)
     if np.ndim(alpha) == 0:
         penalty = float(alpha)
     else:
+        if len(X_tr) < 6:
+            raise ValueError(f'A penalty grid needs at least 6 localizer rows (an inner check '
+                             f'fold of 3 rows); got {len(X_tr)}. Pass one penalty.')
+        folds = min(5, len(X_tr) // 3)
         penalty = grid_search([(float(a),) for a in alpha],
-                              lambda groups: row_kfold(len(groups)), per_target=True)
-    predictions, _ = ridge(penalty, NormalEquations())(X_tr, Y_tr, X_te)
-    return per_unit_pearson(Y_te, predictions)
+                              lambda groups: row_kfold(len(groups), n_splits=folds),
+                              per_target=True)
+    predictions, _ = ridge(penalty, NormalEquations(shape_aware=True))(X_tr, Y_tr, X_te)
+    return predictions
 
 
 def compute_rdm(X: np.ndarray, metric: str = 'correlation') -> np.ndarray:
@@ -229,6 +241,9 @@ def _split(n: int, localizer_frac: float, seed: int):
     perm = rng.permutation(n)
     n_loc = max(1, int(round(localizer_frac * n)))
     n_sel = (n - n_loc) // 2
+    if n_sel < 3 or n - n_loc - n_sel < 3:
+        raise ValueError(f'{n} stimuli with localizer_frac={localizer_frac} leave fewer than 3 '
+                         f'selection or test stimuli; a Pearson r on fewer rows is meaningless.')
     return (np.sort(perm[:n_loc]), np.sort(perm[n_loc:n_loc + n_sel]),
             np.sort(perm[n_loc + n_sel:]))
 
@@ -255,11 +270,10 @@ def explore_layer_mapping(features_by_layer: Dict[str, np.ndarray], target: np.n
     unit_pred: List[np.ndarray] = []   # per layer; layers may have different widths
     for li, layer in enumerate(layer_order):
         X = np.asarray(features_by_layer[layer], np.float64)
-        # readout fit on the localizer; ranked on the selection rows, scored on the test rows
-        selection_r.append(float(np.nanmedian(
-            per_voxel_train_test(X[L], Y[L], X[S], Y[S], alpha))))
-        per_layer_r.append(float(np.nanmedian(
-            per_voxel_train_test(X[L], Y[L], X[T], Y[T], alpha))))
+        # one readout fit on the localizer; ranked on the selection rows, scored on the test rows
+        predicted = _predict(X[L], Y[L], np.concatenate([X[S], X[T]]), alpha)
+        selection_r.append(float(np.nanmedian(per_unit_pearson(Y[S], predicted[:len(S)]))))
+        per_layer_r.append(float(np.nanmedian(per_unit_pearson(Y[T], predicted[len(S):]))))
         # unit predictivity on the LOCALIZER only (selection sees no test data)
         Xl = X[L]
         Xz = (Xl - Xl.mean(0)) / (Xl.std(0) + 1e-8)

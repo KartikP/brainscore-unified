@@ -95,11 +95,11 @@ class TestApproaches:
 
 
 class TestRigorousScoring:
-    """The scientifically-valid comparison: RidgeCV per-voxel α tuning, ceiling
+    """The scientifically-valid comparison: per-voxel α tuning (grid_search), ceiling
     normalization, budget-matched curve with matched random nulls."""
 
     def test_ridgecv_recovers_signal(self):
-        """Passing an α grid uses RidgeCV (per-voxel tuning) and still recovers
+        """Passing an α grid chooses the penalty of each voxel and still recovers
         the planted signal."""
         layers, Y, _ = _synthetic()
         L = np.arange(100); T = np.arange(100, 200)
@@ -148,7 +148,7 @@ class TestRigorousScoring:
         assert 'whole_layer_r' in curve and 'several_layers_r' in curve
         # the within-layer curve should rise with K toward the whole-layer ref
         rs = [e['r'] for e in curve['within_layer']]
-        assert rs[-1] >= rs[0]                     # more units → not worse (RidgeCV)
+        assert rs[-1] >= rs[0]                     # more units → not worse (per-voxel α)
 
     def test_budget_curve_selection_beats_random_at_small_k(self):
         """At a small budget, picking the signal units must beat random picks —
@@ -314,3 +314,28 @@ def test_the_chosen_layer_is_not_scored_on_the_rows_that_chose_it():
     res = explore_layer_mapping(layers, Y, alpha=1.0)
     assert max(res.selection_r) > np.mean(res.selection_r) + 0.05
     assert res.best_r < max(res.selection_r)
+
+
+def test_a_wide_layer_is_solved_in_the_dual_form():
+    """More features than localizer rows: the fit solves an n-by-n system, not d-by-d."""
+    rng = np.random.RandomState(0)
+    X = rng.randn(40, 5000)
+    Y = X[:, :3] @ rng.randn(3, 4) + 0.01 * rng.randn(40, 4)
+    r = per_voxel_train_test(X[:20], Y[:20], X[20:], Y[20:], alpha=1.0)
+    assert r.shape == (4,) and np.isfinite(r).all()
+
+
+def test_too_few_stimuli_for_three_splits_are_refused_clearly():
+    layers, Y, _ = _synthetic(n_stim=10)
+    with pytest.raises(ValueError, match='fewer than 3 selection or test stimuli'):
+        explore_layer_mapping(layers, Y)
+
+
+def test_a_penalty_grid_on_a_small_localizer():
+    layers, Y, _ = _synthetic()
+    X = layers['L1']
+    r = per_voxel_train_test(X[:8], Y[:8], X[100:], Y[100:], alpha=(1., 10.))   # 2 inner folds
+    assert r.shape == (Y.shape[1],)
+    with pytest.raises(ValueError, match='at least 6 localizer rows'):
+        per_voxel_train_test(X[:5], Y[:5], X[100:], Y[100:], alpha=(1., 10.))
+
