@@ -119,6 +119,11 @@ def test_registered_scoring_preserves_raw_score_and_repetitions(scored_reference
     assert score.attrs['configuration']['repetitions'] == 2
     assert resets == [1, 2]
     assert len(calls) == 6
+    # Step 9: the counts of the trial states of every call, and the policy.
+    assert (score.attrs['n_trials'], score.attrs['n_valid'], score.attrs['n_invalid'],
+            score.attrs['n_missing']) == (6, 6, 0, 0)
+    assert score.attrs['result_validity'] == 'valid'
+    assert score.attrs['answer_policy'].startswith('a missing or unreadable written answer: an error of the run')
     # The benchmark's settings reach the reply on the task's Text response.
     assert all(call.response.max_tokens == 1234 for call in calls)
     assert all(call.response.temperature == 1.0 for call in calls)

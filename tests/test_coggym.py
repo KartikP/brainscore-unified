@@ -422,3 +422,18 @@ def test_record_keeps_one_session_per_call_and_replay_rebuilds_them(reference, t
                         tools=[RecordInputsOutputs()], output_dir=tmp_path / 'replay').run()
     # Merged sessions would answer 1, 2, 3, ...; one session per call answers 1 each time.
     assert compare_outputs(original.directory, replay.directory)['equal']
+
+
+def test_a_call_without_a_usable_written_answer_is_an_error_of_the_run():
+    """Step 9, the CogGym policy: a missing or unreadable written answer stops the run,
+    as before (CogGym fails a run with an error trial)."""
+    import numpy as np
+    import pytest
+    from brainscore.harnesses.coggym import _written_answer
+    from brainscore_core.streaming import StreamEvent
+    from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
+    missing = BehavioralAssembly(np.array([None], dtype=object), dims=['presentation'], coords={
+        'stimulus_id': ('presentation', ['t0']), 'answer_valid': ('presentation', [False]),
+        'response_state': ('presentation', ['missing'])})
+    with pytest.raises(TypeError, match='no written answer'):
+        _written_answer(StreamEvent('behavior:text', missing, None))

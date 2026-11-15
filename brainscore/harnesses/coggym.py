@@ -178,8 +178,10 @@ class _SubjectProvider:
     when the subject gives them; otherwise they are ``None``.
     """
 
-    def __init__(self, subject, context, repetition, prompt_trials):
+    def __init__(self, subject, context, repetition, prompt_trials, stored=None):
         self.subject = subject
+        # The stored behavior:text answer of each call, for the counts of the trial states.
+        self.stored = stored if stored is not None else []
         self.context = context
         self.repetition = repetition
         self.call_index = 0
@@ -197,6 +199,7 @@ class _SubjectProvider:
         session = run_request(self.subject, self.context, record_repetition,
                               stimuli, ['behavior:text'], task)
         answers = [event for event in session.emitted if event.channel == 'behavior:text']
+        self.stored.append(session.collect('behavior:text'))
         if len(answers) != 1:
             raise TypeError(f'CogGym needs one behavior:text answer for each call; got {len(answers)}')
         meta = answers[0].meta if isinstance(answers[0].meta, dict) else {}
@@ -349,12 +352,16 @@ class CogGymRunner:
                 )
             # Translate CogGym provider calls into sessions on the common channels.
             # This is where the external evaluator connects to UMI tools.
-            return self._run(
+            stored = []
+            result = self._run(
                 lambda repetition: _SubjectProvider(
-                    subject, context, repetition, self._prompt_trials,
+                    subject, context, repetition, self._prompt_trials, stored,
                 ),
                 context.directory / 'coggym', reset, register,
             )
+            # The stored answers stay out of the saved analysis; the benchmark counts them.
+            result['stored_answers'] = stored
+            return result
 
         # The provider records its own sessions, so no subject method is observed.
         return CallableProtocol(
