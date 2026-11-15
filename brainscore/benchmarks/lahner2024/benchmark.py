@@ -1,16 +1,28 @@
 """
 Lahner 2024 BOLDMoments fMRI naturalistic benchmark (unified interface).
 
-Participants watched 1026 short (3s) video clips while being scanned with fMRI;
-responses were averaged per TR and fit with GLM to give one BOLD estimate
-per (stimulus, repetition, voxel). The assembly has shape:
+Ten participants watched short (3s) video clips while being scanned with fMRI;
+a GLM gives one BOLD estimate per (video, participant, voxel). The assembly
+holds 1026 of the 1102 BOLDMoments videos and has shape:
 
     (time_bin=1, neuroid=20484, presentation=10260)
 
 where ``time_bin`` spans the full 3-second clip (single pre-computed
 estimate; no time-series regression required), ``neuroid`` is cortical
 vertices across L/R hemispheres, and ``presentation`` is 1026 videos × 10
-repetitions. We average repetitions to get one clean response per video.
+participants. The coordinate that tells the participants apart is named
+``repetition``: its 10 values are the 10 participants, not repeated showings
+to one person. We average the participants to get one response per video.
+
+The 1026 videos are 933 of the training set (id 1000 or lower) and 93 of the
+test set (id above 1000; ``boldmoments_test_set``). The voxel mask of the
+``-visualROI`` variants and the ceilings come from the 93 test videos only:
+the agreement between two halves of the 10 participants
+(``_split_half_reliability``). These variants then present and score only the
+933 training videos, so no video that chose the voxels or the ceilings is in a
+regression fold. The variants with no reliability mask and no ceiling (whole
+cortex, ``-multimodal``, ``-multimodal-auditoryROI``) present and score all
+1026 videos.
 
 Taken from brain-score/vision PR #1249 (YingtianDt):
     - BOLDMoments as the stimulus-set identifier
@@ -25,7 +37,7 @@ Scoring pipeline:
        column-wise. A subject that takes one stream is shown that stream and
        answers both regions from it (its ``output_inputs`` permitting).
     2. Average the response over its time bins → one vector per video.
-    3. Average the neural assembly across the 10 repetitions → one BOLD
+    3. Average the neural assembly across the 10 participants → one BOLD
        vector per video per voxel; keep the voxels of the voxel mask.
     4. 5-fold ridge (penalty 1, ``brainscore.metrics.encoding``) → Pearson
        per voxel → median over the voxels that count (``voxel_score``).
@@ -109,19 +121,42 @@ def _ceiling_measured(benchmark) -> bool:
     return not np.isnan(float(benchmark.ceiling))
 
 
-def _split_half_reliability(assembly, n_splits: int = 20, random_state: int = 0) -> np.ndarray:
-    """Per-voxel split-half reliability of the GLM-beta assembly across repetitions.
+def boldmoments_test_set(stimulus_ids) -> List[str]:
+    """The BOLDMoments test-set videos among ``stimulus_ids``: id above 1000
+    (``stimulus_1001`` to ``stimulus_1102``), sorted, without repeats.
 
-    For each random split of each video's repetitions into two halves, average
-    within each half to get (n_videos, n_voxels), then Pearson-correlate the
-    two halves across videos for each voxel. Average across ``n_splits``
-    random splits and apply the Spearman-Brown correction.
+    The one rule for the GLM benchmark: the test-set videos of the assembly give
+    the voxel mask and the ceilings, and the variants that use either present
+    and score only the videos outside the test set.
+    """
+    return sorted({str(stimulus_id) for stimulus_id in stimulus_ids
+                   if int(str(stimulus_id).rsplit('_', 1)[1]) > 1000})
+
+
+def _split_half_reliability(assembly, n_splits: int = 20, random_state: int = 0,
+                            stimuli: Optional[Sequence[str]] = None) -> np.ndarray:
+    """Per-voxel split-half reliability of the GLM-beta assembly across participants.
+
+    The ``repetition`` entries of a video are the participants. For each random
+    split of each video's participants into two halves, average within each half
+    to get (n_videos, n_voxels), then Pearson-correlate the two halves across
+    videos for each voxel. Average across ``n_splits`` random splits and apply
+    the Spearman-Brown correction.
+
+    ``stimuli`` names the videos to compute on; ``None`` (default) takes every
+    video of the assembly (the time-resolved ``-visualROI`` mask uses this).
 
     Returns a (n_voxels,) array. High-reliability voxels are stimulus-driven
     (signal); low-reliability voxels are noise-dominated.
     """
     a = assembly.squeeze('time_bin', drop=True)
     stim_ids = np.asarray(a['stimulus_id'].values)
+    if stimuli is not None:
+        keep = np.isin(stim_ids.astype(str), np.asarray(list(stimuli), dtype=str))
+        if not keep.any():
+            raise ValueError('No presentation of the assembly shows one of the given stimuli.')
+        a = a.isel(presentation=keep)
+        stim_ids = stim_ids[keep]
     data = a.values  # (n_voxels, n_presentations)
     n_voxels = data.shape[0]
     unique_stims = sorted(set(stim_ids))
@@ -231,9 +266,12 @@ class Lahner2024BOLDMoments(BenchmarkBase):
             as its ``output_inputs`` allow. ``attrs['scored_inputs']`` names the
             inputs shown.
         sample_times_ms: the frames a stills-only subject sees from each clip.
-        ceiling: a measured noise ceiling; the score is then normalized per voxel.
+        ceiling: a measured noise ceiling; the score is then normalized per voxel
+            by sqrt(reliability) of each voxel, measured on the test-set videos.
         reliability_threshold: score only the voxels whose split-half
-            reliability is at least this value.
+            reliability on the test-set videos is at least this value.
+            With a ceiling or this threshold, the benchmark presents and scores
+            only the videos outside the test set (933 of 1026).
         voxel_mask_fn: score only the voxels of this mask (for example
             ``build_auditory_mask``). Give at most one of the two.
         identifier: the benchmark identifier (required; the registry key of the variant).
@@ -286,10 +324,30 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         return self._stimulus_set
 
     def _reliability_once(self) -> np.ndarray:
-        """``_split_half_reliability`` of this benchmark's assembly, computed once."""
+        """``_split_half_reliability`` on the test-set videos of the assembly, computed once."""
         if self._reliability is None:
-            self._reliability = _split_half_reliability(self.assembly)
+            test = boldmoments_test_set(self.assembly['stimulus_id'].values)
+            if not test:
+                raise ValueError('The assembly holds no test-set video (id above 1000): '
+                                 'no voxel mask or ceiling can be measured.')
+            self._reliability = _split_half_reliability(self.assembly, stimuli=test)
         return self._reliability
+
+    def _scored_stimuli(self):
+        """The stimuli presented and scored: without a reliability mask and a ceiling,
+        every video; otherwise only the videos outside the test set, which then
+        decides nothing but the voxels and the ceilings."""
+        stimuli = self.stimulus_set
+        if self._reliability_threshold is None and not _ceiling_measured(self):
+            return stimuli
+        self._reliability_once()   # fails here when the assembly has no test-set video
+        test = boldmoments_test_set(stimuli['stimulus_id'])
+        kept = stimuli[~stimuli['stimulus_id'].astype(str).isin(test)]
+        # A new identifier: the activation store keys a response by it.
+        kept.identifier = f'{stimuli.identifier}-train'
+        kept.stimulus_paths = {stimulus_id: stimuli.get_stimulus(stimulus_id)
+                               for stimulus_id in kept['stimulus_id']}
+        return kept
 
     @property
     def voxel_mask(self) -> Optional[np.ndarray]:
@@ -300,7 +358,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         return self._voxel_mask
 
     def _frames(self):
-        return frame_table(self.stimulus_set, self._sample_times_ms)
+        return frame_table(self._scored_stimuli(), self._sample_times_ms)
 
     def _per_voxel_ceiling(self, mask):
         """sqrt(reliability) per scored voxel; ``None`` without a measured ceiling.
@@ -326,7 +384,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         the inputs shown (Contract Rules 5.4, 5.5); the two-stream labels are set
         only when both streams are shown.
         """
-        stimuli = self.stimulus_set
+        stimuli = self._scored_stimuli()
         plan = stream_regions(subject, taken_inputs(subject, self.required_input_channels),
                               self._regions)
         scored = sorted(channel for _, channel, _ in plan)
@@ -392,7 +450,8 @@ class Lahner2024BOLDMoments(BenchmarkBase):
     def __call__(self, subject) -> Score:
         features, clip_ids, route_attrs = self._features(subject)
 
-        # Average the repetitions; align to the response order; keep the scored voxels.
+        # Average the participants; align to the response order (only the scored
+        # videos were presented); keep the scored voxels.
         neural = self.assembly.squeeze('time_bin', drop=True).groupby('stimulus_id').mean('presentation')
         neural_mat = neural.sel(stimulus_id=list(clip_ids)).transpose('stimulus_id', 'neuroid').values
         mask = self.voxel_mask
@@ -413,9 +472,10 @@ class Lahner2024BOLDMoments(BenchmarkBase):
 
 # Noise ceiling for the visual-ROI voxel set, measured on EC2 2026-07-31.
 # For a predictivity correlation the ceiling is sqrt(reliability): the highest r a
-# perfect model could reach given measurement noise. This is the median over the 4042
-# ROI voxels of sqrt(_split_half_reliability(assembly, n_splits=20, random_state=0)),
-# the same Spearman-Brown-corrected reliability that selects those voxels. The
-# constant only marks the variant that divides by a ceiling: the score recomputes
-# the per-voxel ceilings from the assembly and does not read this value.
+# perfect model could reach given measurement noise. This value is the median over
+# the 4042 ROI voxels of sqrt(_split_half_reliability(assembly, n_splits=20,
+# random_state=0)) on all 1026 videos, measured before the mask and the ceilings
+# moved to the 93 test-set videos; it is not yet measured again. The constant only
+# marks the variant that divides by a ceiling: the score recomputes the per-voxel
+# ceilings from the test-set videos and does not read this value.
 VISUAL_ROI_CEILING = 0.7304512193654528

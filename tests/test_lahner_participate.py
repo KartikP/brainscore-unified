@@ -22,7 +22,7 @@ from brainscore.benchmarks.lahner2024 import _util, benchmark as glm_module
 from brainscore.benchmarks.lahner2024 import benchmark_timeresolved as tr_module
 from brainscore.benchmarks.lahner2024 import (
     Lahner2024BOLDMoments, Lahner2024BOLDMoments_timeresolved, RunBlocks)
-from tests.lahner_synthetic import CLIPS, SAMPLE_TIMES, Recorder, install, unit_values
+from tests.lahner_synthetic import CLIPS, GLM_CLIPS, SAMPLE_TIMES, Recorder, install, unit_values
 
 AUDIOVISUAL = ('vision:image', 'vision:video', 'audio')
 
@@ -66,8 +66,8 @@ def test_routing_reads_declared_channels_only():
 
 
 @pytest.mark.parametrize('in_channels, pipeline, rows, channel', [
-    ({'vision:video'}, 'video_native', len(CLIPS), 'vision:video'),
-    ({'vision:image'}, 'frame_aggregation', len(CLIPS) * len(SAMPLE_TIMES), 'vision:image'),
+    ({'vision:video'}, 'video_native', len(GLM_CLIPS), 'vision:video'),
+    ({'vision:image'}, 'frame_aggregation', len(GLM_CLIPS) * len(SAMPLE_TIMES), 'vision:image'),
 ])
 def test_glm_scores_a_participate_only_subject(monkeypatch, tmp_path, in_channels, pipeline,
                                                rows, channel):
@@ -76,7 +76,7 @@ def test_glm_scores_a_participate_only_subject(monkeypatch, tmp_path, in_channel
     score = Lahner2024BOLDMoments(identifier='Lahner2024-fMRI-naturalistic')(subject)
     assert np.isfinite(float(score))
     assert score.attrs['pipeline'] == pipeline
-    assert score.attrs['n_videos'] == len(CLIPS)
+    assert score.attrs['n_videos'] == len(GLM_CLIPS)   # whole cortex: every video
     [(inputs, outputs, ids, _)] = subject.seen
     assert (inputs, outputs, len(ids)) == ([channel], ['neural:IT'], rows)
 
