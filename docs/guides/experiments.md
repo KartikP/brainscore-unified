@@ -31,7 +31,7 @@ import pandas as pd
 import torch
 from PIL import Image
 from brainscore import BrainScoreModel
-from brainscore.perturbation import pytorch_intervention
+from brainscore.model_helpers.intervention import pytorch_intervention
 from brainscore_core import Perturbation, Selection, StateChange, TaskContext
 from brainscore_core.responses import Choice
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet

@@ -5,7 +5,7 @@ import torch
 from brainscore.brainscore_model import BrainScoreModel
 from brainscore_core.events import Perturbation, Selection, StateChange
 from brainscore_core.streaming_helpers import apply_state_change
-from brainscore.perturbation import pytorch_intervention
+from brainscore.model_helpers.intervention import pytorch_intervention
 
 pytestmark = pytest.mark.unit
 

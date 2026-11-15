@@ -31,7 +31,7 @@ R9 extractor choice for a region. Signal: a function named ``extractor_keys``
     picked inline from a mapping.
 R11 hooks on a network. Signal: a call of ``register_forward_hook``,
     ``register_forward_pre_hook`` or ``register_full_backward_hook``. Owners:
-    the extractors (recording), ``perturbation.py`` (interventions) and
+    the extractors (recording), ``model_helpers/intervention.py`` (interventions) and
     ``TorchInstrumentation`` (experiment tools, House Style pattern 4). Cannot
     detect: hooks installed through a third-party helper.
 R12 intervention apply and undo. Signal: an in-place write to a tensor's
@@ -264,10 +264,10 @@ RESPONSIBILITIES = {
     'R11 hooks on a network': (
         lambda tree: _calls(tree, {'register_forward_hook', 'register_forward_pre_hook',
                                    'register_full_backward_hook'}),
-        _everywhere, {'unified:model_helpers/_extractors.py', 'unified:perturbation.py',
+        _everywhere, {'unified:model_helpers/_extractors.py', 'unified:model_helpers/intervention.py',
                       'unified:experiments/tools.py'}),
     'R12 intervention apply and undo': (_writes_tensor_data, _core_and_unified_library,
-                                        {'unified:perturbation.py'}),
+                                        {'unified:model_helpers/intervention.py'}),
     'R14 encoding regression': (_imports_sklearn_regression, _everywhere,
                                 {'unified:metrics/encoding.py', 'unified:_model/behavior.py'}),
     'R15 score construction': (_builds_score, _unified_score_code,

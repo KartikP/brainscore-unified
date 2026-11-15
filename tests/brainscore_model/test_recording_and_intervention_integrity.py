@@ -14,7 +14,7 @@ import pytest
 import torch
 
 from brainscore import BrainScoreModel, LayerSelector
-from brainscore.perturbation import pytorch_intervention
+from brainscore.model_helpers.intervention import pytorch_intervention
 from brainscore_core.compatibility import CompatibilityError, check_compatibility, ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.events import Perturbation, Selection, StateChange

@@ -12,7 +12,7 @@ import torch
 
 from brainscore.activation_window import ActivationWindow
 from brainscore.instrumentation import observed
-from brainscore.perturbation import pytorch_intervention
+from brainscore.model_helpers.intervention import pytorch_intervention
 from brainscore.harnesses.robotics import ActionSpec, droid_steps, evaluate_droid_episode
 from brainscore.run_record import RunRecord, RunRecorder
 from brainscore_core.events import StateChange, Selection, Perturbation

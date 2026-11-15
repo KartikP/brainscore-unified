@@ -10,7 +10,7 @@ torch = pytest.importorskip('torch')
 
 from brainscore import BrainScoreModel
 from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
-from brainscore.perturbation import pytorch_intervention
+from brainscore.model_helpers.intervention import pytorch_intervention
 from brainscore_core.streaming_helpers import apply_state_change
 
 

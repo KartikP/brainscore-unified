@@ -34,7 +34,7 @@ Ready-made builders return the function you pass to a slot:
 `api_answer(...)` returns an `answer`, `api_policy(...)`
 a `policy` (both in `brainscore/model_helpers/api_behavioral.py`), and
 `pytorch_intervention(model)` an `intervention`
-(`brainscore/perturbation.py`). `brainscore/harnesses/grid_game.py` runs
+(`brainscore/model_helpers/intervention.py`). `brainscore/harnesses/grid_game.py` runs
 policies in a closed loop.
 
 ## 2. Register a new capability

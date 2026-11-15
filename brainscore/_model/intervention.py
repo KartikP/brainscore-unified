@@ -53,7 +53,7 @@ class Interventions:
             finally:
                 self._intact_depth -= 1
             return
-        from brainscore.perturbation import _SWITCHES
+        from brainscore.model_helpers.intervention import _SWITCHES
         switches = [(handle, _SWITCHES.get(cleanup))
                     for handle, cleanup in self.active_interventions.items()]
         fixed = [handle for handle, switch in switches if switch is None]

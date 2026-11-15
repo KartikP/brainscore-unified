@@ -201,7 +201,7 @@ def get_model(identifier: str) -> Subject:
     layers = dict(REGION_LAYER_MAP, language_system=language_layer)
     variant_kwargs = {}
     if identifier in VARIANTS:
-        from brainscore.perturbation import pytorch_intervention
+        from brainscore.model_helpers.intervention import pytorch_intervention
         layers['VWFA'] = VWFA_LAYER
         # Selection paths are relative to the extraction root. The same
         # visual module is also used by the full model's generate().

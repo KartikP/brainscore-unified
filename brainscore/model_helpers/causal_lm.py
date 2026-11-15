@@ -25,7 +25,7 @@ from brainscore_core.responses import Choice, Text
 
 from brainscore.model_helpers.replies import _generation_settings, _plain_text_scores
 from brainscore.model_helpers.text_wrapper import TextWrapper
-from brainscore.perturbation import pytorch_intervention
+from brainscore.model_helpers.intervention import pytorch_intervention
 
 
 class _CausalLMParts:

@@ -65,7 +65,7 @@ A `BrainScoreModel` applies an intervention with its `intervention` part, which 
 from brainscore import BrainScoreModel
 from brainscore_core import Perturbation, Selection, StateChange
 from brainscore_core.streaming_helpers import apply_state_change
-from brainscore.perturbation import pytorch_intervention
+from brainscore.model_helpers.intervention import pytorch_intervention
 
 model = BrainScoreModel(identifier='my-cnn', model=net, extractor={'vision': vision},
                         region_layer_map={'IT': 'layer4'},

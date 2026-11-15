@@ -13,7 +13,7 @@ also has an on/off switch, so a readout can be fitted on the intact network
 Usage::
 
     from brainscore import BrainScoreModel
-    from brainscore.perturbation import pytorch_intervention
+    from brainscore.model_helpers.intervention import pytorch_intervention
     from brainscore_core import Perturbation, Selection, StateChange
     from brainscore_core.streaming_helpers import apply_state_change
 

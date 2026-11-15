@@ -348,7 +348,7 @@ class TorchInstrumentation:
     @contextmanager
     def _perturb(self, targets, perturbation):
         import torch
-        from brainscore.perturbation import pytorch_intervention
+        from brainscore.model_helpers.intervention import pytorch_intervention
         self.validate('ablate', targets)
         with ExitStack() as stack:
             for target in targets:

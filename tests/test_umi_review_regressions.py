@@ -242,7 +242,7 @@ def test_shared_layer_names_keep_towers_and_regions_separate(composite):
 
 @pytest.mark.parametrize('layers', [('L',), ('L', 'M')])
 def test_localized_and_random_lesions_use_original_subset_indices(layers):
-    from brainscore.perturbation import pytorch_intervention
+    from brainscore.model_helpers.intervention import pytorch_intervention
     from brainscore.benchmarks.induced_dyslexia.benchmark import InducedDyslexia
     net = nn.Module()
     for layer in layers:
