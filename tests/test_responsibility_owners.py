@@ -123,26 +123,89 @@ REGRESSORS = {'LinearRegression', 'Ridge', 'RidgeCV', 'Lasso', 'LassoCV', 'Lasso
               'PLSRegression', 'PLSCanonical', 'PLSSVD', 'CCA'}
 
 
+def _module_names(tree):
+    """Local name -> dotted module path, for every ``import x[.y] [as z]`` and
+    ``from x import y [as z]`` (``y`` may be a module)."""
+    names = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.asname:
+                    names[alias.asname] = alias.name
+                else:
+                    root = alias.name.split('.')[0]
+                    names[root] = root
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            for alias in node.names:
+                names[alias.asname or alias.name] = f'{node.module}.{alias.name}'
+    return names
+
+
+def _dotted(expr, names):
+    """The dotted path of ``expr`` with its root name resolved through the imports."""
+    parts = []
+    while isinstance(expr, ast.Attribute):
+        parts.append(expr.attr)
+        expr = expr.value
+    if not isinstance(expr, ast.Name):
+        return None
+    return '.'.join([names.get(expr.id, expr.id)] + parts[::-1])
+
+
 def _imports_sklearn_regression(tree):
-    """A regression estimator imported from, or named through, the two sklearn modules."""
+    """A regression estimator imported from, or named through, the two sklearn modules.
+
+    Module aliases are resolved first (``import sklearn.linear_model as lm`` then
+    ``lm.Ridge``); a star import from the modules counts, since its names are unknown.
+    """
+    names = _module_names(tree)
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and (node.module or '').startswith(_REGRESSION_MODULES):
-            if any(alias.name in REGRESSORS for alias in node.names):
+            if any(alias.name in REGRESSORS or alias.name == '*' for alias in node.names):
                 return True
         elif isinstance(node, ast.Attribute) and node.attr in REGRESSORS \
-                and ast.unparse(node.value).endswith(('linear_model', 'cross_decomposition')):
+                and (_dotted(node.value, names) or '').endswith(_REGRESSION_MODULES):
             return True
     return False
 
 
+# The accepted recipients of a ceiling built as Score(...) (decision D2): the score
+# builder ``benchmark_score`` and the benchmark base class constructor, reached as
+# ``super().__init__`` or ``BenchmarkBase.__init__`` / ``BenchmarkBase(...)``.
+CEILING_RECIPIENTS = ('benchmark_score', 'super().__init__', 'BenchmarkBase.__init__',
+                      'BenchmarkBase')
+
+
+def _ceiling_scores(tree):
+    """The ``Score(`` calls that are the reference ceiling of an accepted recipient.
+
+    Accepted expressions: the ``ceiling=`` value itself, or a branch of a conditional
+    expression that is the value (``not_estimated() if c is None else Score(c)``).
+    """
+    accepted = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and any(
+                ast.unparse(node.func) in (name, f'self.{name}') or
+                ast.unparse(node.func).endswith(f'.{name}') and '(' not in name
+                for name in CEILING_RECIPIENTS):
+            for keyword in node.keywords:
+                if keyword.arg == 'ceiling':
+                    value = keyword.value
+                    branches = [value.body, value.orelse] if isinstance(value, ast.IfExp) else [value]
+                    accepted.update(id(branch) for branch in branches)
+    return accepted
+
+
 def _builds_score(tree):
-    """A ``Score(`` call that is not part of a ``ceiling=`` argument."""
-    in_ceiling = {id(inner) for node in ast.walk(tree) if isinstance(node, ast.keyword)
-                  and node.arg == 'ceiling' for inner in ast.walk(node.value)}
-    return any(isinstance(node, ast.Call) and id(node) not in in_ceiling
-               and (node.func.attr if isinstance(node.func, ast.Attribute)
-                    else getattr(node.func, 'id', None)) == 'Score'
-               for node in ast.walk(tree))
+    """A ``Score(`` call (``Score`` resolved through imports) that is not an accepted ceiling."""
+    names = _module_names(tree)
+    accepted = _ceiling_scores(tree)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and id(node) not in accepted:
+            path = _dotted(node.func, names) or ''
+            if path == 'Score' or path.endswith('.Score'):
+                return True
+    return False
 
 
 def _writes_cache_switch(tree):
@@ -305,6 +368,15 @@ def test_check_fails_on_a_stale_entry():
     ('R14 encoding regression', 'from sklearn.cross_decomposition import PLSRegression'),
     ('R15 score construction', 'score = Score(raw)'),
     ('R15 score construction', 'benchmark_score(b, raw=r, ceiling=c)\nextra = Score(0.1)'),
+    ('R15 score construction', 'def f(ceiling):\n    return ceiling\ns = f(ceiling=Score(0.5))'),
+    ('R15 score construction', 'super().__init__(ceiling=max(Score(0.5), c))'),
+    ('R15 score construction', 'from brainscore_core.metrics import Score as S\ns = S(0.5)'),
+    ('R15 score construction', 'import brainscore_core.metrics as m\ns = m.Score(0.5)'),
+    ('R14 encoding regression', 'import sklearn.linear_model as lm\nr = lm.Ridge()'),
+    ('R14 encoding regression', 'from sklearn import linear_model as lm\nr = lm.RidgeCV()'),
+    ('R14 encoding regression', 'import sklearn\nr = sklearn.linear_model.Ridge()'),
+    ('R14 encoding regression', 'from sklearn.linear_model import Ridge as R'),
+    ('R14 encoding regression', 'from sklearn.linear_model import *'),
     ('R17 metadata stamp', 'stamp_score_metadata(score, b, s)'),
     ('R18 cache validity', "os.environ['RESULTCACHING_DISABLE'] = '1'"),
     ('R18 cache validity', "os.environ.pop('RESULTCACHING_DISABLE', None)"),
@@ -322,7 +394,10 @@ def test_signal_catches(name, source):
     ('R14 encoding regression', 'from sklearn.linear_model import LogisticRegression'),
     ('R14 encoding regression', 'import sklearn.linear_model\nc = sklearn.linear_model.LogisticRegression()'),
     ('R15 score construction', 'super().__init__(identifier=i, ceiling=Score(0.8))'),
-    ('R15 score construction', 'Base(ceiling=not_estimated() if c is None else Score(float(c)))'),
+    ('R15 score construction', 'super().__init__(ceiling=not_estimated() if c is None else Score(float(c)))'),
+    ('R15 score construction', 'benchmark_score(b, raw=r, ceiling=Score(float(c)))'),
+    ('R15 score construction', 'BenchmarkBase.__init__(self, identifier=i, ceiling=Score(c))'),
+    ('R14 encoding regression', 'import sklearn.linear_model as lm\nc = lm.LogisticRegression()'),
     ('R18 cache validity', "os.environ.get('RESULTCACHING_DISABLE')"),
     ('R18 cache validity', "env.update(RESULTCACHING_DISABLE='1')"),
     ('R20 registry assignment', "model_registry['x'] = build"),
