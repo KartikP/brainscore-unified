@@ -262,11 +262,20 @@ class BehavioralReadout:
             self.response_path = self.probability_source = None
             self.readout_classifier = None
             return
-        # The setup is keyed by the task alone: each format the task can give is
-        # selected on its own (a single format never crosses two parts), so every
-        # refusal comes before the fit, and the readout fits once when it serves any.
-        # A probability format that no part serves is skipped here: a session that
-        # requests it is refused by its own selection, before any compute.
+        picks = self._eligible_picks(task)
+        self.response_path = picks[0][0]
+        self.probability_source = next((source for _, source in picks if source), None)
+        self.readout_classifier = None
+        self.fit_for(formats, picks)
+
+    def _eligible_picks(self, task) -> list:
+        """The selection of each format ``task`` can be answered in, one format at a time.
+
+        The setup and its reuse both use it. The setup is keyed by the task alone:
+        a single format never crosses two parts, so every refusal comes before the
+        fit. A probability format that no part serves is skipped: a session that
+        requests it is refused by its own selection, before any compute.
+        """
         from brainscore_core.compatibility import ExecutionNotFeasibleError
         from brainscore_core.responses import response_channels
         picks = []
@@ -276,10 +285,7 @@ class BehavioralReadout:
             except ExecutionNotFeasibleError:
                 if output not in self._PROBABILITY_SIDE:
                     raise
-        self.response_path = picks[0][0]
-        self.probability_source = next((source for _, source in picks if source), None)
-        self.readout_classifier = None
-        self.fit_for(formats, picks)
+        return picks
 
     def fit_for(self, formats=None, picks=None) -> bool:
         """Fit the readout of the configured task once, when ``formats`` need it.
@@ -290,9 +296,7 @@ class BehavioralReadout:
         if self.task is None or self.readout_classifier is not None:
             return False
         if formats is None:
-            from brainscore_core.responses import response_channels
-            picks = picks or [self._choose_path(self.task, [output]) for output in
-                              (response_channels(self.task.response) or ('behavior',))]
+            picks = picks or self._eligible_picks(self.task)
         else:
             picks = [self._choose_path(self.task, formats)]
         if not any('readout' in pick for pick in picks):
@@ -446,7 +450,8 @@ class BehavioralReadout:
         is measured (Contract Rule 4.5). Under a choice task the owner of the
         choice always gives its answer; the owner of the probabilities runs in
         addition when, and only when, the session requests probabilities or a
-        reaction time.
+        reaction time. A format that the session does not request needs no owner:
+        a reaction-time link names the rt format; it is no setting of the choice.
 
         A task with a response is answered by the owner of its answer format
         (the raw scores of a raw-scores Choice, else the response kind's own
