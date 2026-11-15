@@ -310,11 +310,31 @@ def cache_config(wrapper, fields):
 
     ``_VERSION`` is read from the first module along the class's MRO that has
     one, so a subclass in another module shares its parent's version.
+
+    A torch autocast context around the call changes the values, so when
+    autocast is enabled for the input device type, its dtype is part of the
+    key (``autocast``). Without autocast the key has no such part.
     """
-    return {'kind': kind(wrapper), 'version': _version(type(wrapper)),
-            'settings': {field: getattr(wrapper, field) for field in fields},
-            'input_device': str(getattr(wrapper, '_device', None)),
-            'model': model_config(wrapper._model)}
+    config = {'kind': kind(wrapper), 'version': _version(type(wrapper)),
+              'settings': {field: getattr(wrapper, field) for field in fields},
+              'input_device': str(getattr(wrapper, '_device', None)),
+              'model': model_config(wrapper._model)}
+    autocast = _autocast(getattr(wrapper, '_device', None))
+    if autocast is not None:
+        config['autocast'] = autocast
+    return config
+
+
+def _autocast(device):
+    """The autocast dtype in force for ``device``'s type at this moment, or None when autocast is off."""
+    import torch
+    device_type = torch.device(device).type if device is not None else 'cpu'
+    try:
+        if not torch.is_autocast_enabled(device_type):
+            return None
+        return {'device_type': device_type, 'dtype': str(torch.get_autocast_dtype(device_type))}
+    except RuntimeError:                  # a device type autocast does not know
+        return None
 
 
 def _version(cls) -> int:

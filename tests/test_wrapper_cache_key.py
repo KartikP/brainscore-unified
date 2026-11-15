@@ -134,3 +134,16 @@ def test_the_key_names_the_kind_not_the_identifier(name):
     assert wrapper.identifier not in repr(config['settings'])
     assert not hasattr(wrapper, 'backbone_id')
     assert 'backbone_id' not in inspect.signature(type(wrapper)).parameters
+
+
+@pytest.mark.parametrize('name', WRAPPERS)
+def test_an_autocast_context_changes_the_key(name):
+    inputs, _ = _inputs(name)
+    wrapper = BUILD[name]()
+    outside = _key(wrapper, inputs)
+    assert 'autocast' not in wrapper.cache_config()     # without autocast, the key is as before
+    with torch.autocast('cpu', dtype=torch.bfloat16):
+        inside = _key(wrapper, inputs)
+        assert wrapper.cache_config()['autocast'] == {'device_type': 'cpu', 'dtype': 'torch.bfloat16'}
+    assert inside != outside
+    assert _key(wrapper, inputs) == outside
