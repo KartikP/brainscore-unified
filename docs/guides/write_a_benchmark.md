@@ -90,6 +90,7 @@ gives 1.25: a ceiled score can exceed 1.
 | Metric | Any function of model output and measured data, or a shipped metric loaded with `brainscore.load_metric` (see [Metrics](#metrics)). |
 | Ceiling | An estimate of how well the data can be predicted, for example split-half reliability. With none, use `not_estimated()`; the score is then the raw value (`normalized=False`). |
 | Reference data | Measured responses in an assembly whose `presentation` dimension carries `stimulus_id` and at least one more coordinate (a condition, a category, a subject). A dimension with only one coordinate keeps its values as the dimension's index and loses the coordinate's name, so `reference['stimulus_id']` would fail. |
+| Memory estimate (optional) | Before a run, `score()` estimates the memory a pair needs from what the benchmark has: the stimulus count from `stimulus_set` (or the stimulus set of `train_assembly`), the presentation count from `expected_n_presentations`, the target count from the `neuroid` size of `train_assembly` or `test_assembly` (else `n_targets`, default 100), `alpha_coord` for a per-subject fit, `expected_feature_dim` (default 1000), `region`, `timebins`, `requested_output_channels` and an `execution_plan`. Set the ones you know; a missing one gives a rougher estimate, not an error. Brain-Score 2.0 benchmarks are read through their private `_assembly` and `_similarity_metric` as well; a unified benchmark gives its sizes through the names above. |
 
 ## Metrics
 
