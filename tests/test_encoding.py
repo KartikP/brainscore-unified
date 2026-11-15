@@ -440,3 +440,34 @@ class TestIdentityAlgonauts:
                                                _window, **kwargs)
         _same(new[0], ref[0])
         assert new[1] == ref[1]
+
+
+class TestSmallFolds:
+    """Twelve stimuli: where a fold is too small for a correlation, and where it is not."""
+
+    def _twelve(self):
+        rng = np.random.default_rng(0)
+        X = rng.standard_normal((12, 4))
+        Y = X @ rng.standard_normal((4, 3)) + 0.1 * rng.standard_normal((12, 3))
+        return X, Y
+
+    def test_inner_check_fold_of_two_rows_is_refused(self):
+        X, Y = self._twelve()
+        # 6 outer folds leave 10 training rows; 5 inner folds check on 2 rows each.
+        fit = ridge(grid_search([(1.0,), (10.0,)], partial(group_kfold, n_splits=5)),
+                    NormalEquations())
+        with pytest.raises(ValueError, match='inner check fold holds 2 rows'):
+            cross_validated_r(X, Y, row_kfold(12, n_splits=6), fit)
+
+    def test_inner_check_fold_of_three_rows_runs(self):
+        X, Y = self._twelve()
+        fit = ridge(grid_search([(1.0,), (10.0,)], partial(group_kfold, n_splits=3)),
+                    NormalEquations())
+        r, _ = cross_validated_r(X, Y, row_kfold(12, n_splits=6), fit)
+        assert np.isfinite(r).all()
+
+    def test_outer_folds_of_two_rows_pool_their_predictions(self):
+        """The outer r is taken over all held-out rows at once, so a small outer fold is fine."""
+        X, Y = self._twelve()
+        r, _ = cross_validated_r(X, Y, row_kfold(12, n_splits=6), ridge(1.0, NormalEquations()))
+        assert np.all(np.abs(r) < 1.0) and np.all(r > 0.5)
