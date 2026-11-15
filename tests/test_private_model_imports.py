@@ -49,8 +49,6 @@ ALLOWED = {
     ('benchmarks/majajhong2015/benchmark.py', 'call candidate.process'): _TYPED,
     ('benchmarks/pereira2018/benchmark.py', 'call candidate.start_recording'): _TYPED,
     ('benchmarks/pereira2018/benchmark.py', 'call candidate.process'): _TYPED,
-    ('benchmarks/coggym/benchmark.py', 'private brainscore.harnesses.coggym._PROMPT_NOTE'):
-        'the CogGym benchmark reuses the prompt note of the CogGym harness',
     ('experiments/tools.py', 'private brainscore.activation_window._first_tensor_out'):
         'TorchInstrumentation shares the tensor unwrapping of ActivationWindow',
 }

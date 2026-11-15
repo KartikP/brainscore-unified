@@ -9,9 +9,17 @@ from brainscore_core.contract import Subject
 from brainscore.benchmarks._score import not_estimated
 from brainscore.experiments import CallableProtocol
 from brainscore.harnesses.adapter import adapter_score, run_recorded
-from brainscore.harnesses.coggym import CogGymRunner, _PROMPT_NOTE
+from brainscore.harnesses.coggym import CogGymRunner
 
 from . import EXPERIMENTS
+
+# Why a score can differ from one made with CogGym's own client (Contract Rule 3.9).
+_PROMPT_NOTE = {
+    'kind': 'subject_prompt',
+    'reason': ('The subject builds its own prompt from the instruction and the parts. '
+               'A chat model can place the instruction in the user turn, where '
+               "CogGym's own client sends a separate system text."),
+}
 
 
 def _require_reset(reset):
