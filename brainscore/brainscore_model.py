@@ -17,7 +17,6 @@ from ._model.intervention import Interventions
 from ._model.recording import Recorder
 from .selection import UnitSelector, _promote_to_selector
 from brainscore_core.extraction_cache import weight_fingerprint_scope
-from brainscore_core.streaming_helpers import session_outputs
 
 
 # The extractor key that declares each input channel (``vision`` declares
@@ -250,7 +249,7 @@ class BrainScoreModel(UnifiedModel):
             self, self._capability_config.get('behavior-sessions'))
         self._interventions = Interventions(self)
         self._shared_calls = None       # set by dispatch.one_call_per_extractor
-        self._regions_per_pass = 'all'  # the session's BRAINSCORE_REGIONS_PER_PASS, read in participate
+        self._session_plan = None       # the running session's plan (_model/plan.py), set in participate
         self._capability_state: Dict[str, Any] = {}
         self._capability_setup_done: Set[str] = set()
 
@@ -466,30 +465,28 @@ class BrainScoreModel(UnifiedModel):
         before it reaches any part (Contract Rules v3, rule 5.5).
 
         ``BRAINSCORE_REGIONS_PER_PASS`` is read and checked here, once, for every
-        kind of session (see ``brainscore._model.channels``).
+        kind of session (see ``brainscore._model.channels``). The session's plan
+        (``_model/plan.py``) is built once, before any setup or compute, and the
+        session parts read it; a combination that cannot run is refused there.
         """
         from brainscore_core.score_metadata import note_session
         from ._model.channels import regions_per_pass
-        plan = regions_per_pass()
-        note_session(session, plan)   # this model owns the plan, so the run record gets it from here
+        from ._model.plan import plan_session
+        passes = regions_per_pass()
+        note_session(session, passes)   # this model owns the plan, so the run record gets it from here
         with _one_session_at_a_time(self):
-            self._regions_per_pass = plan
+            session = session.declare_inputs(self.in_channels)
+            self._session_plan = plan_session(self, session, passes)
             try:
-                handler = self.check_session_support(session_outputs(session))
-            except ExecutionNotFeasibleError as error:
-                task = getattr(session, 'task', None)
-                task_type = getattr(task, 'task_type', None) if task is not None else None
-                raise ExecutionNotFeasibleError(
-                    f"Session refused (task type "
-                    f"{task_type if task is not None else 'none'!r}): {error}",
-                    channels=error.channels, task_type=task_type) from error
-            from .capabilities.registry import _setup_once
-            _setup_once(self, handler)
-            # A task the session configures ends with the session (rule 4.5).
-            # Weights are hashed once per session for the activation cache key;
-            # inside score() the run's scope is reused.
-            with self._behavioral.session_scope(), weight_fingerprint_scope():
-                handler.participate(self, session.declare_inputs(self.in_channels))
+                from .capabilities.registry import _setup_once
+                _setup_once(self, self._session_plan.handler)
+                # A task the session configures ends with the session (rule 4.5).
+                # Weights are hashed once per session for the activation cache key;
+                # inside score() the run's scope is reused.
+                with self._behavioral.session_scope(), weight_fingerprint_scope():
+                    self._session_plan.handler.participate(self, session)
+            finally:
+                self._session_plan = None
 
     def detect_modalities(self, stimuli) -> Set[str]:
         """Declared input modalities whose columns appear in ``stimuli``."""

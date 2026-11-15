@@ -815,7 +815,8 @@ class BehavioralReadout:
         # as does 'all' when the layers have different dtypes (one call cannot keep them).
         from brainscore.model_helpers._extractors import LayerDtypesDiffer
         joint = None
-        if owner._regions_per_pass == 'all':
+        plan = owner._session_plan
+        if (plan.regions_per_pass if plan is not None else 'all') == 'all':
             all_layers = list(dict.fromkeys([readout_layer, *(l for ls in layers.values() for l in ls)]))
             try:
                 joint = extract(all_layers)
