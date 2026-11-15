@@ -64,7 +64,10 @@ installs `unified/install/lock-linux-py311-cu124.txt` (it names the PyTorch CUDA
 itself), then installs the four repositories from their checkouts with `--no-deps`. On another
 platform the option stops with a message; the pinned setup above and the bounds of the doctor
 apply there. Do not combine the lock with `v2-constraints.txt`: that file is the CPU test
-profile and pins other versions of torch, torchvision, datasets, gymnasium and minigrid.
+profile. It names the lock's versions (torch and torchvision without the `+cu124` tag, so
+the CPU wheel installs). For datasets the constraints file is the rule (2.21.0: the old
+wikitext plugin requires datasets 2.*); the lock is made again from the reference machine
+after it moves to that version.
 
 The script refuses to overwrite an existing conda environment. Choose a
 different name when needed:
