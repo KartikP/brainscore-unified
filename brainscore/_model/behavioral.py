@@ -512,10 +512,11 @@ class BehavioralReadout:
                 f"Subject '{owner.identifier}' gives {LOG_PROBABILITIES} only for a verbatim "
                 'Choice (Choice(..., verbatim=True)): its tokenization is then the plain text.',
                 task_type=task.task_type)
+        presented = task.present is not None
         can = {
             'generation': not log_probabilities and (owner._reply is not None or (
                 owner._answer is not None and isinstance(response, Choice)
-                and not verbatim)),   # answer= takes no settings
+                and not verbatim and not presented)),   # answer= takes no settings
             'likelihood': owner._likelihood is not None and isinstance(response, Choice),
             'readout': (readout_wired and isinstance(response, (Choice, Scale))
                         and not log_probabilities and not per_row),
@@ -523,17 +524,19 @@ class BehavioralReadout:
         # The answer format: the log probabilities when the session requests them,
         # else the response's first format. Its owner answers; a task form the owner
         # cannot serve is refused (no other part stands in).
-        settings = [name for name, on in (('verbatim', verbatim),
+        settings = [name for name, on in (('verbatim', verbatim), ('present', presented),
                                           ('labels per row', per_row)) if on]
         answer_format = (LOG_PROBABILITIES if log_probabilities
                          else dict(self._ANSWER_FORMATS)[type(response).__name__])
         path = self._owner_serving(answer_format, can, task, settings)
         if path is None:
-            needs = {'generation': 'reply= (or answer= for a plain Choice)',
+            needs = {'generation': 'reply= (or answer= for a plain Choice with none of the settings '
+                                   'verbatim, present)',
                      'likelihood': 'likelihood= and a Choice',
                      'readout': 'behavioral_readout_layer=, an extractor and fitting_stimuli'}
             raise ExecutionNotFeasibleError(
                 f"Subject '{owner.identifier}' cannot give a {type(response).__name__} answer"
+                + (f" with the task settings {', '.join(settings)}" if settings else '')
                 + '. Paths tried: ' + '; '.join(f'{p} needs {need}' for p, need in needs.items()),
                 task_type=task.task_type)
         source = None
@@ -634,13 +637,20 @@ class BehavioralReadout:
             def with_history(prompt):
                 return replace(prompt, history=tuple(self.history)) if remember else prompt
 
+            # Within generation a plain Choice goes to answer= when it is wired (point r): the
+            # call a registration makes for a choice. The reply, which receives the full
+            # prompt, answers task settings (verbatim, present, options per row), a Scale or
+            # a Text, trial history, or when answer= is absent.
+            by_answer = (owner._answer is not None and isinstance(response, Choice)
+                         and not response.verbatim and task.present is None
+                         and not isinstance(response.labels, str) and not remember)
             if path == 'likelihood':
                 def call(row, prompt):
                     scores = owner._likelihood(with_history(prompt), list(prompt.response.labels))
                     if remember:
                         self.history.append((prompt, max(scores, key=scores.get)))
                     return scores
-            elif owner._reply is not None:
+            elif owner._reply is not None and not by_answer:
                 def call(row, prompt):
                     shown = with_history(prompt)
                     # Scoring first keeps the recorded first pass the prompt alone.
@@ -880,6 +890,31 @@ def _declared_formats(subject) -> set:
         declared |= {f for formats in _PART_FORMATS.values() for f, how in formats.items()
                      if how == 'link'}
     return declared
+
+
+def statement_hint(subject, missing) -> str:
+    """The statement that would declare each missing format a wired part only derives.
+
+    ADR-0063, decision 4: a refusal names the exact line to write, for example
+    ``capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}``.
+    With two candidate parts it names each line and asks for one. Empty when no wired
+    part derives a missing format.
+    """
+    parts = _formats_by_part(subject)
+    if not subject._extractors:
+        parts.pop('readout', None)
+    lines = []
+    for channel in sorted(missing):
+        candidates = [(part, formats[channel]) for part, formats in sorted(parts.items())
+                      if formats.get(channel) not in (None, 'link')]
+        written = [f"capability_config={{'behavior-sessions': {{{channel!r}: ({part!r}, {how!r})}}}}"
+                   for part, how in candidates]
+        if len(written) == 1:
+            lines.append(f' {channel!r} is derived by a wired part; state it: {written[0]}.')
+        elif written:
+            lines.append(f' {channel!r} is derived by {len(written)} wired parts; state one: '
+                         + ' or '.join(written) + '.')
+    return ''.join(lines)
 
 
 _ARGUMENTS = {'generation': 'answer= or reply=', 'likelihood': 'likelihood=',

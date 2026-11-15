@@ -7,7 +7,7 @@ from types import MappingProxyType
 from collections.abc import Mapping
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
 
-from ._model.behavioral import BehavioralReadout, answer_owners
+from ._model.behavioral import BehavioralReadout, answer_owners, statement_hint
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import UnifiedModel, TaskContext
 from ._model import dispatch
@@ -345,7 +345,7 @@ class BrainScoreModel(UnifiedModel):
             hint = (' It has no intervention part: an intervention needs BrainScoreModel('
                     'intervention=...), a callable intervention(state_change) -> '
                     '(PerturbationApplied, undo_function).'
-                    if 'perturbation' in missing else '')
+                    if 'perturbation' in missing else '') + statement_hint(self, missing)
             raise ExecutionNotFeasibleError(
                 f"Subject {self.identifier!r} cannot answer {sorted(channels)} in one session: "
                 + (f"it does not produce {missing}" if missing

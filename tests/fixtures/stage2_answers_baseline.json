@@ -583,7 +583,7 @@
    "ewok choice": {
     "error": [
      "ExecutionNotFeasibleError",
-     "Subject 'owned' cannot give a Choice answer. Paths tried: generation needs reply= (or answer= for a plain Choice); likelihood needs likelihood= and a Choice; readout needs behavioral_readout_layer=, an extractor and fitting_stimuli"
+     "Subject 'owned' cannot give a Choice answer with the task settings verbatim. Paths tried: generation needs reply= (or answer= for a plain Choice with none of the settings verbatim, present); likelihood needs likelihood= and a Choice; readout needs behavioral_readout_layer=, an extractor and fitting_stimuli"
     ]
    },
    "ewok log scores": {
@@ -3163,7 +3163,7 @@
    "ewok choice": {
     "error": [
      "ExecutionNotFeasibleError",
-     "Subject 'owned' cannot give a Choice answer. Paths tried: generation needs reply= (or answer= for a plain Choice); likelihood needs likelihood= and a Choice; readout needs behavioral_readout_layer=, an extractor and fitting_stimuli"
+     "Subject 'owned' cannot give a Choice answer with the task settings verbatim. Paths tried: generation needs reply= (or answer= for a plain Choice with none of the settings verbatim, present); likelihood needs likelihood= and a Choice; readout needs behavioral_readout_layer=, an extractor and fitting_stimuli"
     ]
    },
    "ewok log scores": {

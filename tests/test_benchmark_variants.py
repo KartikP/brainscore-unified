@@ -80,7 +80,6 @@ REGISTERED = [
     'Pereira2018.384sentences-ridge-unified',
     'Yeatman2021-induced_dyslexia-image',
     'Yeatman2021-induced_dyslexia-text',
-    'Yeatman2021-lexical_decision',
     'Yeatman2021-lexical_decision-image',
     'Yeatman2021-lexical_decision-text',
 ]
@@ -183,23 +182,19 @@ BUILT = {
     'Yeatman2021-induced_dyslexia-image': (
         'Yeatman2021-induced_dyslexia-image', 1, 'none',
         ['instruction', 'lesion', 'vision:image'],
-        ['behavior', 'neural:VWFA', 'perturbation']),
+        ['behavior:choice', 'neural:VWFA', 'perturbation']),
     'Yeatman2021-induced_dyslexia-text': (
         'Yeatman2021-induced_dyslexia-text', 1, 'none',
         ['instruction', 'lesion', 'text'],
-        ['behavior', 'neural:VWFA', 'perturbation']),
-    'Yeatman2021-lexical_decision': (
-        'Yeatman2021-lexical_decision-image', 1, 'none',
-        ['instruction', 'vision:image'],
-        ['behavior']),
+        ['behavior:choice', 'neural:VWFA', 'perturbation']),
     'Yeatman2021-lexical_decision-image': (
         'Yeatman2021-lexical_decision-image', 1, 'none',
         ['instruction', 'vision:image'],
-        ['behavior']),
+        ['behavior:choice']),
     'Yeatman2021-lexical_decision-text': (
         'Yeatman2021-lexical_decision-text', 1, 'none',
         ['instruction', 'text'],
-        ['behavior']),
+        ['behavior:choice']),
 }
 
 def test_the_registered_identifiers_are_the_pinned_list():
@@ -241,3 +236,17 @@ MODELS = [
 def test_the_registered_model_identifiers_are_the_pinned_list():
     """A model identifier is stable: adding one adds a line here, removing one is a decision."""
     assert sorted(brainscore.model_registry) == sorted(MODELS)
+
+
+def test_the_27_built_keys_name_the_identifier_they_build():
+    """For the 27 pinned keys in ``BUILT`` (Algonauts2025, GridGame, Lahner2024, LeBel2023,
+    Yeatman2021), the recorded identifier equals the key; the parametrized test above
+    builds each of them and asserts that identifier. Nothing is built here.
+
+    The other 35 of the 62 pinned keys are not built by this file, because their
+    constructors need data or a prepared library: CogGym (23; its identifier also adds
+    the configured settings), EWoK (2; its identifier adds the resolved data's hash),
+    MajajHong2015 and MajajHong2015public (4), Pereira2018 (6).
+    """
+    assert len(BUILT) == 27 and len(REGISTERED) == 62
+    assert all(key == built for key, (built, *_rest) in BUILT.items())

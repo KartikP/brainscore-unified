@@ -22,9 +22,11 @@ Our implementation:
    accuracy on the same 100 test stimuli.
 5. `attrs['dyslexic']` flag: True if raw accuracy < 0.65 (paper's threshold).
 
-This is unified-interface-native: it uses BrainScoreModel's behavioral
-readout or answer part (TaskContext(task_type='probabilities', ...) +
-behavioral_response(subject, test_stimuli, task) -> BehavioralAssembly).
+This is unified-interface-native: it asks for the choice
+(``behavior:choice``) of a ``Choice(['real', 'pseudo'])`` task with an
+instruction and fitting stimuli, in one session over the test stimuli. The
+subject's parts decide how it answers: an answer part, a reply, or a readout
+whose registration states ``('readout', 'argmax')``.
 
 Data are resolved through the unified data plugin:
 `brainscore.load_stimulus_set('Yeatman2021')` and
@@ -45,7 +47,8 @@ from brainscore import load_dataset, load_stimulus_set
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
 from brainscore_core.contract import TaskContext
-from brainscore_core.streaming_helpers import behavioral_response
+from brainscore_core.responses import Choice
+from brainscore_core.streaming_helpers import stimulus_session
 from brainscore.benchmarks._score import benchmark_score
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
@@ -187,9 +190,9 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
     `channels=('text',)` to compare across input formats.
     """
 
-    # Asks for the word's label (`behavior`); every word is an independent trial.
+    # Asks for the choice of each word; every word is an independent trial.
     # The input channel is the one the variant sends, set in __init__.
-    requested_output_channels = frozenset({'behavior'})
+    requested_output_channels = frozenset({'behavior:choice'})
     trial_memory = 'none'
 
     def __init__(self, channels: Sequence[str] = ('vision:image',)):
@@ -223,22 +226,23 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
         )
 
     def __call__(self, subject) -> Score:
-        # The subject's parts decide how it answers: an answer function, else the readout.
+        # The subject's parts decide how it answers: an answer part, a reply, or a readout.
         task = TaskContext(
-            task_type='probabilities',
             fitting_stimuli=self._train_stimuli,
-            label_set=['real', 'pseudo'],
             instruction='Is this a real word or a pseudo word?',
+            response=Choice(['real', 'pseudo']),
         )
         # The 100-item test set is what gets answered; the fitting stimuli only
         # train a readout.
-        predictions = behavioral_response(subject, self._test_stimuli, task)
+        session = stimulus_session(self._test_stimuli, ['behavior:choice'], task)
+        subject.participate(session)
+        predictions = session.collect('behavior:choice')
         choice_values = list(predictions['choice'].values)
 
-        # argmax over choices to get predicted label per stimulus
-        prob_matrix = predictions.values  # (n_test, n_choices)
-        # An invalid generated answer arrives as a NaN row; it is scored as wrong
-        # rather than as whichever label argmax would pick.
+        # The chosen label of each stimulus is the column holding the 1.
+        prob_matrix = predictions.values  # (n_test, n_choices): one-hot rows
+        # An invalid or a missing answer is stored as a NaN row; it is scored as
+        # wrong rather than as whichever label argmax would pick.
         invalid = np.isnan(prob_matrix).any(axis=1)
         pred_idx = np.nan_to_num(prob_matrix, nan=-1).argmax(axis=1)
         predicted_labels = [None if bad else choice_values[i]
@@ -257,7 +261,7 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
 
         score = benchmark_score(self, raw=raw_accuracy, metric='accuracy')
         score.attrs['n_test_stimuli'] = len(stim_ids)
-        score.attrs['n_invalid_answers'] = int(invalid.sum())
+        score.attrs['n_invalid_answers'] = int(invalid.sum())   # invalid and missing answers
         score.attrs['dyslexia_threshold'] = DYSLEXIA_THRESHOLD
         score.attrs['dyslexic'] = bool(raw_accuracy < DYSLEXIA_THRESHOLD)
         # Breakdown by stimulus class

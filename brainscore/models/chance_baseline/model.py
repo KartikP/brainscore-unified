@@ -6,9 +6,11 @@ the label set on every call. Used as a floor for behavioral benchmarks:
 if this gets > 0.5 for balanced binary tasks, the benchmark's scoring
 has a leak somewhere.
 
-Implemented on the UnifiedModel compatibility base.
-It has no extractor, no activations, and no logistic readout.
-Benchmarks that use start_task() and process() still work.
+Implemented on the UnifiedModel compatibility base. It has no extractor,
+no activations, and no logistic readout. A legacy task on bare ``behavior``
+gets its uniform rows through ``process``; a ``Choice`` task on
+``behavior:choice`` gets the choice derived from those rows by core's
+``argmax`` (ties go to the first label), with a record that says so.
 """
 
 from typing import Any, Dict, Set
@@ -53,8 +55,40 @@ class ChanceBaseline(UnifiedModel):
 
     @property
     def out_channels(self) -> Set[str]:
-        # It answers behavioral tasks; declared, not inferred (Contract v3 rule 2).
-        return {'behavior'}
+        # It answers behavioral tasks; declared, not inferred (Contract v3 rule 2):
+        # a legacy task on bare behavior, and the choice of a Choice task.
+        return {'behavior', 'behavior:choice'}
+
+    def participate(self, session) -> None:
+        if list(session.outputs or ()) != ['behavior:choice']:
+            return super().participate(session)
+        # One answer for the whole table: the choice derived from uniform rows, one row
+        # for each trial (a stimulus shown twice is answered twice).
+        from brainscore_core.response_formats import argmax, response_record
+        from brainscore_core.streaming import StreamEvent
+        labels = session.task.response.labels
+        if isinstance(labels, str):
+            raise ValueError("chance-baseline answers a Choice with shared options; options per "
+                             f"row (Choice({labels!r})) are not supported.")
+        labels = list(labels)
+        trials = []
+        while (event := session.next_input()) is not None:
+            meta = event.meta or {}
+            if meta.get('stimulus_id') is not None:
+                trial = (meta['stimulus_id'], meta.get('table_row', meta.get('stimulus_index')))
+                if trial not in trials:      # one trial may send several columns
+                    trials.append(trial)
+        ids = [stimulus_id for stimulus_id, _ in trials]
+        rows = np.full((len(ids), len(labels)), 1.0 / len(labels))
+        indices, valid = argmax(rows)
+        one_hot = np.where(valid[:, None], np.eye(len(labels))[indices], np.nan).astype(np.float32)
+        answer = BehavioralAssembly(
+            one_hot, dims=['presentation', 'choice'],
+            coords={'stimulus_id': ('presentation', ids), 'choice': labels,
+                    'raw_answer': ('presentation', [str([float(v) for v in row]) for row in rows])},
+            attrs={'response': response_record('behavior:choice', 'uniform', conversion='argmax',
+                                               source_format='behavior:probabilities')})
+        session.respond(StreamEvent('behavior:choice', answer, None, {}))
 
     def start_task(self, task_or_type, fitting_stimuli=None, **kwargs) -> None:
         if isinstance(task_or_type, TaskContext):

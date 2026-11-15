@@ -151,13 +151,14 @@ def test_plain_behavior_request_is_refused_for_a_reply_only_subject():
 
 
 def test_plain_behavior_request_returns_the_primary_answer():
-    """With an answer part bare behavior is declared; a response task's choice is copied to it."""
+    """With an answer part bare behavior is declared; a response task's choice is copied to it.
+    A plain Choice is answered by answer= when it is wired (point r)."""
     model = BrainScoreModel(identifier='toy', extractor={'text': _features},
                             answer=lambda stimulus_row, instruction, label_set: 'cat',
                             reply=lambda prompt: 'dog')
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
     behavior = _ask(model, task, ['behavior']).collect('behavior')
-    np.testing.assert_array_equal(behavior.values.argmax(1), [1, 1, 1, 1])
+    np.testing.assert_array_equal(behavior.values.argmax(1), [0, 0, 0, 0])
 
 
 def test_task_type_and_response_must_agree():

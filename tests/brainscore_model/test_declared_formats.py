@@ -58,10 +58,10 @@ DECLARED = {
 # The requested outputs and inputs of the benchmarks (their declarations; the
 # test below checks ROAR and EWoK against the real classes).
 BENCHMARKS = {
-    'ROAR image': ({'vision:image', 'instruction'}, {B}),
-    'ROAR text': ({'text', 'instruction'}, {B}),
-    'dyslexia image': ({'vision:image', 'instruction', 'lesion'}, {B, 'neural:VWFA', 'perturbation'}),
-    'dyslexia text': ({'text', 'instruction', 'lesion'}, {B, 'neural:VWFA', 'perturbation'}),
+    'ROAR image': ({'vision:image', 'instruction'}, {CH}),
+    'ROAR text': ({'text', 'instruction'}, {CH}),
+    'dyslexia image': ({'vision:image', 'instruction', 'lesion'}, {CH, 'neural:VWFA', 'perturbation'}),
+    'dyslexia text': ({'text', 'instruction', 'lesion'}, {CH, 'neural:VWFA', 'perturbation'}),
     'EWoK choice': ({'text'}, {CH}),
     'EWoK logprobs': ({'text'}, {LP}),
     'CogGym': ({'instruction', 'text'}, {TE}),
@@ -70,7 +70,7 @@ BENCHMARKS = {
 ALL = set(BENCHMARKS)
 # The benchmarks each library call is compatible with (else N/A), before and after.
 COMPATIBLE = {
-    'model_helpers/causal_lm.py': (ALL, {'EWoK choice', 'EWoK logprobs', 'CogGym'}),
+    'model_helpers/causal_lm.py': (ALL, ALL - {'facade'}),
     'models/api_closed/model.py': (ALL - {'EWoK logprobs'}, ALL - {'EWoK logprobs'}),
     'models/blip2_opt_2_7b/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
     'models/clip_vit_b_32/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
@@ -132,15 +132,16 @@ def test_each_library_call_is_compatible_where_the_matrix_says(where, wired, sta
 
 
 def test_the_matrix_changes_only_where_the_declarations_change():
-    """The changed cells: causal_lm loses bare behavior (plan, section 3, point g; the
-    image and facade cells follow from the same bare behavior). The readout-only
+    """The changed cells: causal_lm loses bare behavior (plan, section 3, point g), so
+    it is N/A on the facade; since stage 3, S7, ROAR and dyslexia request
+    behavior:choice, which causal_lm gives through its reply, so those cells are
+    applicable again (the stand-in maps a VWFA region; the real registration does not). The readout-only
     registrations state ('readout', 'argmax') and keep behavior:choice. Since stage 3,
     S4, EWoK logprobs requests behavior:log_probabilities, which only a likelihood
     gives, so the readout-only registrations are N/A there (before, the run raised:
     raw scores came only from a likelihood)."""
     changed = {(where, name) for where, (before, after) in COMPATIBLE.items() for name in before ^ after}
-    assert changed == {('model_helpers/causal_lm.py', name) for name in
-                       ('ROAR image', 'ROAR text', 'dyslexia image', 'dyslexia text', 'facade')} | {
+    assert changed == {('model_helpers/causal_lm.py', 'facade')} | {
         (where, 'EWoK logprobs') for where in ('models/blip2_opt_2_7b/model.py', 'models/clip_vit_b_32/model.py',
                                                'models/gpt2/model.py', 'models/random_vit_b_32/model.py')}
     assert all(after <= before for before, after in COMPATIBLE.values())
@@ -183,17 +184,17 @@ def test_a_stated_readout_choice_is_declared_and_derived_by_argmax():
         ('derived', 'argmax', 'readout')
 
 
-def test_causal_lm_declares_no_bare_behavior_and_roar_text_is_not_applicable(causal_lm, synthetic_roar):
+def test_causal_lm_answers_roar_text_through_its_reply(causal_lm, synthetic_roar):
+    """ROAR requests behavior:choice (S7): a reply gives it, parsed by the model."""
     from brainscore.benchmarks.roar_yeatman2021.benchmark import Yeatman2021LexicalDecision
     model, net, _ = causal_lm
-    assert B not in model.out_channels
-    calls = []
-    hook = net.register_forward_pre_hook(lambda module, args: calls.append(1))
-    try:
-        score = brainscore.score(model, Yeatman2021LexicalDecision(channels=('text',)), check_mem=False)
-    finally:
-        hook.remove()
-    assert score.attrs['status'] == 'N/A' and calls == []
+    assert B not in model.out_channels and CH in model.out_channels
+    sessions = []
+    participate = model.participate
+    model.participate = lambda session: sessions.append(session) or participate(session)
+    score = brainscore.score(model, Yeatman2021LexicalDecision(channels=('text',)), check_mem=False)
+    assert score.attrs['n_test_stimuli'] == 100
+    assert sessions[0].collect(CH).attrs['response']['parsed_by'] == 'model'
 
 
 def test_a_readout_only_model_on_ewok_choice_is_not_applicable(prepared, tmp_path):
