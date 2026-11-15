@@ -77,7 +77,7 @@ def _assembly(inputs, layers, value):
 def test_same_configuration_hits_changed_configuration_misses(cls, monkeypatch, isolated_cache):
     wrapper = _wrapper(cls)
     inp = 'texts' if cls is TextWrapper else 'paths'
-    method = getattr(wrapper, f'_from_{inp}_cached')
+    method = wrapper._cached
     isolated_cache(getattr(wrapper, f'_from_{inp}_stored'))
     calls = []
     def extract(inputs, layers, stimuli_identifier=None):
@@ -103,7 +103,7 @@ def test_same_configuration_hits_changed_configuration_misses(cls, monkeypatch, 
     other._identifier = 'another-registration'
     other._model.load_state_dict(wrapper._model.state_dict())
     monkeypatch.setattr(other, f'_from_{inp}', lambda *a, **k: pytest.fail('cache missed'))
-    np.testing.assert_array_equal(getattr(other, f'_from_{inp}_cached')(['a', 'b'], ['L'], 'stimuli'), expected)
+    np.testing.assert_array_equal(other._cached(['a', 'b'], ['L'], 'stimuli'), expected)
 
 
 @pytest.mark.parametrize('cls', [TextWrapper, VLMVisionWrapper, VideoWrapper, AudioWrapper])
@@ -138,7 +138,7 @@ def test_unversioned_entry_is_logged_and_left_untouched(monkeypatch, isolated_ca
     old_bytes = old_path.read_bytes()
     monkeypatch.setattr(wrapper, '_from_texts', lambda texts, layers, identifier: _assembly(texts, layers, 1))
     with caplog.at_level(logging.INFO):
-        actual = wrapper._from_texts_cached(['a'], ['L'], 'stimuli')
+        actual = wrapper._cached(['a'], ['L'], 'stimuli')
     np.testing.assert_array_equal(actual, 1)
     assert 'Skipping unversioned activation cache' in caplog.text
     assert old_path.read_bytes() == old_bytes
@@ -164,12 +164,12 @@ def test_an_entry_under_the_old_key_form_is_kept_and_not_read(monkeypatch, isola
         calls.append(1)
         return _assembly(texts, layers, 1)
     monkeypatch.setattr(wrapper, '_from_texts', extract)
-    np.testing.assert_array_equal(wrapper._from_texts_cached(['a'], ['L'], 'stimuli'), 1)
+    np.testing.assert_array_equal(wrapper._cached(['a'], ['L'], 'stimuli'), 1)
     assert calls == [1]
     assert old_path.read_bytes() == old_bytes
     (new_path,) = [path for path in old_path.parent.glob('*.pkl') if path != old_path]
     assert new_path.name.startswith('stimuli_identifier=stimuli,extraction_fingerprint=v2-')
-    np.testing.assert_array_equal(wrapper._from_texts_cached(['a'], ['L'], 'stimuli'), 1)
+    np.testing.assert_array_equal(wrapper._cached(['a'], ['L'], 'stimuli'), 1)
     assert calls == [1]
 
 
@@ -190,7 +190,7 @@ def test_real_text_cache_preserves_values_and_pereira_context(language_pair, iso
     np.testing.assert_array_equal(native.process(stimuli), first)
     assert len(calls) == 1  # tokenizer backend runtime padding cannot alter key
     # Compare against direct cold extraction, not another cache read.
-    cold = extract(wrapper._extract_texts(stimuli), ['transformer.h.0'])
+    cold = extract(wrapper._table_inputs(stimuli), ['transformer.h.0'])
     np.testing.assert_array_equal(first, cold)
     wrapper._max_length = 3
     shortened = native.process(stimuli)
@@ -300,4 +300,4 @@ def test_unsupported_provider_bypasses_storage(monkeypatch):
     wrapper.cache_config = lambda: {'opaque': object()}
     monkeypatch.setattr(wrapper, '_from_texts_stored', lambda **kwargs: pytest.fail('unsafe cache lookup'))
     monkeypatch.setattr(wrapper, '_from_texts', lambda texts, layers, identifier: _assembly(texts, layers, 5))
-    np.testing.assert_array_equal(wrapper._from_texts_cached(['a'], ['L'], 'stimuli'), 5)
+    np.testing.assert_array_equal(wrapper._cached(['a'], ['L'], 'stimuli'), 5)

@@ -23,12 +23,10 @@ import numpy as np
 from tqdm.auto import tqdm
 
 from brainscore_core.assembly_builder import concat_neuroid_assemblies
-from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.extraction_cache import store_xarray
-from brainscore.model_helpers import _extractors
 from brainscore.model_helpers._extractors import (
-    LiveRecording, as_array, attach_stimulus_set, attention_mask, cache_signature, checked_aggregation,
-    in_layer_order, labelled, layer_assembly, one_dtype, run_batches,
+    CachingExtractor, LiveRecording, as_array, attention_mask, checked_aggregation,
+    layer_assembly, one_dtype, run_batches,
 )
 
 
@@ -125,7 +123,7 @@ def _input_device(model):
     return next(model.parameters()).device
 
 
-class TextWrapper:
+class TextWrapper(CachingExtractor):
     """Text model wrapper symmetric with PytorchWrapper.
 
     Args:
@@ -194,50 +192,23 @@ class TextWrapper:
         self._identifier = identifier or model.__class__.__name__
         self._provenance = None if provenance is None else deepcopy(dict(provenance))
 
-    @property
-    def identifier(self):
-        return self._identifier
+    _INPUTS = 'texts'
 
-    def __call__(self, stimuli, layers, stimuli_identifier=None, **kwargs):
-        """Extract activations from text stimuli.
+    def _table_inputs(self, stimulus_set):
+        """The texts of a table: each row's sentence, with its passage context (``context_id``)."""
+        from brainscore_core.text import contextualized_texts
+        if 'context_id' in stimulus_set.columns and self._layer_aggregation == 'sequence':
+            raise ValueError('context_id passage grouping requires last or mean; '
+                             'sequence inputs must supply their complete text explicitly.')
+        return contextualized_texts(stimulus_set)
 
-        Args:
-            stimuli: StimulusSet with 'sentence' or 'text' column, or list of strings.
-            layers: List of layer name strings to extract from. Suffix a name
-                with ``':input'`` to record the module's first input instead of
-                its output, e.g. ``'model.layers.14.mlp.down_proj:input'`` for
-                a transformer's MLP neurons (the same name an intervention uses).
-            stimuli_identifier: Identifier for caching. None to use stimulus_set.identifier.
+    def _key_inputs(self, texts):
+        return texts
 
-        Returns:
-            NeuroidAssembly with dims ``(presentation, neuroid)`` for
-            ``last`` and ``mean``, or
-            ``(presentation, time_bin, neuroid)`` for ``sequence``.
-        """
-        if isinstance(stimuli, StimulusSet):
-            assembly = self._from_stimulus_set(stimuli, layers, stimuli_identifier)
-        else:
-            assembly = in_layer_order(self._from_texts(stimuli, layers, stimuli_identifier), layers)
+    def _finish(self, assembly):
         if self._provenance is not None:
             assembly.attrs['provenance'] = deepcopy(self._provenance)
         return assembly
-
-    def _from_stimulus_set(self, stimulus_set, layers, stimuli_identifier=None):
-        if stimuli_identifier is None and hasattr(stimulus_set, 'identifier'):
-            stimuli_identifier = stimulus_set.identifier
-
-        texts = self._extract_texts(stimulus_set)
-        if 'context_id' in stimulus_set.columns:
-            if self._layer_aggregation == 'sequence':
-                raise ValueError('context_id passage grouping requires last or mean; '
-                                 'sequence inputs must supply their complete text explicitly.')
-        activations = self._from_texts_cached(
-            texts, layers, stimuli_identifier)
-        return attach_stimulus_set(activations, stimulus_set)
-
-    def _extract_texts(self, stimulus_set):
-        from brainscore_core.text import contextualized_texts
-        return contextualized_texts(stimulus_set)
 
     CACHE_FIELDS = (
         '_tokenizer',
@@ -246,17 +217,6 @@ class TextWrapper:
         '_batch_size',
         '_provenance',
     )
-
-    def cache_config(self):
-        return _extractors.cache_config(self, self.CACHE_FIELDS)
-
-    def _from_texts_cached(self, texts, layers, stimuli_identifier=None):
-        signature = cache_signature(self, '_from_texts_stored', texts, stimuli_identifier)
-        if signature is None:
-            return in_layer_order(self._from_texts(texts, layers, stimuli_identifier), layers)
-        stored = self._from_texts_stored(stimuli_identifier=stimuli_identifier, layers=layers, texts=texts,
-                                         extraction_fingerprint=signature)
-        return in_layer_order(labelled(stored, self._identifier), layers)
 
     @store_xarray(identifier_ignore=['texts', 'layers'], combine_fields={'layers': 'layer'})
     def _from_texts_stored(self, layers, stimuli_identifier, texts, extraction_fingerprint):

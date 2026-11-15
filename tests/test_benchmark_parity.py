@@ -162,7 +162,7 @@ def test_harness_detects_missing_native_context(synthetic_benchmarks, language_p
         return {'native': native, 'adapter': adapter, 'legacy': adapter._legacy}[route]
     # First establish that the otherwise-identical setup passes with context.
     validate_case(CASES[-1], factory)
-    monkeypatch.setattr(wrapper, '_extract_texts', lambda stimuli: list(stimuli.sentence))
+    monkeypatch.setattr(wrapper, '_table_inputs', lambda stimuli: list(stimuli.sentence))
     with pytest.raises(AssertionError, match='native activations differ') as failure:
         validate_case(CASES[-1], factory)
     assert 'score differs' not in str(failure.value)

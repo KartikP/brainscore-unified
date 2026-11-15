@@ -387,24 +387,24 @@ def test_context_expansion_preserves_stimulus_identifier(monkeypatch):
     from brainscore.model_helpers.text_wrapper import TextWrapper
     wrapper = TextWrapper.__new__(TextWrapper)
     wrapper._layer_aggregation = 'last'
+    wrapper._provenance = None
     seen = []
-    monkeypatch.setattr(wrapper, '_from_texts_cached',
+    monkeypatch.setattr(wrapper, '_cached',
                         lambda texts, layers, identifier: seen.append((texts, identifier)))
-    monkeypatch.setattr('brainscore.model_helpers.text_wrapper.attach_stimulus_set',
-                        lambda output, stimuli: output)
+    monkeypatch.setattr(wrapper, '_columns', lambda output, stimuli: output)
     stimuli = _stimuli()
-    wrapper._from_stimulus_set(stimuli, ['L'])
+    wrapper(stimuli, ['L'])
     stimuli['context_id'] = 'passage'
-    wrapper._from_stimulus_set(stimuli, ['L'])
+    wrapper(stimuli, ['L'])
     stimuli['context_id'] = ['a', 'a', 'b', 'b']
-    wrapper._from_stimulus_set(stimuli, ['L'])
+    wrapper(stimuli, ['L'])
     assert len({identifier for _, identifier in seen}) == 1
     assert len({tuple(texts) for texts, _ in seen}) == 3
     assert seen[0][0][1] == 'the dog'
     assert seen[1][0][1] == 'the cat the dog'
     wrapper._layer_aggregation = 'sequence'
     with pytest.raises(ValueError, match='sequence'):
-        wrapper._from_stimulus_set(stimuli, ['L'])
+        wrapper(stimuli, ['L'])
 
 
 def test_provider_reset_attempts_remaining_providers_after_failure():
