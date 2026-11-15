@@ -173,7 +173,9 @@ class TestUndoIsExact:
 
     def test_undo_by_handle_restores_the_same_outputs(self, model_with_ablation):
         bs, net = model_with_ablation
-        x = torch.randn(3, 4)
+        # Positive inputs: the scaled units 1 and 3 are active, so the change is visible.
+        # A random input left both units at zero in about 1 run of 64.
+        x = torch.tensor([[1., 2., 3., 4.], [.5, 1.5, 2.5, 3.5], [4., 3., 2., 1.]])
         baseline = net(x).detach().clone()
         applied = apply_state_change(bs, StateChange(
             kind='ablation', target=Selection(layer='fc1', indices=[1, 3]),
