@@ -25,14 +25,18 @@ N_VOXELS = 20484          # the TR benchmark checks the fsaverage5 size
 N_TR = 12
 SAMPLE_TIMES = (500, 1500, 2500)
 CLIPS = [f'stimulus_{i:04d}' for i in (3, 1, 6, 2, 5, 4)]   # not sorted on purpose
+# The GLM assembly also holds test-set videos (id above 1000, as in BOLDMoments):
+# the Lahner2024 voxel mask and ceilings come from them. The TR data shows CLIPS only.
+TEST_CLIPS = [f'stimulus_{i:04d}' for i in (1004, 1001, 1005, 1003, 1002)]
+GLM_CLIPS = CLIPS + TEST_CLIPS
 MOTION_COLUMNS = ['trans_x', 'trans_y', 'trans_z', 'rot_x', 'rot_y', 'rot_z',
                   'framewise_displacement', 'csf', 'white_matter']
 
 
 def stimulus_set():
-    stimuli = StimulusSet(pd.DataFrame({'stimulus_id': CLIPS}))
+    stimuli = StimulusSet(pd.DataFrame({'stimulus_id': GLM_CLIPS}))
     stimuli.identifier = 'BOLDMoments'
-    stimuli.stimulus_paths = {clip: f'/synthetic/{clip}.mp4' for clip in CLIPS}
+    stimuli.stimulus_paths = {clip: f'/synthetic/{clip}.mp4' for clip in GLM_CLIPS}
     return stimuli
 
 
@@ -40,17 +44,17 @@ GLM_REPS = 4
 
 
 def glm_values(reps=GLM_REPS, seed=1):
-    """``(presentation, voxel)`` betas; presentation ``i`` shows ``CLIPS[i % len(CLIPS)]``."""
+    """``(presentation, voxel)`` betas; presentation ``i`` shows ``GLM_CLIPS[i % len(GLM_CLIPS)]``."""
     rng = np.random.default_rng(seed)
-    signal = rng.standard_normal((len(CLIPS), N_VOXELS)) * np.linspace(0.0, 2.0, N_VOXELS)
-    rows = [(clip, rep) for rep in range(reps) for clip in CLIPS]
-    return np.stack([signal[CLIPS.index(clip)] + rng.standard_normal(N_VOXELS)
+    signal = rng.standard_normal((len(GLM_CLIPS), N_VOXELS)) * np.linspace(0.0, 2.0, N_VOXELS)
+    rows = [(clip, rep) for rep in range(reps) for clip in GLM_CLIPS]
+    return np.stack([signal[GLM_CLIPS.index(clip)] + rng.standard_normal(N_VOXELS)
                      for clip, _ in rows]).astype(np.float32)
 
 
 def glm_assembly(values=None, reps=GLM_REPS):
     values = glm_values(reps) if values is None else np.asarray(values, dtype=np.float32)
-    rows = [(clip, rep) for rep in range(reps) for clip in CLIPS]
+    rows = [(clip, rep) for rep in range(reps) for clip in GLM_CLIPS]
     return NeuronRecordingAssembly(values.T[None], dims=['time_bin', 'neuroid', 'presentation'], coords={
         'time_bin_start': ('time_bin', [0]), 'time_bin_end': ('time_bin', [3000]),
         'neuroid_id': ('neuroid', np.arange(N_VOXELS)),
@@ -141,13 +145,13 @@ def install(monkeypatch, tmp_path, runs=None, bold=None, events=None, glm=None):
     monkeypatch.setitem(sys.modules, 'nilearn.datasets', datasets)
     frames = tmp_path / 'frames'
     frames.mkdir()
-    for clip in CLIPS:
+    for clip in GLM_CLIPS:
         for t in SAMPLE_TIMES:
             (frames / f'{clip}_t{t}.png').write_bytes(b'png')
     monkeypatch.setenv('BRAINSCORE_LAHNER_FRAMES_DIR', str(frames))
     audio = tmp_path / '.brainio' / 'lahner2024_audio_16k'
     audio.mkdir(parents=True)
-    for clip in CLIPS:
+    for clip in GLM_CLIPS:
         (audio / f'{clip}.wav').write_bytes(b'wav')
     monkeypatch.setenv('HOME', str(tmp_path))
     return runs
