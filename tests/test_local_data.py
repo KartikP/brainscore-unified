@@ -58,6 +58,24 @@ class TestResolution:
         row, = [row for row in local.status() if row['name'] == asset.name]
         assert row['present'] is False and row['path'].startswith('refused:')
 
+    @pytest.mark.parametrize('value', ['', '  '])
+    def test_an_empty_variable_is_refused(self, asset, monkeypatch, value):
+        monkeypatch.setenv(asset.env_var, value)
+        with pytest.raises(ValueError, match=f'{asset.env_var} is set but empty.*unset it'):
+            asset.resolved()
+
+    def test_an_empty_ewok_variable_is_refused_not_read_as_this_folder(self, monkeypatch):
+        from brainscore.data.ewok.data import load_prepared
+        monkeypatch.setenv('BRAINSCORE_EWOK_ROOT', '')
+        with pytest.raises(ValueError, match='BRAINSCORE_EWOK_ROOT is set but empty'):
+            load_prepared()
+
+    def test_an_empty_friends_variable_is_refused_not_read_as_the_default(self, monkeypatch):
+        from brainscore.data.algonauts2025 import default_data_root
+        monkeypatch.setenv('BRAINSCORE_ALGONAUTS_PREPARED', '')
+        with pytest.raises(ValueError, match='BRAINSCORE_ALGONAUTS_PREPARED is set but empty'):
+            default_data_root()
+
     def test_unknown_asset_names_the_known_ones(self):
         with pytest.raises(KeyError, match='known:'):
             local.path('no-such-asset')

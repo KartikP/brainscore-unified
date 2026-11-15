@@ -80,9 +80,14 @@ class LocalAsset:
 
         A leading ``~`` in the variable means the home folder. When a folder with
         that literal name (for example ``./~/frames``) also exists under the current
-        folder, the value is ambiguous and is refused.
+        folder, the value is ambiguous and is refused. A variable set to an empty
+        value is refused too: it names no folder.
         """
         override = os.environ.get(self.env_var)
+        if override is not None and not override.strip():
+            raise ValueError(
+                f'{self.env_var} is set but empty. Set it to a folder, or unset it to use '
+                f'the default {pathlib.Path.home() / self.default_path}.')
         if override:
             expanded = pathlib.Path(override).expanduser()
             literal = pathlib.Path.cwd() / override
