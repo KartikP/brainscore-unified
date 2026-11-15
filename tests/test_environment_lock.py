@@ -76,12 +76,6 @@ def test_a_platform_without_a_lock_keeps_only_the_bounds(monkeypatch, platform_k
     assert 'XX' not in text.split('full lock', 1)[1].split('user-supplied', 1)[0]
 
 
-# The one difference left between the CPU test profile and the reference lock: datasets is 2.21.0
-# (the legacy wikitext plugin requires datasets 2.*); the lock still names 5.0.1 until it is made
-# again from the reference machine. Remove the entry then.
-OPEN_POINTS = {'datasets'}
-
-
 def _pins(path):
     import re
     pins = {}
@@ -98,7 +92,7 @@ def test_every_constraint_names_the_lock_version_without_its_local_tag():
     constraints, lock = _pins(install / 'v2-constraints.txt'), _pins(install / 'lock-linux-py311-cu124.txt')
     differing = {name: (version, lock.get(name)) for name, version in constraints.items()
                  if (lock.get(name) or '').split('+')[0] != version}
-    assert set(differing) == OPEN_POINTS, differing
+    assert not differing, differing
     script = (install / 'run_candidate.sh').read_text(encoding='utf-8')
     assert f"TORCH_VERSION={constraints['torch']}\n" in script
     assert f"TORCHVISION_VERSION={constraints['torchvision']}\n" in script
