@@ -634,13 +634,19 @@ class BehavioralReadout:
             def with_history(prompt):
                 return replace(prompt, history=tuple(self.history)) if remember else prompt
 
+            # Within generation a plain Choice goes to answer= when it is wired (point r): the
+            # call a registration makes for a choice. The reply answers task settings (verbatim,
+            # options per row), a Scale or a Text, trial history, or when answer= is absent.
+            by_answer = (owner._answer is not None and isinstance(response, Choice)
+                         and not response.verbatim and not isinstance(response.labels, str)
+                         and not remember)
             if path == 'likelihood':
                 def call(row, prompt):
                     scores = owner._likelihood(with_history(prompt), list(prompt.response.labels))
                     if remember:
                         self.history.append((prompt, max(scores, key=scores.get)))
                     return scores
-            elif owner._reply is not None:
+            elif owner._reply is not None and not by_answer:
                 def call(row, prompt):
                     shown = with_history(prompt)
                     # Scoring first keeps the recorded first pass the prompt alone.

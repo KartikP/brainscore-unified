@@ -311,3 +311,17 @@ def test_the_requested_formats_decide_the_passes_and_the_recording(parts, output
     assert recorded.values.tolist() == rows
     assert (recorded.attrs['recording']['path'], recorded.attrs['recording']['forward_pass']) == (
         'generation', 'prompt')
+
+
+# --- S7a: within generation, a plain Choice goes to answer= (point r) ---------------
+
+@pytest.mark.parametrize('verbatim, called', [(False, 'answer'), (True, 'reply')],
+                         ids=['plain choice', 'verbatim choice'])
+def test_a_plain_choice_goes_to_answer_and_a_task_setting_to_reply(verbatim, called):
+    calls = []
+    model = _model(*QWEN, owners=REGISTERED_STATEMENTS[QWEN], calls=calls)
+    task = TaskContext(instruction=None if verbatim else 'Which?',
+                       response=Choice(['cat', 'dog'], verbatim=verbatim))
+    choice = _run(model, ['behavior:choice'], task).collect('behavior:choice')
+    assert calls == [called] * len(STIMULI)
+    assert choice.attrs['response']['method'] == 'generation'

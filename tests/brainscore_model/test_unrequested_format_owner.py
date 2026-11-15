@@ -33,15 +33,15 @@ def _linked(link):
 def test_a_linked_choice_session_is_answered_without_a_probability_owner(link):
     calls = []
     choice = _run(_api(calls), ['behavior:choice'], _linked(link)).collect('behavior:choice')
-    assert calls == ['reply'] * 3
+    assert calls == ['answer'] * 3            # a plain Choice goes to answer= (point r)
     assert choice.values.tolist() == [[1.0, 0.0]] * 3
 
 
 @pytest.mark.parametrize('link', LINKS)
-def test_bare_behavior_under_a_linked_choice_is_the_reply_choice(link):
+def test_bare_behavior_under_a_linked_choice_is_the_answer_choice(link):
     calls = []
     behavior = _run(_api(calls), ['behavior'], _linked(link)).collect('behavior')
-    assert calls == ['reply'] * 3
+    assert calls == ['answer'] * 3
     assert behavior.values.tolist() == [[1.0, 0.0]] * 3
     assert behavior.attrs['response']['method'] == 'generation'
 
