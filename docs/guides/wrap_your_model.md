@@ -178,6 +178,56 @@ For a hosted API, `build_api_reply(provider, model_id)` (a `reply`) and `build_a
 
 It can take part in behavioral benchmarks but not neural ones; neural benchmarks will report N/A.
 
+## A subject of your own
+
+A system with its own loop subclasses `Subject` ([Lesson 1](../../notebooks/lessons/01_your_first_subject.ipynb)). Declare `identifier`, `in_channels` and `out_channels` with class attributes, or with properties when a declaration depends on a constructor argument. An assignment such as `self.out_channels = ...` in `__init__` does not work: these names are abstract properties of `Subject`, so the class must define them.
+
+A subject that answers one trial with one cell (a string, a 1-D array or one number on `behavior:<format>`) names two keys in the event's `meta`: `stimulus_id`, the row it answers, in a table session; and `units` (`'ms'` or `'monotone'`) for a `behavior:rt` cell.
+
+```python
+import pandas as pd
+
+from brainscore_core import Subject
+from brainscore_core.contract import TaskContext
+from brainscore_core.responses import Choice
+from brainscore_core.streaming import StreamEvent
+from brainscore_core.streaming_helpers import stimulus_session
+from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+
+
+class FirstOption(Subject):
+    """Answers each word with the first option; reports a fixed time when asked."""
+    identifier = 'first-option'
+    in_channels = {'text'}                           # a class attribute
+
+    def __init__(self, outputs=('behavior:choice',)):
+        self._outputs = set(outputs)
+
+    @property
+    def out_channels(self):                          # a property: it depends on the argument
+        return self._outputs
+
+    def participate(self, session):
+        options = session.task.response.labels
+        wanted = session.outputs or ()
+        while (event := session.next_input()) is not None:
+            trial = {'stimulus_id': event.meta['stimulus_id']}
+            if 'behavior:choice' in wanted:
+                session.respond(StreamEvent('behavior:choice', options[0], None, trial))
+            if 'behavior:rt' in wanted:
+                session.respond(StreamEvent('behavior:rt', 450.0, None, {**trial, 'units': 'ms'}))
+
+
+words = StimulusSet(pd.DataFrame({'stimulus_id': ['w0', 'w1'], 'text': ['cat', 'blick']}))
+words.identifier = 'two-words'
+task = TaskContext(instruction='Is this a word?',
+                   response=Choice(['real', 'pseudo'], reaction_time='surprisal'))
+session = stimulus_session(words, ['behavior:choice', 'behavior:rt'], task)
+FirstOption(outputs=['behavior:choice', 'behavior:rt']).participate(session)
+print(session.collect('behavior:choice').values.tolist())   # [[1.0, 0.0], [1.0, 0.0]]
+print(session.collect('behavior:rt').values.tolist())       # [450.0, 450.0]
+```
+
 ## Register it (optional)
 
 You can always pass the object directly to `brainscore.score`. To load it by name, copy [templates/new_model](../../templates/new_model), implement the factory and its test, and register it in `brainscore/models`.
