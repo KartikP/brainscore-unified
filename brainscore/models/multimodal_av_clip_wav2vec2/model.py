@@ -17,16 +17,10 @@ Four signal/null permutations registered:
 - random-clip-random-wav2vec2    null vision   + null audio
 """
 
-import functools
-
-import torch
-
 from brainscore import BrainScoreModel, LayerSelector
-from brainscore.models._shared import (
-    _load_preprocess_images, build_audio_wrapper)
+from brainscore.models._shared import build_audio_wrapper
 
 from ._ids import SUPPORTED_IDENTIFIERS
-from brainscore_core.hf_compat import pin_image_processor
 
 REGION_LAYER_MAP = {
     # Vision tower (CLIP ViT-B/32 vision_model — paths relative to
@@ -49,31 +43,14 @@ REGION_MODALITY_MAP = {
 
 
 def _build_vision_wrapper(combo_identifier: str, random_init: bool = False):
-    """CLIP vision_model wrapped via PytorchWrapper."""
-    from transformers import CLIPModel, CLIPProcessor
-    from brainscore_vision.model_helpers.activations.pytorch import (
-        PytorchWrapper)
-
-# Pin the image-processor implementation: transformers 5 rebinds the class
-    # names, moving the default from PIL to torchvision and shifting pixels.
-    processor = CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')
-    processor = pin_image_processor(processor, 'openai/clip-vit-base-patch32')
-    clip_model = CLIPModel.from_pretrained('openai/clip-vit-base-patch32')
-    if random_init:
-        torch.manual_seed(0)
-        for p in clip_model.vision_model.parameters():
-            p.data.normal_(mean=0.0, std=0.02)
-
-    preprocessing = functools.partial(
-        _load_preprocess_images, processor=processor)
+    """The picture tower of ``clip-vit-b-32`` (or of ``random-vit-b-32`` with ``random_init``)."""
+    from brainscore.models.clip_vit_b_32.model import load_clip, picture_tower
+    clip_model, processor = load_clip(random_init=random_init)
     # The activations carry the backbone's name; the cache key is the combo's.
-    vision_wrapper = PytorchWrapper(
-        identifier='random-clip-vit-b-32' if random_init else 'clip-vit-b-32',
-        backbone_id=f'{combo_identifier}-vision',
-        model=clip_model.vision_model,
-        preprocessing=preprocessing,
-    )
-    return preprocessing, vision_wrapper
+    vision_wrapper = picture_tower(clip_model, processor,
+                                   'random-clip-vit-b-32' if random_init else 'clip-vit-b-32',
+                                   backbone_id=f'{combo_identifier}-vision')
+    return vision_wrapper
 
 
 def get_model(identifier: str) -> BrainScoreModel:
@@ -84,7 +61,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     random_vision = identifier.startswith('random-clip')
     random_audio = 'random-wav2vec2' in identifier
 
-    preprocessing, vision_wrapper = _build_vision_wrapper(
+    vision_wrapper = _build_vision_wrapper(
         identifier, random_init=random_vision)
     audio_wrapper, _ = build_audio_wrapper(
         identifier, random_init=random_audio)

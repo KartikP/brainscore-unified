@@ -12,48 +12,18 @@ or the logistic readout alone is over-expressive on the training set.
 Deterministic seed so re-runs are reproducible.
 """
 
-import functools
-
-import torch
-from transformers import CLIPConfig, CLIPModel, CLIPProcessor
-
 from brainscore.model_helpers.text_wrapper import TextWrapper
 from brainscore import BrainScoreModel, LayerSelector
-from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
-from brainscore_core.hf_compat import pin_image_processor
-from brainscore.models._shared import _load_preprocess_images
-from brainscore.models.clip_vit_b_32.model import REGION_LAYER_MAP
+from brainscore.models.clip_vit_b_32.model import REGION_LAYER_MAP, load_clip, picture_tower
 
 
 def get_model(identifier: str) -> BrainScoreModel:
     assert identifier == 'random-vit-b-32'
 
-    # Same architecture as CLIP ViT-B/32 but untrained. Config is loaded
-    # from the pretrained checkpoint (so architecture is identical) but
-    # weights are reinitialized via from_config.
-    config = CLIPConfig.from_pretrained('openai/clip-vit-base-patch32')
-    # Deterministic random init for reproducibility
-    torch.manual_seed(0)
-    clip_model = CLIPModel(config)
-
-    # We still need the processor for its preprocessing pipeline
-    # (pixel normalization, resizing). These are NOT learned — just
-    # standard image preprocessing — so it's fine to reuse.
-# Pin the image-processor implementation: transformers 5 rebinds the class
-    # names, moving the default from PIL to torchvision and shifting pixels.
-    clip_processor = CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')
-    clip_processor = pin_image_processor(clip_processor, 'openai/clip-vit-base-patch32')
-
-    preprocessing = functools.partial(
-        _load_preprocess_images,
-        processor=clip_processor,
-    )
-
-    vision_wrapper = PytorchWrapper(
-        identifier=identifier,
-        model=clip_model.vision_model,
-        preprocessing=preprocessing,
-    )
+    # Same architecture as CLIP ViT-B/32 but untrained (``load_clip(random_init=True)``);
+    # the processor is reused: its preprocessing is not learned.
+    clip_model, clip_processor = load_clip(random_init=True)
+    vision_wrapper = picture_tower(clip_model, clip_processor, identifier)
 
     text_wrapper = TextWrapper(
         model=clip_model.text_model,

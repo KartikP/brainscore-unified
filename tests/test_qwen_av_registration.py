@@ -14,6 +14,7 @@ def test_qwen_av_registration_builds_its_vision_tower():
     visual = torch.nn.Module()
     visual.blocks = torch.nn.ModuleList(torch.nn.Linear(2, 2) for _ in range(29))
     qwen.model.visual = visual
+    qwen.to.return_value = qwen                         # the family's load puts the model on one device
     audio = MagicMock()
     audio.layer_names.return_value = ['encoder.layers.6']
     with patch('brainscore.models._downloads.hf_preflight', return_value={}), \
@@ -21,7 +22,8 @@ def test_qwen_av_registration_builds_its_vision_tower():
                          'from_pretrained', return_value=qwen), \
             patch.object(transformers.AutoProcessor, 'from_pretrained',
                          return_value=MagicMock()), \
-            patch.object(reg, 'pin_image_processor', side_effect=lambda p, *a, **k: p), \
+            patch('brainscore.models.qwen25_vl_3b.model.pin_image_processor',
+                  side_effect=lambda p, *a, **k: p), \
             patch('brainscore.models._shared.build_audio_wrapper',
                   return_value=(audio, None)):
         model = reg.get_model('qwen2.5-vl-wav2vec2')

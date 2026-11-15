@@ -194,27 +194,34 @@ _vjepa_v1_post_hook = functools.partial(tubelet_spatial_mean, temporal_steps=NUM
                                         spatial_patches=NUM_SPATIAL_PATCHES)
 
 
-def get_model(identifier: str) -> BrainScoreModel:
-    assert identifier == 'vjepa1-vitl'
+def load_backbone(identifier: str):
+    """The V-JEPA v1 ViT-L/16 backbone from its checkpoint: the one load of the family.
 
+    ``identifier`` names the registration in the download message.
+    """
+    ckpt = _download_checkpoint(CHECKPOINT_URL, _default_cache_dir() / 'vitl16.pth.tar', identifier)
+    return _load_vjepa_v1_vitl(ckpt).eval()
+
+
+def video_tower(backbone, identifier: str):
+    """The video extractor of every V-JEPA v1 registration, and the network it wraps."""
     from brainscore.model_helpers.video_wrapper import VideoWrapper
-
-    cache = _default_cache_dir()
-    ckpt = _download_checkpoint(CHECKPOINT_URL, cache / 'vitl16.pth.tar')
-    backbone = _load_vjepa_v1_vitl(ckpt).eval()
     model = _BCTPermuteAdapter(backbone).eval()
-
-    preprocessing = _make_preprocessing()
-
     video_wrapper = VideoWrapper(
         model=model,
-        preprocessing=preprocessing,
+        preprocessing=_make_preprocessing(),
         identifier=identifier,
         num_frames=NUM_INPUT_FRAMES,
         post_hook_fn=_vjepa_v1_post_hook,
         # Same 16-frame budget as VideoMAE → batch 4 fits on A10G 24GB.
         batch_size=4,
     )
+    return video_wrapper, model
+
+
+def get_model(identifier: str) -> BrainScoreModel:
+    assert identifier == 'vjepa1-vitl'
+    video_wrapper, model = video_tower(load_backbone(identifier), identifier)
 
     return BrainScoreModel(
         identifier=identifier,

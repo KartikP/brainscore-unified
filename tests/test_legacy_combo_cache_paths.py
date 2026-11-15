@@ -75,11 +75,18 @@ def _stored_identifier(wrapper, tmp_path, monkeypatch):
 
 @pytest.mark.parametrize('identifier', ['clip-wav2vec2', 'random-clip-wav2vec2'])
 def test_clip_combination_keeps_its_legacy_cache_path(identifier, tmp_path, monkeypatch):
-    import transformers
+    from brainscore.models.clip_vit_b_32 import model as family     # the family's one load
     from brainscore.models.multimodal_av_clip_wav2vec2 import model as registration
-    with patch.object(transformers.CLIPModel, 'from_pretrained', return_value=_Checkpoint()), \
-            patch.object(transformers.CLIPProcessor, 'from_pretrained', return_value=_Processor()), \
-            patch.object(registration, 'pin_image_processor', side_effect=lambda p, *a, **k: p), \
+
+    class _CLIPModel:                          # CLIPModel(config) and CLIPModel.from_pretrained
+        def __new__(cls, *args, **kwargs):
+            return _Checkpoint()
+        from_pretrained = staticmethod(lambda *args, **kwargs: _Checkpoint())
+
+    with patch.object(family, 'CLIPModel', _CLIPModel), \
+            patch.object(family, 'CLIPConfig', MagicMock()), \
+            patch.object(family.CLIPProcessor, 'from_pretrained', return_value=_Processor()), \
+            patch.object(family, 'pin_image_processor', side_effect=lambda p, *a, **k: p), \
             patch.object(registration, 'build_audio_wrapper', side_effect=lambda *a, **k: _audio()):
         model = registration.get_model(identifier)
     path = _stored_identifier(model.extractor['vision'], tmp_path, monkeypatch)
@@ -93,7 +100,8 @@ def test_blip2_combination_keeps_its_legacy_cache_path(tmp_path, monkeypatch):
             patch.object(transformers.Blip2ForConditionalGeneration, 'from_pretrained',
                          return_value=_Checkpoint()), \
             patch.object(transformers.AutoProcessor, 'from_pretrained', return_value=_Processor()), \
-            patch.object(registration, 'pin_image_processor', side_effect=lambda p, *a, **k: p), \
+            patch('brainscore.models.blip2_opt_2_7b.model.pin_image_processor',
+                  side_effect=lambda p, *a, **k: p), \
             patch.object(registration, 'build_audio_wrapper', side_effect=lambda *a, **k: _audio()), \
             patch('brainscore.model_helpers._device.select_device', return_value=torch.device('cpu')):
         model = registration.get_model('blip2-wav2vec2')
