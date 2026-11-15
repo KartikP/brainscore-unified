@@ -245,3 +245,15 @@ def test_every_declared_format_is_answered(where, wired, stated):
         session = stimulus_session(STIMULI, [channel], SESSIONS[channel])
         model.participate(session)
         assert session.collect(channel).sizes['presentation'] == len(STIMULI), (where, channel)
+
+
+def test_a_behavior_request_without_a_task_shows_the_line_to_write_before_any_answer():
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    calls = []
+    model = BrainScoreModel('answers', in_channels={'text'},
+                            answer=lambda stimulus_row, instruction, label_set: calls.append(1) or 'a')
+    table = StimulusSet({'stimulus_id': ['s'], 'sentence': ['x']})
+    table.identifier = 'no-task'
+    with pytest.raises(ValueError, match=r'needs a task.*TaskContext\(response=Choice\(\[\.\.\.\]\)\)'):
+        model.participate(stimulus_session(table, ['behavior:choice']))
+    assert calls == []
