@@ -201,8 +201,6 @@ ALLOWED = {
     ('R11 hooks on a network', 'vision:model_helpers/activations/temporal/model/pytorch.py'): _LEGACY,
     ('R11 hooks on a network', 'language:model_helpers/huggingface.py'): _LEGACY,
     ('R11 hooks on a network', 'language:model_helpers/localize.py'): _LEGACY,
-    ('R14 encoding regression', 'unified:tools/layer_mapping.py'):
-        'layer mapping fits its own Ridge/RidgeCV (second audit)',
     ('R14 encoding regression', 'unified:tools/linear_probe.py'):
         'the linear probe tool fits its own sklearn model',
     ('R14 encoding regression', 'vision:model_helpers/brain_transformation/behavior.py'): _LEGACY,

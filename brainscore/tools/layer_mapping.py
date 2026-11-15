@@ -11,20 +11,19 @@ mapping approaches head-to-head so they can be compared:
   3. multiple full layers        — concatenation of the top-N full layers
   4. CompositeSelector           — top-K units from each of the top-N layers
 
-The stimuli are split once into a LOCALIZER set and a TEST set. For each layer,
-a ridge readout is fit on the localizer stimuli and scored on the test stimuli
-(median per-voxel Pearson r); that test score is ``per_layer_r``. Layers are
-ranked by this test score: ``best_layer``, ``top_layers`` and the "standard
-layer mapping" score (the maximum over layers) all choose on the TEST split.
-The best-layer score is therefore optimistic: with many layers, the maximum of
-noisy test scores is above what the chosen layer scores on new stimuli (on 20
-layers of pure noise, the best test r is well above the mean). Units inside a
-layer are chosen on the localizer only (``unit_predictivity``), so unit choice
-does not see the test stimuli.
+The stimuli are split once into three sets: LOCALIZER, SELECTION and TEST. For
+each layer, a ridge readout is fit on the localizer stimuli. Its score on the
+selection stimuli (median per-voxel Pearson r) is ``selection_r``; layers are
+ranked by it (``best_layer``, ``top_layers``). Its score on the test stimuli is
+``per_layer_r``; the score reported for a chosen layer (``best_r``, the
+"standard layer mapping" score) comes from it. No stimulus both chooses a layer
+and scores it, so the score of the chosen layer is not inflated by the choice
+(on 20 layers of pure noise, the maximum of the test scores is well above the
+mean; the test score of the layer chosen on the selection set is not). Units
+inside a layer are chosen on the localizer only (``unit_predictivity``).
 
-For an unbiased score, choose the layer on data that is not used to score it:
-for example, run :func:`explore_layer_mapping` on one set of stimuli, keep
-``best_layer``, and score that layer on a separate set (or on a benchmark).
+The readout is the one encoding fit of the repository
+(:mod:`brainscore.metrics.encoding`): ``ridge`` with ``NormalEquations``.
 
 Scoring is decoupled from extraction (``explore_layer_mapping`` takes features +
 target), so it is testable offline; :func:`sweep_model` extracts then maps.
@@ -37,33 +36,35 @@ import numpy as np
 from brainscore_core.metrics import per_unit_pearson
 
 from brainscore import CompositeSelector
+from brainscore.metrics.encoding import NormalEquations, grid_search, ridge, row_kfold
 
 
 def per_voxel_train_test(X_tr, Y_tr, X_te, Y_te,
                          alpha: Union[float, Sequence[float]] = 1.0) -> np.ndarray:
     """Fit ridge on the localizer rows, score per-voxel Pearson r on the test rows.
 
-    No feature scaler: Ridge auto-centers via its intercept; an explicit
-    StandardScaler over-rescales heterogeneous-variance features and depresses
-    the fit (established in the Lahner scoring work).
+    The fit is ``ridge(penalty, NormalEquations())`` of
+    :mod:`brainscore.metrics.encoding`: a ridge with an unpenalized intercept and
+    no feature scaler (an explicit StandardScaler over-rescales
+    heterogeneous-variance features and depresses the fit, established in the
+    Lahner scoring work).
 
-    :param alpha: a single ridge penalty (``Ridge``), OR a sequence of
-        candidate penalties, in which case ``RidgeCV(alpha_per_target=True)``
-        selects the best penalty *per voxel* by efficient leave-one-out — the
-        scientifically correct choice when feature sets differ in size, since a
-        fixed penalty otherwise flatters smaller feature sets (the layer-mapping
+    :param alpha: a single ridge penalty, OR a sequence of candidate penalties,
+        in which case ``grid_search(per_target=True)`` chooses the penalty of
+        each voxel on a 5-fold split of the localizer rows. Per-voxel choice is
+        the right one when feature sets differ in size, since a fixed penalty
+        otherwise flatters smaller feature sets (the layer-mapping
         feature-count confound).
     """
     X_tr = np.asarray(X_tr, np.float64); Y_tr = np.asarray(Y_tr, np.float64)
     X_te = np.asarray(X_te, np.float64); Y_te = np.asarray(Y_te, np.float64)
     if np.ndim(alpha) == 0:
-        from sklearn.linear_model import Ridge
-        reg = Ridge(alpha=float(alpha)).fit(X_tr, Y_tr)
+        penalty = float(alpha)
     else:
-        from sklearn.linear_model import RidgeCV
-        reg = RidgeCV(alphas=np.asarray(alpha, np.float64),
-                      alpha_per_target=True).fit(X_tr, Y_tr)
-    return per_unit_pearson(Y_te, reg.predict(X_te))
+        penalty = grid_search([(float(a),) for a in alpha],
+                              lambda groups: row_kfold(len(groups)), per_target=True)
+    predictions, _ = ridge(penalty, NormalEquations())(X_tr, Y_tr, X_te)
+    return per_unit_pearson(Y_te, predictions)
 
 
 def compute_rdm(X: np.ndarray, metric: str = 'correlation') -> np.ndarray:
@@ -157,16 +158,17 @@ def normalize_by_ceiling(r: np.ndarray, ceiling: np.ndarray,
 
 @dataclasses.dataclass
 class LayerMappingResult:
-    """Per-layer test scores + per-unit localizer predictivity; selectors on demand.
+    """Per-layer selection and test scores + per-unit localizer predictivity.
 
-    ``per_layer_r`` is computed on the TEST split, and ``best_layer`` and
-    ``top_layers`` rank layers by it, so the layer choice uses the test split and
-    ``best_r`` is optimistic. ``unit_predictivity`` (used to pick units) is
-    computed on the LOCALIZER split, so a unit is never selected and scored on
-    the same data.
+    ``selection_r`` is computed on the SELECTION split, and ``best_layer`` and
+    ``top_layers`` rank layers by it. ``per_layer_r`` is computed on the TEST
+    split, which takes no part in any choice, so ``best_r`` (the test score of
+    the chosen layer) is not inflated by the choice. ``unit_predictivity`` (used
+    to pick units) is computed on the LOCALIZER split, so a unit is never
+    selected and scored on the same data.
     """
     layer_order: List[str]
-    per_layer_r: List[float]
+    per_layer_r: List[float]                  # TEST split: reported scores
     unit_predictivity: Sequence[np.ndarray]   # per layer: per-unit |corr| on the LOCALIZER.
     # A list of 1-D arrays (one per layer), so layers may have DIFFERENT widths
     # (CNN stages: 256/512/1024/2048) here and in score_budget_curve. A uniform
@@ -175,11 +177,13 @@ class LayerMappingResult:
     # nulls draw from the best layer's width for every layer.
     localizer_idx: np.ndarray
     test_idx: np.ndarray
+    selection_r: List[float]                  # SELECTION split: ranks layers
+    selection_idx: np.ndarray
     alpha: float = 1.0
 
     @property
     def best_index(self) -> int:
-        return int(np.nanargmax(self.per_layer_r))
+        return int(np.nanargmax(self.selection_r))
 
     @property
     def best_layer(self) -> str:
@@ -190,7 +194,7 @@ class LayerMappingResult:
         return float(self.per_layer_r[self.best_index])
 
     def top_layers(self, n: int = 3) -> List[str]:
-        order = np.argsort(np.nan_to_num(self.per_layer_r, nan=-np.inf))[::-1]
+        order = np.argsort(np.nan_to_num(self.selection_r, nan=-np.inf))[::-1]
         return [self.layer_order[int(i)] for i in order[:n]]
 
     def top_units(self, layer: str, k: int) -> List[int]:
@@ -220,43 +224,47 @@ class LayerMappingResult:
 
 
 def _split(n: int, localizer_frac: float, seed: int):
+    """Localizer, selection and test rows; the rows after the localizer are halved."""
     rng = np.random.RandomState(seed)
     perm = rng.permutation(n)
     n_loc = max(1, int(round(localizer_frac * n)))
-    return np.sort(perm[:n_loc]), np.sort(perm[n_loc:])
+    n_sel = (n - n_loc) // 2
+    return (np.sort(perm[:n_loc]), np.sort(perm[n_loc:n_loc + n_sel]),
+            np.sort(perm[n_loc + n_sel:]))
 
 
 def explore_layer_mapping(features_by_layer: Dict[str, np.ndarray], target: np.ndarray,
                           localizer_frac: float = 0.5, alpha: float = 1.0,
                           seed: int = 0) -> LayerMappingResult:
-    """Rank layers (test score) and rank units (localizer predictivity).
-
-    The layer ranking uses the test split, so the score of the top layer is an
-    optimistic estimate; see the module docstring.
+    """Rank layers (selection score), score them (test score) and rank units
+    (localizer predictivity); see the module docstring.
 
     :param features_by_layer: ``{layer_path: (n_stimuli, n_units)}`` (same row
         order as ``target``).
     :param target: ``(n_stimuli, n_voxels)`` brain responses.
-    :param localizer_frac: fraction of stimuli used as the localizer (the rest
-        is held out as test).
+    :param localizer_frac: fraction of stimuli used as the localizer; the rest
+        is halved into the selection and the test split.
     """
     Y = np.asarray(target, np.float64)
-    L, T = _split(Y.shape[0], localizer_frac, seed)
+    L, S, T = _split(Y.shape[0], localizer_frac, seed)
     Y_loc = Y[L]
     Yz = (Y_loc - Y_loc.mean(0)) / (Y_loc.std(0) + 1e-8)
     layer_order = list(features_by_layer.keys())
     per_layer_r: List[float] = []
+    selection_r: List[float] = []
     unit_pred: List[np.ndarray] = []   # per layer; layers may have different widths
     for li, layer in enumerate(layer_order):
         X = np.asarray(features_by_layer[layer], np.float64)
-        # layer score: readout fit on localizer, evaluated on held-out test
+        # readout fit on the localizer; ranked on the selection rows, scored on the test rows
+        selection_r.append(float(np.nanmedian(
+            per_voxel_train_test(X[L], Y[L], X[S], Y[S], alpha))))
         per_layer_r.append(float(np.nanmedian(
             per_voxel_train_test(X[L], Y[L], X[T], Y[T], alpha))))
         # unit predictivity on the LOCALIZER only (selection sees no test data)
         Xl = X[L]
         Xz = (Xl - Xl.mean(0)) / (Xl.std(0) + 1e-8)
         unit_pred.append(np.abs((Xz.T @ Yz) / Xl.shape[0]).max(1))
-    return LayerMappingResult(layer_order, per_layer_r, unit_pred, L, T, alpha)
+    return LayerMappingResult(layer_order, per_layer_r, unit_pred, L, T, selection_r, S, alpha)
 
 
 def score_approaches(features_by_layer: Dict[str, np.ndarray], target: np.ndarray,
@@ -267,10 +275,9 @@ def score_approaches(features_by_layer: Dict[str, np.ndarray], target: np.ndarra
     with a matched **random-selection null**.
 
     Unit choices come from the localizer; layer choices (the best layer, the
-    top-N layers) come from ``result``, which ranks layers on the test split, so
-    every approach that uses them is scored on the data that chose its layers
-    and is optimistic. Each approach's readout is fit on the localizer and
-    scored on the test split. For every
+    top-N layers) come from ``result``, which ranks layers on the selection
+    split, so no approach is scored on the data that chose its layers. Each
+    approach's readout is fit on the localizer and scored on the test split. For every
     approach a null is computed with the SAME feature budget but the selection
     randomized (random units / random layers), averaged over ``n_null_seeds``
     seeds and scored identically — so a selection only "counts" if it beats the
@@ -367,7 +374,7 @@ def score_budget_curve(features_by_layer: Dict[str, np.ndarray], target: np.ndar
     ``K`` features each — **within one layer** (top-K units of the best layer)
     and **pooled across the top-N layers** (top-K units ranked over all of them)
     — so the comparison isolates the *selection strategy* from the feature count.
-    Every fit uses ``RidgeCV(alpha_per_target=True)`` (per-voxel penalty tuning),
+    Every fit chooses the penalty of each voxel from ``alpha_grid`` (per-voxel tuning),
     removing the fixed-α confound, and divides by the noise ceiling when given.
     Each strategy is paired with a matched random-selection null at the same K.
 

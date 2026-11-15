@@ -286,17 +286,31 @@ class TestRSA:
 
 
 def test_result_dataclass_accessors():
-    res = LayerMappingResult(['a', 'b', 'c'], [0.1, 0.5, 0.3],
+    """Layers are ranked by the selection score; the reported score is the test score."""
+    res = LayerMappingResult(['a', 'b', 'c'], [0.1, 0.4, 0.6],
                              np.zeros((3, 4)), localizer_idx=np.arange(5),
-                             test_idx=np.arange(5, 10), alpha=1.0)
-    assert res.best_layer == 'b' and res.best_r == 0.5
+                             test_idx=np.arange(5, 10), selection_r=[0.1, 0.5, 0.3],
+                             selection_idx=np.arange(10, 15), alpha=1.0)
+    assert res.best_layer == 'b' and res.best_r == 0.4
     assert res.top_layers(2) == ['b', 'c']
 
 
-def test_localizer_test_split_is_disjoint():
+def test_localizer_selection_and_test_splits_are_disjoint():
     layers, Y, _ = _synthetic(n_stim=120)
     res = explore_layer_mapping(layers, Y, localizer_frac=0.5, seed=0)
-    L, T = set(res.localizer_idx.tolist()), set(res.test_idx.tolist())
-    assert not (L & T)                 # disjoint: no stimulus selects AND scores
-    assert L | T == set(range(120))    # together they cover all stimuli
-    assert abs(len(L) - len(T)) <= 1   # ~50/50
+    L, S, T = (set(res.localizer_idx.tolist()), set(res.selection_idx.tolist()),
+               set(res.test_idx.tolist()))
+    assert not (L & S) and not (L & T) and not (S & T)   # no stimulus chooses AND scores
+    assert L | S | T == set(range(120))                  # together they cover all stimuli
+    assert (len(L), len(S), len(T)) == (60, 30, 30)
+
+
+def test_the_chosen_layer_is_not_scored_on_the_rows_that_chose_it():
+    """On layers of pure noise, the best selection score is inflated by the choice;
+    the test score of the chosen layer is not (it scatters around zero)."""
+    rng = np.random.RandomState(0)
+    layers = {f'N{i}': rng.randn(160, 20) for i in range(20)}
+    Y = rng.randn(160, 10)
+    res = explore_layer_mapping(layers, Y, alpha=1.0)
+    assert max(res.selection_r) > np.mean(res.selection_r) + 0.05
+    assert res.best_r < max(res.selection_r)
