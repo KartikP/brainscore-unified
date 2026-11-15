@@ -116,8 +116,10 @@ CONFIGURATIONS = {
 
 @pytest.mark.parametrize('name', CONFIGURATIONS)
 def test_scores_carry_method_labels(monkeypatch, tmp_path, name):
-    install(monkeypatch, tmp_path)
     configuration = CONFIGURATIONS[name]
+    # A reliability mask scores the 'train' runs only: two of them for each participant.
+    install(monkeypatch, tmp_path, runs=tr_runs(('01', '01', '01', '02', '02', '02'))
+            if 'reliability_threshold' in configuration else None)
     subject = Recorder({'vision:video', 'audio'}, regions=('IT', 'A1'))
     score = Lahner2024BOLDMoments_timeresolved(**configuration, identifier='Lahner2024-fMRI-naturalistic-timeresolved')(subject)
     attrs = score.attrs

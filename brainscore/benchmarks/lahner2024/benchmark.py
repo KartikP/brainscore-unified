@@ -133,8 +133,8 @@ def boldmoments_test_set(stimulus_ids) -> List[str]:
                    if int(str(stimulus_id).rsplit('_', 1)[1]) > 1000})
 
 
-def _split_half_reliability(assembly, n_splits: int = 20, random_state: int = 0,
-                            stimuli: Optional[Sequence[str]] = None) -> np.ndarray:
+def _split_half_reliability(assembly, stimuli: Sequence[str], n_splits: int = 20,
+                            random_state: int = 0) -> np.ndarray:
     """Per-voxel split-half reliability of the GLM-beta assembly across participants.
 
     The ``repetition`` entries of a video are the participants. For each random
@@ -143,20 +143,19 @@ def _split_half_reliability(assembly, n_splits: int = 20, random_state: int = 0,
     videos for each voxel. Average across ``n_splits`` random splits and apply
     the Spearman-Brown correction.
 
-    ``stimuli`` names the videos to compute on; ``None`` (default) takes every
-    video of the assembly (the time-resolved ``-visualROI`` mask uses this).
+    ``stimuli`` names the videos to compute on; there is no default, so that no
+    caller computes on every video of the assembly by accident.
 
     Returns a (n_voxels,) array. High-reliability voxels are stimulus-driven
     (signal); low-reliability voxels are noise-dominated.
     """
     a = assembly.squeeze('time_bin', drop=True)
     stim_ids = np.asarray(a['stimulus_id'].values)
-    if stimuli is not None:
-        keep = np.isin(stim_ids.astype(str), np.asarray(list(stimuli), dtype=str))
-        if not keep.any():
-            raise ValueError('No presentation of the assembly shows one of the given stimuli.')
-        a = a.isel(presentation=keep)
-        stim_ids = stim_ids[keep]
+    keep = np.isin(stim_ids.astype(str), np.asarray(list(stimuli), dtype=str))
+    if not keep.any():
+        raise ValueError('No presentation of the assembly shows one of the given stimuli.')
+    a = a.isel(presentation=keep)
+    stim_ids = stim_ids[keep]
     data = a.values  # (n_voxels, n_presentations)
     n_voxels = data.shape[0]
     unique_stims = sorted(set(stim_ids))
@@ -190,6 +189,39 @@ def _split_half_reliability(assembly, n_splits: int = 20, random_state: int = 0,
     r_half = reliability_sum / n_splits
     # Spearman-Brown: full-set reliability from half-set reliability
     return 2 * r_half / (1 + r_half)
+
+
+def reliability_on_test_set(assembly) -> np.ndarray:
+    """The per-voxel reliability that gives the voxel mask and the ceilings of the GLM
+    and the time-resolved benchmarks: ``_split_half_reliability`` on the test-set
+    videos of the GLM assembly. The one owner of this rule."""
+    test = boldmoments_test_set(assembly['stimulus_id'].values)
+    if not test:
+        raise ValueError('The assembly holds no test-set video (id above 1000): '
+                         'no voxel mask or ceiling can be measured.')
+    return _split_half_reliability(assembly, stimuli=test)
+
+
+def presented_stimuli(stimuli, stimulus_ids):
+    """The rows of ``stimuli`` named in ``stimulus_ids``, in table order, with an
+    identifier that tells the set apart: the activation store keys a response by
+    the identifier. Every row: ``stimuli`` itself; every row outside the test set:
+    ``<identifier>-train`` (the GLM and the time-resolved benchmarks share it for
+    this one set); any other subset: ``<identifier>-<digest of its ids>``."""
+    import hashlib
+    wanted = {str(stimulus_id) for stimulus_id in stimulus_ids}
+    ids = stimuli['stimulus_id'].astype(str)
+    kept = stimuli[ids.isin(wanted).values]
+    if len(kept) == len(stimuli):
+        return stimuli
+    train = set(ids) - set(boldmoments_test_set(ids))
+    kept_ids = set(kept['stimulus_id'].astype(str))
+    kept.identifier = (f'{stimuli.identifier}-train' if kept_ids == train else
+                       f'{stimuli.identifier}-' + hashlib.sha256(
+                           '|'.join(sorted(kept_ids)).encode()).hexdigest()[:10])
+    kept.stimulus_paths = {stimulus_id: stimuli.get_stimulus(stimulus_id)
+                           for stimulus_id in kept['stimulus_id']}
+    return kept
 
 
 def _select_voxels(reliability_threshold: Optional[float], voxel_mask_fn: Optional[Callable],
@@ -324,13 +356,9 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         return self._stimulus_set
 
     def _reliability_once(self) -> np.ndarray:
-        """``_split_half_reliability`` on the test-set videos of the assembly, computed once."""
+        """``reliability_on_test_set`` of the assembly, computed once."""
         if self._reliability is None:
-            test = boldmoments_test_set(self.assembly['stimulus_id'].values)
-            if not test:
-                raise ValueError('The assembly holds no test-set video (id above 1000): '
-                                 'no voxel mask or ceiling can be measured.')
-            self._reliability = _split_half_reliability(self.assembly, stimuli=test)
+            self._reliability = reliability_on_test_set(self.assembly)
         return self._reliability
 
     def _scored_stimuli(self):
@@ -341,13 +369,9 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         if self._reliability_threshold is None and not _ceiling_measured(self):
             return stimuli
         self._reliability_once()   # fails here when the assembly has no test-set video
-        test = boldmoments_test_set(stimuli['stimulus_id'])
-        kept = stimuli[~stimuli['stimulus_id'].astype(str).isin(test)]
-        # A new identifier: the activation store keys a response by it.
-        kept.identifier = f'{stimuli.identifier}-train'
-        kept.stimulus_paths = {stimulus_id: stimuli.get_stimulus(stimulus_id)
-                               for stimulus_id in kept['stimulus_id']}
-        return kept
+        test = set(boldmoments_test_set(stimuli['stimulus_id']))
+        return presented_stimuli(
+            stimuli, [i for i in stimuli['stimulus_id'].astype(str) if i not in test])
 
     @property
     def voxel_mask(self) -> Optional[np.ndarray]:

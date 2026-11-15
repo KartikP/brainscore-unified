@@ -18,9 +18,12 @@ from .benchmark_timeresolved import (
 #   and the sound track (also records neural:A1);
 # - the voxels: all, `reliability_threshold=0.3` (`-visualROI`: split-half
 #   reliability at least 0.3, chosen by reliability anywhere on the cortex, not by
-#   an atlas; the reliability is computed on all stimuli, the test folds included,
-#   and the time-resolved `-visualROI` uses the GLM-beta reliability of the same
-#   participants and runs), or `voxel_mask_fn=build_auditory_mask`
+#   an atlas). The reliability is measured on the 93 BOLDMoments test-set videos
+#   (id above 1000) of the GLM assembly, for both classes. A variant with this mask
+#   never scores those videos: the GLM class presents and scores the 933 training
+#   videos of the assembly, and the time-resolved class scores only the `train` task
+#   runs (their videos are the training set) and holds out blocks of 40 runs per
+#   participant, which keeps one participant per block; or `voxel_mask_fn=build_auditory_mask`
 #   (`-auditoryROI`: early auditory cortex, lateral STG and the planum, Destrieux
 #   atlas on fsaverage5);
 # - for TR time series, the fold rule and the confounds regressed out of the BOLD.
@@ -45,8 +48,9 @@ benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal-auditoryROI'] = part
     identifier='Lahner2024-fMRI-naturalistic-multimodal-auditoryROI')
 
 # TR time series: clip-mean onset-impulse HRF model, per-voxel ridge, whole runs
-# held out (blocks of 52 runs by default); events selected by (subject, session,
-# task, run).
+# held out (blocks of 52 runs by default, the runs of one participant; blocks of 40
+# for the `-visualROI` variants, which score the 40 `train` task runs of a participant);
+# events selected by (subject, session, task, run).
 # `-improved`: per-run motion regression (9 fmriprep confounds, residuals replace the
 # BOLD before the z-score) and blocks of 10 runs held out inside each participant,
 # per-voxel r averaged across participants. No stored result measures the effect
@@ -54,7 +58,7 @@ benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal-auditoryROI'] = part
 benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved'] = partial(
     Lahner2024BOLDMoments_timeresolved, identifier='Lahner2024-fMRI-naturalistic-timeresolved')
 benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-visualROI'] = partial(
-    Lahner2024BOLDMoments_timeresolved, reliability_threshold=0.3,
+    Lahner2024BOLDMoments_timeresolved, folds=RunBlocks(40), reliability_threshold=0.3,
     identifier='Lahner2024-fMRI-naturalistic-timeresolved-visualROI')
 benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-improved'] = partial(
     Lahner2024BOLDMoments_timeresolved, folds=ParticipantRunBlocks(10),
@@ -67,7 +71,8 @@ benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-multimodal'] = par
     Lahner2024BOLDMoments_timeresolved, channels=_AUDIOVISUAL,
     identifier='Lahner2024-fMRI-naturalistic-timeresolved-multimodal')
 benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-multimodal-visualROI'] = partial(
-    Lahner2024BOLDMoments_timeresolved, channels=_AUDIOVISUAL, reliability_threshold=0.3,
+    Lahner2024BOLDMoments_timeresolved, channels=_AUDIOVISUAL, folds=RunBlocks(40),
+    reliability_threshold=0.3,
     identifier='Lahner2024-fMRI-naturalistic-timeresolved-multimodal-visualROI')
 benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-multimodal-auditoryROI'] = partial(
     Lahner2024BOLDMoments_timeresolved, channels=_AUDIOVISUAL, voxel_mask_fn=build_auditory_mask,

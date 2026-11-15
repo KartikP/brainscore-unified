@@ -26,7 +26,7 @@ separate benchmark.
 
 ## Pipeline (per subject)
 
-    1. Discover unique stimuli from events (1102 unique videos).
+    1. Discover the unique stimuli of the events of the scored runs (the stimulus set holds 1026 of the 1102 videos).
     2. Record per-stimulus features ONCE through participate (neural_response):
        - a subject that declares ``vision:video``: whole clips, its native
          time bins mean-pooled to one vector
@@ -112,8 +112,9 @@ from brainscore.benchmarks._score import benchmark_score, not_estimated
 from .benchmark import (
     BIBTEX,
     _VISUAL,
-    _split_half_reliability,
     _select_voxels,
+    presented_stimuli,
+    reliability_on_test_set,
     voxel_score,
 )
 from brainscore.data.lahner2024 import DEFAULT_SAMPLE_TIMES_MS
@@ -283,14 +284,28 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
     Same stimuli as ``Lahner2024BOLDMoments`` (GLM betas); the neural target
     and the regression differ.
 
+    What is scored. Every participant has 52 runs: 40 ``train`` task runs (the
+    training-set videos) and 12 ``test`` task runs (the 102 test-set videos). A
+    variant without a reliability mask scores all 52 runs. A variant with
+    ``reliability_threshold`` scores the ``train`` runs only (``scored_assembly``),
+    because its voxel mask comes from the GLM reliability of the test-set videos
+    (``reliability_on_test_set``; the hosted GLM assembly holds 1026 of the 1102
+    videos, 93 of them in the test set): a ``test`` run is in no fold, and the
+    videos shown only in it are not presented to the subject. The run filter comes
+    before the folds, the reduction and the design. With 40 runs a participant, the
+    default rule holds out blocks of 40 (``RunBlocks(40)``, set in the registry
+    line), which is still one participant per block.
+
     Args:
         channels: what the benchmark sends, as for ``Lahner2024BOLDMoments``.
         folds: the fold rule, ``RunBlocks(52)`` (default) or ``ParticipantRunBlocks(10)``.
         confounds: columns of the motion sidecar regressed out of each run's
             BOLD before the z-score (``MOTION_COLUMNS``); none by default.
         ceiling, reliability_threshold, voxel_mask_fn: as for
-            ``Lahner2024BOLDMoments``. The reliability is the GLM-beta one: both
-            assemblies share the fsaverage5 voxels.
+            ``Lahner2024BOLDMoments``. The reliability is the GLM-beta one on the
+            test-set videos: both assemblies share the fsaverage5 voxels. With
+            ``reliability_threshold`` only the ``train`` task runs are scored.
+            State the fold rule for 40 runs a participant in that case.
         identifier: the benchmark identifier (required; the registry key of the variant).
     """
 
@@ -320,6 +335,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         self._voxel_mask_fn = voxel_mask_fn
         self._voxel_mask: Optional[np.ndarray] = None
         self._assembly: Optional[NeuronRecordingAssembly] = None
+        self._scored_assembly: Optional[NeuronRecordingAssembly] = None
         self._events = None
         self._motion = None
         self._stimulus_set = None
@@ -365,8 +381,21 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         if self._voxel_mask is None:
             self._voxel_mask = _select_voxels(
                 self._reliability_threshold, self._voxel_mask_fn,
-                lambda: _split_half_reliability(load_dataset('Lahner2024-fMRI')))
+                lambda: reliability_on_test_set(load_dataset('Lahner2024-fMRI')))
         return self._voxel_mask
+
+    @property
+    def scored_assembly(self) -> NeuronRecordingAssembly:
+        """The runs that are scored. With a reliability mask, the ``train`` task runs only:
+        the ``test`` task runs show the videos whose betas chose the voxels, so they are in
+        no fold and their videos are not presented. Otherwise every run."""
+        if self._scored_assembly is None:
+            assembly = self.assembly
+            if self._reliability_threshold is not None:
+                assembly = assembly.isel(presentation=np.flatnonzero(
+                    np.asarray(assembly['task'].values).astype(str) == 'train'))
+            self._scored_assembly = assembly
+        return self._scored_assembly
 
     def _sanity_check_assembly(self, assembly):
         # MultiIndex level coords are exposed via .indexes[dim].names in xarray 2022.3,
@@ -385,8 +414,8 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
     def __call__(self, subject) -> Score:
         # 1. One feature vector per unique stimulus; ``prepare(train)`` reduces
         #    the streams with the SVD fitted on the stimuli ``train`` (a mask).
-        prepare, stimulus_ids, stream_attrs = self._features(subject)
-        assembly = self.assembly
+        assembly = self.scored_assembly
+        prepare, stimulus_ids, stream_attrs = self._features(subject, assembly)
 
         # 2. The BOLD of the scored voxels, flattened to (run, TR) rows; the
         #    confounds regressed out and the BOLD z-scored per run and voxel.
@@ -435,7 +464,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
 
     # ── Features ───────────────────────────────────────────────────
 
-    def _features(self, subject):
+    def _features(self, subject, assembly):
         """``(prepare, stimulus_ids, attrs)``.
 
         ``prepare(train)`` gives the features ``(n_stimuli, n_features)``, a stream
@@ -443,11 +472,14 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         mask ``train``. One forward pass per unique stimulus of the events (at
         most 1102 videos).
         """
-        stimuli = self.stimulus_set
-        unique_ids = sorted(set(self.events['stimulus_id'].unique().tolist())
-                            & set(stimuli['stimulus_id'].astype(str).tolist()))
-        frames = lambda: (lambda table: table[table['clip_id'].isin(unique_ids)])(  # noqa: E731
-            frame_table(stimuli, list(DEFAULT_SAMPLE_TIMES_MS)))
+        # The videos shown in the scored runs that the stimulus set holds; the
+        # table presented carries an identifier that names this set.
+        known = set(self.stimulus_set['stimulus_id'].astype(str))
+        shown = {str(stimulus_id) for events in self._events_per_run(assembly)
+                 for stimulus_id in events['stimulus_id']}
+        unique_ids = sorted(shown & known)
+        stimuli = presented_stimuli(self.stimulus_set, unique_ids)
+        frames = lambda: frame_table(stimuli, list(DEFAULT_SAMPLE_TIMES_MS))  # noqa: E731
         # Every region the benchmark names is requested (rule 5.1a). The streams
         # shown are the benchmark inputs the subject takes in, matched as pre-flight
         # matches them; each region is recorded from a stream the subject can answer
@@ -457,10 +489,9 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
                               self._regions)
         scored = sorted(channel for _, channel, _ in plan)
         if [stream for stream, _, _ in plan] == ['video']:
-            def clips():
-                table = clip_table(stimuli, f'{stimuli.identifier}-videos')
-                return table[table['stimulus_id'].isin(unique_ids)]
-            responses = record_visual(subject, clips, frames, plan[0][2])
+            responses = record_visual(
+                subject, lambda: clip_table(stimuli, f'{stimuli.identifier}-videos'),
+                frames, plan[0][2])
             stimulus_ids = read_stimulus_ids(responses[0])
             features = np.concatenate(
                 [align(time_mean(response), read_stimulus_ids(response), stimulus_ids)

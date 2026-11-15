@@ -9,7 +9,7 @@ import pytest
 
 import brainscore
 from brainscore.benchmarks.lahner2024.benchmark import (
-    _split_half_reliability, boldmoments_test_set)
+    _split_half_reliability, boldmoments_test_set, reliability_on_test_set)
 from tests.lahner_synthetic import (
     CLIPS, GLM_CLIPS, GLM_REPS, N_VOXELS, TEST_CLIPS, Recorder, glm_assembly, glm_values,
     install)
@@ -51,14 +51,16 @@ def test_a_mask_variant_refuses_an_assembly_without_test_videos(monkeypatch, tmp
         brainscore.load_benchmark(VISUAL_ROI)(Recorder({'vision:video'}))
 
 
-def test_reliability_without_a_subset_takes_every_video():
-    """The time-resolved ``-visualROI`` mask calls ``_split_half_reliability(assembly)``:
-    that call still computes on every video of the assembly."""
+def test_one_rule_gives_the_reliability_for_both_classes():
+    """``reliability_on_test_set`` is ``_split_half_reliability`` on the test-set videos, and
+    a call needs a subset: no caller can compute on every video by default."""
     assembly = glm_assembly()
-    np.testing.assert_array_equal(_split_half_reliability(assembly),
-                                  _split_half_reliability(assembly, stimuli=GLM_CLIPS))
-    assert not np.array_equal(_split_half_reliability(assembly),
-                              _split_half_reliability(assembly, stimuli=TEST_CLIPS))
+    np.testing.assert_array_equal(reliability_on_test_set(assembly),
+                                  _split_half_reliability(assembly, stimuli=TEST_CLIPS))
+    assert not np.array_equal(reliability_on_test_set(assembly),
+                              _split_half_reliability(assembly, stimuli=GLM_CLIPS))
+    with pytest.raises(TypeError):
+        _split_half_reliability(assembly)
 
 
 @pytest.mark.parametrize('identifier, channels, regions', MASK_VARIANTS)
