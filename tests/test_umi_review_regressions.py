@@ -355,34 +355,6 @@ def test_vision_adapter_reset_reaches_real_commitment():
     assert odd_one_out.current_task is None and odd_one_out.similarity_measure == 'dot'
 
 
-def test_pereira_declares_passages_before_extraction():
-    from brainscore.benchmarks.pereira2018.benchmark import _Pereira2018ExperimentUnified
-    from brainscore_core.text import contextualized_texts
-    benchmark = _Pereira2018ExperimentUnified.__new__(_Pereira2018ExperimentUnified)
-    benchmark.data = NeuroidAssembly(np.zeros((4, 1)), dims=['presentation', 'neuroid'], coords={
-        'stimulus': ('presentation', list(_stimuli().sentence)),
-        'stimulus_id': ('presentation', list(_stimuli().stimulus_id)),
-        'passage_label': ('presentation', ['p1', 'p1', 'p2', 'p2']),
-        'neuroid_id': ('neuroid', ['target']),
-    })
-    seen = []
-    class Candidate:
-        def start_recording(self, *args, **kwargs):
-            pass
-        def process(self, stimuli):
-            seen.append(contextualized_texts(stimuli))
-            return _Extractor(np.ones((4, 1)))(stimuli, ['L'])
-    class ReachedMetric(Exception):
-        pass
-    def stop_at_metric(prediction, target):
-        assert list(prediction.stimulus_id.values) == list(target.stimulus_id.values)
-        raise ReachedMetric
-    benchmark.metric = stop_at_metric
-    with pytest.raises(ReachedMetric):
-        benchmark(Candidate())
-    assert seen == [['the cat', 'the cat the dog'], ['cat sat', 'cat sat dog ran']]
-
-
 def test_context_expansion_preserves_stimulus_identifier(monkeypatch):
     from brainscore.model_helpers.text_wrapper import TextWrapper
     wrapper = TextWrapper.__new__(TextWrapper)

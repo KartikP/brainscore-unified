@@ -24,8 +24,9 @@ MAINTAINED = [
     ('brainscore', ''),
 ]
 
-# The Pereira2018 plugin extends the legacy experiment class. Its name is private
-# in the language plugin, which is used as it is and never edited.
+# The retired linear Pereira2018 variants (scored by the release parity check) are built
+# with the legacy experiment class. Its name is private in the language plugin, which is
+# used as it is and never edited.
 ALLOWED = {('benchmarks/pereira2018/benchmark.py',
             'brainscore_language.benchmarks.pereira2018.benchmark: _Pereira2018Experiment')}
 

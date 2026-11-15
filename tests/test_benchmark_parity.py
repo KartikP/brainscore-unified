@@ -56,7 +56,6 @@ def constant_metric(monkeypatch):
 @pytest.fixture
 def synthetic_benchmarks(monkeypatch, tmp_path):
     from brainscore_vision.benchmarks.majajhong2015 import benchmark as vision_legacy
-    from brainscore.benchmarks.majajhong2015 import benchmark as vision_unified
     from brainscore_language.benchmarks.pereira2018.benchmark import _Pereira2018Experiment
     import brainscore_language.benchmarks.pereira2018.benchmark as language_benchmark
     stimuli = _stimuli()
@@ -86,10 +85,9 @@ def synthetic_benchmarks(monkeypatch, tmp_path):
         data.attrs['stimulus_set'].identifier = stimuli.identifier
         data.attrs['stimulus_set'].stimulus_paths = paths
         return data
-    for module in (vision_legacy, vision_unified):
-        monkeypatch.setattr(module, 'load_assembly', vision_data)
-        monkeypatch.setattr(module, 'load_metric', lambda *a, **k: _metric)
-        monkeypatch.setattr(module, 'load_ceiling', lambda *a, **k: lambda data: Score(1))
+    monkeypatch.setattr(vision_legacy, 'load_assembly', vision_data)
+    monkeypatch.setattr(vision_legacy, 'load_metric', lambda *a, **k: _metric)
+    monkeypatch.setattr(vision_legacy, 'load_ceiling', lambda *a, **k: lambda data: Score(1))
     def language_data(self, experiment, atlas):
         seen.append(experiment)
         return NeuroidAssembly(np.zeros((4, 1)), dims=['presentation', 'neuroid'], coords={

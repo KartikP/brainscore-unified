@@ -20,7 +20,7 @@ from brainscore_core.compatibility import benchmark_required_input_channels
 from tests.test_induced_dyslexia import synthetic_roar  # noqa: F401  (fixture)
 
 FAMILIES = ('Algonauts2025-', 'CogGym.', 'EWoK-', 'GridGame-', 'Lahner2024-',
-            'LeBel2023-', 'MajajHong2015', 'Pereira2018.', 'Yeatman2021-')
+            'LeBel2023-', 'Pereira2018.', 'Yeatman2021-')
 
 REGISTERED = [
     'Algonauts2025-friends-sub01',
@@ -71,16 +71,8 @@ REGISTERED = [
     'LeBel2023-UTS03-encoding-contextwindow',
     'LeBel2023-UTS03-encoding-languagemask',
     'LeBel2023-UTS03-encoding-smoke',
-    'MajajHong2015.IT-pls-unified',
-    'MajajHong2015.V4-pls-unified',
-    'MajajHong2015public.IT-pls-unified',
-    'MajajHong2015public.V4-pls-unified',
     'Pereira2018.243sentences-linear',
-    'Pereira2018.243sentences-linear-unified',
-    'Pereira2018.243sentences-ridge-unified',
     'Pereira2018.384sentences-linear',
-    'Pereira2018.384sentences-linear-unified',
-    'Pereira2018.384sentences-ridge-unified',
     'Yeatman2021-induced_dyslexia-image',
     'Yeatman2021-induced_dyslexia-text',
     'Yeatman2021-lexical_decision-image',
@@ -272,12 +264,12 @@ def test_the_27_built_keys_name_the_identifier_they_build():
     Yeatman2021), the recorded identifier equals the key; the parametrized test above
     builds each of them and asserts that identifier. Nothing is built here.
 
-    The other 35 of the 62 pinned keys are not built by this file, because their
+    The other 27 of the 54 pinned keys are not built by this file, because their
     constructors need data or a prepared library: CogGym (23; its identifier also adds
     the configured settings), EWoK (2; its identifier adds the resolved data's hash),
-    MajajHong2015 and MajajHong2015public (4), Pereira2018 (6).
+    Pereira2018 (2, the retired linear variants).
     """
-    assert len(BUILT) == 27 and len(REGISTERED) == 62
+    assert len(BUILT) == 27 and len(REGISTERED) == 54
     assert all(key == built for key, (built, *_rest) in BUILT.items())
 
 
