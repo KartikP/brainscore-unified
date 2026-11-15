@@ -215,8 +215,6 @@ ALLOWED = {
     ('R15 score construction', 'unified:benchmarks/lahner2024/benchmark_timeresolved.py'): _NO_CEILING,
     ('R15 score construction', 'unified:benchmarks/roar_yeatman2021/benchmark.py'): _NO_CEILING,
     ('R15 score construction', 'unified:harnesses/human_replay.py'): _NO_CEILING,
-    ('R18 cache validity', 'unified:_model/dispatch.py'):
-        'process-wide RESULTCACHING_DISABLE switch during a perturbed extraction (known gap 4.4, ADR-0042)',
     ('R18 cache validity', 'vision:model_helpers/check_submission/check_models.py'): _LEGACY,
     ('R20 registry assignment', 'vision:__init__.py'): 'domain registries of vision, permanent',
     ('R20 registry assignment', 'language:__init__.py'): 'domain registries of language, permanent',
