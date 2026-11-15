@@ -449,10 +449,19 @@ def c_order(assembly):
     values in another memory layout. A reduction rounds by the layout (numpy
     sums a strided axis in another order than a contiguous one), so a score with
     the store on would differ from the score with the store off in the last
-    digits. Values, coordinates and attributes are kept.
+    digits. Values, coordinates and attributes are kept; anything that is not
+    an assembly with numpy values, and values already in C order, are returned
+    as they are (the store-off path does not change).
+
+    Two call sites use it. The caching wrappers apply it at their cache boundary
+    (``CachingExtractor._cached``), so a wrapper called directly, by a tool or a
+    notebook, returns C order. The model class applies it to every extractor
+    result where it receives one (``brainscore._model.dispatch.call_extractor``),
+    so any other extractor with a store of its own, such as the legacy vision
+    ``PytorchWrapper``, gives the model the same layout with the store on and off.
     """
-    values = assembly.values
-    if values.flags['C_CONTIGUOUS']:
+    values = getattr(assembly, 'values', None)
+    if not hasattr(assembly, 'dims') or not isinstance(values, np.ndarray) or values.flags['C_CONTIGUOUS']:
         return assembly
     return assembly.copy(data=np.ascontiguousarray(values))
 
