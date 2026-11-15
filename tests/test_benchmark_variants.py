@@ -71,8 +71,6 @@ REGISTERED = [
     'LeBel2023-UTS03-encoding-contextwindow',
     'LeBel2023-UTS03-encoding-languagemask',
     'LeBel2023-UTS03-encoding-smoke',
-    'Pereira2018.243sentences-linear',
-    'Pereira2018.384sentences-linear',
     'Yeatman2021-induced_dyslexia-image',
     'Yeatman2021-induced_dyslexia-text',
     'Yeatman2021-lexical_decision-image',
@@ -264,12 +262,12 @@ def test_the_27_built_keys_name_the_identifier_they_build():
     Yeatman2021), the recorded identifier equals the key; the parametrized test above
     builds each of them and asserts that identifier. Nothing is built here.
 
-    The other 27 of the 54 pinned keys are not built by this file, because their
+    The other 25 of the 52 pinned keys are not built by this file, because their
     constructors need data or a prepared library: CogGym (23; its identifier also adds
-    the configured settings), EWoK (2; its identifier adds the resolved data's hash),
-    Pereira2018 (2, the retired linear variants).
+    the configured settings) and EWoK (2; its identifier adds the resolved data's hash).
+    The family ``Pereira2018.`` stays in ``FAMILIES``: unified registers no key of it.
     """
-    assert len(BUILT) == 27 and len(REGISTERED) == 54
+    assert len(BUILT) == 27 and len(REGISTERED) == 52
     assert all(key == built for key, (built, *_rest) in BUILT.items())
 
 

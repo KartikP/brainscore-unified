@@ -2,7 +2,7 @@
 
 No inference runs without --execute. Each case retains the standard parity
 checks and its own report. A successful vision selection is not a completed
-eight-case release qualification.
+six-case release qualification.
 """
 import argparse
 import json

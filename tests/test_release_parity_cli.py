@@ -23,10 +23,9 @@ def test_the_command_refuses_a_warm_cache_and_leaves_the_switch_alone(monkeypatc
     assert 'RESULTCACHING_DISABLE' not in os.environ
 
 
-@pytest.mark.parametrize('selection', ['not-a-benchmark', parity.PEREIRA_CASES[0].legacy])
-def test_invalid_or_unpaired_selection_fails_before_inference(selection):
+def test_invalid_selection_fails_before_inference():
     with pytest.raises(SystemExit) as error:
-        main(['--resnet18', 'unused', '--gpt2', 'unused', '--only', selection])
+        main(['--resnet18', 'unused', '--gpt2', 'unused', '--only', 'not-a-benchmark'])
     assert error.value.code == 2
 
 
@@ -41,18 +40,22 @@ def simulated_runtime(monkeypatch):
 
 
 def test_paired_guard_failure_fails_cli(monkeypatch, tmp_path, simulated_runtime):
+    from brainscore.validation import parity_runtime
+    monkeypatch.setattr(parity_runtime, 'require_cpu_reference', lambda manifest: None)
     monkeypatch.setattr(parity, 'validate_case', lambda case, factory, **kwargs: {'benchmark': case.legacy})
     def fail(reports, **kwargs):
         raise AssertionError('drift detected')
     monkeypatch.setattr(parity, 'assert_pereira_score_drift', fail)
-    code = main(['--resnet18', 'unused', '--gpt2', 'unused', '--out', str(tmp_path/'parity.json')])
+    code = main(['--resnet18', 'unused', '--gpt2', 'unused', '--policy', parity.CPU_FP32_POLICY,
+                 '--device', 'cpu', '--out', str(tmp_path/'parity.json')])
     assert code == 1
     report = json.loads((tmp_path/'parity.json').read_text())
-    assert 'drift detected' in report['failures']['paired_drift:linear']
+    assert 'drift detected' in report['failures']['paired_drift:ridge']
 
 
-def test_release_manifest_includes_ridge():
-    assert len(parity.RELEASE_CASES) == 8
+def test_release_manifest_is_four_vision_and_two_ridge_cases():
+    assert len(parity.RELEASE_CASES) == 6
+    assert all(case.domain == 'vision' for case in parity.CASES) and len(parity.CASES) == 4
     assert len(parity.RIDGE_CASES) == 2
     assert all('ridge' in case.legacy for case in parity.RIDGE_CASES)
 
@@ -79,7 +82,7 @@ def test_failed_observations_survive_cli(monkeypatch, tmp_path, simulated_runtim
     out = tmp_path/'failed.json'
     assert main(['--resnet18', 'unused', '--gpt2', 'unused', '--out', str(out)]) == 1
     report = json.loads(out.read_text())
-    assert len(report['failed_observations']) == 8
+    assert len(report['failed_observations']) == 6
     assert report['failed_observations'][parity.CASES[0].legacy]['routes']['native']['score'] == .8
     assert not report['release_complete']
 

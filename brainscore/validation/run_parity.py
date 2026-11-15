@@ -42,7 +42,7 @@ import time
 
 def main(argv=None):
     from brainscore.validation.benchmark_parity import (
-        RELEASE_CASES, PEREIRA_CASES, RIDGE_CASES, local_subject, validate_case,
+        RELEASE_CASES, RIDGE_CASES, local_subject, validate_case,
         assert_pereira_score_drift, ParityFailure, POLICIES, HISTORICAL_POLICY, CPU_FP32_POLICY,
         L4_FP32_POLICY, FP32_POLICIES)
     from brainscore.validation.parity_runtime import checkpoint_manifest, execution, require_cpu_reference
@@ -55,7 +55,7 @@ def main(argv=None):
     parser.add_argument('--scratch-dir', default=None,
                         help='existing directory for temporary activation snapshots')
     parser.add_argument('--only', default='',
-                        help='comma-separated benchmark identifiers; blank = all eight release cases')
+                        help='comma-separated benchmark identifiers; blank = all six release cases')
     parser.add_argument('--device', choices=('auto', 'cpu', 'cuda'), default='auto')
     parser.add_argument('--threads', type=int, default=4)
     parser.add_argument('--language-precision', choices=('float32', 'float64-eager'), default='float32')
@@ -77,9 +77,6 @@ def main(argv=None):
     known = {case.legacy for case in RELEASE_CASES}
     if wanted and wanted - known:
         parser.error(f'Unknown parity cases: {sorted(wanted - known)}')
-    paired = {case.legacy for case in PEREIRA_CASES}
-    if wanted and wanted & paired and not paired <= wanted:
-        parser.error('Select both Pereira linear cases to enforce the paired drift guard')
     if args.threads < 1:
         parser.error('--threads must be positive')
     if args.language_precision == 'float64-eager' and args.device != 'cpu':
@@ -142,14 +139,12 @@ def main(argv=None):
                     print(f'  FAIL {case.legacy} ({time.time() - started:.0f}s)\n'
                           f'       {failures[case.legacy]}', flush=True)
                 save()
-            groups = (PEREIRA_CASES, RIDGE_CASES) if args.policy in FP32_POLICIES else (PEREIRA_CASES,)
-            for group in groups:
-                names = {case.legacy for case in group}
-                if names <= reports.keys():
-                    try:
-                        assert_pereira_score_drift([reports[name] for name in sorted(names)], policy=args.policy)
-                    except AssertionError as error:
-                        failures[f'paired_drift:{group[0].legacy.split("-")[-1]}'] = str(error)
+            names = {case.legacy for case in RIDGE_CASES}
+            if args.policy in FP32_POLICIES and names <= reports.keys():
+                try:
+                    assert_pereira_score_drift([reports[name] for name in sorted(names)], policy=args.policy)
+                except AssertionError as error:
+                    failures['paired_drift:ridge'] = str(error)
     except Exception as error:                              # noqa: BLE001
         failures['preflight_or_runtime'] = f'{type(error).__name__}: {error}'
     result['selection_complete'] = not failures and set(reports) == (wanted or known)
