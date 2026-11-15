@@ -64,7 +64,8 @@ class _Benchmark:
     def __init__(self, output):
         self.identifier = output
         self.requested_output_channels = {output}
-        self.required_input_channels = {'vision:image'}
+        # The perturbation record answers an intervention input (rule 2.5).
+        self.required_input_channels = {'vision:image'} | ({'lesion'} if output == 'perturbation' else set())
 
 
 def test_every_part_declares_registered_channels():
