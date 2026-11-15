@@ -135,7 +135,7 @@ The column name tells the model what kind of input each row holds (`sentence` fo
 
 ## Models with several inputs
 
-Give each input type its own extractor. If two extractors use the same layer names, route regions with `LayerSelector`. This example needs a network with an image part and a text part, such as CLIP (`clip`, with one wrapper for each part):
+Give each input type its own extractor. An extractor that cannot list its layers (a plain callable extractor(stimuli, layers)) counts as having every layer, so next to another extractor every region names its input with LayerSelector(name=..., modality=...). If two extractors use the same layer names, route regions with `LayerSelector`. This example needs a network with an image part and a text part, such as CLIP (`clip`, with one wrapper for each part):
 
 ```python
 from brainscore import LayerSelector
