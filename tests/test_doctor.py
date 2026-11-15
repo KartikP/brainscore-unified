@@ -131,3 +131,18 @@ class TestAgainstTheRealEnvironment:
     def test_describe_env_covers_every_bound(self):
         from brainscore_core.environment_check import _BOUNDS, describe_env
         assert len(describe_env()) == len(_BOUNDS)
+
+
+def test_the_lock_section_reads_the_fingerprint_inventory(tmp_path, monkeypatch):
+    """A folder added to sys.path later, holding a second numpy, does not change the version
+    the lock section reads: the first startup entry of a name counts, as for the fingerprint."""
+    import sys
+    from brainscore_core.environment_check import environment_distributions
+    before = doctor._installed_distributions()
+    info = tmp_path / 'numpy-0.0.0.dist-info'
+    info.mkdir()
+    (info / 'METADATA').write_text('Metadata-Version: 2.1\nName: numpy\nVersion: 0.0.0\n')
+    monkeypatch.setattr(sys, 'path', sys.path + [str(tmp_path)])
+    assert doctor._installed_distributions() == before
+    assert before['numpy'] != '0.0.0'
+    assert before == {name: version for name, (version, _) in environment_distributions().items()}

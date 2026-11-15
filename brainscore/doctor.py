@@ -96,8 +96,9 @@ def _lock_file():
 
 
 def _installed_distributions():
-    from importlib.metadata import distributions
-    return {_normalized(d.metadata['Name']): d.version for d in distributions() if d.metadata['Name']}
+    """``{normalized name: version}``: the fingerprint's inventory (startup entries, first one counts)."""
+    from brainscore_core.environment_check import environment_distributions
+    return {name: version for name, (version, _distribution) in environment_distributions().items()}
 
 
 def _asset_rows():
