@@ -211,6 +211,16 @@ def list_benchmarks():
     return _listing(benchmark_registry, 'benchmarks', 'benchmark_registry')
 
 
+def _not_found(kind: str, identifier: str, sources: str, folder: str, listing: str = '') -> KeyError:
+    """The one message of a loader that finds no identifier."""
+    listed = f' {listing} lists them all.' if listing else ''
+    return KeyError(
+        f"{kind} '{identifier}' not found in {sources} registries.{listed} A plugin registers "
+        f"when its package is imported: for a plugin in brainscore/{folder}/<name>/, add "
+        f"'from . import <name>' to brainscore/{folder}/__init__.py, or import the package "
+        f"before you load it.")
+
+
 def load_model(identifier: str) -> Subject:
     """Load a model by identifier.
 
@@ -228,10 +238,8 @@ def load_model(identifier: str) -> Subject:
                 return __import__(f'brainscore_{domain}', fromlist=['load_model']).load_model(identifier)
         except PluginNotFoundError:
             continue
-    raise KeyError(
-        f"Model '{identifier}' not found in unified, vision, or language registries; "
-        f"brainscore.list_models() lists them all."
-    )
+    raise _not_found('Model', identifier, 'unified, vision, or language', 'models',
+                     'brainscore.list_models()')
 
 
 def load_benchmark(identifier: str, **configuration: Any) -> Benchmark:
@@ -256,10 +264,8 @@ def load_benchmark(identifier: str, **configuration: Any) -> Benchmark:
             return ensure_legacy_benchmark_modalities(benchmark, {modality})
         except PluginNotFoundError:
             continue
-    raise KeyError(
-        f"Benchmark '{identifier}' not found in unified, vision, or language registries; "
-        f"brainscore.list_benchmarks() lists them all."
-    )
+    raise _not_found('Benchmark', identifier, 'unified, vision, or language', 'benchmarks',
+                     'brainscore.list_benchmarks()')
 
 
 def load_metric(identifier: str, *args, **kwargs) -> Metric:
@@ -278,9 +284,7 @@ def load_metric(identifier: str, *args, **kwargs) -> Metric:
     except PluginNotFoundError:
         pass
 
-    raise KeyError(
-        f"Metric '{identifier}' not found in unified or vision registries."
-    )
+    raise _not_found('Metric', identifier, 'unified or vision', 'metrics')
 
 
 def load_dataset(identifier: str, *args, **kwargs):
@@ -308,8 +312,7 @@ def load_dataset(identifier: str, *args, **kwargs):
         return _language(identifier)
     except PluginNotFoundError:
         pass
-    raise KeyError(
-        f"Dataset '{identifier}' not found in unified, vision, or language registries.")
+    raise _not_found('Dataset', identifier, 'unified, vision, or language', 'data')
 
 
 def load_stimulus_set(identifier: str, *args, **kwargs):
@@ -327,8 +330,7 @@ def load_stimulus_set(identifier: str, *args, **kwargs):
         return _vision(identifier)
     except PluginNotFoundError:
         pass
-    raise KeyError(
-        f"StimulusSet '{identifier}' not found in unified or vision registries.")
+    raise _not_found('StimulusSet', identifier, 'unified or vision', 'data')
 
 
 def _resolve_identifier(obj, default: str) -> str:

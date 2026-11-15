@@ -43,7 +43,10 @@ def load_tool(identifier: str, **configuration: Any) -> Any:
     try:
         entry = _TOOLS[identifier]
     except KeyError:
-        raise KeyError(f'Unknown tool {identifier!r}; available: {list_tools()}') from None
+        raise KeyError(f'Unknown tool {identifier!r}; available: {list_tools()}. A tool that ships '
+                       f'in Brain-Score is one line in _TOOLS of brainscore/tools/_registry.py; a '
+                       f'tool outside Brain-Score is added with register_tool(identifier, factory) '
+                       f'before load_tool.') from None
     if callable(entry):
         return entry(**configuration)
     module, name, fitted = entry
