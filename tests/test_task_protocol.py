@@ -203,9 +203,14 @@ def _grid_wrapper(model):
 
 
 def test_vlm_vision_wrapper_records_the_mean_over_patches():
-    model = TinyVisionGrid()
+    # Fixed weights and patches: the comparison is relative, so an unseeded mean near zero
+    # failed about 1 run in 400; with seed 0 every mean is at least 0.17 from zero.
+    with torch.random.fork_rng():
+        torch.manual_seed(0)
+        model = TinyVisionGrid()
+        patches = torch.randn(6, 4)
     wrapper = _grid_wrapper(model)
-    patches = torch.randn(6, 4, device=wrapper._device)
+    patches = patches.to(wrapper._device)
     with wrapper.record(['blocks.0']) as recording:
         expected = model(patches, grid_thw=torch.tensor([[1, 2, 3]])).mean(dim=0)
         taken = recording.take()['blocks.0']
@@ -411,10 +416,15 @@ class TinyVisionGrid(torch.nn.Module):
 
 
 def test_vlm_vision_wrapper_records_each_image_of_a_trial():
-    model = TinyVisionGrid()
+    # Fixed weights and patches: the comparison is relative, so an unseeded mean near zero
+    # failed about 1 run in 400; with seed 0 every mean is at least 0.10 from zero.
+    with torch.random.fork_rng():
+        torch.manual_seed(0)
+        model = TinyVisionGrid()
+        patches = torch.randn(12, 4)
     wrapper = _grid_wrapper(model)
     grid = torch.tensor([[1, 2, 2], [1, 2, 3], [1, 1, 2]])          # 4, 6 and 2 patches
-    patches = torch.randn(12, 4, device=wrapper._device)
+    patches = patches.to(wrapper._device)
     with wrapper.record(['blocks.0']) as recording:
         out = model(patches, grid_thw=grid)
         several = recording.take()['blocks.0']
