@@ -118,7 +118,10 @@ def test_regions_route_to_their_tower(built):
     model, _ = built
     selectors = model.region_layer_selectors
     assert selectors['language_system'].name == 'layers.40'
-    assert model.output_inputs['neural:language_system'] == {'text'}
+    # The language model also reads the picture tokens; the text extractor records it.
+    assert model.output_inputs['neural:language_system'] == {'text', 'vision:image'}
+    assert selectors['language_system'].modality == 'text'
+    assert model.region_layer_map['language_system'].modality == ('text', 'vision')
     for region in ('V1', 'V2', 'V4', 'IT'):
         assert model.output_inputs[f'neural:{region}'] == {'vision:image', 'vision:video'}
         assert int(selectors[region].name.split('.')[1]) < 27

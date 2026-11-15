@@ -297,9 +297,12 @@ def test_constructor_wiring(registration):
     # The same layer of each region, and each region is recorded from its tower.
     assert {region: selector.layer_path
             for region, selector in model.region_layer_selectors.items()} == module.REGION_LAYER_MAP
+    # Qwen-VL's language model also reads the picture tokens: its region states both inputs.
+    reached = {'text', 'vision:image'} if identifier == 'qwen2.5-vl-3b' else {'text'}
     assert model.output_inputs == {
-        f'neural:{region}': frozenset({'text' if tower == 'text' else 'vision:image'})
+        f'neural:{region}': frozenset(reached if tower == 'text' else {'vision:image'})
         for region, tower in _TOWERS(module).items()}
+    assert model._region_modality_map['language_system'] == 'text'      # recorded by the text extractor
     assert model.in_channels == {'vision:image', 'text', 'control', 'instruction'} - (
         set() if identifier == 'qwen2.5-vl-3b' else {'instruction'})
     assert model.visual_degrees() == 8
