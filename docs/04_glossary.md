@@ -9,7 +9,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **Adapter** | A permanent wrapper that presents a classic Brain-Score vision or language model as a subject. |
 | **`answer`** | A `BrainScoreModel` part: `(stimulus_row, instruction, label_set) -> label`. It phrases and parses its own prompt. It answers an older `task_type`/`label_set` task and a plain `Choice`; a task with settings goes to `reply`. |
 | **Assembly** | A labeled array. `NeuroidAssembly` has `presentation` (stimuli), `neuroid` (units) and optionally `time_bin`. `BehavioralAssembly` holds choices. |
-| **Benchmark** | A fixed test: stimuli, requested outputs, a metric and measured data. Returns a score. It declares `required_input_channels` and `requested_output_channels`, and its `__call__(subject)` takes the subject. |
+| **Benchmark** | A fixed test: stimuli, requested outputs, a metric and measured data. Returns a score. It declares `requested_output_channels`; its inputs are read from the table it keeps (`stimulus_set`, and `task`), or declared in `required_input_channels` when it keeps no table. Its `__call__(subject)` takes the subject. |
 | **`BrainScoreModel`** | A ready-made subject assembled from parts (extractor, region map, answer, policy, intervention). |
 | **`CallableProtocol`** | A protocol that wraps an existing evaluator and keeps its loop, resets and scoring. |
 | **Ceiling** | An estimate of how well the measured data can be predicted, from its reliability. A ceiled score divides by it. |
