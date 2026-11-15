@@ -52,7 +52,6 @@ def _make_answer(blip_model, blip_processor, max_new_tokens: int = 8):
     prompt it in a captioning-style template that it handles better:
     "Question: {instruction} Answer:" → model completes with label.
     """
-    from brainscore_core.responses import Choice
     from brainscore.model_helpers.api_behavioral import _required_column
     device = next(blip_model.parameters()).device
 
@@ -83,16 +82,11 @@ def _make_answer(blip_model, blip_processor, max_new_tokens: int = 8):
                 do_sample=False,
             )
 
-        response = blip_processor.tokenizer.decode(
-            generated[0], skip_special_tokens=True).strip().lower()
-        # BLIP-2 echoes the prompt sometimes; strip it
-        if 'answer:' in response:
-            response = response.split('answer:')[-1].strip()
-
-        # Core's Choice.parse reads the label; an unread reply is returned as it is
-        # and recorded as an invalid trial.
-        label, _ = Choice(label_set).parse(response)
-        return response if label is None else label
+        decoded = blip_processor.tokenizer.decode(generated[0], skip_special_tokens=True)
+        # The generation can return the prompt before the reply: only that echo is
+        # removed. The rest is the generated text, exactly; BrainScoreModel parses it.
+        echoed = decoded.lstrip()
+        return echoed[len(prompt):] if echoed.startswith(prompt) else decoded
 
     return generate
 

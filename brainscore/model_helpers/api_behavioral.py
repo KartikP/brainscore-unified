@@ -12,7 +12,8 @@ What it handles (the "graceful" parts):
   - per-stimulus on-disk response cache keyed by (provider, model, instruction,
     label_set, stimulus) — re-runs don't re-bill AND the scored result reproduces
     even though the live model may change behind the API;
-  - the directive and the parse of core's ``Choice`` (one text, one rule);
+  - the directive of core's ``Choice`` (one text); the reply text is returned
+    exactly and ``BrainScoreModel`` parses it with ``Choice.parse``;
   - multimodal (base64 image) and text dispatch from the stimulus row.
 
 ``build_api_reply`` builds a ``reply`` part from the same clients (one table,
@@ -82,13 +83,6 @@ def _answer_text(instruction: Optional[str], label_set: Sequence[str]) -> str:
     """The instruction, then the choice directive of core's ``Choice`` (the one text)."""
     return '\n\n'.join(part for part in ((instruction or '').strip(),
                                           Choice(list(label_set)).directive()) if part)
-
-
-def _label_or_reply(reply: Optional[str], label_set: Sequence[str]):
-    """The label core's ``Choice.parse`` reads in ``reply``, else the reply itself
-    (``BrainScoreModel`` parses it again and records the trial as invalid)."""
-    label, _ = Choice(list(label_set)).parse(reply)
-    return reply if label is None else label
 
 
 # ── provider clients ───────────────────────────────────────────────────
@@ -325,7 +319,7 @@ def build_api_generation_fn(
             if cache is not None:
                 cache.set(key, response)
 
-        return _label_or_reply(response, label_set)
+        return response   # the provider's text, exactly: BrainScoreModel parses it
 
     return generate
 

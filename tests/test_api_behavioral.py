@@ -9,23 +9,17 @@ import pytest
 
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore.model_helpers.api_behavioral import (
-    build_api_generation_fn, _label_or_reply, _find_column, _answer_text, _required_column,
+    build_api_generation_fn, _find_column, _answer_text, _required_column,
 )
 
 
 class TestPureHelpers:
-    def test_parse_is_core_choice_parse(self):
-        labels = ['real', 'pseudo']
-        assert _label_or_reply('REAL', labels) == 'real'
-        assert _label_or_reply('  pseudo ', labels) == 'pseudo'
-        assert _label_or_reply('The answer is real.', labels) == 'real'
-        assert _label_or_reply('real\npseudo', labels) == 'real'        # the first line only
-        # word boundary: "unreal" must NOT match "real"
-        assert _label_or_reply('unreal', labels) == 'unreal'
-        # two labels: no label (stated change: the first label no longer wins)
-        assert _label_or_reply('real or pseudo', labels) == 'real or pseudo'
-        assert _label_or_reply('maybe?', labels) == 'maybe?'
-        assert _label_or_reply(None, labels) is None
+    def test_the_provider_text_is_returned_exactly(self):
+        """The answer part does not parse: BrainScoreModel reads the text with Choice.parse."""
+        for text in ('REAL', '  Pseudo, not REAL  ', 'The answer is real.'):
+            gen = build_api_generation_fn(lambda model, system, messages, settings: text, 'mock')
+            assert gen(pd.Series({'sentence': 'florp', 'stimulus_id': 's1'}), 'Real?',
+                       ['real', 'pseudo']) == text
 
     def test_prompt_is_the_instruction_then_core_choice_directive(self):
         assert _answer_text('Is this a real word?', ['real', 'pseudo']) == (
@@ -72,7 +66,7 @@ class TestGenerationClosure:
             return responses.get('return', 'real')
         return call
 
-    def test_text_row_returns_parsed_label(self):
+    def test_text_row_returns_the_provider_text(self):
         gen = build_api_generation_fn(self._mock({'return': 'pseudo'}), 'mock')
         row = pd.Series({'sentence': 'florp', 'stimulus_id': 's1'})
         out = gen(row, 'Is this a real word?', ['real', 'pseudo'])

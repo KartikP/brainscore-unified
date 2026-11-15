@@ -1,4 +1,5 @@
-"""The answer parts of Qwen2.5-VL and BLIP-2: their own prompt wording, core's Choice.parse.
+"""The answer parts of Qwen2.5-VL and BLIP-2: their own prompt wording; the generated text,
+which BrainScoreModel parses with core's Choice.parse.
 
 No weights: a stub processor and a stub generate stand in for the model. The old parse
 of the two parts is kept here as a frozen reference, to show the only replies whose label
@@ -29,11 +30,13 @@ def _old_parse(response, label_set):
 
 
 class _Tokenizer:
+    """Decodes to ``echo + reply``; ``echo`` is the prompt when the stand-in echoes it."""
+
     def __init__(self, reply):
-        self.reply = reply
+        self.reply, self.echo = reply, ''
 
     def decode(self, ids, skip_special_tokens=True):
-        return self.reply
+        return self.echo + self.reply
 
 
 class _Inputs(dict):
@@ -42,8 +45,8 @@ class _Inputs(dict):
 
 
 class _Processor:
-    def __init__(self, reply):
-        self.tokenizer, self.texts = _Tokenizer(reply), []
+    def __init__(self, reply, echo=False):
+        self.tokenizer, self.texts, self.echoes = _Tokenizer(reply), [], echo
 
     def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=True):
         (message,) = messages
@@ -53,6 +56,8 @@ class _Processor:
     def __call__(self, text=None, images=None, return_tensors='pt', padding=False):
         if not isinstance(text, list):          # BLIP-2 passes the prompt itself
             self.texts.append(text)
+            if self.echoes:                      # its generation returns the prompt first
+                self.tokenizer.echo = text
         return _Inputs(input_ids=torch.zeros((1, 3), dtype=torch.long))
 
 
@@ -78,9 +83,9 @@ def _qwen(reply):
     return _make_answer(_Model(), processor), processor
 
 
-def _blip(reply):
+def _blip(reply, echo=False):
     from brainscore.models.blip2_opt_2_7b.model import _make_answer
-    processor = _Processor(reply)
+    processor = _Processor(reply, echo)
     return _make_answer(_Model(), processor), processor
 
 
@@ -97,8 +102,8 @@ def test_qwen_answers_without_an_instruction(row):
 
 
 def test_blip2_prompt_with_an_instruction_is_unchanged(row):
-    answer, processor = _blip('Answer: real')
-    assert answer(row, 'Is this a real word?', LABELS) == 'real'
+    answer, processor = _blip(' real', echo=True)
+    assert answer(row, 'Is this a real word?', LABELS) == ' real'      # the echo removed, nothing else
     assert processor.texts == ['Question: Is this a real word? Choose from: real, pseudo. Answer:']
 
 
@@ -110,9 +115,11 @@ def test_blip2_answers_without_an_instruction_and_shows_no_none(row):
 
 
 @pytest.mark.parametrize('part', [_qwen, _blip])
-def test_an_unread_reply_is_returned_as_it_is(row, part):
-    answer, _ = part('Pseudo, not real')
-    assert answer(row, 'Is this a real word?', LABELS) == 'pseudo, not real'
+@pytest.mark.parametrize('reply', ['  Pseudo, not REAL  ', 'REAL.', 'Answer: real'])
+def test_the_generated_text_is_returned_exactly(row, part, reply):
+    """No change of case or spaces, no label: BrainScoreModel parses the text."""
+    answer, _ = part(reply)
+    assert answer(row, 'Is this a real word?', LABELS) == reply
 
 
 # Replies a generation part can give for ROAR and induced dyslexia (labels real, pseudo),
@@ -127,11 +134,12 @@ STATED = {'real or pseudo', 'pseudo, not real', 'hmm\npseudo'}
 
 
 def test_the_label_changes_only_for_two_labels_or_a_label_after_the_first_line():
+    """The old parts read the lower-cased, stripped reply; now Choice.parse reads the exact text."""
     changed = set()
     for reply in REPLIES:
-        response = reply.strip().lower()           # what both parts parse
-        new, _ = Choice(LABELS).parse(response)
-        new = response if new is None else new
-        if new != _old_parse(response, LABELS):
+        old = _old_parse(reply.strip().lower(), LABELS)
+        old = old if old in LABELS else None
+        new, _ = Choice(LABELS).parse(reply)
+        if new != old:
             changed.add(reply)
     assert changed == STATED

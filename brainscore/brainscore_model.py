@@ -134,9 +134,18 @@ class BrainScoreModel(UnifiedModel):
             brings several of them at once. An extractor keys its own activation
             cache.
         :param behavioral_readout_layer: layer on which to fit a behavioral readout.
-        :param answer: ``(stimulus_row, instruction, label_set) -> label``;
-            generates and parses a behavioral answer for instruction-following
-            tasks.
+        :param answer: ``(stimulus_row, instruction, label_set) -> str``; the
+            model's reply to one choice trial. The model author words the prompt
+            (``instruction`` may be ``None``; core's ``Choice(label_set).directive()``
+            gives the answer line). It returns the generated text exactly, with
+            at most the echo of its own prompt removed: no change of case or
+            spaces. ``BrainScoreModel`` parses it with core's ``Choice.parse``, as
+            it parses a reply, and stores the text as the raw answer. A function
+            that returns a label still works: a label is a text that parses to
+            itself. As a reply may, it can return a ``StreamEvent`` with the text
+            as payload and extra data as meta; the meta goes into the answer
+            event of a response task (a legacy ``task_type`` task keeps only
+            the text).
         :param reply: ``(prompt) -> str``; the model's raw reply to one trial.
             ``prompt`` is a ``brainscore_core.responses.Prompt``: the trial's parts
             in order (instruction, stimulus parts, the response's directive).

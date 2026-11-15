@@ -90,7 +90,7 @@ def _make_answer(qwen_model, qwen_processor, max_new_tokens: int = 8):
     ``instruction`` (not just fitting_stimuli).
 
     Signature (the ``answer`` part of BrainScoreModel):
-        fn(stimulus_row, instruction, label_set) -> predicted_label
+        fn(stimulus_row, instruction, label_set) -> the generated text
     """
     from brainscore.model_helpers.api_behavioral import _required_column
     device = next(qwen_model.parameters()).device
@@ -122,13 +122,8 @@ def _make_answer(qwen_model, qwen_processor, max_new_tokens: int = 8):
         # Strip the prompt tokens, decode the tail
         input_len = inputs['input_ids'].shape[1]
         response_ids = generated[0, input_len:]
-        response = qwen_processor.tokenizer.decode(
-            response_ids, skip_special_tokens=True).strip().lower()
-
-        # Core's Choice.parse reads the label; an unread reply is returned as it is
-        # and recorded as an invalid trial.
-        label, _ = Choice(label_set).parse(response)
-        return response if label is None else label
+        # The generated text, exactly: BrainScoreModel parses it with core's Choice.parse.
+        return qwen_processor.tokenizer.decode(response_ids, skip_special_tokens=True)
 
     return generate
 
