@@ -21,12 +21,16 @@ from collections import OrderedDict
 from typing import Callable, List
 
 import numpy as np
+from result_caching import is_enabled
 from tqdm.auto import tqdm
 
 from brainscore_core.assembly_builder import make_assembly, make_layer_neuroid_coords, make_neuroid_ids
-from brainscore_core.extraction_cache import extraction_fingerprint, file_inputs, model_config
+from brainscore_core.extraction_cache import (extraction_fingerprint, file_inputs, model_config,
+                                              weight_fingerprint_scope)
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.model_helpers.selection import split_site
+
+NOT_STATED = 'not stated'
 
 
 def get_layer(root, layer: str):
@@ -421,14 +425,39 @@ class CachingExtractor:
     def cache_config(self):
         return cache_config(self, self.CACHE_FIELDS)
 
+    # While a model notes a session, the set of (settings, store use) of each call;
+    # None otherwise, so a call outside a noted session does no extra work.
+    _session_facts = None
+
     def _cached(self, inputs, layers, stimuli_identifier=None):
         stored = f'_from_{self._INPUTS}_stored'
-        signature = cache_signature(self, stored, self._key_inputs(inputs), stimuli_identifier)
+        if self._session_facts is None:
+            signature = cache_signature(self, stored, self._key_inputs(inputs), stimuli_identifier)
+        else:
+            signature = self._signature_and_facts(stored, inputs, stimuli_identifier)
         if signature is None:
             return in_layer_order(getattr(self, f'_from_{self._INPUTS}')(inputs, layers, stimuli_identifier), layers)
         result = getattr(self, stored)(stimuli_identifier=stimuli_identifier, layers=layers,
                                        extraction_fingerprint=signature, **{self._INPUTS: inputs})
         return in_layer_order(labelled(c_order(result), self._identifier), layers)
+
+    def _signature_and_facts(self, stored, inputs, stimuli_identifier):
+        """The cache signature, and this call's settings fingerprint in ``_session_facts``.
+
+        The settings fingerprint is the cache key without the inputs. One weight scope
+        holds both, so the weights hashed for the signature are not hashed again; with
+        the store off nothing is hashed and the fact says so.
+        """
+        with weight_fingerprint_scope():
+            signature = cache_signature(self, stored, self._key_inputs(inputs), stimuli_identifier)
+            if signature is not None:
+                settings = extraction_fingerprint(self.cache_config()) or NOT_STATED
+            elif not is_enabled(f'{kind(self)}.{stored}'):
+                settings = 'not hashed (store off)'
+            else:
+                settings = 'not hashed (store not used)'
+        self._session_facts.add(settings)
+        return signature
 
     def _key_inputs(self, inputs):
         """What the cache key reads of the inputs: the bytes of the files behind paths."""

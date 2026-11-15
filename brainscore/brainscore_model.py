@@ -470,6 +470,8 @@ class BrainScoreModel(Subject):
         """
         from brainscore_core.score_metadata import note_session
         from ._model.channels import regions_per_pass
+        from .model_helpers import provenance
+        from .model_helpers._extractors import CachingExtractor
         plan = regions_per_pass()
         note_session(session, plan)   # this model owns the plan, so the run record gets it from here
         with _one_session_at_a_time(self):
@@ -489,7 +491,22 @@ class BrainScoreModel(Subject):
             # Weights are hashed once per session for the activation cache key;
             # inside score() the run's scope is reused.
             with self._behavioral.session_scope(), weight_fingerprint_scope():
-                handler.participate(self, session.declare_inputs(self.in_channels))
+                declared = session.declare_inputs(self.in_channels)
+                extractors = provenance.noted_extractors(self)
+                facts = {id(extractor): set() for extractor in extractors
+                         if isinstance(extractor, CachingExtractor)}
+                for extractor in extractors:
+                    if id(extractor) in facts:
+                        extractor._session_facts = facts[id(extractor)]
+                try:
+                    handler.participate(self, declared)
+                    # Once per session, inside the session's task and weight scope: the parts
+                    # it used and their facts, to the run record (no response is changed).
+                    note_session(session, provenance=provenance.session_entry(self, declared, facts))
+                finally:
+                    for extractor in extractors:
+                        if id(extractor) in facts:
+                            extractor._session_facts = None
 
     def detect_modalities(self, stimuli) -> Set[str]:
         """Declared input modalities whose columns appear in ``stimuli``."""
