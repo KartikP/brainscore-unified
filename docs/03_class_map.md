@@ -66,11 +66,11 @@ Each `BrainScoreModel` part is a slot. Fill it with the class that matches your 
 | Your model's input | Use | Configure with |
 | --- | --- | --- |
 | Images (CNN, ViT) | `PytorchWrapper` | `preprocessing=` function |
-| Images in a vision-language model with flattened patches (Qwen-VL, LLaVA) | `VLMVisionWrapper` | `processor=`, `layer_aggregation=` |
+| Images in a vision-language model with flattened patches (Qwen-VL, LLaVA) | `VLMVisionWrapper` | `processor=`, `layer_aggregation=` (`mean`, `first`, `sequence`) |
 | Video clips (V-JEPA, VideoMAE) | `VideoWrapper`, keyed `'video'` | `preprocessing=`, `post_hook_fn=` |
 | Video clips through a vision-language model (Qwen-VL) | `VLMVideoWrapper`, keyed `'video'` next to the image wrapper | the model's own processor |
-| Text | `TextWrapper` | `tokenizer=`, `layer_aggregation=` (`last_token`, `mean_tokens`, `per_token`) |
-| Audio | `AudioWrapper` | `processor=`, `layer_aggregation=` (`mean_time`, `time_series`) |
+| Text | `TextWrapper` | `tokenizer=`, `layer_aggregation=` (`last`, `mean`, `sequence`) |
+| Audio | `AudioWrapper` | `processor=`, `layer_aggregation=` (`mean`, `sequence`) |
 | Something else | Any callable `extractor(stimuli, layers=[...])` returning a `NeuroidAssembly` | |
 
 ```python

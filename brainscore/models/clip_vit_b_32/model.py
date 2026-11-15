@@ -55,12 +55,12 @@ def get_model(identifier: str) -> BrainScoreModel:
     )
 
     # Text: TextWrapper wraps text_model sub-module. CLIP's text encoder is
-    # bidirectional (BERT-like), so mean_tokens aggregation is appropriate.
+    # bidirectional (BERT-like), so mean aggregation is appropriate.
     text_wrapper = TextWrapper(
         model=clip_model.text_model,
         tokenizer=clip_processor.tokenizer,
         identifier=f'{identifier}-text',
-        layer_aggregation='mean_tokens',
+        layer_aggregation='mean',
         max_length=77,
     )
 

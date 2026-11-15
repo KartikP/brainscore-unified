@@ -386,7 +386,7 @@ def test_pereira_declares_passages_before_extraction():
 def test_context_expansion_preserves_stimulus_identifier(monkeypatch):
     from brainscore.model_helpers.text_wrapper import TextWrapper
     wrapper = TextWrapper.__new__(TextWrapper)
-    wrapper._layer_aggregation = 'last_token'
+    wrapper._layer_aggregation = 'last'
     seen = []
     monkeypatch.setattr(wrapper, '_from_texts_cached',
                         lambda texts, layers, identifier: seen.append((texts, identifier)))
@@ -402,8 +402,8 @@ def test_context_expansion_preserves_stimulus_identifier(monkeypatch):
     assert len({tuple(texts) for texts, _ in seen}) == 3
     assert seen[0][0][1] == 'the dog'
     assert seen[1][0][1] == 'the cat the dog'
-    wrapper._layer_aggregation = 'per_token'
-    with pytest.raises(ValueError, match='per_token'):
+    wrapper._layer_aggregation = 'sequence'
+    with pytest.raises(ValueError, match='sequence'):
         wrapper._from_stimulus_set(stimuli, ['L'])
 
 

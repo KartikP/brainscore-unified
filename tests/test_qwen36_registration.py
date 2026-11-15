@@ -171,5 +171,5 @@ def test_vision_extractor_keeps_its_identifier_and_cache_key(monkeypatch):
     assert vision.identifier == 'qwen3.6-27b-vision'
     settings = vision.cache_config()['settings']
     assert {key: settings[key] for key in ('_layer_aggregation', '_batch_size')} == {
-        '_layer_aggregation': 'mean_patches', '_batch_size': 4}
+        '_layer_aggregation': 'mean', '_batch_size': 4}
     assert settings['_processor'] is processor

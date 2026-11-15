@@ -146,7 +146,7 @@ def test_the_shared_wav_loader_reads_as_the_old_copies(tiny_wav2vec2, tmp_path):
     from scipy.io import wavfile
     from brainscore.models._shared import build_audio_wrapper
     wrapper, _ = build_audio_wrapper('combo', random_init=True)
-    assert wrapper.identifier == 'combo-audio' and wrapper._layer_aggregation == 'time_series'
+    assert wrapper.identifier == 'combo-audio' and wrapper._layer_aggregation == 'sequence'
     rng = np.random.default_rng(1)
     for name, data in (('int16', rng.integers(-3000, 3000, 160).astype(np.int16)),
                        ('float', rng.standard_normal(160).astype(np.float32)),
@@ -188,3 +188,21 @@ def test_the_shared_image_loader_prepares_images_as_the_old_copies(tmp_path):
     result = _load_preprocess_images(paths, processor=_PixelProcessor())
     expected = _old_load_preprocess_images(paths, processor=_PixelProcessor())
     assert result.dtype == expected.dtype and np.array_equal(result, expected)
+
+
+# -- one value set for layer_aggregation --------------------------------------------
+
+def test_every_wrapper_takes_the_one_value_set_and_refuses_others_at_construction(tmp_path):
+    from brainscore.model_helpers._extractors import LAYER_AGGREGATIONS
+    from tests.test_wrapper_cache_guard import audio_wrapper, text_wrapper
+    builders = {'text': (text_wrapper, ('last', 'mean', 'sequence')),
+                'audio': (audio_wrapper, ('mean', 'sequence')),
+                'vlm_vision': (vlm_vision_wrapper, ('mean', 'first', 'sequence'))}
+    for build, allowed in builders.values():
+        assert set(allowed) <= set(LAYER_AGGREGATIONS)
+        for value in allowed:
+            assert build(layer_aggregation=value)._layer_aggregation == value
+        for value in ('last_token', 'mean_tokens', 'per_token', 'mean_time', 'time_series', 'mean_patches',
+                      'first_patch', 'none', 'max'):
+            with pytest.raises(ValueError, match=r"layer_aggregation must be one of \(.*\); got"):
+                build(layer_aggregation=value)

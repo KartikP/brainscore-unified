@@ -393,7 +393,7 @@ def test_clip_keeps_its_wrappers_and_preprocessing(build, tmp_path):
     assert preprocessing.keywords == {'processor': processor}
     assert text.kwargs == {'model': clip.text_model, 'tokenizer': processor.tokenizer,
                            'identifier': 'clip-vit-b-32-text',
-                           'layer_aggregation': 'mean_tokens', 'max_length': 77}
+                           'layer_aggregation': 'mean', 'max_length': 77}
     path = _images(tmp_path, 'pixels', [4]).stimulus_paths['pixels0']
     assert preprocessing([path]).shape == (1, 4, 4, 3)   # RGBA converted to RGB
     assert processor.images_seen[-1].mode == 'RGB'
@@ -426,9 +426,9 @@ def test_qwen_keeps_its_wrappers_dtype_and_generation(build):
     from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
     assert _effective(VLMVisionWrapper, vision.kwargs) == _effective(VLMVisionWrapper, {
         'model': qwen.model.visual, 'processor': processor,
-        'identifier': 'qwen2.5-vl-3b-vision', 'layer_aggregation': 'mean_patches', 'batch_size': 4})
+        'identifier': 'qwen2.5-vl-3b-vision', 'layer_aggregation': 'mean', 'batch_size': 4})
     assert _effective(TextWrapper, text.kwargs) == _effective(TextWrapper, {
         'model': qwen.model.language_model, 'tokenizer': processor.tokenizer,
-        'identifier': 'qwen2.5-vl-3b-text', 'layer_aggregation': 'last_token', 'max_length': 512})
+        'identifier': 'qwen2.5-vl-3b-text', 'layer_aggregation': 'last', 'max_length': 512})
     assert model._behavioral_readout_layer == 'blocks.28'
     assert model._answer is not None

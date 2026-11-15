@@ -125,7 +125,7 @@ def test_vision_extractor_keeps_its_identifier_and_cache_key(build, monkeypatch,
     assert vision.identifier == f'{identifier}-vision'
     settings = vision.cache_config()['settings']
     assert {key: settings[key] for key in ('_layer_aggregation', '_batch_size')} == {
-        '_layer_aggregation': 'mean_patches', '_batch_size': 4}
+        '_layer_aggregation': 'mean', '_batch_size': 4}
     assert vision._patch_counts({'image_grid_thw': [(1, 2, 3)]}) == [6]
     # The cache key names the wrapper class, not the registration.
     assert vision.cache_config()['kind'] == 'brainscore.model_helpers.vlm_vision_wrapper.VLMVisionWrapper'

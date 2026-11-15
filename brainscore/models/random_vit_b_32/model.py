@@ -59,7 +59,7 @@ def get_model(identifier: str) -> BrainScoreModel:
         model=clip_model.text_model,
         tokenizer=clip_processor.tokenizer,
         identifier=f'{identifier}-text',
-        layer_aggregation='mean_tokens',
+        layer_aggregation='mean',
         max_length=77,
     )
 

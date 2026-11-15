@@ -45,7 +45,7 @@ def test_failed_extraction_removes_only_its_hooks(kind, failure, tmp_path):
     wrapper._preprocessing = lambda frames: torch.ones(1, 2)
     wrapper._processor_call = lambda images: {'inputs': torch.ones(1, 2)}
     wrapper._forward = lambda processed: model(**processed)
-    wrapper._layer_aggregation = 'last_token'
+    wrapper._layer_aggregation = 'last'
     wrapper._flatten_layer_output = lambda value: value
     wrapper._aggregate_per_image = lambda value, *a, **kw: value
 

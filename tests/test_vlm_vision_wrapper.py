@@ -36,7 +36,7 @@ def qwen_vision_wrapper(request):
         model=qwen_model.model.visual,
         processor=qwen_processor,
         identifier='qwen2.5-vl-3b-vision-test',
-        layer_aggregation='mean_patches',
+        layer_aggregation='mean',
         batch_size=2,
     )
     from brainscore.validation.integration_checks import record_placement

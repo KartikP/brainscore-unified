@@ -264,6 +264,19 @@ def one_dtype(layer_activations) -> None:
             'dtype, so they need separate calls (a session makes them).')
 
 
+# The one value set of ``layer_aggregation``. Each wrapper takes the values that
+# fit its outputs: ``mean`` over the positions (tokens, time steps, patches),
+# the ``first`` or ``last`` position, or the whole ``sequence`` of positions.
+LAYER_AGGREGATIONS = ('mean', 'first', 'last', 'sequence')
+
+
+def checked_aggregation(value: str, allowed) -> str:
+    """``value`` when it is one of ``allowed`` (a subset of ``LAYER_AGGREGATIONS``); raises otherwise."""
+    if value not in allowed:
+        raise ValueError(f'layer_aggregation must be one of {tuple(allowed)}; got {value!r}.')
+    return value
+
+
 def run_batches(items, batch_size: int, run: Callable, desc: str):
     """``run`` each batch of ``items``; returns ``{layer: array}`` with all items on the first axis."""
     total = len(items)

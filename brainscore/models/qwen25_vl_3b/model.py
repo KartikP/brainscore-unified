@@ -4,7 +4,7 @@ encoder feeds into a causal language model.
 
 Uses VLMVisionWrapper for the vision path (it handles Qwen's flattened-patch
 layout with image_grid_thw metadata) and TextWrapper for the text path
-(causal mode with last_token aggregation). Both are class-based, cached via
+(causal mode with last aggregation). Both are class-based, cached via
 @store_xarray, and symmetric in their calling convention.
 
 Architecture:
@@ -174,7 +174,7 @@ def get_model(identifier: str) -> Subject:
     )
 
     # Text: TextWrapper wraps model.language_model (causal decoder).
-    # last_token aggregation with attention_mask handles padded batches.
+    # last aggregation with attention_mask handles padded batches.
     text_wrapper = TextWrapper(
         model=qwen_model.model.language_model,
         tokenizer=qwen_processor.tokenizer,

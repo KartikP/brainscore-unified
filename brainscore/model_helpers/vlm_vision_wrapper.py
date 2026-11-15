@@ -29,7 +29,8 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.extraction_cache import store_xarray, file_inputs
 from brainscore.model_helpers import _extractors
 from brainscore.model_helpers._extractors import (
-    LiveRecording, as_float32, cache_signature, in_layer_order, labelled, layer_assembly, run_batches,
+    LiveRecording, as_float32, cache_signature, checked_aggregation, in_layer_order, labelled, layer_assembly,
+    run_batches,
 )
 
 
@@ -52,7 +53,8 @@ class VLMVisionWrapper:
         identifier: Human-readable model identifier (the ``model``
             coordinate); not part of the cache key.
         layer_aggregation: How to reduce per-image patches to one vector.
-            'mean_patches' (default), 'first_patch' (CLS-style), or 'none'.
+            'mean' (default), 'first' (CLS-style), or 'sequence' (every patch kept,
+            flattened into the features).
         batch_size: Number of images per forward pass.
     """
 
@@ -66,13 +68,15 @@ class VLMVisionWrapper:
     # call (brainscore._model.channels).
     independent_layers = True
 
+    VALID_AGGREGATIONS = ('mean', 'first', 'sequence')
+
     def __init__(self, model, processor, identifier: Optional[str] = None,
-                 layer_aggregation: str = 'mean_patches',
+                 layer_aggregation: str = 'mean',
                  batch_size: int = 4, device: Optional[str] = None):
         import torch
         self._model = model
         self._processor = processor
-        self._layer_aggregation = layer_aggregation
+        self._layer_aggregation = checked_aggregation(layer_aggregation, self.VALID_AGGREGATIONS)
         self._batch_size = batch_size
         from brainscore.model_helpers._device import select_device
         self._device = select_device(device)
@@ -269,13 +273,11 @@ class VLMVisionWrapper:
 
     def _reduce_axis(self, arr: np.ndarray, axis: int) -> np.ndarray:
         """Reduce one axis per self._layer_aggregation."""
-        if self._layer_aggregation == 'mean_patches':
+        if self._layer_aggregation == 'mean':
             return arr.mean(axis=axis)
-        if self._layer_aggregation == 'first_patch':
+        if self._layer_aggregation == 'first':
             return np.take(arr, 0, axis=axis)
-        if self._layer_aggregation == 'none':
-            return arr
-        raise ValueError(f"Unknown layer_aggregation: {self._layer_aggregation}")
+        return arr                                     # 'sequence'
 
     def record(self, layers, stimuli=None):
         """Record ``layers`` while another caller runs the model (e.g. generation).

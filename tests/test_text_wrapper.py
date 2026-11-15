@@ -24,7 +24,7 @@ def clip_text_wrapper(request):
         model=clip_model.text_model,
         tokenizer=clip_processor.tokenizer,
         identifier='clip-vit-b-32-text',
-        layer_aggregation='mean_tokens',
+        layer_aggregation='mean',
         max_length=77,
     )
     from brainscore.validation.integration_checks import record_placement
@@ -156,7 +156,7 @@ def gpt2_text_wrapper(request):
         model=gpt2,
         tokenizer=tokenizer,
         identifier='gpt2-text',
-        layer_aggregation='last_token',
+        layer_aggregation='last',
         max_length=128,
     )
     from brainscore.validation.integration_checks import record_placement
@@ -252,7 +252,7 @@ def gpt2_per_token_wrapper():
         model=gpt2,
         tokenizer=tokenizer,
         identifier='gpt2-per-token',
-        layer_aggregation='per_token',
+        layer_aggregation='sequence',
         max_length=16,
     )
 

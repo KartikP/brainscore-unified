@@ -132,7 +132,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     # First-time overhead is ~1-2 min per layer; result cached to disk.
     LayerPCA.hook(vision_wrapper, n_components=1000)
 
-    # Text: TextWrapper wraps the OPT decoder. Causal LM → last_token aggregation.
+    # Text: TextWrapper wraps the OPT decoder. Causal LM → last aggregation.
     # Wrap language_model.model.decoder so layer paths are 'layers.{N}'.
     text_wrapper = TextWrapper(
         model=blip_model.language_model.model.decoder,

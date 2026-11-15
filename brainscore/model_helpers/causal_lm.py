@@ -129,7 +129,7 @@ def _chat_text(tokenizer, instruction, messages, template_kwargs) -> str:
 def build_causal_lm_subject(identifier: str, model: Any, tokenizer: Any, *,
                             region_layer_map: Optional[Mapping[str, str]] = None,
                             provenance: Optional[Mapping[str, Any]] = None,
-                            layer_aggregation: str = 'per_token',
+                            layer_aggregation: str = 'sequence',
                             chat_template_kwargs: Optional[dict] = None,
                             batch_size: int = 8) -> BrainScoreModel:
     """A ``BrainScoreModel`` for a Hugging Face causal LM: record, intervene, reply, score.

@@ -104,7 +104,7 @@ def build_audio_wrapper(combo_identifier: str, random_init: bool = False):
         model=model,
         processor=processor,
         identifier=f'{combo_identifier}-audio',
-        layer_aggregation='time_series',
+        layer_aggregation='sequence',
         audio_loader=_wav_loader,
     )
     return wrapper, model
