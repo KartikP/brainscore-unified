@@ -243,6 +243,8 @@ class VideoWrapper(CachingExtractor):
         self._identifier = identifier or model.__class__.__name__
 
     def _table_inputs(self, stimulus_set) -> List[str]:
+        if 'stimulus_id' not in stimulus_set.columns:     # it labels the clips; refuse before any pass
+            raise ValueError(f'A clip table needs a stimulus_id column; got {list(stimulus_set.columns)}.')
         return self._extract_video_paths(stimulus_set)
 
     def _columns(self, assembly, stimulus_set):

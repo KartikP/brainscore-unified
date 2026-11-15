@@ -280,3 +280,16 @@ def test_a_table_without_an_accepted_column_is_refused_with_the_accepted_columns
             'vision:image': lambda table: VLMVisionWrapper._extract_paths(None, table)}[channel]
     with pytest.raises(ValueError, match=re.escape(f'expected one of {accepted}')):
         read(pd.DataFrame({'stimulus_id': ['a'], 'sentence': ['x']}))
+
+
+def test_a_clip_table_without_stimulus_ids_is_refused_before_any_pass():
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    from tests.test_wrapper_cache_guard import _video_files, video_wrapper
+    wrapper = video_wrapper()
+    passes = []
+    wrapper._model.register_forward_pre_hook(lambda *_: passes.append(1))
+    table = StimulusSet({'video_path': _video_files()})
+    table.identifier = 'no-ids'
+    with pytest.raises(ValueError, match='needs a stimulus_id column'):
+        wrapper(table, layers=['block'])
+    assert passes == []
