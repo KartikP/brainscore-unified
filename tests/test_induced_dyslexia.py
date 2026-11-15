@@ -81,6 +81,9 @@ class _Reader:
         self.seen.append(subject.active)
         s = Score(0.0)
         s.attrs['raw'] = self.accs[subject.active]
+        # A reading score carries the counts of its trial states and its policy.
+        s.attrs.update(n_trials=4, n_valid=3, n_invalid=1, n_missing=0,
+                       answer_policy='invalid: wrong, counted; missing: wrong, counted')
         return s
 
 
@@ -109,12 +112,12 @@ class TestScoring:
         bench, cand, reader = _make(
             {'none': 0.95, 'functional': 0.55, 'random': 0.90},
             monkeypatch, self.CANNED)
-        read = bench._reading_accuracy
+        read = bench._reading_score
         def failing_read(subject):
             if len(reader.seen) + 1 == failed_call:
                 raise RuntimeError('synthetic reading failure')
             return read(subject)
-        monkeypatch.setattr(bench, '_reading_accuracy', failing_read)
+        monkeypatch.setattr(bench, '_reading_score', failing_read)
         with pytest.raises(RuntimeError, match='synthetic reading failure'):
             bench(cand)
         assert cand.lesions == {}
@@ -152,8 +155,8 @@ class TestScoring:
         def failing_read(subject):
             if subject.active == 'functional':
                 raise RuntimeError('synthetic reading failure')
-            return accs[subject.active]
-        monkeypatch.setattr(bench, '_reading_accuracy', failing_read)
+            return reader(subject)
+        monkeypatch.setattr(bench, '_reading_score', failing_read)
         with pytest.raises(RuntimeError, match='synthetic reading failure'):
             bench(cand)
         assert cand.lesions == {'caller-handle': 'caller'}
@@ -170,6 +173,12 @@ class TestScoring:
         assert abs(score.attrs['specific_deficit'] - 0.35) < 1e-9
         assert score.attrs['dyslexic'] is True
         assert float(score) == 0.55
+        # The counts of the three readings: sums, and each condition apart.
+        assert (score.attrs['n_trials'], score.attrs['n_invalid'], score.attrs['n_missing']) == (12, 3, 0)
+        assert set(score.attrs['counts_by_condition']) == {'intact', 'lesion', 'random_control'}
+        assert score.attrs['counts_by_condition']['lesion'] == {
+            'n_trials': 4, 'n_valid': 3, 'n_invalid': 1, 'n_missing': 0}
+        assert score.attrs['answer_policy'] == 'invalid: wrong, counted; missing: wrong, counted'
         # intact, then lesioned, then random control; no lesion left afterwards
         assert reader.seen == ['none', 'functional', 'random']
         assert cand.lesions == {}

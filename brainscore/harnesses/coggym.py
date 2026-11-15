@@ -144,6 +144,19 @@ def _written_answer(event) -> str:
     """The one written answer in a ``behavior:text`` event."""
     payload = event.payload
     if not isinstance(payload, str):
+        # The state core stored for the trial decides (Contract Rule 6.2): a missing or
+        # invalid written answer is an error of the run (ANSWER_POLICY of the benchmark).
+        try:
+            states = [str(state) for state in payload['response_state'].values]
+        except (KeyError, TypeError):
+            states = []
+        if any(state != 'valid' for state in states):
+            try:
+                reason = str(payload['response_reason'].values[0])
+            except (KeyError, TypeError, IndexError):
+                reason = ''
+            raise TypeError(f'The subject gave no written answer on behavior:text (state '
+                            f'{states[0]}' + (f': {reason}' if reason else '') + ')')
         valid = getattr(payload, 'coords', {}).get('answer_valid')
         if valid is not None and not bool(np.all(valid.values)):
             raise TypeError('The subject gave no written answer on behavior:text')
@@ -178,8 +191,10 @@ class _SubjectProvider:
     when the subject gives them; otherwise they are ``None``.
     """
 
-    def __init__(self, subject, context, repetition, prompt_trials):
+    def __init__(self, subject, context, repetition, prompt_trials, stored=None):
         self.subject = subject
+        # The stored behavior:text answer of each call, for the counts of the trial states.
+        self.stored = stored if stored is not None else []
         self.context = context
         self.repetition = repetition
         self.call_index = 0
@@ -197,6 +212,7 @@ class _SubjectProvider:
         session = run_request(self.subject, self.context, record_repetition,
                               stimuli, ['behavior:text'], task)
         answers = [event for event in session.emitted if event.channel == 'behavior:text']
+        self.stored.append(session.collect('behavior:text'))
         if len(answers) != 1:
             raise TypeError(f'CogGym needs one behavior:text answer for each call; got {len(answers)}')
         meta = answers[0].meta if isinstance(answers[0].meta, dict) else {}
@@ -349,12 +365,16 @@ class CogGymRunner:
                 )
             # Translate CogGym provider calls into sessions on the common channels.
             # This is where the external evaluator connects to UMI tools.
-            return self._run(
+            stored = []
+            result = self._run(
                 lambda repetition: _SubjectProvider(
-                    subject, context, repetition, self._prompt_trials,
+                    subject, context, repetition, self._prompt_trials, stored,
                 ),
                 context.directory / 'coggym', reset, register,
             )
+            # The stored answers stay out of the saved analysis; the benchmark counts them.
+            result['stored_answers'] = stored
+            return result
 
         # The provider records its own sessions, so no subject method is observed.
         return CallableProtocol(

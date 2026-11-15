@@ -193,7 +193,7 @@ def test_causal_lm_answers_roar_text_through_its_reply(causal_lm, synthetic_roar
     participate = model.participate
     model.participate = lambda session: sessions.append(session) or participate(session)
     score = brainscore.score(model, Yeatman2021LexicalDecision(channels=('text',), identifier='Yeatman2021-lexical_decision-text'), check_mem=False)
-    assert score.attrs['n_test_stimuli'] == 100
+    assert score.attrs['n_trials'] == 100
     assert sessions[0].collect(CH).attrs['response']['parsed_by'] == 'model'
 
 

@@ -119,6 +119,12 @@ def test_registered_scoring_preserves_raw_score_and_repetitions(scored_reference
     assert score.attrs['configuration']['repetitions'] == 2
     assert resets == [1, 2]
     assert len(calls) == 6
+    # Step 9: the counts of the trial states of every call, and the policy.
+    assert (score.attrs['n_trials'], score.attrs['n_valid'], score.attrs['n_invalid'],
+            score.attrs['n_missing']) == (6, 6, 0, 0)
+    assert score.attrs['result_validity'] == 'valid'
+    assert 'stored_answers' not in score.attrs['native_analysis']   # counts only, no assemblies
+    assert score.attrs['answer_policy'].startswith('a missing or unreadable written answer: an error of the run')
     # The benchmark's settings reach the reply on the task's Text response.
     assert all(call.response.max_tokens == 1234 for call in calls)
     assert all(call.response.temperature == 1.0 for call in calls)
@@ -254,3 +260,44 @@ def test_declares_the_instruction_and_text_in_and_a_written_answer_out(scored_re
                                           reset=lambda repetition: None)
     assert_declares(benchmark, {'instruction', 'text'}, {'behavior:text'})
     assert_preflight(benchmark)
+
+
+class _NoRawAnswer(Subject):
+    """M9-01, the reviewer's case: written answer '42' with no raw answer. Core stores the
+    trial as missing (a None raw answer is no answer), although answer_valid is True."""
+    identifier = 'no-raw-answer'
+    in_channels = {'text', 'instruction', 'vision:image'}
+    out_channels = {'behavior:text'}
+    required_channels = set()
+
+    def participate(self, session):
+        import numpy as np
+        from brainscore_core.response_formats import response_record
+        from brainscore_core.streaming import StreamEvent
+        from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
+        ids = []
+        while (event := session.next_input()) is not None:
+            if event.meta.get('stimulus_id') is not None and event.meta['stimulus_id'] not in ids:
+                ids.append(event.meta['stimulus_id'])
+        session.respond(StreamEvent('behavior:text', BehavioralAssembly(
+            np.array(['42'] * len(ids), dtype=object), dims=['presentation'], coords={
+                'stimulus_id': ('presentation', ids), 'raw_answer': ('presentation', [None] * len(ids)),
+                'answer_valid': ('presentation', [True] * len(ids))},
+            attrs={'response': response_record('behavior:text', 'test')}), None))
+
+    def reset(self):
+        pass
+
+
+def test_a_text_answer_stored_as_missing_is_an_error_of_the_run(scored_reference, tmp_path):
+    """M9-01: the stored state decides; a missing written answer is an error of the run."""
+    root, _ = scored_reference
+    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root,
+                                          reset=lambda repetition: None, repetitions=2,
+                                          output_dir=tmp_path / 'scored')
+    with pytest.raises(RuntimeError, match='incomplete or failed trials'):
+        brainscore.score(_NoRawAnswer(), benchmark, check_mem=False)
+    # CogGym records the provider's error with the trial; the run fails (its own rule).
+    run = json.loads((tmp_path / 'scored' / 'coggym' / 'run-001.json').read_text())
+    errors = [str(trial.get('error')) for trial in run['trials'] if 'error' in trial]
+    assert errors and all('no written answer on behavior:text (state missing' in error for error in errors)

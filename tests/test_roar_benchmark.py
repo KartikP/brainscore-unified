@@ -60,7 +60,7 @@ class TestRoarYeatman2021:
 
         # Accuracy is in [0, 1]
         assert 0.0 <= raw <= 1.0
-        assert score.attrs['n_test_stimuli'] == 100
+        assert score.attrs['n_trials'] == 100
         # Human accuracy is ceiling
         assert 0.6 < ceiling < 0.95
         # Ceiled score is raw / ceiling

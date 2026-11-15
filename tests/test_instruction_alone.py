@@ -66,7 +66,7 @@ def test_a_picture_and_text_reader_is_applicable_on_roar_image(synthetic_roar):
 def test_a_text_only_reader_is_applicable_on_roar_text(synthetic_roar):
     calls = []
     score = _score(_counting(calls), Yeatman2021LexicalDecision(channels=('text',), identifier='Yeatman2021-lexical_decision-text'))
-    assert 'status' not in score.attrs and score.attrs['n_test_stimuli'] == 100
+    assert 'status' not in score.attrs and score.attrs['n_trials'] == 100
     assert calls
 
 
