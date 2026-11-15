@@ -69,7 +69,8 @@ FORMS = {'choice': ([], 'choice'), 'confidence': ([], 'rating'),
 def test_the_notebook_tables_validate_and_run(form, length, tmp_path):
     trials = trial_table(length)
     protocol = TaskProtocol(trials, task(length, form))
-    assert protocol.required_input_channels == {'vision:image'}
+    # The confidence card gives a text instruction: one more input, not required of the subject.
+    assert protocol.required_input_channels == {'vision:image'} | ({'instruction'} if form == 'confidence' else set())
     calls = []
     formats, measure = FORMS[form]
     result = Experiment(subject=picture_subject(calls), protocol=protocol,
@@ -90,6 +91,56 @@ def test_a_text_only_subject_is_not_applicable():
 
 def test_a_picture_only_subject_is_applicable():
     check_channel_compatibility(picture_subject([]), TaskProtocol(trial_table(3), task(3)))
+
+
+def _benchmark(stimuli, task):
+    """A benchmark that keeps its table and task and declares no inputs."""
+    class _Kept:
+        identifier, stimulus_set, requested_output_channels = 'kept', stimuli, {'behavior:choice'}
+    _Kept.task = task
+    return _Kept()
+
+
+def _text_table():
+    return StimulusSet([{'stimulus_id': 's0', 'sentence': 'a word'}, {'stimulus_id': 's1', 'sentence': 'florp'}])
+
+
+def _picture_and_text_table():
+    return StimulusSet([{'stimulus_id': 's0', 'sentence': 'a word', 'image_path': '/a.png'}])
+
+
+EQUAL_CASES = {
+    'text with an instruction': (_text_table, lambda: TaskContext(instruction='Real or not?',
+                                                                  response=Choice(['real', 'pseudo'])),
+                                 {'text', 'instruction'}),
+    'pictures named by present': (lambda: trial_table(3), lambda: task(3, 'confidence'),
+                                  {'vision:image', 'instruction'}),
+    'picture and text': (_picture_and_text_table, lambda: TaskContext(response=Choice(['a', 'b'])),
+                         {'vision:image', 'text'}),
+}
+
+
+@pytest.mark.parametrize('case', sorted(EQUAL_CASES))
+def test_a_protocol_and_a_benchmark_of_one_table_and_task_send_the_same_inputs(case):
+    from brainscore_core.compatibility import benchmark_required_input_channels
+    table, card, expected = EQUAL_CASES[case]
+    stimuli, task_card = table(), card()
+    assert TaskProtocol(stimuli, task_card).required_input_channels == expected
+    assert benchmark_required_input_channels(_benchmark(stimuli, task_card)) == expected
+
+
+def test_a_subject_without_the_instruction_channel_stays_applicable_and_an_instruction_alone_does_not():
+    protocol = TaskProtocol(_text_table(), EQUAL_CASES['text with an instruction'][1]())
+    class _Reader(Subject):                                           # declares no instruction channel
+        identifier, in_channels, out_channels = 'text-reader', {'text'}, {'behavior:choice'}
+
+        def participate(self, session):
+            raise AssertionError('validation only')
+    match = check_channel_compatibility(_Reader(), protocol)          # the instruction is not required
+    assert match.consumed_inputs == {'text'} and match.dropped_inputs == {'instruction'}
+    listener = BrainScoreModel('listener', in_channels={'instruction', 'audio'}, reply=lambda prompt: 'real')
+    with pytest.raises(CompatibilityError, match='an instruction alone does not make a pair applicable'):
+        check_channel_compatibility(listener, protocol)
 
 
 def test_a_present_column_the_table_lacks_is_refused():
