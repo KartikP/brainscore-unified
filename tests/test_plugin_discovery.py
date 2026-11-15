@@ -36,6 +36,7 @@ def kind_folder(tmp_path, monkeypatch):
     module.__path__ = [str(tmp_path)]
     monkeypatch.setitem(sys.modules, name, module)
     monkeypatch.setattr(brainscore, '_plugin_import_failures', {})
+    monkeypatch.setattr(brainscore, '_plugin_failed_files', {})
     yield name
     for plugin in ('good', 'broken'):
         sys.modules.pop(f'{name}.{plugin}', None)
@@ -85,3 +86,42 @@ def test_a_failed_plugin_leaves_no_entry_it_registered_before_its_error(kind_fol
     assert 'discovery-partial' not in brainscore.model_registry          # a factory of the package
     assert 'discovery-partial-lambda' not in brainscore.model_registry   # a statement in its folder
     assert 'chance-baseline' in brainscore.model_registry                # other plugins stay
+
+
+def test_a_failed_plugin_that_names_the_identifier_refuses_its_load(kind_folder):
+    brainscore._import_plugins(kind_folder)
+    with pytest.raises(brainscore.LoadError) as refused:
+        brainscore._refuse_failed_owner('Model', 'discovery-partial', KIND)
+    message = str(refused.value)
+    assert f'{kind_folder}.broken' in message and 'a_module_that_does_not_exist_here' in message
+    brainscore._refuse_failed_owner('Model', 'another-identifier', KIND)   # not named: no refusal
+
+
+@pytest.fixture
+def old_registries(monkeypatch):
+    """Stand-ins for the old registries: vision does not know the identifier, language does."""
+    import brainscore_language
+    import brainscore_vision
+    from brainscore_core.plugin_management.import_plugin import PluginNotFoundError
+
+    def unknown(identifier):
+        raise PluginNotFoundError(identifier)
+    monkeypatch.setattr(brainscore_vision, 'load_model', unknown)
+    monkeypatch.setattr(brainscore_language, 'load_model', lambda identifier: f'old {identifier}')
+
+
+def test_load_model_does_not_fall_back_past_a_failed_unified_owner(tmp_path, monkeypatch, old_registries):
+    init = tmp_path / '__init__.py'
+    init.write_text("model_registry['overlap-id'] = build\n")
+    monkeypatch.setattr(brainscore, '_plugin_import_failures',
+                        {'brainscore.models.standin': 'ImportError: no module named x'})
+    monkeypatch.setattr(brainscore, '_plugin_failed_files', {'brainscore.models.standin': init})
+    with pytest.raises(brainscore.LoadError, match=r'brainscore\.models\.standin.*no module named x'):
+        brainscore.load_model('overlap-id')
+    assert brainscore.load_model('other-id') == 'old other-id'          # not named: the fallback
+
+
+def test_with_no_failed_plugin_the_fallback_is_unchanged(monkeypatch, old_registries):
+    monkeypatch.setattr(brainscore, '_plugin_import_failures', {})
+    monkeypatch.setattr(brainscore, '_plugin_failed_files', {})
+    assert brainscore.load_model('overlap-id') == 'old overlap-id'

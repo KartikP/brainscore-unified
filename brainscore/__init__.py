@@ -94,8 +94,10 @@ stimulus_set_registry: Dict[str, Callable[..., Any]] = _Registry()
 data_builder_registry: Dict[str, Callable[[], Any]] = _Registry()
 
 
-# Plugin packages that failed to import: {qualified name: 'ErrorType: message'}.
+# Plugin packages that failed to import: {qualified name: 'ErrorType: message'}, and the
+# __init__.py file of each (read before a load falls back to an old registry).
 _plugin_import_failures: Dict[str, str] = {}
+_plugin_failed_files: Dict[str, Path] = {}
 
 
 def _import_plugins(package: str) -> None:
@@ -119,6 +121,7 @@ def _import_plugins(package: str) -> None:
         except ImportError as error:
             _plugin_import_failures[name] = f'{type(error).__name__}: {error}'
             folder = Path(info.module_finder.path) / info.name
+            _plugin_failed_files[name] = folder / '__init__.py'
             # Remove what the package registered before its error (the source of an entry is
             # a factory of the package, or a registering statement in a file of its folder).
             for registry in (model_registry, benchmark_registry, metric_registry, data_registry,
@@ -249,6 +252,27 @@ def list_benchmarks():
     return _listing(benchmark_registry, 'benchmarks', 'benchmark_registry')
 
 
+def _refuse_failed_owner(kind: str, identifier: str, folder: str) -> None:
+    """Raise when a unified plugin of ``folder`` that failed to import names ``identifier``.
+
+    Called before a load falls back to an old registry, so a broken unified plugin is not
+    silently replaced by an old registration of the same identifier. Reads the
+    ``__init__.py`` text of each failed package of the kind; nothing when none failed.
+    """
+    for name, init_file in _plugin_failed_files.items():
+        if not name.startswith(f'brainscore.{folder}.'):
+            continue
+        try:
+            text = init_file.read_text(encoding='utf-8')
+        except OSError:
+            continue
+        if f"'{identifier}'" in text or f'"{identifier}"' in text:
+            raise LoadError(
+                f"{kind} '{identifier}' is named by the unified plugin {name}, which failed to "
+                f"import ({_plugin_import_failures[name]}). It is not loaded from another registry; "
+                f"repair the plugin's import.")
+
+
 def _not_found(kind: str, identifier: str, sources: str, folder: str, listing: str = '') -> KeyError:
     """The one message of a loader that finds no identifier."""
     listed = f' {listing} lists them all.' if listing else ''
@@ -275,6 +299,7 @@ def load_model(identifier: str) -> Subject:
     """
     if identifier in model_registry:
         return model_registry[identifier]()
+    _refuse_failed_owner('Model', identifier, 'models')
     for domain in ('vision', 'language'):
         try:
             with _explained(identifier, domain, 'weights'):
@@ -299,6 +324,7 @@ def load_benchmark(identifier: str, **configuration: Any) -> Benchmark:
 
     if configuration:
         raise TypeError('Benchmark configuration is supported only by unified registry factories')
+    _refuse_failed_owner('Benchmark', identifier, 'benchmarks')
 
     for domain, modality in (('vision', 'vision'), ('language', 'text')):
         try:
@@ -320,6 +346,7 @@ def load_metric(identifier: str, *args, **kwargs) -> Metric:
     """
     if identifier in metric_registry:
         return metric_registry[identifier](*args, **kwargs)
+    _refuse_failed_owner('Metric', identifier, 'metrics')
 
     try:
         from brainscore_vision import load_metric as load_vision_metric
@@ -344,6 +371,7 @@ def load_dataset(identifier: str, *args, **kwargs):
         raise KeyError(
             f"Dataset '{identifier}' not found in unified registry; "
             "domain fallbacks do not accept loader arguments.")
+    _refuse_failed_owner('Dataset', identifier, 'data')
 
     try:
         from brainscore_vision import load_dataset as _vision
@@ -367,6 +395,7 @@ def load_stimulus_set(identifier: str, *args, **kwargs):
         raise KeyError(
             f"StimulusSet '{identifier}' not found in unified registry; "
             "domain fallbacks do not accept loader arguments.")
+    _refuse_failed_owner('StimulusSet', identifier, 'data')
 
     try:
         from brainscore_vision import load_stimulus_set as _vision
