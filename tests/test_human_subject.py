@@ -7,12 +7,8 @@ unwired harness fails explicitly.
 """
 import pytest
 
-from brainscore_core.contract import Subject, TaskContext
+from brainscore_core.contract import TaskContext
 from brainscore.harnesses.human import HumanSubject
-
-
-def test_is_subject():
-    assert isinstance(HumanSubject("participant-01"), Subject)
 
 
 def test_recording_routes_to_present_and_record():

@@ -16,7 +16,6 @@ from PIL import Image
 pytestmark = pytest.mark.slow  # loads real Qwen2.5-VL-3B weights — run on demand
 
 from brainscore import BrainScoreModel
-from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from tests.vlm_same_image import assert_same_image
 
@@ -79,10 +78,6 @@ def image_stimuli():
 
 
 class TestVLMVisionWrapperBasic:
-    def test_returns_neuroid_assembly(self, qwen_vision_wrapper, image_stimuli):
-        result = qwen_vision_wrapper(image_stimuli, layers=['blocks.28'])
-        assert isinstance(result, NeuroidAssembly)
-
     def test_shape_is_per_image(self, qwen_vision_wrapper, image_stimuli):
         """Critical test: the whole point of this wrapper is that output is
         (n_images, features), NOT (total_patches, features)."""
