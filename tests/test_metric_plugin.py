@@ -89,7 +89,12 @@ def test_a_moved_metric_keeps_each_public_name_at_its_path(path, names):
     assert [name for name in names if not hasattr(module, name)] == []
 
 
-def test_each_registered_metric_loads_by_name():
+@pytest.mark.parametrize('name, path, class_name', [
+    ('topographic-alignment', 'brainscore.metrics.topographic', 'TopographicMetric'),
+    ('selectivity-topographic-alignment', 'brainscore.metrics.topographic', 'SelectivityTopographicMetric'),
+    ('direct-comparison', 'brainscore.metrics.direct_comparison', 'DirectComparisonMetric'),
+])
+def test_each_registered_metric_loads_by_name_as_its_class(name, path, class_name):
+    import importlib
     import brainscore
-    for name in ('topographic-alignment', 'selectivity-topographic-alignment', 'direct-comparison'):
-        assert brainscore.load_metric(name) is not None
+    assert isinstance(brainscore.load_metric(name), getattr(importlib.import_module(path), class_name))

@@ -260,21 +260,22 @@ class TestRegionLayerMapSelectors:
 
 class TestBrainScoreModelDispatch:
 
-    def test_vision_routes_to_vision_extractor(self):
-        """Vision stimuli route through the vision extractor."""
-        act_model = StubActivationsModel(return_value='vision_assembly')
-        m = BrainScoreModel(
-            identifier='resnet',
-            model='torch_model',
-            region_layer_map={'IT': 'layer4'},
-            extractor={'vision': act_model},
-        )
-        m.start_recording('IT')
-        stimuli = StubStimulusSet(columns=['image_file_name', 'stimulus_id'])
-        result = m.process(stimuli)
-        assert result == 'vision_assembly'
-        assert act_model.call_args['stimuli'] is stimuli
-        assert act_model.call_args['layers'] == ['layer4']
+    def test_a_neural_session_records_the_layer_of_its_region(self):
+        """A neural:IT session records the layer the region map names, through participate."""
+        from brainscore_core.streaming_helpers import stimulus_session
+        from tests.brainscore_model.test_behavior_paths import STIMULI, _features
+        calls = []
+
+        def extract(stimuli, layers, **kwargs):
+            calls.append(list(layers))
+            return _features(stimuli, layers, **kwargs)
+        m = BrainScoreModel(identifier='resnet', region_layer_map={'IT': 'layer4'}, extractor={'text': extract})
+        session = stimulus_session(STIMULI, ['neural:IT'])
+        m.participate(session)
+        assert calls == [['layer4']]
+        recorded = session.collect('neural:IT')
+        assert list(recorded['stimulus_id'].values) == list(STIMULI['stimulus_id'])
+        assert set(recorded['layer'].values) == {'layer4'}
 
     def test_process_without_start_recording_raises(self):
         """A run that records no region must fail loudly, not return 0 neuroids."""

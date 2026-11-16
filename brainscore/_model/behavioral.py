@@ -401,6 +401,16 @@ class BehavioralReadout:
             request.restore(saved)
             self.readout_classifier = saved_classifier
 
+        if 'time_bin' in features.dims:
+            # Known only after a pass: no extractor states a time axis before it runs.
+            from brainscore_core.compatibility import ExecutionNotFeasibleError
+            raise ExecutionNotFeasibleError(
+                f"Subject {owner.identifier!r}: the features of the behavioral readout layer "
+                f"{layer!r} keep a time axis (time_bin), and the readout fits one feature "
+                "vector per stimulus; it does not reduce over time. Name a readout layer whose "
+                "features have no time axis, or answer with an answering part (answer or "
+                "reply) that states its own reduction over time.",
+                task_type=self.task.task_type if self.task is not None else None)
         if 'presentation' in features.dims and 'neuroid' in features.dims:
             features = features.transpose('presentation', 'neuroid')
         return features

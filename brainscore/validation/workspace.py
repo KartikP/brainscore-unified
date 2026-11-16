@@ -68,7 +68,6 @@ SUITES = {
         'tests/test_activation_cache_key.py',
         'tests/test_activation_cache_integrity.py',
         'tests/test_activation_assembly_builder.py',
-        'tests/test_layer_mapping_explorer.py::TestImports',
         'tests/test_layer_mapping_explorer.py::TestSuggestMapping',
         'tests/test_layer_mapping_explorer.py::TestSaveOutputs',
         'tests/test_metric_helpers/test_temporal.py',

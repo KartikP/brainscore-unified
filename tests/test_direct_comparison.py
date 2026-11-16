@@ -46,9 +46,3 @@ def test_no_shared_stimulus_raises():
     b = _assembly(np.zeros((3, 4)), ['x', 'y', 'z'])
     with pytest.raises(ValueError, match="no shared stimulus_id"):
         DirectComparisonMetric()(a, b)
-
-
-def test_loadable_from_registry():
-    import brainscore
-    metric = brainscore.load_metric('direct-comparison')
-    assert isinstance(metric, DirectComparisonMetric)
