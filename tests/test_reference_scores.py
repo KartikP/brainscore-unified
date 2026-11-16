@@ -13,6 +13,13 @@ was made in. Two kinds of rows:
   * ``production``: a legacy pair against its Brain-Score leaderboard value
     (``production_baseline``, rounded), with the tolerance and the evidence for it.
 
+Three benchmark families have no row, because a row must be reproducible with two
+registered names in the reference environment: the grid game (its subject is a policy
+built in code, not a registered model), CogGym (a benchmark is loaded with a reset
+callback, and the library's own packages are not in the lock, so a run has another
+environment fingerprint) and the Friends benchmarks (a registered identifier uses all
+released data of a participant; the measured values use five episodes).
+
 The offline tests check the table. The slow test scores each production row that is
 expected to match (needs downloads and private data; run it on the cloud machine).
 """
