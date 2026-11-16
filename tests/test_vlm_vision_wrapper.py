@@ -18,6 +18,7 @@ pytestmark = pytest.mark.slow  # loads real Qwen2.5-VL-3B weights — run on dem
 from brainscore import BrainScoreModel
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+from tests.vlm_same_image import assert_same_image
 
 
 @pytest.fixture(scope='module')
@@ -114,10 +115,8 @@ class TestPatchToImageAggregation:
         tmpdir = tempfile.mkdtemp()
         try:
             # Make image A deterministic, image B deterministic and different
-            np.random.seed(42)
-            img_a = Image.fromarray(np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8))
-            np.random.seed(99)
-            img_b = Image.fromarray(np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8))
+            img_a = Image.fromarray(np.random.RandomState(42).randint(0, 255, (224, 224, 3), dtype=np.uint8))
+            img_b = Image.fromarray(np.random.RandomState(99).randint(0, 255, (224, 224, 3), dtype=np.uint8))
 
             path_a = os.path.join(tmpdir, 'a.png')
             path_b = os.path.join(tmpdir, 'b.png')
@@ -144,10 +143,9 @@ class TestPatchToImageAggregation:
             r_with_b = qwen_vision_wrapper(stim_with_b, layers=['blocks.28'])
 
             alone_a = r_alone.values[0]
-            with_b_a = r_with_b.values[
-                list(r_with_b['stimulus_id'].values).index('a')]
-            # FP16 arithmetic introduces small differences, so a loose tolerance
-            assert np.allclose(alone_a, with_b_a, atol=1e-2)
+            ids = list(r_with_b['stimulus_id'].values)
+            with_b_a, with_b_b = r_with_b.values[ids.index('a')], r_with_b.values[ids.index('b')]
+            assert_same_image(alone_a, with_b_a, with_b_b)
         finally:
             import shutil
             shutil.rmtree(tmpdir)
