@@ -5,6 +5,7 @@ import sys
 import pytest
 
 from brainscore.tools import list_tools, load_tool
+from tests.heavy_import import heavy_import_message
 
 MINIMAL = {
     'ablate': {'targets': ['population']},
@@ -46,4 +47,4 @@ def test_importing_the_package_imports_no_tool_module_and_no_model_library():
         "assert not loaded, loaded\n"
     )
     result = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 0, heavy_import_message('Importing brainscore.tools', result.stderr)

@@ -15,6 +15,7 @@ from brainscore.tools import attach_tools, load_tool
 from brainscore_core.contract import Subject
 from brainscore_core.events import Selection
 from brainscore_core.streaming import Session, StreamEvent
+from tests.heavy_import import heavy_import_message
 
 pytestmark = pytest.mark.unit
 
@@ -142,4 +143,4 @@ def test_loading_all_tools_does_not_import_model_or_fitting_dependencies():
         'load_tool("leace", target="population"); '
         'assert not ({"torch", "transformers", "sklearn"} & set(sys.modules))'],
         capture_output=True, text=True)
-    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.returncode == 0, heavy_import_message('Loading every tool', result.stdout + result.stderr)

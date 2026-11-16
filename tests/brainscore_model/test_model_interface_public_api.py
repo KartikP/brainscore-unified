@@ -8,6 +8,7 @@ from types import MappingProxyType
 import pytest
 
 from brainscore import BrainScoreModel
+from tests.heavy_import import heavy_import_message
 
 
 class _Columns:
@@ -105,4 +106,5 @@ def test_extractor_access_imports_no_framework():
         "bad = [n for n in ('torch', 'transformers', 'tensorflow', 'jax') if n in sys.modules]\n"
         "assert not bad, bad\n"
     )
-    subprocess.run([sys.executable, '-c', code], check=True)
+    result = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
+    assert result.returncode == 0, heavy_import_message('Using an extractor of BrainScoreModel', result.stderr)

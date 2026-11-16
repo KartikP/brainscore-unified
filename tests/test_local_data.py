@@ -9,6 +9,7 @@ import pathlib
 import pytest
 
 from brainscore.data import local
+from tests.heavy_import import heavy_import_message
 
 pytestmark = pytest.mark.unit
 
@@ -206,7 +207,7 @@ def test_the_asset_list_needs_no_ml_import():
         "loaded = [m for m in ('torch', 'transformers', 'cv2', 'sklearn') if m in sys.modules]\n"
         "assert not loaded, loaded\n")
     result = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 0, heavy_import_message('Listing the local assets', result.stderr)
     for name in local.REGISTRY:
         assert name in result.stdout
 
