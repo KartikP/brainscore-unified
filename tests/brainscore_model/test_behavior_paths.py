@@ -86,7 +86,7 @@ def test_a_legacy_task_with_an_answer_part_calls_it_once_per_stimulus_and_keeps_
     assert model._behavioral.response_path is None   # the session gave the task back
     (event,) = session.emitted
     assert (event.channel, event.t_ms, dict(event.meta)) == (
-        'behavior', 0.0, {'driver': 'interact', 'task_type': 'probabilities'})
+        'behavior', None, {'driver': 'interact', 'task_type': 'probabilities'})
     answer = event.payload
     np.testing.assert_array_equal(answer.values[:2], [[1, 0], [0, 1]])
     assert np.isnan(answer.values[2]).all() and answer.dtype == np.float32
