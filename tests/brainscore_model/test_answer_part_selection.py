@@ -18,7 +18,12 @@ These are the selection facts the fixed-order table pinned before it was
 deleted: the legacy forms (label set absent, empty or given; instruction and
 fitting stimuli absent or present), Scale and Text with and without fitting
 stimuli, and the Choice forms that remain (shared or per-row labels, plain or
-verbatim, choice or probabilities requested, with and without fitting stimuli).
+verbatim, choice or probabilities requested, with and without fitting stimuli),
+the reaction time of each link, and the log probabilities that replace the old raw
+scores (verbatim per-row options; a request that is not verbatim is refused). The
+answer and likelihood parts without a reply refuse a verbatim session even when it
+requests only the log probabilities: the choice format of the task keeps an owner
+that can serve the task (``_choose`` in ``brainscore/_model/behavioral.py``).
 """
 import re
 
@@ -76,6 +81,8 @@ REFUSALS = {
                 r"Paths tried: generation needs reply=",
     'owner': r"'behavior:choice' is owned by 'generation', which cannot serve this task "
              r"\(task settings: verbatim(, labels per row)?\); no other part answers it",
+    'tokenization': r"gives behavior:log_probabilities only for a verbatim Choice "
+                    r"\(Choice\(\.\.\., verbatim=True\)\)",
     'implied': r"cannot give implied probabilities: it needs likelihood= or a readout "
                r"\(behavioral_readout_layer=, fitting_stimuli\)",
 }
@@ -108,6 +115,11 @@ def _forms():
             response=Choice('options', verbatim=True), fitting_stimuli=fitting))
         forms[f'verbatim choice fit={fit}'] = (STIMULI, 'behavior:choice', TaskContext(
             response=Choice(['cat', 'dog'], verbatim=True), fitting_stimuli=fitting))
+        forms[f'log probabilities fit={fit}'] = (OPTIONS, 'behavior:log_probabilities', TaskContext(
+            response=Choice('options', verbatim=True), fitting_stimuli=fitting))
+        forms[f'log probabilities not verbatim fit={fit}'] = (
+            OPTIONS, 'behavior:log_probabilities', TaskContext(
+                instruction='Which?', response=Choice('options'), fitting_stimuli=fitting))
         for link in ('evidence_margin', 'surprisal'):
             forms[f'reaction time {link} fit={fit}'] = (STIMULI, 'behavior:rt', TaskContext(
                 instruction='Which?', response=Choice(['cat', 'dog'], reaction_time=link),
@@ -297,6 +309,30 @@ EXPECTED = {
         'AP': '-', 'AL': 'link/likelihood:answer+likelihood', 'AR': 'link/readout:answer+readout', 'PL': 'link/likelihood:likelihood+reply',
         'PR': 'link/readout:readout+reply', 'LR': 'link/likelihood:likelihood', 'APL': 'link/likelihood:answer+likelihood', 'APR': 'link/readout:answer+readout',
         'ALR': 'link/likelihood:answer+likelihood', 'PLR': 'link/likelihood:likelihood+reply', 'APLR': 'link/likelihood:answer+likelihood',
+    },
+    'log probabilities fit=False': {
+        'A': '-', 'P': '-', 'L': 'likelihood:likelihood', 'R': '-',
+        'AP': '-', 'AL': '!owner', 'AR': '-', 'PL': 'likelihood:likelihood',
+        'PR': '-', 'LR': 'likelihood:likelihood', 'APL': 'likelihood:likelihood', 'APR': '-',
+        'ALR': '!owner', 'PLR': 'likelihood:likelihood', 'APLR': 'likelihood:likelihood',
+    },
+    'log probabilities fit=True': {
+        'A': '-', 'P': '-', 'L': 'likelihood:likelihood', 'R': '-',
+        'AP': '-', 'AL': '!owner', 'AR': '-', 'PL': 'likelihood:likelihood',
+        'PR': '-', 'LR': 'likelihood:likelihood', 'APL': 'likelihood:likelihood', 'APR': '-',
+        'ALR': '!owner', 'PLR': 'likelihood:likelihood', 'APLR': 'likelihood:likelihood',
+    },
+    'log probabilities not verbatim fit=False': {
+        'A': '-', 'P': '-', 'L': '!tokenization', 'R': '-',
+        'AP': '-', 'AL': '!tokenization', 'AR': '-', 'PL': '!tokenization',
+        'PR': '-', 'LR': '!tokenization', 'APL': '!tokenization', 'APR': '-',
+        'ALR': '!tokenization', 'PLR': '!tokenization', 'APLR': '!tokenization',
+    },
+    'log probabilities not verbatim fit=True': {
+        'A': '-', 'P': '-', 'L': '!tokenization', 'R': '-',
+        'AP': '-', 'AL': '!tokenization', 'AR': '-', 'PL': '!tokenization',
+        'PR': '-', 'LR': '!tokenization', 'APL': '!tokenization', 'APR': '-',
+        'ALR': '!tokenization', 'PLR': '!tokenization', 'APLR': '!tokenization',
     },
 }
 
