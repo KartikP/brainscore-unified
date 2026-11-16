@@ -83,7 +83,14 @@ Undoing one intervention leaves the others in place. A benchmark undoes every in
 
 In an experiment with several conditions, attach the `Intervene` tool: it sends the same `StateChange` with `apply_state_change` at the start of each matching repetition and undoes it at the end ([Experiments](experiments.md)).
 
-**A network that is not a subject.** The `Ablate`, `ScaleActivity` and `PatchActivity` tools change a network through `TorchInstrumentation` hooks, outside any subject. Use them only for a model that is not a subject, for example an OpenPI policy server. For a subject, use `Intervene`.
+**Two ways to change activity.** `Intervene` sends a `StateChange` to the subject's `intervention` part. The `Ablate`, `ScaleActivity` and `PatchActivity` tools put hooks on a network through `TorchInstrumentation`, outside the subject: on a model that is not a subject (an OpenPI policy server), or on the network inside a subject when no `StateChange` says the change (patching activity from another input has no `StateChange` form). Use `Intervene` for a subject whenever a `StateChange` says the change. The two ways differ in who owns each consequence:
+
+| | `Intervene` on a subject | A network tool on a network inside a subject |
+| --- | --- | --- |
+| Undo | the subject, by the handle, at the end of the repetition; `reset()` of the subject also undoes it | the tool, when its repetition ends, also after an error; `reset()` of the subject does not undo it |
+| Readout | fits again after each apply and undo; `readout_fit='intact'` fits with the change switched off | not told; the experiment resets the subject at each repetition, so the readout fits on the changed network; `readout_fit='intact'` does not switch the hook off, so that fit also sees the changed network |
+| Stored activations | not read or stored while the change is active | the key holds the network's forward hooks, so a hooked pass gets its own entry; `PatchActivity` refuses a pass served from storage |
+| Record of the change | the subject answers on `perturbation`; `Intervene` adds an `intervention` event with the handle | the tool adds `intervention_start` and `intervention_end` events with its description; `PatchActivity` also saves its reference |
 
 **Axes.** `axis=-1` indexes the last tensor axis (units of a linear layer). For convolution outputs `(batch, channels, height, width)`, `axis=1` selects channels and `axis=None` indexes the flattened features.
 

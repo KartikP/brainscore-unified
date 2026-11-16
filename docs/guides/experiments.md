@@ -135,8 +135,8 @@ that need their own session construction. The factory receives
 
 For interventions, attach `Intervene(change, conditions=[...])` after the recorders.
 It sends the intervention with `apply_state_change` at the start of each matching
-repetition and undoes it by its handle at the end. This is the one way to change a
-subject in an experiment ([Perturb and select units](perturb_and_select_units.md)). A readout is fitted on the network as it is during the run (`readout_fit='current'`,
+repetition and undoes it by its handle at the end. This is the way to change a
+subject through its intervention part ([Perturb and select units](perturb_and_select_units.md) compares it with the network tools). A readout is fitted on the network as it is during the run (`readout_fit='current'`,
 the default). `TaskContext(..., readout_fit='intact')` fits it with every change switched
 off and tests the changed network, as an animal trained before a lesion is tested after it.
 Each change stays in place during the fit, so the order of the hooks on the network does
@@ -160,7 +160,7 @@ The bundled [asset notes](../../notebooks/assets/lessons/README.md) record data 
 
 ## Lower-level tools
 
-When the recorders do not cover what you need, build sessions yourself and attach tools that reach into the network. A subject is changed with `Intervene`, as here. `Ablate`, `ScaleActivity` and `PatchActivity` change the network outside the subject: use them only for a model that is not a subject (an OpenPI policy server, a bare network).
+When the recorders do not cover what you need, build sessions yourself and attach tools that reach into the network. A subject is changed with `Intervene`, as here. `Ablate`, `ScaleActivity` and `PatchActivity` hook the network outside the subject: for a model that is not a subject (an OpenPI policy server, a bare network), or for a change that no `StateChange` says, such as patching activity. [Perturb and select units](perturb_and_select_units.md#interventions) lists who undoes the change, refits the readout and keeps the record in each case.
 
 ```python
 from contextlib import contextmanager
