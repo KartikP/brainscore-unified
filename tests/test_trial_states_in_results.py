@@ -215,7 +215,7 @@ def test_two_conditions_and_two_repetitions_give_twelve_rows(tmp_path):
     ('behavior:rt', {'cat': 450.0, 'boat': -1.0}, 'ms', ('rt', 'rt_state'),
      [(450.0, 'valid'), (-1.0, 'invalid'), (None, 'missing')]),
     ('behavior:probabilities', {'cat': np.array([0.8, 0.2]), 'boat': np.array([0.5, 0.6])}, None,
-     ('p(animal)', 'probabilities_state'), [(0.800000011920929, 'valid'), (0.5, 'invalid'), (None, 'missing')]),
+     ('p(animal)', 'probabilities_state'), [(0.8, 'valid'), (0.5, 'invalid'), (None, 'missing')]),
 ])
 def test_every_behavior_format_gives_one_row_per_trial(tmp_path, channel, answers, units, columns, expected):
     response = {'behavior:rating': Scale(1, 7, 1), 'behavior:text': Text()}.get(

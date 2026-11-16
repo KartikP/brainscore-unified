@@ -210,8 +210,9 @@ def conversion_errors(valid):
 
 
 def readout_probabilities(assembly, stimuli):
-    """A readout's probabilities, one row per stimulus, as ``behavior:probabilities``
-    stores them (float32, the stimulus coordinates, the readout's record)."""
+    """A readout's probabilities, one row per stimulus, for ``behavior:probabilities``:
+    float32 (the readout's output type; the format keeps float64 when a subject gives
+    it), the stimulus coordinates and the readout's record."""
     return implied_array(np.asarray(assembly.values), None, stimuli, list(assembly['choice'].values),
                          response_record('behavior:probabilities', 'readout'))
 

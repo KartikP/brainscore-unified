@@ -1577,10 +1577,6 @@
     ]
    ],
    [
-    "answer",
-    "a"
-   ],
-   [
     "extract",
     [
      "late"
@@ -1590,10 +1586,6 @@
     ]
    ],
    [
-    "answer",
-    "b"
-   ],
-   [
     "extract",
     [
      "late"
@@ -1601,10 +1593,6 @@
     [
      "b"
     ]
-   ],
-   [
-    "answer",
-    "c"
    ],
    [
     "extract",
@@ -1631,18 +1619,6 @@
      "f2",
      "f3"
     ]
-   ],
-   [
-    "answer",
-    "a"
-   ],
-   [
-    "answer",
-    "b"
-   ],
-   [
-    "answer",
-    "c"
    ],
    [
     "extract",
@@ -4888,23 +4864,11 @@
     "a"
    ],
    [
-    "answer",
-    "a"
-   ],
-   [
     "likelihood",
     "b"
    ],
    [
-    "answer",
-    "b"
-   ],
-   [
     "likelihood",
-    "c"
-   ],
-   [
-    "answer",
     "c"
    ]
   ],
@@ -4917,23 +4881,11 @@
     "a"
    ],
    [
-    "answer",
-    "a"
-   ],
-   [
     "likelihood",
     "b"
    ],
    [
-    "answer",
-    "b"
-   ],
-   [
     "likelihood",
-    "c"
-   ],
-   [
-    "answer",
     "c"
    ]
   ],
@@ -9136,23 +9088,11 @@
     "a"
    ],
    [
-    "reply",
-    "a"
-   ],
-   [
     "likelihood",
     "b"
    ],
    [
-    "reply",
-    "b"
-   ],
-   [
     "likelihood",
-    "c"
-   ],
-   [
-    "reply",
     "c"
    ]
   ],
@@ -9165,23 +9105,11 @@
     "a"
    ],
    [
-    "reply",
-    "a"
-   ],
-   [
     "likelihood",
     "b"
    ],
    [
-    "reply",
-    "b"
-   ],
-   [
     "likelihood",
-    "c"
-   ],
-   [
-    "reply",
     "c"
    ]
   ],

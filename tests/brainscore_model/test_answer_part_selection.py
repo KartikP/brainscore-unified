@@ -206,8 +206,8 @@ EXPECTED = {
         'PL': 'generation:reply', 'AP': 'generation:answer',
     },
     'plain probabilities fit=False': {
-        'R': '!choice', 'AR': '!implied', 'APLR': 'likelihood:answer+likelihood',
-        'PL': 'likelihood:likelihood+reply', 'AP': '-',
+        'R': '!choice', 'AR': '!implied', 'APLR': 'likelihood:likelihood',
+        'PL': 'likelihood:likelihood', 'AP': '-',
     },
     'per-row choice fit=False': {
         'R': '!per-row', 'AR': 'generation:answer', 'APLR': 'generation:reply',
@@ -230,8 +230,8 @@ EXPECTED = {
         'PL': 'generation:reply', 'AP': 'generation:answer',
     },
     'plain probabilities fit=True': {
-        'R': 'readout:readout', 'AR': 'readout:answer+readout', 'APLR': 'likelihood:answer+likelihood',
-        'PL': 'likelihood:likelihood+reply', 'AP': '-',
+        'R': 'readout:readout', 'AR': 'readout:readout', 'APLR': 'likelihood:likelihood',
+        'PL': 'likelihood:likelihood', 'AP': '-',
     },
     'per-row choice fit=True': {
         'R': '!per-row', 'AR': 'generation:answer', 'APLR': 'generation:reply',
@@ -246,20 +246,20 @@ EXPECTED = {
         'PL': 'generation:reply', 'AP': 'generation:reply',
     },
     'reaction time evidence_margin fit=False': {
-        'R': '!choice', 'AR': '!implied', 'APLR': 'link/likelihood:answer+likelihood',
-        'PL': 'link/likelihood:likelihood+reply', 'AP': '-',
+        'R': '!choice', 'AR': '!implied', 'APLR': 'link/likelihood:likelihood',
+        'PL': 'link/likelihood:likelihood', 'AP': '-',
     },
     'reaction time evidence_margin fit=True': {
-        'R': 'link/readout:readout', 'AR': 'link/readout:answer+readout', 'APLR': 'link/likelihood:answer+likelihood',
-        'PL': 'link/likelihood:likelihood+reply', 'AP': '-',
+        'R': 'link/readout:readout', 'AR': 'link/readout:readout', 'APLR': 'link/likelihood:likelihood',
+        'PL': 'link/likelihood:likelihood', 'AP': '-',
     },
     'reaction time surprisal fit=False': {
-        'R': '!choice', 'AR': '!implied', 'APLR': 'link/likelihood:answer+likelihood',
-        'PL': 'link/likelihood:likelihood+reply', 'AP': '-',
+        'R': '!choice', 'AR': '!implied', 'APLR': 'link/likelihood:likelihood',
+        'PL': 'link/likelihood:likelihood', 'AP': '-',
     },
     'reaction time surprisal fit=True': {
-        'R': 'link/readout:readout', 'AR': 'link/readout:answer+readout', 'APLR': 'link/likelihood:answer+likelihood',
-        'PL': 'link/likelihood:likelihood+reply', 'AP': '-',
+        'R': 'link/readout:readout', 'AR': 'link/readout:readout', 'APLR': 'link/likelihood:likelihood',
+        'PL': 'link/likelihood:likelihood', 'AP': '-',
     },
     'log probabilities fit=False': {
         'R': '-', 'AR': '-', 'APLR': 'likelihood:likelihood',
@@ -291,17 +291,17 @@ OTHER_PART_SETS = {
     ('legacy instr=False labels=None fit=False', 'P'): '-',
     ("legacy instr=True labels=['cat', 'dog'] fit=False", 'A'): 'generation:answer',
     ('scale fit=False', 'P'): 'generation:reply',
-    ('plain probabilities fit=False', 'AL'): 'likelihood:answer+likelihood',
+    ('plain probabilities fit=False', 'AL'): 'likelihood:likelihood',
     ('plain choice fit=False', 'LR'): 'likelihood:likelihood',
-    ('plain probabilities fit=False', 'PLR'): 'likelihood:likelihood+reply',
-    ('reaction time evidence_margin fit=False', 'AL'): 'link/likelihood:answer+likelihood',
+    ('plain probabilities fit=False', 'PLR'): 'likelihood:likelihood',
+    ('reaction time evidence_margin fit=False', 'AL'): 'link/likelihood:likelihood',
     ('reaction time evidence_margin fit=False', 'LR'): 'link/likelihood:likelihood',
-    ('reaction time evidence_margin fit=False', 'PLR'): 'link/likelihood:likelihood+reply',
-    ('reaction time evidence_margin fit=True', 'APR'): 'link/readout:answer+readout',
-    ('reaction time evidence_margin fit=True', 'PR'): 'link/readout:readout+reply',
-    ('plain probabilities fit=True', 'APR'): 'readout:answer+readout',
+    ('reaction time evidence_margin fit=False', 'PLR'): 'link/likelihood:likelihood',
+    ('reaction time evidence_margin fit=True', 'APR'): 'link/readout:readout',
+    ('reaction time evidence_margin fit=True', 'PR'): 'link/readout:readout',
+    ('plain probabilities fit=True', 'APR'): 'readout:readout',
     ('legacy instr=False labels=None fit=True', 'PR'): 'readout:readout',
-    ('plain probabilities fit=True', 'PR'): 'readout:readout+reply',
+    ('plain probabilities fit=True', 'PR'): 'readout:readout',
 }
 
 
