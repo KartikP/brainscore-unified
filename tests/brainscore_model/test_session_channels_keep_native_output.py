@@ -591,3 +591,18 @@ def test_streamed_table_with_two_input_columns_presents_each_row_once():
     model.participate(session)
     assert len(calls) == 2
     assert session.collect('neural:A').sizes['presentation'] == 2
+
+
+@pytest.mark.parametrize('timed', [True, False])
+def test_event_time_does_not_reach_the_time_axis_of_a_recording(timed):
+    """The time of a table row (or its absence) is event time; the time bins of a
+    temporal recording stay those of its extractor."""
+    table = stimuli()
+    if timed:
+        table['t_ms'] = [0.0, 5000.0]
+    expected = video()
+    session = stimulus_session(table, ['neural:IT'], task=TaskContext(task_type='passive'))
+    subject({'video': expected}, {'IT': ('blocks.16', 'video')}, []).participate(session)
+    recorded = session.collect('neural:IT')
+    for name in ('time_bin_start_ms', 'time_bin_end_ms'):
+        np.testing.assert_array_equal(recorded[name].values, expected[name].values)

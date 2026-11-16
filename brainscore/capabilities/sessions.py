@@ -257,6 +257,13 @@ for _capability in (_NEURAL, _BEHAVIOR, _MOTOR, InterventionSessions()):
     register_capability(_capability)
 
 
+def _trial_time(trial):
+    """The time of a one-row trial: its ``t_ms`` column, as its input events carry it, or None."""
+    if 't_ms' not in trial.columns or pd.isna(trial['t_ms'].iloc[0]):
+        return None
+    return float(trial['t_ms'].iloc[0])
+
+
 def drive_behavior_and_neural_session(subject, session, driver: str = "interact") -> None:
     """Record ``neural:<region>`` while the subject does the session's task.
 
@@ -278,23 +285,29 @@ def drive_behavior_and_neural_session(subject, session, driver: str = "interact"
     # reads the next. Otherwise the inputs are read first. A subject without the
     # trait keeps no history, so it can answer the whole table at once; one that
     # keeps history is answered trial by trial so a begin can fall between trials.
+    # Each batch is (stimuli, t_ms): a trial answers at the time of its input, or with no
+    # time when its input has none (rule 4.2); its index is in meta['trial_index'].
+    # The whole table answered at once is many trials: its events carry no time.
     if plan.delivery == 'stream':
         batches = enumerate(_drivers.stream_trials(session, task))
     else:
         stimuli = _drivers.behavior_stimuli_from_session(session, task)
         if stimuli is None:
             raise ValueError("Recording during a task needs stimuli to present.")
-        batches = ([(index, _drivers.preserve_stimulus_set_type(stimuli, stimuli.iloc[[index]]))
-                    for index in range(len(stimuli))]
-                   if plan.delivery == 'per_trial' else [(0, stimuli)])
-    for index, batch in batches:
+        trials = [_drivers.preserve_stimulus_set_type(stimuli, stimuli.iloc[[index]])
+                  for index in range(len(stimuli))]
+        batches = (enumerate((trial, _trial_time(trial)) for trial in trials)
+                   if plan.delivery == 'per_trial' else [(0, (stimuli, None))])
+    for index, (batch, t_ms) in batches:
         if index == 0 or task.trial_memory == 'none':
             subject._begin_episode()
         behavior, neural = subject._behavioral.respond(batch, answers, regions)
+        trial = {} if plan.delivery == 'table' else {"trial_index": index}
         # A value that is a StreamEvent keeps its meta: a reply's extra data (send_outputs).
         _drivers.send_outputs(session, {channel: behavior[channel] for channel in answers},
-                              float(index), {"driver": driver, "task_type": task.task_type})
+                              t_ms, {"driver": driver, "task_type": task.task_type, **trial})
         for region in regions:
-            session.respond(StreamEvent(channel=f"neural:{region}", payload=neural[region], t_ms=float(index),
-                                     meta={"driver": driver, "record": region, "during": "behavior"}))
+            session.respond(StreamEvent(channel=f"neural:{region}", payload=neural[region], t_ms=t_ms,
+                                        meta={"driver": driver, "record": region, "during": "behavior",
+                                              **trial}))
 
