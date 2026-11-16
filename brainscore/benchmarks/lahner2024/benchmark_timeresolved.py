@@ -24,6 +24,33 @@ a model of the stimulus's native time course. A full temporal protocol
 (native feature timestamps, exact onsets, durations, scan timing) would be a
 separate benchmark.
 
+## What these benchmarks are, and what they are not
+
+- They regress the continuous scanner time series of each run on the model's
+  features placed at the video onsets and convolved with a response shape (the
+  double-gamma HRF). The registered variants report the raw correlation; none
+  passes a noise ceiling.
+- The folds hold out whole runs, not videos. Every participant saw every
+  video (each training-set video 3 times, each test-set video 10 times: 4020
+  events a participant). Under the participant-out rule (every variant
+  without ``-improved``) every scored video therefore also occurs in the
+  training runs. Under the within-participant rule (the ``-improved``
+  variants) a scored video also occurs in the training runs unless all its
+  showings fall in the held-out block of runs.
+- The studies of this data set, the data set paper included, analyze responses
+  locked to each video, fitted on the training-set videos and tested on the
+  test-set videos. These benchmarks do not follow that protocol, so their values
+  are not comparable with published values. The GLM benchmark
+  (``Lahner2024BOLDMoments``) follows it.
+- The events name 1102 videos (1000 training-set, 102 test-set); the hosted
+  stimulus set holds 1026 of them. The 67 training-set videos and 9 test-set
+  videos that it lacks get no features: their events add nothing to the design,
+  while the scanner responses to them stay in the scored time series.
+- The voxel mask of the ``-visualROI`` variants is reliability of at least 0.3
+  on the 93 test-set videos of the GLM assembly (7209 voxels on the hosted
+  data). The GLM class selects on its training-set videos (3958 voxels), so the
+  two classes' visual-ROI scores cover different voxels.
+
 ## Pipeline (per subject)
 
     1. Discover the unique stimuli of the events of the scored runs (the stimulus set holds 1026 of the 1102 videos).
@@ -51,9 +78,9 @@ separate benchmark.
          lists each participant's runs together (checked and recorded).
        - ``ParticipantRunBlocks(10)``: per participant, contiguous blocks of
          10 runs; per-voxel r averaged over participants.
-       Every held-out stimulus is also shown in training runs, so the score
-       measures generalization to new runs of seen stimuli, not to new
-       stimuli.
+       Under the participant-out rule every held-out video is also shown in
+       training runs, so the score measures generalization to new runs of seen
+       videos, not to new videos (see "What these benchmarks are").
     6. Per-voxel Pearson on held-out predictions, median across the voxels
        that count (``voxel_score``, the rule of the GLM-beta benchmark).
 
@@ -84,9 +111,10 @@ Version 2 is the only version. Compared with version 1 it changes:
 
 ## Comparison with the GLM-beta variant
 
-Same 1026+ videos and models, but the target (single-run BOLD time series
-vs. trial-averaged GLM betas), the CV protocol, the voxel noise level and
-the feature design all differ. A score difference between this variant and
+Same models and stimulus set, but the target (single-run BOLD time series
+vs. GLM betas averaged over participants), the protocol (whole runs held out vs.
+one fit on the training-set videos and the score on the test-set videos), the
+visual-ROI voxels, the voxel noise level and the feature design all differ. A score difference between this variant and
 `Lahner2024-fMRI-naturalistic` therefore does not isolate the contribution
 of temporal information.
 """
@@ -301,11 +329,16 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         folds: the fold rule, ``RunBlocks(52)`` (default) or ``ParticipantRunBlocks(10)``.
         confounds: columns of the motion sidecar regressed out of each run's
             BOLD before the z-score (``MOTION_COLUMNS``); none by default.
-        ceiling, reliability_threshold, voxel_mask_fn: as for
-            ``Lahner2024BOLDMoments``. The reliability is the GLM-beta one on the
-            test-set videos: both assemblies share the fsaverage5 voxels. With
-            ``reliability_threshold`` only the ``train`` task runs are scored.
-            State the fold rule for 40 runs a participant in that case.
+        ceiling: a scalar; when given, the raw median is divided by it. No
+            registered variant passes one: the values are raw correlations.
+        reliability_threshold: score only the voxels whose GLM-beta reliability
+            on the 93 test-set videos (``reliability_on_test_set``) is at least
+            this value; both assemblies share the fsaverage5 voxels. This differs
+            from ``Lahner2024BOLDMoments``, which selects on its training-set
+            videos. With a threshold only the ``train`` task runs are scored;
+            state the fold rule for 40 runs a participant in that case.
+        voxel_mask_fn: score only the voxels of this mask (for example
+            ``build_auditory_mask``). Give at most one of the two.
         identifier: the benchmark identifier (required; the registry key of the variant).
     """
 
