@@ -19,6 +19,7 @@ from brainscore.tools import attach_tools, list_tools, load_tool, register_tool
 from brainscore_core.contract import Subject
 from brainscore_core.events import Selection
 from brainscore_core.streaming import Session, StreamEvent
+from tests.heavy_import import heavy_import_message
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     BehavioralAssembly, NeuroidAssembly,
 )
@@ -296,7 +297,7 @@ def test_loading_tool_catalog_does_not_import_heavy_model_dependencies():
         'load_tool("linear-probe", target="language"); '
         'assert not ({"torch", "transformers", "sklearn"} & set(sys.modules))'],
         capture_output=True, text=True)
-    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.returncode == 0, heavy_import_message('Loading the tool catalog', result.stdout + result.stderr)
 
 
 def test_missing_forward_is_an_explicit_failure_with_hooks_removed(tmp_path):

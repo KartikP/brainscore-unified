@@ -63,8 +63,9 @@ def test_replay_from_a_fixed_source_reproduces_the_live_responses():
 
 
 def _network():
-    torch.manual_seed(0)
-    return nn.Sequential(nn.Linear(3, 4), nn.ReLU(), nn.Linear(4, 2)).eval()
+    with torch.random.fork_rng():
+        torch.manual_seed(0)
+        return nn.Sequential(nn.Linear(3, 4), nn.ReLU(), nn.Linear(4, 2)).eval()
 
 
 class _Extractor:

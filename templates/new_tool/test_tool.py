@@ -39,8 +39,9 @@ def tiny_subject_and_stimuli():
     from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
     from brainscore_vision.model_helpers.activations.pytorch import (
         PytorchWrapper, load_preprocess_images)
-    torch.manual_seed(0)
-    net = torch.nn.Sequential(torch.nn.Conv2d(3, 4, 3), torch.nn.ReLU()).eval()
+    with torch.random.fork_rng():
+        torch.manual_seed(0)
+        net = torch.nn.Sequential(torch.nn.Conv2d(3, 4, 3), torch.nn.ReLU()).eval()
     subject = BrainScoreModel(
         identifier='tool-test-cnn', model=net, region_layer_map={'IT': '1'},
         extractor={'vision': PytorchWrapper(

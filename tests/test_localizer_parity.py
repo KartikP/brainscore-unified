@@ -97,13 +97,14 @@ WIDTH = 12
 
 
 def _net():
-    torch.manual_seed(0)
-    net = nn.Module()
-    for layer in ('L', 'M'):
-        linear = nn.Linear(WIDTH, WIDTH, bias=False)
-        with torch.no_grad():
-            linear.weight.copy_(torch.eye(WIDTH))
-        net.add_module(layer, linear)
+    with torch.random.fork_rng():
+        torch.manual_seed(0)
+        net = nn.Module()
+        for layer in ('L', 'M'):
+            linear = nn.Linear(WIDTH, WIDTH, bias=False)
+            with torch.no_grad():
+                linear.weight.copy_(torch.eye(WIDTH))
+            net.add_module(layer, linear)
     return net
 
 

@@ -114,7 +114,8 @@ def suite_arguments(repo, suite):
     """
     suite = list(suite)
     if repo == 'unified' and '-m' in suite and os.environ.get('UMI_FULL') != '1':
-        suite[suite.index('-m') + 1] += ' and not qualification'
+        marks = suite.index('-m') + 1
+        suite[marks] = f'({suite[marks]}) and not qualification'
     if repo in PARALLEL:
         suite += ['-n', os.environ.get('UMI_PYTEST_WORKERS', WORKERS), '--dist', 'loadgroup']
     return suite

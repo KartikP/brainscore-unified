@@ -9,6 +9,7 @@ import pathlib
 import pytest
 
 from brainscore.data import local
+from tests.heavy_import import heavy_import_message
 
 pytestmark = pytest.mark.unit
 
@@ -167,16 +168,24 @@ class TestFriendsLocation:
 
 
 
-def test_records_name_exactly_the_registered_benchmarks_that_read_them():
+def test_records_name_only_registered_benchmarks_and_every_known_reader():
     """The pre-check in score() reads ``used_by``; a missing identifier skips the
-    check, an extra one refuses a benchmark that does not need the asset."""
+    check, an extra one refuses a benchmark that does not need the asset.
+
+    For every asset: ``used_by`` names only registered benchmarks, with no repeats.
+    For the assets below, whose readers are known: the asset is still declared and
+    ``used_by`` still lists each known reader. A new asset or a new reader needs no line here."""
     from brainscore import benchmark_registry
     registered = set(benchmark_registry)
+    for name, asset in local.REGISTRY.items():
+        assert set(asset.used_by) <= registered, \
+            f'{name}: used_by names unregistered benchmarks {sorted(set(asset.used_by) - registered)}'
+        assert len(asset.used_by) == len(set(asset.used_by)), f'{name} repeats an identifier'
 
     def family(prefix):
         return {identifier for identifier in registered if identifier.startswith(prefix)}
 
-    expected = {
+    known = {
         'algonauts2025-root': family('Algonauts2025-'),
         'algonauts2025-prepared': family('Algonauts2025-'),
         'coggym-checkout': family('CogGym.'),
@@ -188,10 +197,11 @@ def test_records_name_exactly_the_registered_benchmarks_that_read_them():
         'lahner2024-sound': set(),
     }
     none = {'lebel2023-pickle', 'lahner2024-frames', 'lahner2024-sound'}
-    assert all(identifiers for name, identifiers in expected.items() if name not in none)
-    assert {name: set(asset.used_by) for name, asset in local.REGISTRY.items()} == expected
-    for name, asset in local.REGISTRY.items():
-        assert len(asset.used_by) == len(set(asset.used_by)), f'{name} repeats an identifier'
+    assert all(identifiers for name, identifiers in known.items() if name not in none)
+    for name, readers in known.items():
+        assert name in local.REGISTRY, f'the local asset {name!r} is no longer declared'
+        missing = sorted(readers - set(local.REGISTRY[name].used_by))
+        assert not missing, f'{name}: used_by no longer lists its known readers {missing}'
 
 
 def test_the_asset_list_needs_no_ml_import():
@@ -206,7 +216,7 @@ def test_the_asset_list_needs_no_ml_import():
         "loaded = [m for m in ('torch', 'transformers', 'cv2', 'sklearn') if m in sys.modules]\n"
         "assert not loaded, loaded\n")
     result = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 0, heavy_import_message('Listing the local assets', result.stderr)
     for name in local.REGISTRY:
         assert name in result.stdout
 

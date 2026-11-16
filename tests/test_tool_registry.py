@@ -5,6 +5,7 @@ import sys
 import pytest
 
 from brainscore.tools import list_tools, load_tool
+from tests.heavy_import import heavy_import_message
 
 MINIMAL = {
     'ablate': {'targets': ['population']},
@@ -20,7 +21,10 @@ MINIMAL = {
 
 
 def test_the_minimal_configurations_cover_every_registered_tool():
-    assert sorted(MINIMAL) == sorted(list_tools())
+    missing, extra = sorted(set(list_tools()) - set(MINIMAL)), sorted(set(MINIMAL) - set(list_tools()))
+    assert not missing, (f'add a minimal configuration for {missing} to MINIMAL in tests/test_tool_registry.py: '
+                         'the next test loads every registered tool with it, offline')
+    assert not extra, f'MINIMAL names tools that are not registered: {extra}; remove their lines'
 
 
 @pytest.mark.parametrize('identifier', sorted(MINIMAL))
@@ -46,4 +50,4 @@ def test_importing_the_package_imports_no_tool_module_and_no_model_library():
         "assert not loaded, loaded\n"
     )
     result = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 0, heavy_import_message('Importing brainscore.tools', result.stderr)

@@ -48,9 +48,10 @@ def _tiny_fixture(drift_after: int | None = None, *, answers: bool = False):
     """
     import torch
 
-    torch.manual_seed(0)
-    model = torch.nn.Sequential()
-    model.add_module('proj', torch.nn.Linear(3, 8))
+    with torch.random.fork_rng():
+        torch.manual_seed(0)
+        model = torch.nn.Sequential()
+        model.add_module('proj', torch.nn.Linear(3, 8))
     calls = []
 
     def policy(row):

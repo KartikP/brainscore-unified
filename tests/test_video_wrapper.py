@@ -42,8 +42,9 @@ def _make_mock_video_model(n_features: int = 8):
         def forward(self, x):
             return self.main_block(x)
 
-    torch.manual_seed(0)
-    return MockVideoModel(n_features)
+    with torch.random.fork_rng():
+        torch.manual_seed(0)
+        return MockVideoModel(n_features)
 
 
 def _mock_preprocess(frames):

@@ -29,8 +29,9 @@ class _CustomStoredExtractor:
     """A callable extractor with a ``result_caching`` store of its own; values over (image, time bin, unit)."""
 
     def __init__(self):
-        torch.manual_seed(1)
-        self.weights = torch.randn(4 * 4 * 3, 6).numpy() * 0.37
+        with torch.random.fork_rng():
+            torch.manual_seed(1)
+            self.weights = torch.randn(4 * 4 * 3, 6).numpy() * 0.37
 
     def __call__(self, stimuli, layers, **kwargs):
         return self._stored(identifier='custom-stored', layers=list(layers),
@@ -105,9 +106,10 @@ def _legacy(tmp_path, monkeypatch, install, pca):
 
     def load(paths):
         return np.stack([np.asarray(Image.open(path), np.float32).transpose(2, 0, 1) / 255 for path in paths])
-    torch.manual_seed(0)
-    network = torch.nn.Sequential(torch.nn.Conv2d(3, 4, 3), torch.nn.ReLU(), torch.nn.Conv2d(4, 4, 3),
-                                  torch.nn.Flatten())
+    with torch.random.fork_rng():
+        torch.manual_seed(0)
+        network = torch.nn.Sequential(torch.nn.Conv2d(3, 4, 3), torch.nn.ReLU(), torch.nn.Conv2d(4, 4, 3),
+                                      torch.nn.Flatten())
     wrapper = PytorchWrapper(network, load, identifier='store-on-off-net', batch_size=2)
     install(wrapper._extractor._from_paths_stored)
     if pca:

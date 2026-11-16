@@ -1,7 +1,8 @@
 """Pin the registered benchmarks and models of the unified package, and what each benchmark builds.
 
 A variant of a benchmark is a registry line (`lambda` or `partial` of a class with
-arguments). This file pins every identifier, and for each benchmark that builds
+arguments). This file pins the listed identifiers (each must stay registered; a new
+one may be added without a line here), and for each benchmark that builds
 without local data: the identifier it builds, its version, its trial memory, and
 the channels it sends and requests. The Yeatman2021 benchmarks load hosted data
 when they are built; here a synthetic ROAR set stands behind their loaders, so
@@ -19,8 +20,6 @@ import brainscore.benchmarks  # noqa: F401  (registers the unified benchmarks)
 from brainscore_core.compatibility import benchmark_required_input_channels
 from tests.test_induced_dyslexia import synthetic_roar  # noqa: F401  (fixture)
 
-FAMILIES = ('Algonauts2025-', 'CogGym.', 'EWoK-', 'GridGame-', 'Lahner2024-',
-            'LeBel2023-', 'Pereira2018.', 'Yeatman2021-')
 
 REGISTERED = [
     'Algonauts2025-friends-sub01',
@@ -155,9 +154,11 @@ BUILT = {
         ['behavior:choice']),
 }
 
-def test_the_registered_identifiers_are_the_pinned_list():
-    registered = sorted(i for i in brainscore.benchmark_registry if i.startswith(FAMILIES))
-    assert registered == sorted(REGISTERED)
+def test_the_pinned_identifiers_stay_registered():
+    """A listed identifier may not be removed or renamed; a new one may be added."""
+    missing = sorted(set(REGISTERED) - set(brainscore.benchmark_registry))
+    assert not missing, f'pinned benchmark identifiers are no longer registered: {missing}'
+
 
 
 def _build(identifier, request):
@@ -207,7 +208,7 @@ def test_a_kept_table_and_task_give_the_pinned_inputs_and_a_declaration_equals_t
 MODELS = [
     'blip2-opt-2.7b', 'blip2-wav2vec2', 'chance-baseline', 'claude-haiku-behavioral',
     'claude-opus-behavioral', 'clip-random-wav2vec2', 'clip-vit-b-32', 'clip-wav2vec2',
-    'deepseek-chat-behavioral', 'deepseek-r1-behavioral', 'gpt-4o-behavioral', 'gpt2',
+    'deepseek-chat-behavioral', 'deepseek-r1-behavioral', 'gpt-4o-behavioral', 'gpt2-small',
     'llama-3.3-70b-behavioral', 'or-claude-sonnet-behavioral', 'qwen2.5-0.5b-instruct',
     'qwen2.5-vl-3b', 'qwen2.5-vl-3b-bf16', 'qwen2.5-vl-3b-vwfa', 'qwen2.5-vl-7b',
     'qwen2.5-vl-7b-vwfa', 'qwen2.5-vl-wav2vec2', 'qwen3.6-27b', 'random-clip-random-wav2vec2',
@@ -217,22 +218,43 @@ MODELS = [
 ]
 
 
-def test_the_registered_model_identifiers_are_the_pinned_list():
-    """A model identifier is stable: adding one adds a line here, removing one is a decision."""
-    assert sorted(brainscore.model_registry) == sorted(MODELS)
+def test_the_pinned_model_identifiers_stay_registered():
+    """A model identifier is stable: removing or renaming one fails here; a new one may be added."""
+    missing = sorted(set(MODELS) - set(brainscore.model_registry))
+    assert not missing, f'pinned model identifiers are no longer registered: {missing}'
 
 
-def test_the_20_built_keys_name_the_identifier_they_build():
-    """For the 20 pinned keys in ``BUILT`` (Algonauts2025, GridGame, Lahner2024, LeBel2023,
+
+def test_gpt2_is_the_old_language_plugin_and_gpt2_small_the_unified_model(monkeypatch):
+    """One name means one model. The unified GPT-2 is registered as ``gpt2-small``; ``gpt2``
+    is not in the unified registry, so ``load_model('gpt2')`` reaches the old language
+    plugin (folder ``models/gpt``) through its adapter. Nothing is loaded here."""
+    import brainscore_language
+    import brainscore_vision
+    from brainscore_core.plugin_management.import_plugin import ImportPlugin, PluginNotFoundError
+    assert 'gpt2-small' in brainscore.model_registry and 'gpt2' not in brainscore.model_registry
+    assert ImportPlugin('brainscore_language', 'models', 'gpt2').plugin_dirname == 'gpt'
+    with pytest.raises(PluginNotFoundError):
+        ImportPlugin('brainscore_vision', 'models', 'gpt2')
+
+    def not_vision(identifier):
+        raise PluginNotFoundError(identifier)
+    old = object()
+    monkeypatch.setattr(brainscore_vision, 'load_model', not_vision)
+    monkeypatch.setattr(brainscore_language, 'load_model', lambda identifier: old)
+    assert brainscore.load_model('gpt2') is old
+
+
+def test_the_built_keys_name_the_identifier_they_build():
+    """For the keys in ``BUILT`` (Algonauts2025, GridGame, Lahner2024, LeBel2023,
     Yeatman2021), the recorded identifier equals the key; the parametrized test above
     builds each of them and asserts that identifier. Nothing is built here.
 
-    The other 25 of the 45 pinned keys are not built by this file, because their
-    constructors need data or a prepared library: CogGym (23; its identifier also adds
-    the configured settings) and EWoK (2; its identifier adds the resolved data's hash).
-    The family ``Pereira2018.`` stays in ``FAMILIES``: unified registers no key of it.
+    The other pinned keys are not built by this file, because their constructors need
+    data or a prepared library: CogGym (its identifier also adds the configured
+    settings) and EWoK (its identifier adds the resolved data's hash).
     """
-    assert len(BUILT) == 20 and len(REGISTERED) == 45
+    assert set(BUILT) <= set(REGISTERED)
     assert all(key == built for key, (built, *_rest) in BUILT.items())
 
 

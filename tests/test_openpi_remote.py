@@ -103,9 +103,15 @@ def load_codec():
     from pathlib import Path
     import sys
     source = os.environ.get('OPENPI_SOURCE')
-    if source:
-        sys.path.insert(0, str(Path(source) / 'packages/openpi-client/src'))
-    return pytest.importorskip('openpi_client.msgpack_numpy')
+    path = str(Path(source) / 'packages/openpi-client/src') if source else None
+    added = path is not None and path not in sys.path
+    if added:
+        sys.path.insert(0, path)
+    try:
+        return pytest.importorskip('openpi_client.msgpack_numpy')
+    finally:
+        if added:                                   # the imported module stays usable
+            sys.path.remove(path)
 
 
 @contextmanager

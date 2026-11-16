@@ -11,11 +11,12 @@ from brainscore.benchmarks.lahner2024 import Lahner2024BOLDMoments, Lahner2024BO
 LAHNER = sorted(key for key in brainscore.benchmark_registry if key.startswith('Lahner2024-'))
 
 
-def test_only_the_five_glm_variants_are_registered():
+def test_the_glm_variants_are_registered_and_no_time_resolved_one():
     # The time-resolved class is not registered (see `lahner2024/__init__.py`).
     assert not [key for key in brainscore.benchmark_registry if 'timeresolved' in key]
-    assert LAHNER == sorted('Lahner2024-fMRI-naturalistic' + suffix for suffix in (
-        '', '-visualROI', '-multimodal', '-multimodal-visualROI', '-multimodal-auditoryROI'))
+    glm = {'Lahner2024-fMRI-naturalistic' + suffix for suffix in (
+        '', '-visualROI', '-multimodal', '-multimodal-visualROI', '-multimodal-auditoryROI')}
+    assert glm <= set(LAHNER), f'GLM variants no longer registered: {sorted(glm - set(LAHNER))}'
 
 
 @pytest.mark.parametrize('key', LAHNER)

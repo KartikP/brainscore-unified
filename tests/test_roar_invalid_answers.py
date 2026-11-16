@@ -5,18 +5,16 @@ from brainscore.benchmarks.roar_yeatman2021.benchmark import Yeatman2021LexicalD
 from brainscore.brainscore_model import BrainScoreModel
 from brainscore_core.metrics import Score
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+from tests.benchmark_stand_in import without_init
 
 
 def _benchmark():
     # Skip __init__: it downloads the ROAR data. __call__ needs only these fields.
-    benchmark = object.__new__(Yeatman2021LexicalDecision)
-    benchmark.stimulus_set = StimulusSet({
-        'stimulus_id': ['w1', 'w2', 'p1', 'p2'], 'sentence': ['cat', 'dog', 'florp', 'blick'],
-        'image_label': ['real', 'real', 'pseudo', 'pseudo']})
-    benchmark._train_stimuli = None
-    benchmark._ceiling = Score(1.0)
-    benchmark._version = 1
-    return benchmark
+    return without_init(
+        Yeatman2021LexicalDecision, identifier='Yeatman2021-lexical_decision-text', ceiling=Score(1.0),
+        version=1, _train_stimuli=None, stimulus_set=StimulusSet({
+            'stimulus_id': ['w1', 'w2', 'p1', 'p2'], 'sentence': ['cat', 'dog', 'florp', 'blick'],
+            'image_label': ['real', 'real', 'pseudo', 'pseudo']}))
 
 
 def test_invalid_answers_count_as_wrong():

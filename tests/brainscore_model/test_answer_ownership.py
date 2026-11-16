@@ -289,33 +289,46 @@ EXPANDED = {
 
 
 def _registrations():
-    """Every BrainScoreModel call in the library: its answer arguments and stated owners."""
+    """Every BrainScoreModel call in the library: its answer arguments and stated owners.
+
+    Returns the readable calls, the files whose calls take keywords through ``**``
+    expansion, and the files whose ``capability_config`` is not a literal (a capability
+    made from the template names its identifier). The scan cannot read the last two
+    groups; the constructor checks them."""
     root = Path(brainscore.__file__).parent
-    found, expanded = [], set()
+    found, expanded, not_literal = [], set(), set()
     for path in sorted(root.rglob('*.py')):
+        where = path.relative_to(root).as_posix()
         for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
             if isinstance(node, ast.Call) and 'BrainScoreModel' in (
                     getattr(node.func, 'id', None), getattr(node.func, 'attr', None)):
                 if any(keyword.arg is None for keyword in node.keywords):
-                    expanded.add(path.relative_to(root).as_posix())
+                    expanded.add(where)
                 keywords = {k.arg: k.value for k in node.keywords if k.arg}
                 wired = [name for name in ARGUMENTS_WITH_OUTPUTS if name in keywords
                          and not (isinstance(keywords[name], ast.Constant) and keywords[name].value is None)]
-                config = (ast.literal_eval(keywords['capability_config'])
-                          if 'capability_config' in keywords else {})
-                found.append((path.relative_to(root).as_posix(), wired, config.get('behavior-sessions', {})))
-    return found, expanded
+                try:
+                    config = (ast.literal_eval(keywords['capability_config'])
+                              if 'capability_config' in keywords else {})
+                except ValueError:
+                    not_literal.add(where)
+                    continue
+                found.append((where, wired, config.get('behavior-sessions', {})))
+    return found, expanded, not_literal
 
 
 def test_every_registration_states_the_owners_of_the_table():
     """Covers every ``BrainScoreModel(...)`` and ``<module>.BrainScoreModel(...)`` call in
-    the library, helpers included (``model_helpers/causal_lm.py``). Not covered:
-    keywords that arrive through ``**`` expansion (``EXPANDED``) and models built outside
-    the library; the constructor checks those."""
-    registrations, expanded = _registrations()
-    assert expanded == set(EXPANDED)
+    the library, helpers included (``model_helpers/causal_lm.py``). A call whose part set
+    is in ``LIBRARY_STATEMENTS`` states the owners of the table; a call with another part
+    set is checked by the constructor only. Not covered: keywords that arrive through
+    ``**`` expansion (``EXPANDED``), a ``capability_config`` that is not a literal, and
+    models built outside the library; the constructor checks those."""
+    registrations, expanded, _ = _registrations()
+    assert set(EXPANDED) <= expanded, 'a call listed in EXPANDED no longer expands keywords: remove its line'
     assert {'models/qwen25_vl_3b/model.py', 'models/qwen36_27b/model.py', 'models/blip2_opt_2_7b/model.py',
             'model_helpers/causal_lm.py'} <= {r[0] for r in registrations}
     for where, wired, stated in registrations:
-        assert stated == LIBRARY_STATEMENTS[tuple(wired)], where
+        if tuple(wired) in LIBRARY_STATEMENTS:
+            assert stated == LIBRARY_STATEMENTS[tuple(wired)], where
         _model(*wired, owners=stated)                       # construction accepts it

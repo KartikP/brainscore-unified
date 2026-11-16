@@ -13,7 +13,7 @@ October 6, 2026: median r 0.1013, mean r 0.1134; all 20,484 scores are finite. G
 
 ## Protocol
 
-Registered model `gpt2`, layer `h.11`; registered benchmark `LeBel2023-UTS03-encoding`. Word features use up to 32 words of context, are resampled onto the two-second fMRI grid, and enter ridge regression with four time delays. Five folds hold out complete stories; each fold selects its penalty using training stories only. Scores are raw correlations, without a noise ceiling or an anatomical mask.
+Registered model `gpt2-small`, layer `h.11`; registered benchmark `LeBel2023-UTS03-encoding`. Word features use up to 32 words of context, are resampled onto the two-second fMRI grid, and enter ridge regression with four time delays. Five folds hold out complete stories; each fold selects its penalty using training stories only. Scores are raw correlations, without a noise ceiling or an anatomical mask.
 
 The maps use the documented fsaverage5 surface order: 10,242 left-hemisphere locations followed by 10,242 right-hemisphere locations. All views share a symmetric color scale. Negative correlations are retained, and values are not averaged into anatomical parcels. The surface renderer shades mesh faces from their vertices.
 

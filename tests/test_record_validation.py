@@ -1,6 +1,8 @@
 """Reject damaged or incompatible recordings before downstream analysis."""
+import contextlib
 import hashlib
 import json
+import tracemalloc
 from pathlib import Path
 
 import numpy as np
@@ -319,21 +321,33 @@ def test_change_in_a_later_block_is_refused_before_its_events(tmp_path, clock):
     assert yielded == list(range(len(yielded))) and len(yielded) <= 8, yielded  # never the edit
 
 
+@contextlib.contextmanager
+def _tracing():
+    """Trace allocations in the block, and stop only a trace this block started (a
+    failed assertion must not leave tracing on for later tests)."""
+    started = not tracemalloc.is_tracing()
+    if started:
+        tracemalloc.start()
+    try:
+        yield
+    finally:
+        if started:
+            tracemalloc.stop()
+
+
 def test_finalize_and_read_memory_do_not_scale_with_log_length(tmp_path):
-    import tracemalloc
     peaks = {}
     for count in (200, 20000):
         directory = tmp_path / str(count)
         recorder = RunRecorder(directory, metadata={})
         for index in range(count):
             recorder.record('output', [index, 'x' * 500])
-        tracemalloc.start()
-        recorder.close()
-        close_peak = tracemalloc.get_traced_memory()[1]
-        tracemalloc.reset_peak()
-        assert sum(1 for _ in RunRecord(directory).events()) == count
-        peaks[count] = (close_peak, tracemalloc.get_traced_memory()[1])
-        tracemalloc.stop()
+        with _tracing():
+            recorder.close()
+            close_peak = tracemalloc.get_traced_memory()[1]
+            tracemalloc.reset_peak()
+            assert sum(1 for _ in RunRecord(directory).events()) == count
+            peaks[count] = (close_peak, tracemalloc.get_traced_memory()[1])
     size = (tmp_path / '20000' / 'events.jsonl').stat().st_size
     assert size > 10_000_000
     for small, large in zip(peaks[200], peaks[20000]):
@@ -346,19 +360,17 @@ def test_reader_index_grows_at_most_32_bytes_per_64_kib(tmp_path):
     """While events are read, the reader keeps a constant plus one 32-byte digest per
     64 KiB block of log (the index of its first pass); nothing per block beyond that."""
     import math
-    import tracemalloc
     held, digests, blocks = {}, {}, {}
     for count in (200, 20000):
         directory = long_recording(tmp_path / str(count), count, width=500)
         blocks[count] = math.ceil((directory / 'events.jsonl').stat().st_size / 65536)
-        tracemalloc.start()
-        events = RunRecord(directory).events()
-        next(events)  # suspended in the second pass, with the whole index built
-        held[count] = tracemalloc.get_traced_memory()[0]
-        index = events.gi_frame.f_locals.get('index')
-        digests[count] = len(index) if isinstance(index, bytearray) else None
-        events.close()
-        tracemalloc.stop()
+        with _tracing():
+            events = RunRecord(directory).events()
+            next(events)  # suspended in the second pass, with the whole index built
+            held[count] = tracemalloc.get_traced_memory()[0]
+            index = events.gi_frame.f_locals.get('index')
+            digests[count] = len(index) if isinstance(index, bytearray) else None
+            events.close()
     allowed = 32 * (blocks[20000] - blocks[200]) + 8192  # the index plus allocator slack
     assert held[20000] - held[200] <= allowed, (held, blocks)
     assert digests == {count: 32 * blocks[count] for count in blocks}, digests
@@ -836,22 +848,20 @@ def test_inspect_rejects_unknown_schemas(tmp_path, recording):
 
 
 def test_inspect_and_prefix_memory_do_not_scale_with_log_length(tmp_path):
-    import tracemalloc
     peaks = {}
     for count in (200, 20000):
         directory = tmp_path / str(count)
         recorder = RunRecorder(directory, metadata={})
         for index in range(count):
             recorder.record('output', [index, 'x' * 500])
-        tracemalloc.start()
-        assert RunRecord.inspect(directory)['valid_events'] == count
-        inspect_peak = tracemalloc.get_traced_memory()[1]
-        tracemalloc.reset_peak()
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', RuntimeWarning)
-            assert sum(1 for _ in RunRecord(directory).unverified_prefix()) == count
-        peaks[count] = (inspect_peak, tracemalloc.get_traced_memory()[1])
-        tracemalloc.stop()
+        with _tracing():
+            assert RunRecord.inspect(directory)['valid_events'] == count
+            inspect_peak = tracemalloc.get_traced_memory()[1]
+            tracemalloc.reset_peak()
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', RuntimeWarning)
+                assert sum(1 for _ in RunRecord(directory).unverified_prefix()) == count
+            peaks[count] = (inspect_peak, tracemalloc.get_traced_memory()[1])
     size = (tmp_path / '20000' / 'events.jsonl').stat().st_size
     for small, large in zip(peaks[200], peaks[20000]):
         assert large < 2 * small + 100_000, peaks
