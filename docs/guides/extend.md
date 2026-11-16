@@ -1,6 +1,6 @@
 # Extend UMI
 
-You can add channels, tools and capabilities from your own package, without editing Brain-Score. Import your registration module before building models. Parts of this are still evolving; see [Feature status](../reference/features.md).
+You can add channels, tools and capabilities from your own package, without editing Brain-Score. Import your registration module before building models. [Your own package](your_own_package.md) shows the whole path, with a table of what goes where. Parts of this are still evolving; see [Feature status](../reference/features.md).
 
 ## A new channel
 
