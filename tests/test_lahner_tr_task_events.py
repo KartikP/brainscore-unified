@@ -14,7 +14,8 @@ from brainscore.benchmarks.lahner2024.benchmark_timeresolved import (
 from brainscore.data.lahner2024 import MOTION_COLUMNS
 from brainscore.temporal import double_gamma_hrf, hrf_convolve
 from tests.lahner_synthetic import (
-    CLIPS, N_TR, N_VOXELS, Recorder, install, tr_events, tr_runs, unit_values)
+    CLIPS, N_TR, N_VOXELS, TIME_RESOLVED_CONFIGURATIONS, Recorder, build_time_resolved, install,
+    tr_events, tr_runs, unit_values)
 
 PREFIX = 'Lahner2024-fMRI-naturalistic'
 TR_IDENTIFIER = PREFIX + '-timeresolved'   # the class is not registered; built directly
@@ -89,9 +90,10 @@ def test_every_registration_is_version_2(identifier):
     assert benchmark.version == 2
 
 
-def test_the_time_resolved_class_is_version_2():
-    benchmark = Lahner2024BOLDMoments_timeresolved(identifier=TR_IDENTIFIER)
-    assert benchmark.identifier == TR_IDENTIFIER
+@pytest.mark.parametrize('name', sorted(TIME_RESOLVED_CONFIGURATIONS))
+def test_every_time_resolved_configuration_is_version_2(name):
+    benchmark = build_time_resolved(name)
+    assert benchmark.identifier == name
     assert benchmark.version == 2
 
 

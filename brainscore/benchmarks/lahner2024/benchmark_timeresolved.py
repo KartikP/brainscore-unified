@@ -22,7 +22,9 @@ class, for example::
     Lahner2024BOLDMoments_timeresolved(
         folds=RunBlocks(40), reliability_threshold=0.3, identifier='...')
 
-A time-resolved variant that follows the data set's own analysis is planned.
+The arguments of the seven measured configurations are stated in
+``tests/lahner_synthetic.py`` (``TIME_RESOLVED_CONFIGURATIONS``). A time-resolved
+variant that follows the data set's own analysis is planned.
 
 ## Design: clip-mean onset-impulse HRF model
 

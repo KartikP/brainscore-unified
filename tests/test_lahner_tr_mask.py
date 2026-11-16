@@ -16,7 +16,7 @@ from brainscore.data.lahner2024 import MOTION_COLUMNS
 from brainscore.temporal import contiguous_block_cv
 from tests.lahner_synthetic import (
     CLIPS, GLM_CLIPS, GLM_REPS, N_TR, N_VOXELS, TEST_CLIPS, Recorder, glm_values, install,
-    stimulus_set, tr_assembly, tr_events, tr_runs)
+    build_time_resolved, stimulus_set, tr_assembly, tr_events, tr_runs)
 
 PREFIX = 'Lahner2024-fMRI-naturalistic-timeresolved'
 AUDIOVISUAL = ('vision:image', 'vision:video', 'audio')
@@ -93,6 +93,16 @@ def test_the_mask_variant_through_participate(monkeypatch, tmp_path):
         identifier=PREFIX + '-multimodal-visualROI')(subject)
     assert subject.seen and all(not set(ids) & set(TEST_CLIPS) for _, _, ids, _ in subject.seen)
     assert score.attrs['n_runs'] == 4
+
+
+def test_the_fold_rules_of_the_configurations():
+    folds = {name: build_time_resolved(PREFIX + name)._folds
+             for name in ('', '-visualROI', '-multimodal-visualROI', '-improved-visualROI')}
+    assert isinstance(folds['-visualROI'], RunBlocks) and folds['-visualROI'].n_runs == 40
+    assert folds['-multimodal-visualROI'].n_runs == 40
+    assert isinstance(folds['-improved-visualROI'], ParticipantRunBlocks)
+    assert folds['-improved-visualROI'].n_runs == 10
+    assert folds[''].n_runs == 52
 
 
 def test_blocks_keep_their_meaning_after_the_run_filter():

@@ -327,38 +327,50 @@ def test_a_response_for_other_stimuli_is_refused(monkeypatch, tmp_path, in_chann
 
 # ── Declarations (Contract Rules 5.1, 5.2, 5.12) ──────────────────
 
+from brainscore_core.compatibility import benchmark_required_input_channels
 from tests.benchmark_declarations import assert_declares, assert_preflight
+from tests.lahner_synthetic import (
+    TIME_RESOLVED_CONFIGURATIONS, TIME_RESOLVED_SINGLE_TOWER, TIME_RESOLVED_TWO_TOWERS,
+    build_time_resolved)
 
-_TR = 'Lahner2024-fMRI-naturalistic-timeresolved'
-_AUDIOVISUAL = ('vision:image', 'vision:video', 'audio')
-SINGLE_TOWER = {
-    'Lahner2024-fMRI-naturalistic': None,
-    'Lahner2024-fMRI-naturalistic-visualROI': None,
-    # The time-resolved class is not registered; it is built directly.
-    'timeresolved': lambda: Lahner2024BOLDMoments_timeresolved(identifier=_TR),
-}
-TWO_TOWERS = {
-    'Lahner2024-fMRI-naturalistic-multimodal': None,
-    'Lahner2024-fMRI-naturalistic-multimodal-visualROI': None,
-    'Lahner2024-fMRI-naturalistic-multimodal-auditoryROI': None,
-    'timeresolved': lambda: Lahner2024BOLDMoments_timeresolved(
-        channels=_AUDIOVISUAL, identifier=_TR),
-}
+# GLM lines from the registry; the time-resolved class from its seven configurations
+# (``tests/lahner_synthetic.py``), built directly: the class is not registered.
+SINGLE_TOWER = ['Lahner2024-fMRI-naturalistic', 'Lahner2024-fMRI-naturalistic-visualROI',
+                *TIME_RESOLVED_SINGLE_TOWER]
+TWO_TOWERS = ['Lahner2024-fMRI-naturalistic-multimodal',
+              'Lahner2024-fMRI-naturalistic-multimodal-visualROI',
+              'Lahner2024-fMRI-naturalistic-multimodal-auditoryROI',
+              *TIME_RESOLVED_TWO_TOWERS]
 
 
-def _built(table, name):
-    return (table[name] or brainscore.benchmark_registry[name])()
+def _built(name):
+    if name in TIME_RESOLVED_CONFIGURATIONS:
+        return build_time_resolved(name)
+    return brainscore.benchmark_registry[name]()
+
+
+@pytest.mark.parametrize('name', sorted(TIME_RESOLVED_CONFIGURATIONS))
+def test_a_time_resolved_configuration_builds_what_its_registry_line_built(name):
+    benchmark = build_time_resolved(name)
+    two_towers = name in TIME_RESOLVED_TWO_TOWERS
+    assert benchmark.identifier == name
+    assert benchmark.version == 2
+    assert benchmark.trial_memory == 'none'
+    assert sorted(benchmark_required_input_channels(benchmark)) == (
+        ['audio', 'vision:image', 'vision:video'] if two_towers else ['vision:image', 'vision:video'])
+    assert sorted(benchmark.requested_output_channels) == (
+        ['neural:A1', 'neural:IT'] if two_towers else ['neural:IT'])
 
 
 @pytest.mark.parametrize('name', SINGLE_TOWER)
 def test_single_tower_variants_declare_vision_in_and_it_out(name):
-    benchmark = _built(SINGLE_TOWER, name)
+    benchmark = _built(name)
     assert_declares(benchmark, {'vision:image', 'vision:video'}, {'neural:IT'})
     assert_preflight(benchmark)
 
 
 @pytest.mark.parametrize('name', TWO_TOWERS)
 def test_audio_visual_variants_declare_both_towers(name):
-    benchmark = _built(TWO_TOWERS, name)
+    benchmark = _built(name)
     assert_declares(benchmark, {'vision:image', 'vision:video', 'audio'}, {'neural:IT', 'neural:A1'})
     assert_preflight(benchmark)
