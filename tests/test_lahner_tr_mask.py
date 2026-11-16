@@ -6,7 +6,6 @@ variants without that mask are unchanged. Synthetic data behind the registered l
 import numpy as np
 import pytest
 
-import brainscore
 import brainscore.benchmarks.lahner2024  # noqa: F401  (registers the benchmarks)
 from brainscore.benchmarks.lahner2024 import (
     Lahner2024BOLDMoments_timeresolved, ParticipantRunBlocks, RunBlocks)
@@ -86,7 +85,7 @@ def test_only_train_runs_are_scored_and_no_test_set_video_is_shown(monkeypatch, 
     assert score.attrs['cv_block_runs'] == 2
 
 
-def test_the_mask_variant_through_participate_and_the_registry_folds(monkeypatch, tmp_path):
+def test_the_mask_variant_through_participate(monkeypatch, tmp_path):
     install(monkeypatch, tmp_path, runs=RUNS, events=events_with_test_set(RUNS))
     subject = Recorder({'vision:video', 'audio'}, regions=('IT', 'A1'))
     score = Lahner2024BOLDMoments_timeresolved(
@@ -94,13 +93,6 @@ def test_the_mask_variant_through_participate_and_the_registry_folds(monkeypatch
         identifier=PREFIX + '-multimodal-visualROI')(subject)
     assert subject.seen and all(not set(ids) & set(TEST_CLIPS) for _, _, ids, _ in subject.seen)
     assert score.attrs['n_runs'] == 4
-    folds = {name: brainscore.load_benchmark(PREFIX + name)._folds
-             for name in ('', '-visualROI', '-multimodal-visualROI', '-improved-visualROI')}
-    assert isinstance(folds['-visualROI'], RunBlocks) and folds['-visualROI'].n_runs == 40
-    assert folds['-multimodal-visualROI'].n_runs == 40
-    assert isinstance(folds['-improved-visualROI'], ParticipantRunBlocks)
-    assert folds['-improved-visualROI'].n_runs == 10
-    assert folds[''].n_runs == 52
 
 
 def test_blocks_keep_their_meaning_after_the_run_filter():

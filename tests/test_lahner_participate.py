@@ -329,33 +329,36 @@ def test_a_response_for_other_stimuli_is_refused(monkeypatch, tmp_path, in_chann
 
 from tests.benchmark_declarations import assert_declares, assert_preflight
 
-SINGLE_TOWER = [
-    'Lahner2024-fMRI-naturalistic',
-    'Lahner2024-fMRI-naturalistic-visualROI',
-    'Lahner2024-fMRI-naturalistic-timeresolved',
-    'Lahner2024-fMRI-naturalistic-timeresolved-visualROI',
-    'Lahner2024-fMRI-naturalistic-timeresolved-improved',
-    'Lahner2024-fMRI-naturalistic-timeresolved-improved-visualROI',
-]
-TWO_TOWERS = [
-    'Lahner2024-fMRI-naturalistic-multimodal',
-    'Lahner2024-fMRI-naturalistic-multimodal-visualROI',
-    'Lahner2024-fMRI-naturalistic-multimodal-auditoryROI',
-    'Lahner2024-fMRI-naturalistic-timeresolved-multimodal',
-    'Lahner2024-fMRI-naturalistic-timeresolved-multimodal-visualROI',
-    'Lahner2024-fMRI-naturalistic-timeresolved-multimodal-auditoryROI',
-]
+_TR = 'Lahner2024-fMRI-naturalistic-timeresolved'
+_AUDIOVISUAL = ('vision:image', 'vision:video', 'audio')
+SINGLE_TOWER = {
+    'Lahner2024-fMRI-naturalistic': None,
+    'Lahner2024-fMRI-naturalistic-visualROI': None,
+    # The time-resolved class is not registered; it is built directly.
+    'timeresolved': lambda: Lahner2024BOLDMoments_timeresolved(identifier=_TR),
+}
+TWO_TOWERS = {
+    'Lahner2024-fMRI-naturalistic-multimodal': None,
+    'Lahner2024-fMRI-naturalistic-multimodal-visualROI': None,
+    'Lahner2024-fMRI-naturalistic-multimodal-auditoryROI': None,
+    'timeresolved': lambda: Lahner2024BOLDMoments_timeresolved(
+        channels=_AUDIOVISUAL, identifier=_TR),
+}
 
 
-@pytest.mark.parametrize('identifier', SINGLE_TOWER)
-def test_single_tower_variants_declare_vision_in_and_it_out(identifier):
-    benchmark = brainscore.benchmark_registry[identifier]()
+def _built(table, name):
+    return (table[name] or brainscore.benchmark_registry[name])()
+
+
+@pytest.mark.parametrize('name', SINGLE_TOWER)
+def test_single_tower_variants_declare_vision_in_and_it_out(name):
+    benchmark = _built(SINGLE_TOWER, name)
     assert_declares(benchmark, {'vision:image', 'vision:video'}, {'neural:IT'})
     assert_preflight(benchmark)
 
 
-@pytest.mark.parametrize('identifier', TWO_TOWERS)
-def test_audio_visual_variants_declare_both_towers(identifier):
-    benchmark = brainscore.benchmark_registry[identifier]()
+@pytest.mark.parametrize('name', TWO_TOWERS)
+def test_audio_visual_variants_declare_both_towers(name):
+    benchmark = _built(TWO_TOWERS, name)
     assert_declares(benchmark, {'vision:image', 'vision:video', 'audio'}, {'neural:IT', 'neural:A1'})
     assert_preflight(benchmark)

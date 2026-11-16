@@ -59,13 +59,6 @@ REGISTERED = [
     'Lahner2024-fMRI-naturalistic-multimodal',
     'Lahner2024-fMRI-naturalistic-multimodal-auditoryROI',
     'Lahner2024-fMRI-naturalistic-multimodal-visualROI',
-    'Lahner2024-fMRI-naturalistic-timeresolved',
-    'Lahner2024-fMRI-naturalistic-timeresolved-improved',
-    'Lahner2024-fMRI-naturalistic-timeresolved-improved-visualROI',
-    'Lahner2024-fMRI-naturalistic-timeresolved-multimodal',
-    'Lahner2024-fMRI-naturalistic-timeresolved-multimodal-auditoryROI',
-    'Lahner2024-fMRI-naturalistic-timeresolved-multimodal-visualROI',
-    'Lahner2024-fMRI-naturalistic-timeresolved-visualROI',
     'Lahner2024-fMRI-naturalistic-visualROI',
     'LeBel2023-UTS03-encoding',
     'LeBel2023-UTS03-encoding-contextwindow',
@@ -124,34 +117,6 @@ BUILT = {
         'Lahner2024-fMRI-naturalistic-multimodal-visualROI', 2, 'none',
         ['audio', 'vision:image', 'vision:video'],
         ['neural:A1', 'neural:IT']),
-    'Lahner2024-fMRI-naturalistic-timeresolved': (
-        'Lahner2024-fMRI-naturalistic-timeresolved', 2, 'none',
-        ['vision:image', 'vision:video'],
-        ['neural:IT']),
-    'Lahner2024-fMRI-naturalistic-timeresolved-improved': (
-        'Lahner2024-fMRI-naturalistic-timeresolved-improved', 2, 'none',
-        ['vision:image', 'vision:video'],
-        ['neural:IT']),
-    'Lahner2024-fMRI-naturalistic-timeresolved-improved-visualROI': (
-        'Lahner2024-fMRI-naturalistic-timeresolved-improved-visualROI', 2, 'none',
-        ['vision:image', 'vision:video'],
-        ['neural:IT']),
-    'Lahner2024-fMRI-naturalistic-timeresolved-multimodal': (
-        'Lahner2024-fMRI-naturalistic-timeresolved-multimodal', 2, 'none',
-        ['audio', 'vision:image', 'vision:video'],
-        ['neural:A1', 'neural:IT']),
-    'Lahner2024-fMRI-naturalistic-timeresolved-multimodal-auditoryROI': (
-        'Lahner2024-fMRI-naturalistic-timeresolved-multimodal-auditoryROI', 2, 'none',
-        ['audio', 'vision:image', 'vision:video'],
-        ['neural:A1', 'neural:IT']),
-    'Lahner2024-fMRI-naturalistic-timeresolved-multimodal-visualROI': (
-        'Lahner2024-fMRI-naturalistic-timeresolved-multimodal-visualROI', 2, 'none',
-        ['audio', 'vision:image', 'vision:video'],
-        ['neural:A1', 'neural:IT']),
-    'Lahner2024-fMRI-naturalistic-timeresolved-visualROI': (
-        'Lahner2024-fMRI-naturalistic-timeresolved-visualROI', 2, 'none',
-        ['vision:image', 'vision:video'],
-        ['neural:IT']),
     'Lahner2024-fMRI-naturalistic-visualROI': (
         'Lahner2024-fMRI-naturalistic-visualROI', 2, 'none',
         ['vision:image', 'vision:video'],
@@ -257,17 +222,17 @@ def test_the_registered_model_identifiers_are_the_pinned_list():
     assert sorted(brainscore.model_registry) == sorted(MODELS)
 
 
-def test_the_27_built_keys_name_the_identifier_they_build():
-    """For the 27 pinned keys in ``BUILT`` (Algonauts2025, GridGame, Lahner2024, LeBel2023,
+def test_the_20_built_keys_name_the_identifier_they_build():
+    """For the 20 pinned keys in ``BUILT`` (Algonauts2025, GridGame, Lahner2024, LeBel2023,
     Yeatman2021), the recorded identifier equals the key; the parametrized test above
     builds each of them and asserts that identifier. Nothing is built here.
 
-    The other 25 of the 52 pinned keys are not built by this file, because their
+    The other 25 of the 45 pinned keys are not built by this file, because their
     constructors need data or a prepared library: CogGym (23; its identifier also adds
     the configured settings) and EWoK (2; its identifier adds the resolved data's hash).
     The family ``Pereira2018.`` stays in ``FAMILIES``: unified registers no key of it.
     """
-    assert len(BUILT) == 27 and len(REGISTERED) == 52
+    assert len(BUILT) == 20 and len(REGISTERED) == 45
     assert all(key == built for key, (built, *_rest) in BUILT.items())
 
 
