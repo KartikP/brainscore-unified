@@ -1,5 +1,8 @@
 """
-GPT-2 registered as a BrainScoreModel — text-only baseline.
+GPT-2 (the 124M checkpoint) registered as a BrainScoreModel named gpt2-small -- text-only baseline.
+
+The name gpt2 belongs to the old language plugin (brainscore_language), which
+load_model reaches through its adapter.
 
 Pure language model with no vision encoder. This tests how much of a
 behavioral benchmark like ROAR can be solved from the string alone,
@@ -28,7 +31,7 @@ REGION_LAYER_MAP = {
 
 
 def get_model(identifier: str) -> BrainScoreModel:
-    assert identifier == 'gpt2'
+    assert identifier == 'gpt2-small'
 
     from transformers import GPT2Model, GPT2Tokenizer
     from brainscore.model_helpers.text_wrapper import TextWrapper

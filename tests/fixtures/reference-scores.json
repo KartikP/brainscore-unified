@@ -191,7 +191,7 @@
    "math_threads": "openblas=1,openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   },
   {
-   "subject": "gpt2",
+   "subject": "gpt2-small",
    "benchmark": "LeBel2023-UTS03-encoding-smoke",
    "value": 0.10012616962194443,
    "kind": "reference",
@@ -206,7 +206,7 @@
    "math_threads": "openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   },
   {
-   "subject": "gpt2",
+   "subject": "gpt2-small",
    "benchmark": "LeBel2023-UTS03-encoding",
    "value": 0.10132698714733124,
    "kind": "reference",
@@ -264,7 +264,7 @@
    "math_threads": "openblas=1,openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   },
   {
-   "subject": "gpt2",
+   "subject": "gpt2-small",
    "benchmark": "Pereira2018.243sentences-ridge",
    "value": 0.8353275832482019,
    "kind": "reference",
@@ -601,7 +601,7 @@
    "note": "measured on this branch; the earlier value 1.0 of this row came from an old baseline file, not from the leaderboard, and no leaderboard value is known here"
   },
   {
-   "subject": "gpt2",
+   "subject": "gpt2-small",
    "benchmark": "Fedorenko2016-ridge",
    "value": 0.4132172725795751,
    "kind": "reference",

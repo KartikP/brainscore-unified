@@ -208,7 +208,7 @@ def test_a_kept_table_and_task_give_the_pinned_inputs_and_a_declaration_equals_t
 MODELS = [
     'blip2-opt-2.7b', 'blip2-wav2vec2', 'chance-baseline', 'claude-haiku-behavioral',
     'claude-opus-behavioral', 'clip-random-wav2vec2', 'clip-vit-b-32', 'clip-wav2vec2',
-    'deepseek-chat-behavioral', 'deepseek-r1-behavioral', 'gpt-4o-behavioral', 'gpt2',
+    'deepseek-chat-behavioral', 'deepseek-r1-behavioral', 'gpt-4o-behavioral', 'gpt2-small',
     'llama-3.3-70b-behavioral', 'or-claude-sonnet-behavioral', 'qwen2.5-0.5b-instruct',
     'qwen2.5-vl-3b', 'qwen2.5-vl-3b-bf16', 'qwen2.5-vl-3b-vwfa', 'qwen2.5-vl-7b',
     'qwen2.5-vl-7b-vwfa', 'qwen2.5-vl-wav2vec2', 'qwen3.6-27b', 'random-clip-random-wav2vec2',
@@ -223,6 +223,26 @@ def test_the_pinned_model_identifiers_stay_registered():
     missing = sorted(set(MODELS) - set(brainscore.model_registry))
     assert not missing, f'pinned model identifiers are no longer registered: {missing}'
 
+
+
+def test_gpt2_is_the_old_language_plugin_and_gpt2_small_the_unified_model(monkeypatch):
+    """One name means one model. The unified GPT-2 is registered as ``gpt2-small``; ``gpt2``
+    is not in the unified registry, so ``load_model('gpt2')`` reaches the old language
+    plugin (folder ``models/gpt``) through its adapter. Nothing is loaded here."""
+    import brainscore_language
+    import brainscore_vision
+    from brainscore_core.plugin_management.import_plugin import ImportPlugin, PluginNotFoundError
+    assert 'gpt2-small' in brainscore.model_registry and 'gpt2' not in brainscore.model_registry
+    assert ImportPlugin('brainscore_language', 'models', 'gpt2').plugin_dirname == 'gpt'
+    with pytest.raises(PluginNotFoundError):
+        ImportPlugin('brainscore_vision', 'models', 'gpt2')
+
+    def not_vision(identifier):
+        raise PluginNotFoundError(identifier)
+    old = object()
+    monkeypatch.setattr(brainscore_vision, 'load_model', not_vision)
+    monkeypatch.setattr(brainscore_language, 'load_model', lambda identifier: old)
+    assert brainscore.load_model('gpt2') is old
 
 
 def test_the_built_keys_name_the_identifier_they_build():

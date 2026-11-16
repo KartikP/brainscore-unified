@@ -49,7 +49,7 @@ DECLARED = {
     'models/api_closed/model.py': ({B, CH, RA, TE}, {B, CH, RA, TE}),
     'models/blip2_opt_2_7b/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
     'models/clip_vit_b_32/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
-    'models/gpt2/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
+    'models/gpt2_small/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
     'models/qwen25_vl_3b/model.py': ({B, CH, P, RA, RT, TE}, {B, CH, P, LP, RA, RT, TE}),
     'models/qwen36_27b/model.py': ({B, CH, P, RA, RT, TE}, {B, CH, P, LP, RA, RT, TE}),
     'models/random_vit_b_32/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
@@ -75,7 +75,7 @@ COMPATIBLE = {
     'models/api_closed/model.py': (ALL - {'EWoK logprobs'}, ALL - {'EWoK logprobs'}),
     'models/blip2_opt_2_7b/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
     'models/clip_vit_b_32/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
-    'models/gpt2/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
+    'models/gpt2_small/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
     'models/qwen25_vl_3b/model.py': (ALL, ALL),
     'models/qwen36_27b/model.py': (ALL, ALL),
     'models/random_vit_b_32/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
@@ -160,7 +160,7 @@ def test_the_matrix_changes_only_where_the_declarations_change():
     changed = {(where, name) for where, (before, after) in COMPATIBLE.items() for name in before ^ after}
     assert changed == {('model_helpers/causal_lm.py', 'facade')} | {
         (where, 'EWoK logprobs') for where in ('models/blip2_opt_2_7b/model.py', 'models/clip_vit_b_32/model.py',
-                                               'models/gpt2/model.py', 'models/random_vit_b_32/model.py')}
+                                               'models/gpt2_small/model.py', 'models/random_vit_b_32/model.py')}
     assert all(after <= before for before, after in COMPATIBLE.values())
 
 

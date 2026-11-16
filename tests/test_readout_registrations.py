@@ -62,7 +62,7 @@ def _clip(monkeypatch, module_name):
 def _gpt2(monkeypatch):
     import transformers
     import brainscore.model_helpers.text_wrapper as text_wrapper
-    from brainscore.models.gpt2 import model as module
+    from brainscore.models.gpt2_small import model as module
     monkeypatch.setattr(transformers, 'GPT2Model', _loader(object), raising=False)
     monkeypatch.setattr(transformers, 'GPT2Tokenizer', _loader(lambda: SimpleNamespace(eos_token='e')),
                         raising=False)
@@ -73,7 +73,7 @@ def _gpt2(monkeypatch):
 BUILDERS = {
     'clip-vit-b-32': lambda mp: _clip(mp, 'brainscore.models.clip_vit_b_32.model'),
     'random-vit-b-32': lambda mp: _clip(mp, 'brainscore.models.random_vit_b_32.model'),
-    'gpt2': _gpt2,
+    'gpt2-small': _gpt2,
 }
 
 
@@ -92,7 +92,7 @@ def test_a_registered_readout_model_gives_choices_in_an_experiment(identifier, m
 
 
 def test_the_behavior_recorder_records_the_formats_it_names(monkeypatch, tmp_path):
-    subject = BUILDERS['gpt2'](monkeypatch).get_model('gpt2')
+    subject = BUILDERS['gpt2-small'](monkeypatch).get_model('gpt2-small')
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)
     result = Experiment(subject=subject, protocol=TaskProtocol(STIMULI, task),
                         tools=[RecordBehavior(['choice', 'probabilities'])],
@@ -102,7 +102,7 @@ def test_the_behavior_recorder_records_the_formats_it_names(monkeypatch, tmp_pat
 
 
 def test_the_behavior_recorder_records_the_first_format_by_default(monkeypatch, tmp_path):
-    subject = BUILDERS['gpt2'](monkeypatch).get_model('gpt2')
+    subject = BUILDERS['gpt2-small'](monkeypatch).get_model('gpt2-small')
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)
     experiment = Experiment(subject=subject, protocol=TaskProtocol(STIMULI, task),
                             tools=[RecordBehavior()], output_dir=tmp_path / 'default')
@@ -114,7 +114,7 @@ def test_the_behavior_recorder_records_the_first_format_by_default(monkeypatch, 
 
 
 def test_the_behavior_recorder_refuses_a_format_the_task_does_not_name(monkeypatch, tmp_path):
-    subject = BUILDERS['gpt2'](monkeypatch).get_model('gpt2')
+    subject = BUILDERS['gpt2-small'](monkeypatch).get_model('gpt2-small')
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)
     experiment = Experiment(subject=subject, protocol=TaskProtocol(STIMULI, task),
                             tools=[RecordBehavior(['choice', 'rating'])], output_dir=tmp_path / 'refused')
