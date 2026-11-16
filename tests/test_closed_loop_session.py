@@ -117,6 +117,20 @@ def test_a_policy_may_answer_on_a_non_motor_channel_with_no_new_class(speech_cha
     assert [event.payload for event in session.collect('speech')] == env.actions
 
 
+def test_a_policy_output_must_be_a_registered_output_channel(monkeypatch):
+    """An unregistered output is refused when the model is built; once registered, it runs."""
+    from brainscore_core.extensions import CatalogEntry, register_channel
+    monkeypatch.setattr(io_catalog, '_CATALOG', dict(io_catalog._CATALOG))
+    policy = lambda row: {'cursor': 7}
+    with pytest.raises(ValueError, match=r"'cursor'.*register_channel"):
+        BrainScoreModel('pointer', policy=policy, policy_out_channels=('cursor',))
+    register_channel(CatalogEntry('cursor', 'output', 'a policy answer', 'a pointer target', 'test'))
+    model = BrainScoreModel('pointer', policy=policy, policy_out_channels=('cursor',))
+    environment = CountingEnvironment(2)
+    run_environment(model, environment, action_channel='cursor')
+    assert environment.actions == [7, 7]
+
+
 def test_run_environment_helper_takes_the_outputs(speech_channel):
     model = BrainScoreModel('talker', policy=lambda row: {'speech': 'hi'}, policy_out_channels=('speech',))
     assert run_environment(model, CountingEnvironment(2), action_channel='speech') == ['hi', 'hi']
