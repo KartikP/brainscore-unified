@@ -156,9 +156,12 @@ def _publish_finalized_answers(session, context, collected=None):
     answer). Its meta carries the presented trials in presentation order with their
     stimulus columns (``trials``), so ``ExperimentResult.trials()`` builds one row per
     trial and occurrence from it. ``RecordBehavior`` keeps it. A session whose history
-    limit dropped responses cannot be collected: it publishes none.
+    limit dropped responses cannot be collected: it publishes none. Nor does a session
+    whose collect() gave its events (it requested no outputs), or its replay.
     """
-    if session.dropped:
+    if session.dropped or isinstance(collected, list):
+        # collect() gives the events only for a session that requested no outputs; such a
+        # session has no finalized answer (its replay, which infers the channels, neither).
         return
     trials = _presented_trials(session)
     channels = [channel for channel in (session.outputs or ()) if channel.startswith('behavior:')]
