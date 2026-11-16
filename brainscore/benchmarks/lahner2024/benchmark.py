@@ -14,21 +14,25 @@ participants. The coordinate that tells the participants apart is named
 ``repetition``: its 10 values are the 10 participants, not repeated showings
 to one person. We average the participants to get one response per video.
 
-The 1026 videos are 933 of the training set (id 1000 or lower) and 93 of the
-test set (id above 1000; ``boldmoments_test_set``). The reliability of a voxel
-is the agreement between two halves of the 10 participants
-(``_split_half_reliability``). The voxel mask of the ``-visualROI`` variants
-comes from the reliability on the 93 test-set videos only
-(``reliability_on_test_set``), and these variants present and score only the 933
-training videos, so no video that chose the voxels is in a regression fold. The
-per-voxel ceilings of ``-visualROI`` are sqrt(reliability) on the scored videos
-(the 933): the ceiling is the reliability of the data that is predicted, not a
-parameter of the fit, and the voxels were selected on other videos. A
-participant saw each test-set video 10 times and each training-set video 3
-times, so the test-set betas are less noisy and their reliability would give
-ceilings too high for the scored videos. The variants with no reliability mask
-and no ceiling (whole cortex, ``-multimodal``, ``-multimodal-auditoryROI``)
-present and score all 1026 videos.
+The benchmark follows the protocol of the data set. BOLDMoments has 1000
+training-set videos, each shown 3 times to a participant, and 102 test-set
+videos (id above 1000; ``boldmoments_test_set``), each shown 10 times, so the
+test-set responses are much less noisy. The hosted assembly holds 933 of the
+training-set videos and 93 of the test-set videos. Every variant presents all
+of them, fits one regression on the training-set videos (no cross-validation)
+and computes the correlation of each voxel on the test-set videos only; no
+test-set video is in the fit.
+
+The reliability of a voxel is the agreement between two halves of the 10
+participants (``_split_half_reliability``). The voxel mask of the ``-visualROI``
+variants is the set of voxels with a reliability of at least the threshold on
+the training-set videos, the videos that the fit sees; no test-set response
+reaches the selection. The per-voxel ceilings are sqrt(reliability) on the
+scored videos, the test-set videos (``reliability_on_test_set``): the ceiling is
+the reliability of the data that is predicted, it is not a parameter of the
+fit, and the voxels were selected on other videos. Both ``-visualROI`` variants
+divide by these ceilings; whole cortex, ``-multimodal`` and
+``-multimodal-auditoryROI`` report the raw correlation.
 
 Taken from brain-score/vision PR #1249 (YingtianDt):
     - BOLDMoments as the stimulus-set identifier
@@ -45,8 +49,10 @@ Scoring pipeline:
     2. Average the response over its time bins → one vector per video.
     3. Average the neural assembly across the 10 participants → one BOLD
        vector per video per voxel; keep the voxels of the voxel mask.
-    4. 5-fold ridge (penalty 1, ``brainscore.metrics.encoding``) → Pearson
-       per voxel → median over the voxels that count (``voxel_score``).
+    4. One ridge fit on the training-set videos (penalty 1,
+       ``brainscore.metrics.encoding``) → predictions for the test-set videos
+       → Pearson per voxel over the test-set videos → median over the voxels
+       that count (``voxel_score``).
 
 ## Versions
 
@@ -76,7 +82,7 @@ The score attrs include ``pipeline`` (``frame_aggregation`` or
 one-stream result.
 """
 
-from typing import Callable, List, Optional, Sequence
+from typing import Callable, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -87,7 +93,7 @@ from brainscore_core.supported_data_standards.brainio.assemblies import (
 )
 from brainscore import load_dataset, load_stimulus_set
 from brainscore.benchmarks._score import benchmark_score, not_estimated
-from brainscore.metrics.encoding import SklearnRidge, cross_validated_r, ridge, row_kfold
+from brainscore.metrics.encoding import SklearnRidge, cross_validated_r, ridge
 from brainscore.data.lahner2024 import DEFAULT_SAMPLE_TIMES_MS
 from ._util import (
     align,
@@ -131,9 +137,11 @@ def boldmoments_test_set(stimulus_ids) -> List[str]:
     """The BOLDMoments test-set videos among ``stimulus_ids``: id above 1000
     (``stimulus_1001`` to ``stimulus_1102``), sorted, without repeats.
 
-    The one rule for the GLM benchmark: the test-set videos of the assembly give
-    the voxel mask and the ceilings, and the variants that use either present
-    and score only the videos outside the test set.
+    The one split rule of the Lahner2024 benchmarks. The GLM benchmark follows the
+    protocol of the data set with it: one fit on the other videos (the training
+    set), the correlation and the ceilings on the test-set videos, and the voxel
+    mask from the training-set videos. The time-resolved benchmark also uses it
+    (its mask and its presented subset), until its own change.
     """
     return sorted({str(stimulus_id) for stimulus_id in stimulus_ids
                    if int(str(stimulus_id).rsplit('_', 1)[1]) > 1000})
@@ -198,10 +206,10 @@ def _split_half_reliability(assembly, stimuli: Sequence[str], n_splits: int = 20
 
 
 def reliability_on_test_set(assembly) -> np.ndarray:
-    """The per-voxel reliability that selects the voxels of the reliability mask of the
-    GLM and the time-resolved benchmarks: ``_split_half_reliability`` on the test-set
-    videos of the GLM assembly. The one owner of this rule. The GLM ceilings use
-    the reliability on the scored videos instead (``_ceiling_reliability``)."""
+    """``_split_half_reliability`` on the test-set videos of the GLM assembly. The GLM
+    benchmark takes its per-voxel ceilings from it (the test-set videos are the scored
+    ones). The time-resolved benchmark still selects its voxel mask with it; that
+    use belongs to the time-resolved class and is replaced in its own change."""
     test = boldmoments_test_set(assembly['stimulus_id'].values)
     if not test:
         raise ValueError('The assembly holds no test-set video (id above 1000): '
@@ -213,8 +221,8 @@ def presented_stimuli(stimuli, stimulus_ids):
     """The rows of ``stimuli`` named in ``stimulus_ids``, in table order, with an
     identifier that tells the set apart: the activation store keys a response by
     the identifier. Every row: ``stimuli`` itself; every row outside the test set:
-    ``<identifier>-train`` (the GLM and the time-resolved benchmarks share it for
-    this one set); any other subset: ``<identifier>-<digest of its ids>``."""
+    ``<identifier>-train``; any other subset: ``<identifier>-<digest of its ids>``.
+    Used by the time-resolved benchmark; the GLM benchmark presents every row."""
     import hashlib
     wanted = {str(stimulus_id) for stimulus_id in stimulus_ids}
     ids = stimuli['stimulus_id'].astype(str)
@@ -306,11 +314,11 @@ class Lahner2024BOLDMoments(BenchmarkBase):
             inputs shown.
         sample_times_ms: the frames a stills-only subject sees from each clip.
         ceiling: a measured noise ceiling; the score is then normalized per voxel
-            by sqrt(reliability) of each voxel, measured on the scored videos.
+            by sqrt(reliability) of each voxel on the scored test-set videos.
         reliability_threshold: score only the voxels whose split-half
-            reliability on the test-set videos is at least this value.
-            With a ceiling or this threshold, the benchmark presents and scores
-            only the videos outside the test set (933 of 1026).
+            reliability on the training-set videos is at least this value.
+            Every variant fits on the training-set videos and scores the
+            test-set videos (see the module docstring).
         voxel_mask_fn: score only the voxels of this mask (for example
             ``build_auditory_mask``). Give at most one of the two.
         identifier: the benchmark identifier (required; the registry key of the variant).
@@ -364,45 +372,42 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         return self._stimulus_set
 
     def _mask_reliability(self) -> np.ndarray:
-        """The reliability that selects the voxels: ``reliability_on_test_set`` of the
-        assembly, computed once."""
+        """The reliability that selects the voxels: ``_split_half_reliability`` on the
+        training-set videos of the assembly (the videos the fit sees), computed once."""
         if self._mask_rel is None:
-            self._mask_rel = reliability_on_test_set(self.assembly)
+            self._mask_rel = _split_half_reliability(self.assembly, stimuli=self._split()[0])
         return self._mask_rel
 
     def _ceiling_reliability(self) -> np.ndarray:
-        """The reliability that gives the ceilings: ``_split_half_reliability`` on the
-        scored videos (``_scored_ids``), with the same splits and random state,
-        computed once. The ceiling is an estimate of the reliability of the data that
-        is predicted, from all scored videos (the test videos of each fold included).
-        It is not a parameter of the regression, and the voxels were selected on the
-        test-set videos, which are not scored: no voxel is selected and given its
-        ceiling on the same videos."""
+        """The reliability that gives the ceilings: ``reliability_on_test_set``, the
+        reliability of the scored videos, computed once. It is not a parameter of the
+        fit, and the voxels were selected on the training-set videos."""
         if self._ceiling_rel is None:
-            self._ceiling_rel = _split_half_reliability(self.assembly, stimuli=self._scored_ids())
+            self._ceiling_rel = reliability_on_test_set(self.assembly)
         return self._ceiling_rel
 
-    def _scored_ids(self) -> List[str]:
-        """The stimulus ids of ``_scored_stimuli``. Each must have BOLD in the
-        assembly; otherwise this raises, before any subject runs."""
-        ids = [str(stimulus_id) for stimulus_id in self._scored_stimuli()['stimulus_id']]
-        missing = sorted(set(ids) - {str(i) for i in self.assembly['stimulus_id'].values})
-        if missing:
-            raise ValueError(f'{len(missing)} scored stimuli have no BOLD in the assembly, '
-                             f'for example {missing[:3]}.')
-        return ids
-
-    def _scored_stimuli(self):
-        """The stimuli presented and scored: without a reliability mask and a ceiling,
-        every video; otherwise only the videos outside the test set, which then
-        decides nothing but the voxels and the ceilings."""
-        stimuli = self.stimulus_set
-        if self._reliability_threshold is None and not _ceiling_measured(self):
-            return stimuli
-        self._mask_reliability()   # fails here when the assembly has no test-set video
-        test = set(boldmoments_test_set(stimuli['stimulus_id']))
-        return presented_stimuli(
-            stimuli, [i for i in stimuli['stimulus_id'].astype(str) if i not in test])
+    def _split(self) -> Tuple[List[str], List[str]]:
+        """``(training-set ids, test-set ids)`` of the assembly. The presented table
+        and the assembly must hold the same videos (a video of the assembly that is not
+        presented would enter the mask and the ceilings but not the fit or the score),
+        and both sets must be present; otherwise this raises, before any subject runs."""
+        ids = {str(i) for i in self.assembly['stimulus_id'].values}
+        table = {str(i) for i in self.stimulus_set['stimulus_id']}
+        no_bold, not_presented = sorted(table - ids), sorted(ids - table)
+        if no_bold or not_presented:
+            raise ValueError(
+                'The stimulus table and the assembly must hold the same videos: '
+                f'{len(no_bold)} stimuli of the table have no BOLD in the assembly '
+                f'(for example {no_bold[:3]}), and {len(not_presented)} videos of the '
+                f'assembly are not in the table (for example {not_presented[:3]}).')
+        test = boldmoments_test_set(ids)
+        if not test:
+            raise ValueError('The assembly holds no test-set video (id above 1000): '
+                             'there is nothing to score.')
+        train = sorted(ids - set(test))
+        if not train:
+            raise ValueError('The assembly holds no training-set video: there is nothing to fit.')
+        return train, test
 
     @property
     def voxel_mask(self) -> Optional[np.ndarray]:
@@ -413,11 +418,11 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         return self._voxel_mask
 
     def _frames(self):
-        return frame_table(self._scored_stimuli(), self._sample_times_ms)
+        return frame_table(self.stimulus_set, self._sample_times_ms)
 
     def _per_voxel_ceiling(self, mask):
-        """sqrt(reliability on the scored videos) per scored voxel; ``None`` without a
-        measured ceiling.
+        """sqrt(reliability on the scored test-set videos) per scored voxel; ``None``
+        without a measured ceiling.
 
         Whole cortex and every variant without a measured ceiling hold
         ``not_estimated()`` and take the scalar path. A voxel of the mask whose
@@ -442,7 +447,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         the inputs shown (Contract Rules 5.4, 5.5); the two-stream labels are set
         only when both streams are shown.
         """
-        stimuli = self._scored_stimuli()
+        stimuli = self.stimulus_set
         plan = stream_regions(subject, taken_inputs(subject, self.required_input_channels),
                               self._regions)
         scored = sorted(channel for _, channel, _ in plan)
@@ -506,37 +511,38 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         }
 
     def __call__(self, subject) -> Score:
-        self._scored_ids()   # every scored stimulus has BOLD, or this fails before the subject runs
+        self._split()   # every stimulus has BOLD and both sets exist, or this fails before the subject runs
         features, clip_ids, route_attrs = self._features(subject)
 
-        # Average the participants; align to the response order (only the scored
-        # videos were presented); keep the scored voxels.
+        # Average the participants; align to the response order; keep the scored voxels.
         neural = self.assembly.squeeze('time_bin', drop=True).groupby('stimulus_id').mean('presentation')
         neural_mat = neural.sel(stimulus_id=list(clip_ids)).transpose('stimulus_id', 'neuroid').values
         mask = self.voxel_mask
         if mask is not None:
             neural_mat = neural_mat[:, mask]
 
-        # Ridge (scikit-learn, penalty 1) on the raw features: it centres through its
+        # One fit on the training-set videos, the correlation on the test-set videos:
+        # one fixed fold, so held_out_r correlates over the test-set rows only. Ridge
+        # (scikit-learn, penalty 1) on the raw features: it centres through its
         # intercept; a StandardScaler over-rescales features of unequal variance and
         # cost about 0.18 raw r here (2026-04-24 replication note).
+        test = np.isin(np.asarray(clip_ids, dtype=str), self._split()[1])
         per_voxel_r, _ = cross_validated_r(
-            features, neural_mat, row_kfold(len(features), n_splits=5, random_state=0),
-            ridge(1.0, SklearnRidge()))
+            features, neural_mat, [(~test, test)], ridge(1.0, SklearnRidge()))
         score = voxel_score(self, per_voxel_r, self._per_voxel_ceiling(mask))
-        score.attrs['n_videos'] = int(features.shape[0])
+        score.attrs['n_videos_fitted'] = int((~test).sum())
+        score.attrs['n_videos_scored'] = int(test.sum())
         score.attrs.update(route_attrs)
         return score
 
-
-# Noise ceiling for the visual-ROI voxel set, measured on the hosted data 2026-11-15.
-# For a predictivity correlation the ceiling is sqrt(reliability): the highest r a
-# perfect model could reach given measurement noise. The value is the median of
-# sqrt(reliability on the scored videos, the 933 training-set videos) over the voxels
-# of the mask that have a positive ceiling: 7106 of the 7209 voxels with a reliability
-# of at least 0.3 on the 93 test-set videos (103 have a reliability at or below zero
-# on the scored videos and are left out of every score). It is what
-# ``benchmark.ceiling`` reports, and what a score reports as its ceiling when every
-# one of those voxels has a correlation. The score divides each voxel by its own
+# Noise ceiling for the visual-ROI voxel set. For a predictivity correlation the ceiling
+# is sqrt(reliability): the highest r a perfect model could reach given measurement
+# noise. Under the protocol of the data set the constant is the median of
+# sqrt(reliability on the scored videos, the 93 test-set videos) over the voxels of the
+# mask (reliability of at least 0.3 on the 933 training-set videos) that have a
+# positive ceiling. Measured on the hosted data 2026-11-15: the mask has 3958 voxels,
+# every one with a positive ceiling, and this is their median (work record:
+# cloud_verify/lahner_repair/protocol_facts_j38.json). It is what ``benchmark.ceiling``
+# reports for both ``-visualROI`` variants; the score divides each voxel by its own
 # ceiling and does not read this value.
-VISUAL_ROI_CEILING = 0.5849361770948155
+VISUAL_ROI_CEILING = 0.8515666971964203

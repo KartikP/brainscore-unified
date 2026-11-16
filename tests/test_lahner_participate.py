@@ -76,7 +76,7 @@ def test_glm_scores_a_participate_only_subject(monkeypatch, tmp_path, in_channel
     score = Lahner2024BOLDMoments(identifier='Lahner2024-fMRI-naturalistic')(subject)
     assert np.isfinite(float(score))
     assert score.attrs['pipeline'] == pipeline
-    assert score.attrs['n_videos'] == len(GLM_CLIPS)   # whole cortex: every video
+    assert (score.attrs['n_videos_fitted'], score.attrs['n_videos_scored']) == (len(CLIPS), len(GLM_CLIPS) - len(CLIPS))
     [(inputs, outputs, ids, _)] = subject.seen
     assert (inputs, outputs, len(ids)) == ([channel], ['neural:IT'], rows)
 
