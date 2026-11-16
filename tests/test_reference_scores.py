@@ -103,10 +103,14 @@ def test_a_stated_tolerance_names_its_evidence():
 
 
 @pytest.mark.unit
-def test_the_reference_environment_without_a_fingerprint_names_its_package_list():
-    reference = _table()['environments']['reference-2026-11-15']
-    assert reference['fingerprint'] is None
+def test_the_reference_environment_states_its_fingerprint_and_every_reference_row_its_threads():
+    table = _table()
+    reference = table['environments']['reference-2026-11-15']
+    fingerprint = reference['fingerprint']
+    assert isinstance(fingerprint, str) and len(fingerprint) == 64 and int(fingerprint, 16) >= 0
     assert reference['description'] == 'reference machine, package list of 2026-11-15'
+    for row in _rows('reference'):
+        assert _bit_for_bit_row(row, table['environments']), _id(row)
 
 
 @pytest.mark.unit

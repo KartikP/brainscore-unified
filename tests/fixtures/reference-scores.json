@@ -2,7 +2,7 @@
  "environments": {
   "reference-2026-11-15": {
    "description": "reference machine, package list of 2026-11-15",
-   "fingerprint": null,
+   "fingerprint": "65f0ad126f924a299c0309e9778036d458c91d8ca619542e3ab8850b05aad062",
    "software": {
     "python": "3.11.15",
     "numpy": "1.26.4",
@@ -11,7 +11,8 @@
     "scikit-learn": "1.7.2",
     "xarray": "2022.3.0"
    },
-   "note": "The cloud machine whose 226 installed packages are the full lock of the Linux CUDA platform. The fingerprint is stated when scores carry one."
+   "note": "The cloud machine whose installed packages are the full lock of the Linux CUDA platform (install/lock-linux-py311-cu124.txt). Every run of the runs reference2-run1 and reference2-run2 carries this fingerprint. A row is compared bit for bit only with an equal fingerprint, accelerator and math_threads record (brainscore_core.environment_check.bit_for_bit_comparable).",
+   "accelerator": "NVIDIA A10G"
   },
   "not stated": {
    "description": "a production row: the value was scored before environments were recorded",
@@ -54,8 +55,66 @@
    },
    "note": "the code of clean15, run again on the machine of clean16"
   },
-  "clean18": {"date": "2026-11-15", "commits": {"core": "98072d6", "unified": "3b8c6bc", "vision": "3fc67a6b", "language": "93d7d61"}, "note": "after the store layout repair (every extractor result in one memory layout): four V-JEPA 1 pairs moved at the seventh decimal, a stated change; every other measured pair is equal to clean16"},
-  "clean19": {"date": "2026-11-15", "commits": {"core": "f6526d4", "unified": "69ed4b4", "vision": "4fed7889", "language": "c9c847d"}, "note": "the same machine and package list, the code of the seventeenth push: every measured pair equal to clean18"}
+  "clean18": {
+   "date": "2026-11-15",
+   "commits": {
+    "core": "98072d6",
+    "unified": "3b8c6bc",
+    "vision": "3fc67a6b",
+    "language": "93d7d61"
+   },
+   "note": "after the store layout repair (every extractor result in one memory layout): four V-JEPA 1 pairs moved at the seventh decimal, a stated change; every other measured pair is equal to clean16"
+  },
+  "clean19": {
+   "date": "2026-11-15",
+   "commits": {
+    "core": "f6526d4",
+    "unified": "69ed4b4",
+    "vision": "4fed7889",
+    "language": "c9c847d"
+   },
+   "note": "the same machine and package list, the code of the seventeenth push: every measured pair equal to clean18"
+  },
+  "reference2-run1": {
+   "date": "2026-11-16",
+   "commits": {
+    "core": "d786eac",
+    "unified": "05d46de",
+    "vision": "2ac34d42",
+    "language": "9e6c524"
+   },
+   "note": "the first run of each row in the run reference2 (reference machine, store off, the code of the twenty-third push): the two runs of every row are equal; the Lahner2024 GLM rows hold the values of the data set's protocol (a stated change); every other reference row is equal to its earlier runs"
+  },
+  "reference2-run2": {
+   "date": "2026-11-16",
+   "commits": {
+    "core": "d786eac",
+    "unified": "05d46de",
+    "vision": "2ac34d42",
+    "language": "9e6c524"
+   },
+   "note": "the second run of each row in the run reference2 (reference machine, store off, the code of the twenty-third push): the two runs of every row are equal; the Lahner2024 GLM rows hold the values of the data set's protocol (a stated change); every other reference row is equal to its earlier runs"
+  },
+  "fedorenko-p27-run1": {
+   "date": "2026-11-16",
+   "commits": {
+    "core": "1073a3a",
+    "unified": "35cf0a6",
+    "vision": "42d0136",
+    "language": "a3670c5"
+   },
+   "note": "the first run of the two Fedorenko2016-ridge rows on the code of the twenty-fifth push (a second machine of the same type with the reference fingerprint, store off)"
+  },
+  "fedorenko-p27-run2": {
+   "date": "2026-11-16",
+   "commits": {
+    "core": "1073a3a",
+    "unified": "35cf0a6",
+    "vision": "42d0136",
+    "language": "a3670c5"
+   },
+   "note": "the second run of the two Fedorenko2016-ridge rows on the code of the twenty-fifth push (a second machine of the same type with the reference fingerprint, store off)"
+  }
  },
  "scores": [
   {
@@ -67,8 +126,11 @@
    "tolerance": 0.0,
    "runs": [
     "clean16",
-    "clean16-earlier-side"
-   ]
+    "clean16-earlier-side",
+    "reference2-run1",
+    "reference2-run2"
+   ],
+   "math_threads": "openblas=1,openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   },
   {
    "subject": "clip-vit-b-32",
@@ -80,8 +142,11 @@
    "runs": [
     "clean13",
     "clean15",
-    "clean16"
-   ]
+    "clean16",
+    "reference2-run1",
+    "reference2-run2"
+   ],
+   "math_threads": "openblas=1,openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   },
   {
    "subject": "qwen2.5-vl-3b-vwfa",
@@ -93,29 +158,37 @@
    "runs": [
     "clean13",
     "clean15",
-    "clean16"
-   ]
+    "clean16",
+    "reference2-run1",
+    "reference2-run2"
+   ],
+   "math_threads": "openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   },
   {
    "subject": "clip-vit-b-32",
    "benchmark": "Lahner2024-fMRI-naturalistic-visualROI",
-   "value": 0.6340323395546993,
+   "value": 0.6927562217433654,
    "kind": "reference",
    "environment": "reference-2026-11-15",
    "tolerance": 0.0,
    "runs": [
-    "clean13",
-    "clean15"
-   ]
+    "reference2-run1",
+    "reference2-run2"
+   ],
+   "math_threads": "openblas=1,openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   },
   {
    "subject": "vjepa1-vitl",
    "benchmark": "Lahner2024-fMRI-naturalistic-visualROI",
-   "value": 0.7314807858267065,
+   "value": 0.7822955390935541,
    "kind": "reference",
    "environment": "reference-2026-11-15",
    "tolerance": 0.0,
-   "runs": ["clean18", "clean19"]
+   "runs": [
+    "reference2-run1",
+    "reference2-run2"
+   ],
+   "math_threads": "openblas=1,openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   },
   {
    "subject": "gpt2",
@@ -126,8 +199,11 @@
    "tolerance": 0.0,
    "runs": [
     "clean13",
-    "clean15"
-   ]
+    "clean15",
+    "reference2-run1",
+    "reference2-run2"
+   ],
+   "math_threads": "openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   },
   {
    "subject": "gpt2",
@@ -138,20 +214,24 @@
    "tolerance": 0.0,
    "runs": [
     "clean13",
-    "clean15"
-   ]
+    "clean15",
+    "reference2-run1",
+    "reference2-run2"
+   ],
+   "math_threads": "openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   },
   {
    "subject": "clip-wav2vec2",
    "benchmark": "Lahner2024-fMRI-naturalistic-multimodal-visualROI",
-   "value": 0.4563599283018316,
+   "value": 0.6924032267953915,
    "kind": "reference",
    "environment": "reference-2026-11-15",
    "tolerance": 0.0,
    "runs": [
-    "clean13",
-    "clean15"
-   ]
+    "reference2-run1",
+    "reference2-run2"
+   ],
+   "math_threads": "openblas=1,openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   },
   {
    "subject": "clip-vit-b-32",
@@ -162,8 +242,11 @@
    "tolerance": 0.0,
    "runs": [
     "clean13",
-    "clean15"
-   ]
+    "clean15",
+    "reference2-run1",
+    "reference2-run2"
+   ],
+   "math_threads": "openblas=1,openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   },
   {
    "subject": "random-vit-b-32",
@@ -174,8 +257,11 @@
    "tolerance": 0.0,
    "runs": [
     "clean16",
-    "clean16-earlier-side"
-   ]
+    "clean16-earlier-side",
+    "reference2-run1",
+    "reference2-run2"
+   ],
+   "math_threads": "openblas=1,openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   },
   {
    "subject": "gpt2",
@@ -186,8 +272,11 @@
    "tolerance": 0.0,
    "runs": [
     "clean13",
-    "clean15"
-   ]
+    "clean15",
+    "reference2-run1",
+    "reference2-run2"
+   ],
+   "math_threads": "openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   },
   {
    "subject": "qwen2.5-vl-3b",
@@ -199,29 +288,37 @@
    "runs": [
     "clean13",
     "clean15",
-    "clean16"
-   ]
+    "clean16",
+    "reference2-run1",
+    "reference2-run2"
+   ],
+   "math_threads": "openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   },
   {
    "subject": "vjepa1-wav2vec2",
    "benchmark": "Lahner2024-fMRI-naturalistic-multimodal-auditoryROI",
-   "value": 0.06489513679876427,
-   "kind": "reference",
-   "environment": "reference-2026-11-15",
-   "tolerance": 0.0,
-   "runs": ["clean18", "clean19"]
-  },
-  {
-   "subject": "clip-vit-b-32",
-   "benchmark": "Lahner2024-fMRI-naturalistic",
-   "value": 0.07195588221072631,
+   "value": 0.0759189412101096,
    "kind": "reference",
    "environment": "reference-2026-11-15",
    "tolerance": 0.0,
    "runs": [
-    "clean13",
-    "clean15"
-   ]
+    "reference2-run1",
+    "reference2-run2"
+   ],
+   "math_threads": "openblas=1,openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
+  },
+  {
+   "subject": "clip-vit-b-32",
+   "benchmark": "Lahner2024-fMRI-naturalistic",
+   "value": 0.12983359975517855,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "reference2-run1",
+    "reference2-run2"
+   ],
+   "math_threads": "openblas=1,openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   },
   {
    "subject": "clip-wav2vec2",
@@ -232,8 +329,11 @@
    "tolerance": 0.0,
    "runs": [
     "clean13",
-    "clean15"
-   ]
+    "clean15",
+    "reference2-run1",
+    "reference2-run2"
+   ],
+   "math_threads": "openblas=1,openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   },
   {
    "subject": "clip-vit-b-32",
@@ -244,32 +344,37 @@
    "tolerance": 0.0,
    "runs": [
     "clean16",
-    "clean16-earlier-side"
-   ]
+    "clean16-earlier-side",
+    "reference2-run1",
+    "reference2-run2"
+   ],
+   "math_threads": "openblas=1,openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   },
   {
    "subject": "vjepa2-vitl",
    "benchmark": "Lahner2024-fMRI-naturalistic-visualROI",
-   "value": 0.5866656337485614,
+   "value": 0.6398976408384953,
    "kind": "reference",
    "environment": "reference-2026-11-15",
    "tolerance": 0.0,
    "runs": [
-    "clean16",
-    "clean16-earlier-side"
-   ]
+    "reference2-run1",
+    "reference2-run2"
+   ],
+   "math_threads": "openblas=1,openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   },
   {
    "subject": "videomae-base",
    "benchmark": "Lahner2024-fMRI-naturalistic-visualROI",
-   "value": 0.44528981308074445,
+   "value": 0.5166633123154947,
    "kind": "reference",
    "environment": "reference-2026-11-15",
    "tolerance": 0.0,
    "runs": [
-    "clean16",
-    "clean16-earlier-side"
-   ]
+    "reference2-run1",
+    "reference2-run2"
+   ],
+   "math_threads": "openblas=1,openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   },
   {
    "subject": "blip2-opt-2.7b",
@@ -280,8 +385,11 @@
    "tolerance": 0.0,
    "runs": [
     "clean16",
-    "clean16-earlier-side"
-   ]
+    "clean16-earlier-side",
+    "reference2-run1",
+    "reference2-run2"
+   ],
+   "math_threads": "openblas=1,openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   },
   {
    "subject": "alexnet",
@@ -481,24 +589,30 @@
   {
    "subject": "oasm-sigma1.0",
    "benchmark": "Fedorenko2016-ridge",
-   "value": 1.0,
-   "kind": "production",
-   "environment": "not stated",
-   "domain": "language",
-   "format": "neural:language_system",
-   "production_baseline": null,
-   "match": null
+   "value": 5.47887608375941e-26,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "fedorenko-p27-run1",
+    "fedorenko-p27-run2"
+   ],
+   "math_threads": "openblas=16,openblas=16,openmp=16,openmp=8,torch=8",
+   "note": "measured on this branch; the earlier value 1.0 of this row came from an old baseline file, not from the leaderboard, and no leaderboard value is known here"
   },
   {
    "subject": "gpt2",
    "benchmark": "Fedorenko2016-ridge",
-   "value": 0.648146,
-   "kind": "production",
-   "environment": "not stated",
-   "domain": "language",
-   "format": "neural:language_system",
-   "production_baseline": null,
-   "match": null
+   "value": 0.4132172725795751,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "fedorenko-p27-run1",
+    "fedorenko-p27-run2"
+   ],
+   "math_threads": "openblas=16,openblas=16,openmp=16,openmp=8,torch=8",
+   "note": "measured on this branch; the earlier value 0.648146 of this row came from an old baseline file, not from the leaderboard, and no leaderboard value is known here"
   }
  ]
 }
