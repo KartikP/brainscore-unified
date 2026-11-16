@@ -989,3 +989,27 @@ def test_evaluate_final_digest_check_holds_with_unchanging_stamp(tmp_path, monke
     with pytest.raises(ValueError, match='changed while reading'):
         RunRecord(directory).evaluate(lambda actual, target: scored.append(actual), None)
     assert scored == []
+
+
+@pytest.mark.parametrize('labels, recorded', [(['real', 'out'], True), ([1, 7], True),
+                                              ([b'real', b'out'], False)],
+                         ids=['str', 'int', 'bytes'])
+def test_an_old_models_label_answer_is_recorded_unless_its_labels_are_bytes(tmp_path, labels,
+                                                                             recorded):
+    """The stored answer of an old model's label task keeps the old values as its raw answer.
+    Text and integers encode and decode equal; a recorder refuses bytes with the codec's
+    present error (a stated limit: scoring works, only recording fails)."""
+    from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
+    from brainscore_vision.compat.unified_adapter import _choice_from_labels
+    from brainscore.run_record import PayloadCodec
+    answer = BehavioralAssembly([labels], dims=['choice', 'presentation'], coords={
+        'stimulus_id': ('presentation', ['a', 'b']), 'image_label': ('presentation', ['x', 'y'])})
+    stored = _choice_from_labels(answer, ['real', 'pseudo'])
+    codec = PayloadCodec(tmp_path)
+    if not recorded:
+        with pytest.raises(TypeError, match='Unsupported record payload: builtins.bytes'):
+            codec.encode(stored)
+        return
+    decoded = codec.decode(codec.encode(stored))
+    assert list(decoded['raw_answer'].values) == labels
+    assert decoded.attrs == stored.attrs
