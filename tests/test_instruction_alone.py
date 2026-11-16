@@ -44,7 +44,8 @@ def test_a_text_only_reader_is_not_applicable_on_roar_image_before_any_call(synt
 
 
 def test_the_causal_lm_is_not_applicable_on_roar_image_before_any_forward_pass(causal_lm, synthetic_roar):
-    """The pair that became applicable through the instruction alone at S7 (plan point s)."""
+    """The pair that became applicable through the instruction alone when ROAR began to request
+    behavior:choice."""
     model, net, _ = causal_lm
     calls = []
     hook = net.register_forward_pre_hook(lambda module, args: calls.append(1))
@@ -94,7 +95,7 @@ def test_a_subject_with_only_the_instruction_is_not_applicable_on_a_custom_bench
 @pytest.mark.parametrize('identifier', TEXT_ONLY_API_MODELS)
 def test_a_text_only_api_model_is_na_on_roar_image_and_applicable_on_roar_text(identifier, tmp_path,
                                                                              monkeypatch, synthetic_roar):
-    """A stated change of stage 3: before, these pairs were applicable through the
+    """A stated change: before, these pairs were applicable through the
     instruction alone and scored the instruction without the word."""
     from brainscore.model_helpers import api_behavioral
     from brainscore.models.api_closed import model as api_closed

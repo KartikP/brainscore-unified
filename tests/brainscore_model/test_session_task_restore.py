@@ -118,7 +118,7 @@ def test_a_new_task_in_a_later_session_fits_again():
 
 
 def test_an_edited_task_in_a_later_session_fits_again():
-    """Review finding P1: a remembered readout is reused only for the full, unchanged task."""
+    """A remembered readout is reused only for the full, unchanged task."""
     model, extractor = _model()
     task = _task()
     behavioral_response(model, _images(), task)
@@ -137,7 +137,7 @@ def test_an_edited_task_in_a_later_session_fits_again():
 
 
 def test_a_failed_task_setup_never_leaves_a_half_built_readout():
-    """Review finding P2: a fit that fails part way is not remembered or reused."""
+    """A fit that fails part way is not remembered or reused."""
     model, _ = _model()
     a = _task(labels=('bird', 'fish'))
     model.start_task(a)
@@ -153,7 +153,7 @@ def test_a_failed_task_setup_never_leaves_a_half_built_readout():
 
 
 def test_a_neutral_session_keeps_the_remembered_readout():
-    """Review finding P2: a session that configures no task does not cost a refit."""
+    """A session that configures no task does not cost a refit."""
     model, extractor = _model()
     model.start_task(_task(labels=('bird', 'fish')))  # the caller's task A
     model.start_recording('IT')
@@ -167,7 +167,7 @@ def test_a_neutral_session_keeps_the_remembered_readout():
 
 
 def test_a_reset_inside_a_session_stands(monkeypatch):
-    """Review finding P2: the scope does not bring back a task that reset() cleared."""
+    """The scope does not bring back a task that reset() cleared."""
     from brainscore.capabilities.sessions import NeuralSessions
     from brainscore_core.streaming_helpers import stimulus_session
     model, _ = _model()
@@ -182,7 +182,7 @@ def test_a_reset_inside_a_session_stands(monkeypatch):
 
 
 def test_an_unhashable_fitting_table_fits_no_more_often_than_before():
-    """Review round 2, P1: a list-valued column falls back to the id-and-label check (rule 10.1)."""
+    """A list-valued column falls back to the id-and-label check (rule 10.1)."""
     from brainscore_core.legacy_facade import LegacyBenchmarkFacade
     model, extractor = _model()
     fitting = _labelled()

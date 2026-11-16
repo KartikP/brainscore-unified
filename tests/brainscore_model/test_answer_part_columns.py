@@ -1,6 +1,6 @@
 """The registered answer parts read a row's picture and text by the core catalog's columns.
 
-Since a plain Choice goes to the ``answer`` part (stage 3, S7a), the part reads the row
+Since a plain Choice goes to the ``answer`` part, the part reads the row
 itself. It reads the picture (and the text) by the same rule as a trial's prompt
 (``brainscore_core.responses.part_columns``): the catalog's columns, in its order. The
 registered closures run around weight-free stand-ins (a stub processor and a stub

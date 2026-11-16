@@ -1,5 +1,5 @@
 """Every behavior score carries the counts of the trial states, its answer policy and
-the validity of the result (Contract Rule 6.2; step 9, chunk 9.1)."""
+the validity of the result (Contract Rule 6.2)."""
 import numpy as np
 import pytest
 

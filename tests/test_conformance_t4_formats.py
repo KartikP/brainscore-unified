@@ -491,7 +491,7 @@ def test_every_rounded_readout_rating_is_on_core_s_grid(scale):
     assert all(scale.low <= v <= scale.high and _on_step(v, scale.low, scale.step) for v in rated)
 
 
-# --- the vision adapter as a producer (stage 5, chunk 5.3) ---------------------------------
+# --- the vision adapter as a producer ---------------------------------------------------
 # A legacy vision model behind the permanent adapter answers the image variants of the
 # choice and probabilities benchmarks with the same benchmark code; every other format is
 # N/A before any call (the adapter declares no other behavior format, and the legacy model

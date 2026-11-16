@@ -1,4 +1,4 @@
-"""The refusal table of step 10: every row, its class, the start of its message, and when it is raised.
+"""The refusal table of the session plan: every row, its class, the start of its message, and when it is raised.
 
 Each row builds a subject whose parts log every call: the extractor (``extract``),
 the ``answer``, ``reply`` and ``likelihood`` parts, the policy (``policy``) and the
@@ -8,8 +8,8 @@ the earlier trials or of the readout fit for a refusal that is raised per batch,
 for a source with no table, or after a pass. The class of each row is one literal
 (``CLASS``), so a decision to change a class changes one line.
 
-The rows are those of ``reports/step10-report.md`` (R1 to R30, with the rows of
-the continued table).
+Each row is named by a number (R1 to R30, with the rows added after) and a short
+description.
 """
 import re
 
@@ -355,7 +355,7 @@ def _r18_no_table(log, monkeypatch, tmp_path):
         Session(source, ['behavior:choice', 'behavior:probabilities', 'neural:IT'], CHOICE))
 
 
-# Finding F1: the claim of the policy session part already asks records_while_answering, so a
+# The claim of the policy session part already asks records_while_answering, so a
 # region that cannot be recorded during a policy step is refused as R4 (no part answers the outputs
 # together), never as R18. The row states what happens.
 @row('R18 policy step', r"Session refused \(task type 'none'\): Subject 'logged' cannot answer "

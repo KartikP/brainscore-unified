@@ -2,12 +2,12 @@
 
 1. Parity: the core conversions give the numbers of the inline code they
    replace, bit for bit. The old ``softmax`` is read from the base commit
-   (``tests/reference_answers_7bc821e.py``, a frozen copy of 7bc821e); the old choice was
+   (``tests/reference_answers_before_response_formats.py``, a frozen copy of 7bc821e); the old choice was
    ``probabilities.argmax(1)`` (likelihood) and ``values.argmax(1)``
    (readout). Finite rows (with ties) match exactly, as values and dtypes.
    A source row with a non-finite value (NaN, +inf, -inf) had a choice
    before and is invalid now, as is every conversion of it: the one stated
-   change (decision D3).
+   change.
 2. A derived answer of a BrainScoreModel always carries a record that names
    its conversion, parameters and source format.
 The core version (the functions alone) is core
@@ -20,7 +20,7 @@ from brainscore_core.contract import TaskContext
 from brainscore_core.response_formats import argmax, response_record, softmax, softmax_argmax
 from brainscore_core.responses import Choice
 from tests.brainscore_model.test_task_responses import STIMULI, _ask, _model
-from tests.reference_answers_7bc821e import softmax as _softmax_7bc821e
+from tests.reference_answers_before_response_formats import softmax as _softmax_7bc821e
 
 pytestmark = pytest.mark.unit
 
@@ -65,7 +65,7 @@ def test_readout_argmax_matches_the_replaced_code_bit_for_bit(index):
 
 
 def test_stated_change_a_non_finite_source_row_is_now_invalid():
-    """The one stated change against 7bc821e (decision D3): a source row with a NaN,
+    """The one stated change against 7bc821e: a source row with a NaN,
     +inf or -inf value is invalid, and so is every conversion of it. Before, it got a
     choice (the first NaN position, or the most probable finite option)."""
     old = _old_softmax()(NON_FINITE)

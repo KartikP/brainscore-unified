@@ -1,4 +1,4 @@
-"""An answer part with a likelihood that owns the probabilities and no reply (stage 2, C3 review Y02).
+"""An answer part with a likelihood that owns the probabilities and no reply.
 
 The likelihood scores each prompt before the answer part answers it, as it does
 next to a reply, so the probabilities and the reaction time come from the
@@ -14,7 +14,7 @@ from tests.brainscore_model.test_behavior_paths import FITTING, STIMULI
 pytestmark = pytest.mark.unit
 
 
-# --- Y02: answer and likelihood without a reply ---------------------------------------
+# --- answer and likelihood without a reply --------------------------------------------
 
 Y02 = {
     'answer+likelihood': (('answer', 'likelihood'),

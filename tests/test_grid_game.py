@@ -122,7 +122,7 @@ class TestNullSeparation:
 
 class TestRunEnvironmentContract:
     """The GridGameEnvironment adapter lets the generic run_environment helper
-    drive the game (D8) — the raw GridGameEnv cannot, by design."""
+    drive the game — the raw GridGameEnv cannot, by design."""
 
     def test_adapter_drives_via_run_environment(self):
         from brainscore_core.streaming_helpers import run_environment

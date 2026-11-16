@@ -19,7 +19,7 @@ LABELS = ['real', 'pseudo']
 
 
 def _old_parse(response, label_set):
-    """The parse of both answer parts before stage 4 (unified 01fd1d2), on the lower-cased reply."""
+    """The parse of both answer parts before they used core's Choice parse (unified 01fd1d2), on the lower-cased reply."""
     for lbl in label_set:
         if response == lbl.lower():
             return lbl

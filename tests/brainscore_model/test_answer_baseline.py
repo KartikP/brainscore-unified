@@ -1,8 +1,8 @@
-"""Stage 2 numeric baseline: the registered part sets give the recorded answers, byte for byte.
+"""Numeric baseline: the registered part sets give the recorded answers, byte for byte.
 
 ``tests/fixtures/stage2_answers_baseline.json`` is written by
-``stage2_answers_baseline.py`` from the code of the commit before stage 2 changed
-any answer path. The comparison is on the rendered text, so every float64 is
+``stage2_answers_baseline.py`` from the code of commit 55b552f, before the owner
+statements of the answer formats changed any answer path. The comparison is on the rendered text, so every float64 is
 compared by its exact bytes (NaN and signed zero included).
 """
 import json

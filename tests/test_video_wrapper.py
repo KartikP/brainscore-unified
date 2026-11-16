@@ -370,7 +370,7 @@ def test_pad_out_of_bound_strategies():
         pad_out_of_bound([None], [True], 'repeat')               # no valid frame
 
 
-# ---- per-clip clocks (F4) ----
+# ---- per-clip clocks ----
 
 def _clip_set(tmp_path, specs, name='clock_set'):
     """specs: list of (stem, n_frames, fps). Returns a video StimulusSet."""

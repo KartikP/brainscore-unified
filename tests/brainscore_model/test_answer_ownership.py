@@ -124,7 +124,7 @@ def test_a_task_no_part_can_serve_stays_not_feasible():
         _run(model, ['behavior:choice'], task)
 
 
-# --- finding 1: each output's owner stands on its own --------------------------
+# --- each output's owner stands on its own ------------------------------------
 
 CROSS = {'readout choice': {'behavior:choice': ('readout', 'argmax'),
                             'behavior:probabilities': ('likelihood', 'softmax')},
@@ -178,11 +178,11 @@ def test_a_generated_choice_takes_probabilities_from_their_owner(probabilities, 
     assert ('likelihood' in calls) == (probabilities == 'likelihood')
 
 
-# --- finding 2: no choice among parts that do not own the output -------------
+# --- no choice among parts that do not own the output ------------------------
 
 def test_several_parts_that_do_not_own_the_output_are_refused_before_compute():
     """The owner (generation, answer=) cannot serve raw text; likelihood and readout
-    both could, and neither owns the choice: no other part answers it (C4)."""
+    both could, and neither owns the choice: no other part answers it."""
     calls = []
     model = _model('answer', 'likelihood', 'behavioral_readout_layer', calls=calls,
                    owners={'behavior': 'generation', 'behavior:probabilities': ('likelihood', 'softmax')})
@@ -202,7 +202,7 @@ CAUSAL_LM = ('reply', 'likelihood')
 # The cases where a registered model answers bare behavior through a part that does
 # not own it, because the task form excludes the owner and exactly one other part
 # can serve it: a legacy task without an instruction (as the facade sends) goes to
-# the readout. Only bare behavior keeps this fallback (C4); a format channel is
+# the readout. Only bare behavior keeps this fallback; a format channel is
 # answered by its owner or refused.
 TASK_FORM_CASES = {
     'qwen legacy without instruction': (QWEN, LEGACY_NO_INSTRUCTION, ['behavior'], 'readout'),

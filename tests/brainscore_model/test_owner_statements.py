@@ -1,6 +1,6 @@
 """Owner statements: a part for a native format, ``(part, conversion)`` for a derived one (rule 4.11).
 
-Stage 2, chunk C2: the statement form and its construction checks. Each test
+The statement form and its construction checks. Each test
 builds through ``BrainScoreModel(...)``; the run-time tests participate in a
 stimulus session.
 """
@@ -31,7 +31,7 @@ def _readout(owners=None):
 
 
 def test_a_readout_only_model_builds_without_a_statement():
-    assert 'behavior:choice' not in _readout().out_channels   # derived, not stated (C3)
+    assert 'behavior:choice' not in _readout().out_channels   # derived, not stated
 
 
 @pytest.mark.parametrize('owners, message', [
@@ -132,7 +132,7 @@ def test_no_message_names_a_word_a_registrant_cannot_write():
         assert 'log_probabilities' not in str(refused.value)
 
 
-# --- ADR-0063 decision 4: a refusal names the statement to write ----------------------
+# --- a refusal names the statement to write -------------------------------------------
 
 @pytest.mark.parametrize('parts, channel, line', [
     (('behavioral_readout_layer',), 'behavior:choice',

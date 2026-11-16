@@ -1,4 +1,4 @@
-"""``Choice(verbatim=True)``: the trial text exactly as given (ADR-0063, point o).
+"""``Choice(verbatim=True)``: the trial text exactly as given.
 
 A reply part keeps its own chat template, and its answer's record names that use;
 ``answer=`` cannot show a text verbatim and is refused before any compute."""

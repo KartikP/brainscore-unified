@@ -277,7 +277,7 @@ class BehavioralReadout:
     def by_answer(self, task) -> bool:
         """Within generation, whether the ``answer`` part answers ``task`` (else the ``reply`` part).
 
-        A plain Choice goes to answer= when it is wired (point r): the call a
+        A plain Choice goes to answer= when it is wired: the call a
         registration makes for a choice. The reply, which receives the full prompt,
         answers task settings (verbatim, present, options per row), a Scale or a
         Text, trial history, or when answer= is absent. A session decides it once,
@@ -419,7 +419,7 @@ class BehavioralReadout:
         (``answer_owners``; with one wired part, that part). When the task form
         excludes the owner, the one other part that can serve it answers: a
         legacy task without an instruction, as the facade sends, goes to the
-        readout (design note ANSWER_ownership, section 5). Only bare
+        readout. Only bare
         ``behavior`` keeps this fallback; a format channel is answered by its
         owner (``_owner_serving``). When two or more parts that do not own the
         output can serve it, the task is refused before any compute. ``None``:
@@ -494,7 +494,7 @@ class BehavioralReadout:
         (``can`` below) is refused, no other part stands in. When the choice and the
         probabilities have two owners, a likelihood and a readout, one pass
         cannot give both: formats on one side are answered by that side's
-        owner, formats on both sides are refused (point j). A legacy task
+        owner, formats on both sides are refused. A legacy task
         (``task_type`` with ``label_set``) answers on ``behavior``, through
         ``answer=`` (with an instruction and labels) or the readout (with
         fitting stimuli).
@@ -542,7 +542,7 @@ class BehavioralReadout:
         per_row = isinstance(response, Choice) and isinstance(response.labels, str)
         verbatim = isinstance(response, Choice) and response.verbatim
         if log_probabilities and not verbatim:
-            # The record's tokenization is known only for plain-text scoring (point f).
+            # The record's tokenization is known only for plain-text scoring.
             raise ExecutionNotFeasibleError(
                 f"Subject '{owner.identifier}' gives {LOG_PROBABILITIES} only for a verbatim "
                 'Choice (Choice(..., verbatim=True)): its tokenization is then the plain text.',
@@ -757,7 +757,7 @@ class BehavioralReadout:
                     rt_source = self._readout_probabilities(outputs, answers.in_order(
                         self.readout_classifier.predict_proba(features), labels), stimuli)
         if isinstance(response, Choice) and response.reaction_time and rt_source is not None:
-            # From the probabilities each path read before stage 1, with their validity.
+            # From the probabilities each path read before the response format standard, with their validity.
             outputs['behavior:rt'] = answers.reaction_time(*rt_source, response.reaction_time,
                                                            stimuli)
         # The bare channel carries the same answer; its record names that channel.
@@ -867,7 +867,7 @@ class BehavioralReadout:
         return [[readout_layer], *(list(region_layers) for region_layers in layers.values())]
 
     def refuse_readout_request(self, stimuli, modality, layers, passes) -> None:
-        """Refuse a readout extraction that no extractor of ``modality`` can make (R24).
+        """Refuse a readout extraction that no extractor of ``modality`` can make.
 
         The session's plan calls it before the readout is fitted, with the requests
         the readout will make (``_readout_requests``) and the one resolver of the
@@ -1011,7 +1011,7 @@ def _declared_formats(subject) -> set:
 def statement_hint(subject, missing) -> str:
     """The statement that would declare each missing format a wired part only derives.
 
-    ADR-0063, decision 4: a refusal names the exact line to write, for example
+    A refusal names the exact line to write, for example
     ``capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}``.
     With two candidate parts it names each line and asks for one. Empty when no wired
     part derives a missing format.
@@ -1117,7 +1117,7 @@ VERBATIM_LOG_PROBABILITIES = {
     'tokenization': {'join': 'space', 'special_tokens': 'none', 'template': 'none',
                      'truncation': 'none'}}
 # A verbatim trial text reaches a reply part as given; the part may wrap it in its own chat
-# template (ADR-0063). The record says only that: a reply part is any callable.
+# template. The record says only that: a reply part is any callable.
 VERBATIM_IN_TEMPLATE = {'template': "the reply part's own, if it has one"}
 
 

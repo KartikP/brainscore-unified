@@ -236,7 +236,7 @@ def test_declared_visual_degrees_reads_the_legacy_vision_setting_or_none():
     assert declared_visual_degrees(_Recorder()) is None
 
 
-# --- setup once, measure many times (review findings 1 to 4) ---------------
+# --- setup once, measure many times ---------------------------------------
 
 from brainscore_core.contract import TaskContext
 

@@ -366,7 +366,7 @@ def test_data_source_choice_required(tmp_path):
 
 
 def test_the_chance_baseline_answers_choice_mode_and_is_not_applicable_on_logprobs(prepared, tmp_path):
-    # Since stage 3, S7, chance-baseline gives behavior:choice (the first option of uniform
+    # Chance-baseline gives behavior:choice (the first option of uniform
     # rows), so it is the chance floor of choice mode; it gives no log probabilities.
     chance = brainscore.load_model('chance-baseline')
     choice = brainscore.load_benchmark('EWoK-core-1.0-choice', root=prepared, output_dir=tmp_path / 'c')
@@ -821,7 +821,7 @@ def test_a_readout_only_model_is_not_applicable_on_logprobs(prepared):
 
 
 def test_one_unparsed_choice_reply_of_six_counts_wrong_and_is_counted(prepared, tmp_path):
-    """Step 9: the choice form reads the state of each answer."""
+    """The choice form reads the state of each answer."""
     seen = []
 
     def reply(prompt):
@@ -839,7 +839,7 @@ def test_one_unparsed_choice_reply_of_six_counts_wrong_and_is_counted(prepared, 
 
 
 def test_a_positive_log_probability_is_scored_and_counted_as_invalid(prepared, tmp_path):
-    """Step 9, the decided policy: today's behavior (only a non-finite value stops the
+    """The decided policy: today's behavior (only a non-finite value stops the
     run); a finite value above 0, which core marks invalid, is scored and counted."""
     b = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared, output_dir=tmp_path / 'run')
     value = b(likelihood_subject(lambda prompt, candidates: {c: 0.5 for c in candidates}))
@@ -859,7 +859,7 @@ def test_the_log_probability_form_writes_the_counts_and_its_policy(prepared, tmp
 
 class _ChoiceCells(Subject):
     """Answers EWoK's choice requests with one choice cell per question, except the
-    questions ``skip`` names (the whole first request in M9-02); ``answer`` gives the cell."""
+    questions ``skip`` names (the whole first request in one test); ``answer`` gives the cell."""
     identifier = 'choice-cells'
     in_channels = {'text'}
     out_channels = {'behavior:choice'}

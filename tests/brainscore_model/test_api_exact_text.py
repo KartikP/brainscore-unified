@@ -1,5 +1,5 @@
 """The API clients return the provider's text exactly, and the cache never gives back a
-text that the old code stored stripped (S8-01-R1).
+text that the old code stored stripped.
 
 Each test runs the real client function of a provider (``PROVIDERS``) with the SDK
 transport replaced by a local object; every session goes through ``participate``.

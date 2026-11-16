@@ -425,7 +425,7 @@ def test_record_keeps_one_session_per_call_and_replay_rebuilds_them(reference, t
 
 
 def test_a_call_without_a_usable_written_answer_is_an_error_of_the_run():
-    """Step 9, the CogGym policy: a missing or unreadable written answer stops the run,
+    """The CogGym policy: a missing or unreadable written answer stops the run,
     as before (CogGym fails a run with an error trial)."""
     import numpy as np
     import pytest

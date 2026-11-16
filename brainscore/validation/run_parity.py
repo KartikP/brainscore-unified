@@ -73,7 +73,7 @@ def main(argv=None):
 
     # The harness refuses to run against a warm cache, and it is right to: a
     # cached activation cannot testify about the route that produced it. The
-    # caller turns the cache off; this command does not change it (R18).
+    # caller turns the cache off; this command does not change it.
     if os.environ.get('RESULTCACHING_DISABLE') != '1':
         parser.error('Run with RESULTCACHING_DISABLE=1: a cached activation cannot testify '
                      'about the route that produced it')

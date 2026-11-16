@@ -1,4 +1,4 @@
-"""Each part declares the answer formats it owns (rules 2.4, 4.11; stage 2, C1 and C3).
+"""Each part declares the answer formats it owns (rules 2.4, 4.11).
 
 A part alone owns the formats it gives natively; a format it derives is
 declared only when a statement names it. ``behavior:rt`` is declared with

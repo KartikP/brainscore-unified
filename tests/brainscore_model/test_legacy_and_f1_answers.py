@@ -69,7 +69,7 @@ def test_answer_and_readout_set_answers_both_forms_through_the_answer_part():
 
 
 def test_the_full_part_set_answers_legacy_and_the_plain_choice_through_answer():
-    """Stage 3 plan, point r: within generation a plain Choice goes to answer= when it is wired."""
+    """Within generation a plain Choice goes to answer= when it is wired."""
     _, legacy_calls = _answers(QWEN, ['behavior'], LEGACY)
     choice, choice_calls = _answers(QWEN, ['behavior:choice'], PLAIN)
     assert legacy_calls == ['answer'] * 3
