@@ -352,6 +352,7 @@ def test_the_score_records_the_execution_configuration(monkeypatch, listed, plan
     # This fake subject does not read the setting, so no plan is stamped.
     assert result.attrs['regions_per_pass'] is None
     assert result.attrs['software']['python']
+    assert result.attrs['software']['math_threads'].startswith(('openblas', 'openmp', 'torch', 'pools', 'mkl', 'blis'))
     assert result.attrs['code_commits']['brainscore'] is None or len(
         result.attrs['code_commits']['brainscore']) == 40
 

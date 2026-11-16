@@ -8,6 +8,8 @@ was made in. Two kinds of rows:
     score must be equal bit for bit (rules 10.1, 10.2). Across environments there is
     no bit-for-bit claim. An environment whose fingerprint is not stated yet cannot be
     recognised, so its rows are checked offline only until scores carry a fingerprint.
+    A row also states the ``math_threads`` record of its measurement; a row without one
+    is compared like a row of another environment, within a stated tolerance class.
   * ``production``: a legacy pair against its Brain-Score leaderboard value
     (``production_baseline``, rounded), with the tolerance and the evidence for it.
 
@@ -61,6 +63,30 @@ def test_every_row_is_well_formed():
             assert len(row['runs']) >= 2 and set(row['runs']) <= set(runs), _id(row)
     for environment in environments.values():
         assert 'description' in environment and 'fingerprint' in environment
+
+
+def _bit_for_bit_row(row, environments):
+    """A row is compared bit for bit only when its environment has a fingerprint and the
+    row states its math threads (``not stated`` never counts)."""
+    threads = row.get('math_threads')
+    return (environments[row['environment']]['fingerprint'] is not None
+            and isinstance(threads, str) and 'not stated' not in threads)
+
+
+@pytest.mark.unit
+def test_a_row_is_bit_for_bit_only_with_a_fingerprint_and_a_thread_record():
+    environments = {'a': {'fingerprint': None}, 'b': {'fingerprint': 'f' * 64}}
+    assert not _bit_for_bit_row({'environment': 'b'}, environments)
+    assert not _bit_for_bit_row({'environment': 'b', 'math_threads': 'pools=not stated,torch=4'}, environments)
+    assert not _bit_for_bit_row({'environment': 'a', 'math_threads': 'torch=4'}, environments)
+    assert _bit_for_bit_row({'environment': 'b', 'math_threads': 'torch=4'}, environments)
+
+
+@pytest.mark.unit
+def test_a_stated_thread_record_in_the_table_is_a_string():
+    for row in _table()['scores']:
+        if 'math_threads' in row:
+            assert isinstance(row['math_threads'], str) and row['math_threads'], _id(row)
 
 
 @pytest.mark.unit
