@@ -23,7 +23,7 @@ Where your protocol fixes the exact text, use `Choice(..., verbatim=True)`: the 
 ## What Brain-Score gives back
 
 - **The stored answer of every trial.** `session.collect(channel)` returns one row per presented trial: the value, the state core gave the trial (`response_state`: `valid`, `invalid` or `missing`), its reason (`response_reason`), the raw response (`raw_answer`) and a record of how the model gave the answer (`attrs['response']`). A trial the model did not answer is a `missing` row.
-- **The counts on the score.** `benchmark_score(..., answers=answer, answer_policy=...)` writes `n_trials`, `n_valid`, `n_invalid`, `n_missing`, your policy and `result_validity` on the score.
+- **The counts on the score.** `benchmark_score(..., answers=answer, answer_policy=...)` writes `n_trials`, `n_valid`, `n_invalid`, `n_missing`, your policy and `result_validity` on the score (`'no limit stated'` unless you pass `invalid_limit=`; then `'valid'` or `'invalid'`).
 - **N/A before any compute** for a model that does not fit: one that takes in none of your inputs, or cannot give a format you request.
 - **The same experiment on every registered model that fits**, and the experiment tools of [Experiments](experiments.md) on each run.
 
