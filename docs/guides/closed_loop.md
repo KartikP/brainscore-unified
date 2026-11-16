@@ -23,7 +23,7 @@ class MyEnvironment:
         return row, ('terminal' if self.position >= 3 else None)
 ```
 
-`observation` is defined by your environment. Declaring `observation_spec()` and `action_spec()` (with `ArraySpec`, `ActionSpec` and friends from `brainscore_core.environment`) lets the session validate shapes, units and bounds.
+`observation` is defined by your environment. Declaring `observation_spec()` and `action_spec()` (with `ArraySpec`, `ActionSpec` and friends from `brainscore_core.environment`) lets the session validate shapes, units and bounds. [A new kind of output](new_output.md) shows a structured action (a pointer move, a click, a key press) with these specifications.
 
 ## Connect a policy
 
