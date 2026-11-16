@@ -15,6 +15,7 @@ therefore differ a little from scores made with CogGym's own client.
 from __future__ import annotations
 
 import base64
+import dataclasses
 import hashlib
 import importlib
 import importlib.util
@@ -212,11 +213,13 @@ class _SubjectAdapter:
         session = run_request(self.subject, self.context, record_repetition,
                               stimuli, ['behavior:text'], task)
         answers = [event for event in session.emitted if event.channel == 'behavior:text']
-        self.stored.append(session.collect('behavior:text'))
+        collected = session.collect('behavior:text')
+        self.stored.append(collected)
         if len(answers) != 1:
             raise TypeError(f'CogGym needs one behavior:text answer for each call; got {len(answers)}')
         meta = answers[0].meta if isinstance(answers[0].meta, dict) else {}
-        return {'text': _written_answer(answers[0]),
+        # The answer event keeps its row; the collected answer is its table.
+        return {'text': _written_answer(dataclasses.replace(answers[0], payload=collected)),
                 'reasoning': meta.get('reasoning'), 'token_usage': meta.get('token_usage')}
 
 
