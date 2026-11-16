@@ -122,7 +122,7 @@ def test_a_missing_answer_counts_as_wrong_and_is_counted_apart():
     assert float(score.attrs['raw']) == pytest.approx(.75)
     assert (score.attrs['n_trials'], score.attrs['n_valid'], score.attrs['n_invalid'],
             score.attrs['n_missing']) == (4, 3, 0, 1)
-    assert score.attrs['result_validity'] == 'valid'
+    assert score.attrs['result_validity'] == 'no limit stated'
 
 
 def test_stated_change_a_finite_row_marked_invalid_loses_credit():

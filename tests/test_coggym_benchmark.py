@@ -123,7 +123,7 @@ def test_registered_scoring_preserves_raw_score_and_repetitions(scored_reference
     # Step 9: the counts of the trial states of every call, and the policy.
     assert (score.attrs['n_trials'], score.attrs['n_valid'], score.attrs['n_invalid'],
             score.attrs['n_missing']) == (6, 6, 0, 0)
-    assert score.attrs['result_validity'] == 'valid'
+    assert score.attrs['result_validity'] == 'no limit stated'
     assert 'stored_answers' not in score.attrs['native_analysis']   # counts only, no assemblies
     assert score.attrs['answer_policy'].startswith('a missing or unreadable written answer: an error of the run')
     # The benchmark's settings reach the reply on the task's Text response.
