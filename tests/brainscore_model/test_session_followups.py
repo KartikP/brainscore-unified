@@ -390,11 +390,12 @@ def test_an_interrupt_just_after_the_reservation_releases_the_model():
     reserve = start + next(i for i, line in enumerate(lines) if '_active_sessions[key] = token' in line)
     m = model()
     reached = []
+    tracer_before = sys.gettrace()      # a coverage tool or a debugger: it must be active again after this test
 
     def interrupt(frame, event, arg):
         if frame.f_code is guard.__code__ and event == 'line' and frame.f_lineno > reserve:
             reached.append(id(m) in module._active_sessions)
-            sys.settrace(None)
+            sys.settrace(tracer_before)
             raise KeyboardInterrupt('just after the reservation')
         return interrupt
     try:
@@ -402,7 +403,7 @@ def test_an_interrupt_just_after_the_reservation_releases_the_model():
         with pytest.raises(KeyboardInterrupt, match='just after the reservation'):
             run(m, ['A'])
     finally:
-        sys.settrace(None)
+        sys.settrace(tracer_before)
     assert reached == [True]                # the interrupt arrived while the model was reserved
     assert id(m) not in module._active_sessions
     assert_same_output(run(m, ['A']).collect('neural:A'), alone('A'))
