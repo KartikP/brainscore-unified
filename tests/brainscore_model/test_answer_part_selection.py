@@ -15,6 +15,10 @@ states literally what happens for the five part sets that registrations use;
 - ``'-'``: the model does not declare the requested channel, so pre-flight
   makes the pair N/A before any session.
 
+A registered part set is built with the statement its registrations carry
+(``REGISTERED_STATEMENTS``): the readout-only models state that the readout answers
+``behavior:choice`` by argmax.
+
 These are the selection facts the fixed-order table pinned before it was
 deleted: the legacy forms (label set absent, empty or given; instruction and
 fitting stimuli absent or present), Scale and Text with and without fitting
@@ -36,7 +40,7 @@ from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice, Scale, Text
 from brainscore_core.streaming_helpers import stimulus_session
 from tests.brainscore_model.stage2_answers_baseline import RATINGS
-from tests.brainscore_model.test_answer_ownership import OPTIONS, REGISTERED_PART_SETS, _model
+from tests.brainscore_model.test_answer_ownership import OPTIONS, REGISTERED_PART_SETS, REGISTERED_STATEMENTS, _model
 from tests.brainscore_model.test_behavior_paths import FITTING, STIMULI, _features
 from tests.brainscore_model.test_owner_answers import STATEMENTS
 
@@ -86,6 +90,8 @@ REFUSALS = {
                 r"Paths tried: generation needs reply=",
     'owner': r"'behavior:choice' is owned by 'generation', which cannot serve this task "
              r"\(task settings: verbatim(, labels per row)?\); no other part answers it",
+    'per-row': r"cannot give a Choice answer with the task settings labels per row\. "
+               r"Paths tried: generation needs reply=.*readout needs behavioral_readout_layer=",
     'tokenization': r"gives behavior:log_probabilities only for a verbatim Choice "
                     r"\(Choice\(\.\.\., verbatim=True\)\)",
     'implied': r"cannot give implied probabilities: it needs likelihood= or a readout "
@@ -196,7 +202,7 @@ EXPECTED = {
         'PL': 'generation:reply', 'AP': 'generation:reply',
     },
     'plain choice fit=False': {
-        'R': '-', 'AR': 'generation:answer', 'APLR': 'generation:answer',
+        'R': '!choice', 'AR': 'generation:answer', 'APLR': 'generation:answer',
         'PL': 'generation:reply', 'AP': 'generation:answer',
     },
     'plain probabilities fit=False': {
@@ -204,15 +210,15 @@ EXPECTED = {
         'PL': 'likelihood:likelihood+reply', 'AP': '-',
     },
     'per-row choice fit=False': {
-        'R': '-', 'AR': 'generation:answer', 'APLR': 'generation:reply',
+        'R': '!per-row', 'AR': 'generation:answer', 'APLR': 'generation:reply',
         'PL': 'generation:reply', 'AP': 'generation:reply',
     },
     'per-row verbatim choice fit=False': {
-        'R': '-', 'AR': '!verbatim', 'APLR': 'generation:reply',
+        'R': '!verbatim', 'AR': '!verbatim', 'APLR': 'generation:reply',
         'PL': 'generation:reply', 'AP': 'generation:reply',
     },
     'verbatim choice fit=False': {
-        'R': '-', 'AR': '!verbatim', 'APLR': 'generation:reply',
+        'R': '!verbatim', 'AR': '!verbatim', 'APLR': 'generation:reply',
         'PL': 'generation:reply', 'AP': 'generation:reply',
     },
     'text fit=True': {
@@ -220,7 +226,7 @@ EXPECTED = {
         'PL': 'generation:reply', 'AP': 'generation:reply',
     },
     'plain choice fit=True': {
-        'R': '-', 'AR': 'generation:answer', 'APLR': 'generation:answer',
+        'R': 'readout:readout', 'AR': 'generation:answer', 'APLR': 'generation:answer',
         'PL': 'generation:reply', 'AP': 'generation:answer',
     },
     'plain probabilities fit=True': {
@@ -228,15 +234,15 @@ EXPECTED = {
         'PL': 'likelihood:likelihood+reply', 'AP': '-',
     },
     'per-row choice fit=True': {
-        'R': '-', 'AR': 'generation:answer', 'APLR': 'generation:reply',
+        'R': '!per-row', 'AR': 'generation:answer', 'APLR': 'generation:reply',
         'PL': 'generation:reply', 'AP': 'generation:reply',
     },
     'per-row verbatim choice fit=True': {
-        'R': '-', 'AR': '!verbatim', 'APLR': 'generation:reply',
+        'R': '!verbatim', 'AR': '!verbatim', 'APLR': 'generation:reply',
         'PL': 'generation:reply', 'AP': 'generation:reply',
     },
     'verbatim choice fit=True': {
-        'R': '-', 'AR': '!owner', 'APLR': 'generation:reply',
+        'R': 'readout:readout', 'AR': '!owner', 'APLR': 'generation:reply',
         'PL': 'generation:reply', 'AP': 'generation:reply',
     },
     'reaction time evidence_margin fit=False': {
@@ -318,7 +324,9 @@ def test_the_stated_part_answers_or_the_stated_refusal_is_raised(form, key):
     stimuli, channel, task = FORMS[form]
     expected = CELLS[form, key]
     calls = []
-    model = _model(*parts, owners=STATEMENTS[parts], calls=calls)
+    # A registered part set states what its registrations state; another, the statement of STATEMENTS.
+    owners = REGISTERED_STATEMENTS[parts] if key in REGISTERED else STATEMENTS[parts]
+    model = _model(*parts, owners=owners, calls=calls)
     if expected == '-':
         assert channel not in model.out_channels
         return
