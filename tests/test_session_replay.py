@@ -219,3 +219,35 @@ def test_a_recorded_joint_session_replays_to_equal_outputs(tmp_path):
     replay = Experiment(subject=subject, protocol=replay_sessions(recorded.directory),
                         tools=[RecordInputsOutputs()], output_dir=tmp_path / 'replay').run()
     assert compare_outputs(recorded.directory, replay.directory)['equal']
+
+
+def test_a_replay_of_a_record_without_an_output_request_gives_the_same_trial_table(tmp_path):
+    """A session that requested no outputs has no finalized answer; its replay has none
+    either, so both trial tables are built from the answer events and are equal."""
+    from brainscore.experiments import RecordBehavior
+
+    class Namer(Subject):
+        identifier = 'namer'
+        in_channels = {'text'}
+        out_channels = {'behavior:choice'}
+
+        def participate(self, session):
+            while (event := session.next_input()) is not None:
+                if event.channel == 'text':
+                    session.respond(StreamEvent('behavior:choice', 'cat', event.t_ms,
+                                                {'stimulus_id': event.meta['stimulus_id']}))
+
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
+
+    @contextmanager
+    def factory(trial):
+        yield Session([StreamEvent('text', 'a cat', 125.0, {'stimulus_id': 'a'})], None, task)
+
+    protocol = SessionProtocol('no-request', factory, required_input_channels=['text'],
+                               requested_output_channels=['behavior:choice'])
+    tools = lambda: [RecordInputsOutputs(), RecordBehavior(['choice'])]
+    recorded = Experiment(subject=Namer(), protocol=protocol, tools=tools(),
+                          output_dir=tmp_path / 'recorded').run()
+    replay = Experiment(subject=Namer(), protocol=replay_sessions(recorded.directory), tools=tools(),
+                        output_dir=tmp_path / 'replay').run()
+    assert recorded.trials().equals(replay.trials())
