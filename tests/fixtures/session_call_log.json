@@ -1397,9 +1397,36 @@
      "f2",
      "f3"
     ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
    ]
   ],
-  "refused": true
+  "refused": false
  },
  "answer+behavioral_readout_layer | probabilities only | live region": {
   "calls": [
@@ -1414,36 +1441,6 @@
      "f2",
      "f3"
     ]
-   ],
-   [
-    "record",
-    [
-     "late"
-    ]
-   ],
-   [
-    "answer",
-    "a"
-   ],
-   [
-    "take",
-    "a"
-   ],
-   [
-    "answer",
-    "b"
-   ],
-   [
-    "take",
-    "b"
-   ],
-   [
-    "answer",
-    "c"
-   ],
-   [
-    "take",
-    "c"
    ],
    [
     "extract",
@@ -1472,9 +1469,36 @@
      "f2",
      "f3"
     ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
    ]
   ],
-  "refused": true
+  "refused": false
  },
  "answer+behavioral_readout_layer | probabilities only | live region stream": {
   "calls": [
@@ -1491,20 +1515,6 @@
     ]
    ],
    [
-    "record",
-    [
-     "late"
-    ]
-   ],
-   [
-    "answer",
-    "a"
-   ],
-   [
-    "take",
-    "a"
-   ],
-   [
     "extract",
     [
      "late"
@@ -1514,20 +1524,6 @@
     ]
    ],
    [
-    "record",
-    [
-     "late"
-    ]
-   ],
-   [
-    "answer",
-    "b"
-   ],
-   [
-    "take",
-    "b"
-   ],
-   [
     "extract",
     [
      "late"
@@ -1535,20 +1531,6 @@
     [
      "b"
     ]
-   ],
-   [
-    "record",
-    [
-     "late"
-    ]
-   ],
-   [
-    "answer",
-    "c"
-   ],
-   [
-    "take",
-    "c"
    ],
    [
     "extract",
@@ -1577,10 +1559,6 @@
     ]
    ],
    [
-    "answer",
-    "a"
-   ],
-   [
     "extract",
     [
      "late"
@@ -1590,10 +1568,6 @@
     ]
    ],
    [
-    "answer",
-    "b"
-   ],
-   [
     "extract",
     [
      "late"
@@ -1601,10 +1575,6 @@
     [
      "b"
     ]
-   ],
-   [
-    "answer",
-    "c"
    ],
    [
     "extract",
@@ -1633,18 +1603,6 @@
     ]
    ],
    [
-    "answer",
-    "a"
-   ],
-   [
-    "answer",
-    "b"
-   ],
-   [
-    "answer",
-    "c"
-   ],
-   [
     "extract",
     [
      "late"
@@ -1671,9 +1629,20 @@
      "f2",
      "f3"
     ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a",
+     "b",
+     "c"
+    ]
    ]
   ],
-  "refused": true
+  "refused": false
  },
  "answer+behavioral_readout_layer | rating | history": {
   "calls": [
@@ -4694,23 +4663,11 @@
     "a"
    ],
    [
-    "reply",
-    "a"
-   ],
-   [
     "likelihood",
     "b"
    ],
    [
-    "reply",
-    "b"
-   ],
-   [
     "likelihood",
-    "c"
-   ],
-   [
-    "reply",
     "c"
    ]
   ],
@@ -4729,10 +4686,6 @@
     "a"
    ],
    [
-    "answer",
-    "a"
-   ],
-   [
     "take",
     "a"
    ],
@@ -4741,19 +4694,11 @@
     "b"
    ],
    [
-    "answer",
-    "b"
-   ],
-   [
     "take",
     "b"
    ],
    [
     "likelihood",
-    "c"
-   ],
-   [
-    "answer",
     "c"
    ],
    [
@@ -4776,10 +4721,6 @@
     "a"
    ],
    [
-    "reply",
-    "a"
-   ],
-   [
     "take",
     "a"
    ],
@@ -4794,10 +4735,6 @@
     "b"
    ],
    [
-    "reply",
-    "b"
-   ],
-   [
     "take",
     "b"
    ],
@@ -4809,10 +4746,6 @@
    ],
    [
     "likelihood",
-    "c"
-   ],
-   [
-    "reply",
     "c"
    ],
    [
@@ -4835,10 +4768,6 @@
     "a"
    ],
    [
-    "answer",
-    "a"
-   ],
-   [
     "take",
     "a"
    ],
@@ -4853,10 +4782,6 @@
     "b"
    ],
    [
-    "answer",
-    "b"
-   ],
-   [
     "take",
     "b"
    ],
@@ -4868,10 +4793,6 @@
    ],
    [
     "likelihood",
-    "c"
-   ],
-   [
-    "answer",
     "c"
    ],
    [
@@ -4888,23 +4809,11 @@
     "a"
    ],
    [
-    "answer",
-    "a"
-   ],
-   [
     "likelihood",
     "b"
    ],
    [
-    "answer",
-    "b"
-   ],
-   [
     "likelihood",
-    "c"
-   ],
-   [
-    "answer",
     "c"
    ]
   ],
@@ -4917,23 +4826,11 @@
     "a"
    ],
    [
-    "answer",
-    "a"
-   ],
-   [
     "likelihood",
     "b"
    ],
    [
-    "answer",
-    "b"
-   ],
-   [
     "likelihood",
-    "c"
-   ],
-   [
-    "answer",
     "c"
    ]
   ],
@@ -8942,23 +8839,11 @@
     "a"
    ],
    [
-    "reply",
-    "a"
-   ],
-   [
     "likelihood",
     "b"
    ],
    [
-    "reply",
-    "b"
-   ],
-   [
     "likelihood",
-    "c"
-   ],
-   [
-    "reply",
     "c"
    ]
   ],
@@ -8977,10 +8862,6 @@
     "a"
    ],
    [
-    "reply",
-    "a"
-   ],
-   [
     "take",
     "a"
    ],
@@ -8989,19 +8870,11 @@
     "b"
    ],
    [
-    "reply",
-    "b"
-   ],
-   [
     "take",
     "b"
    ],
    [
     "likelihood",
-    "c"
-   ],
-   [
-    "reply",
     "c"
    ],
    [
@@ -9024,10 +8897,6 @@
     "a"
    ],
    [
-    "reply",
-    "a"
-   ],
-   [
     "take",
     "a"
    ],
@@ -9042,10 +8911,6 @@
     "b"
    ],
    [
-    "reply",
-    "b"
-   ],
-   [
     "take",
     "b"
    ],
@@ -9057,10 +8922,6 @@
    ],
    [
     "likelihood",
-    "c"
-   ],
-   [
-    "reply",
     "c"
    ],
    [
@@ -9083,10 +8944,6 @@
     "a"
    ],
    [
-    "reply",
-    "a"
-   ],
-   [
     "take",
     "a"
    ],
@@ -9101,10 +8958,6 @@
     "b"
    ],
    [
-    "reply",
-    "b"
-   ],
-   [
     "take",
     "b"
    ],
@@ -9116,10 +8969,6 @@
    ],
    [
     "likelihood",
-    "c"
-   ],
-   [
-    "reply",
     "c"
    ],
    [
@@ -9136,23 +8985,11 @@
     "a"
    ],
    [
-    "reply",
-    "a"
-   ],
-   [
     "likelihood",
     "b"
    ],
    [
-    "reply",
-    "b"
-   ],
-   [
     "likelihood",
-    "c"
-   ],
-   [
-    "reply",
     "c"
    ]
   ],
@@ -9165,23 +9002,11 @@
     "a"
    ],
    [
-    "reply",
-    "a"
-   ],
-   [
     "likelihood",
     "b"
    ],
    [
-    "reply",
-    "b"
-   ],
-   [
     "likelihood",
-    "c"
-   ],
-   [
-    "reply",
     "c"
    ]
   ],

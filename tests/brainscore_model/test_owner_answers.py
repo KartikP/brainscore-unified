@@ -310,8 +310,8 @@ REPLY_ROWS = [[110.0, 111.0, 112.0], [111.0, 112.0, 113.0], [112.0, 113.0, 114.0
     (['behavior:choice', 'behavior:probabilities', 'neural:A'], ['likelihood', 'reply'] * 3, LIKELIHOOD_ROWS),
     (['behavior:choice', 'neural:A'], ['reply'] * 3, REPLY_ROWS),
     (['neural:A'], ['reply'] * 3, REPLY_ROWS),
-    # Probabilities alone: as before the requested formats chose the parts, the reply still gives the trial's answer pass.
-    (['behavior:probabilities'], ['likelihood', 'reply'] * 3, None),
+    # Probabilities alone: only their owner runs; no part writes an answer that no output requests.
+    (['behavior:probabilities'], ['likelihood'] * 3, None),
 ], ids=['choice, probabilities and neural', 'choice and neural', 'neural only', 'probabilities only'])
 def test_the_requested_formats_decide_the_passes_and_the_recording(parts, outputs, calls, rows):
     """The likelihood (the owner of the probabilities) runs only when the session requests

@@ -3,7 +3,8 @@
 ``participate`` builds one plan (``_model/plan.py``) before any setup or compute;
 a combination that cannot run is refused there. The calls a session makes to
 the parts and the extractor are the calls of the code before the plan
-(``tests/fixtures/session_call_log.json``, written at unified ``1808a13``): a
+(``tests/fixtures/session_call_log.json``, written at unified ``1808a13``; a session
+that requests only probabilities runs only their owner since ADR-0063 decision 1): a
 session that ran makes the same calls in the same order; a refused session is
 refused again, after the same calls or fewer (a refusal may only move earlier).
 """

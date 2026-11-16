@@ -486,9 +486,10 @@ class BehavioralReadout:
 
         The task decides what the subject does; the requested outputs decide what
         is measured (Contract Rule 4.5). Under a choice task the owner of the
-        choice always gives its answer; the owner of the probabilities runs in
-        addition when, and only when, the session requests probabilities or a
-        reaction time. A format that the session does not request needs no owner:
+        choice gives its answer unless the session requests only probabilities or a
+        reaction time; the owner of the probabilities runs when, and only when, the
+        session requests probabilities or a reaction time. A session that requests
+        only those runs only their owner. A format that the session does not request needs no owner:
         a reaction-time link names the rt format; it is no setting of the choice.
 
         A session that requests ``behavior:log_probabilities`` is answered by the
@@ -604,6 +605,10 @@ class BehavioralReadout:
                     f"Subject '{owner.identifier}' cannot give implied probabilities: "
                     'it needs likelihood= or a readout (behavioral_readout_layer=, '
                     'fitting_stimuli).', task_type=task.task_type)
+        if wanted and not requested - self._PROBABILITY_SIDE:
+            # Only the probability side is requested: its owner gives the pass alone; no part
+            # writes an answer that no output requests (ADR-0063 decision 1).
+            return source, source
         if {path, source} != {'likelihood', 'readout'}:
             return path, source
         if requested & self._CHOICE_SIDE and wanted:
