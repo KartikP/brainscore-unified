@@ -29,6 +29,7 @@ Each guide answers one "how do I" question.
 | Compare conditions, record activity, replay a run | [Experiments](guides/experiments.md) |
 | Get a new kind of output from a subject (an action, a measurement) | [A new kind of output](guides/new_output.md) |
 | Add my own channel, tool or capability | [Extend UMI](guides/extend.md) |
+| Extend Brain-Score from a package of my own | [Your own package](guides/your_own_package.md) |
 
 ## Reference
 

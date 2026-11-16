@@ -3,6 +3,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
 import sys
 
 import pytest
@@ -38,15 +39,26 @@ def _workflow(unified: str, field: str = None) -> str:
             f'    with:\n      unified_revision: {field or unified}\n')
 
 
+def _commit(checkout: Path, message: str) -> str:
+    """Commit everything in ``checkout`` (made a repository on first use); return the commit."""
+    git = ['git', '-C', str(checkout), '-c', 'user.name=test', '-c', 'user.email=test@example.org']
+    if not (checkout / '.git').exists():
+        subprocess.run([*git, 'init', '-q'], check=True)
+    subprocess.run([*git, 'add', '-A'], check=True)
+    subprocess.run([*git, 'commit', '-q', '-m', message], check=True)
+    return subprocess.run([*git, 'rev-parse', 'HEAD'], check=True, capture_output=True,
+                          text=True).stdout.strip()
+
+
 def _repositories(root: Path, *, vision_core: str = CORE, language_unified: str = UNIFIED,
                   layout_unified: str = UNIFIED) -> Path:
-    _write(root / 'unified/install/peer-revisions.json',
-           json.dumps({'core': CORE, 'vision': 'c' * 40, 'language': 'd' * 40}))
     for name, core in (('vision', vision_core), ('language', CORE)):
         _write(root / name / 'requirements-v2.txt',
                f'brainscore-core @ git+https://github.com/brain-score/core.git@{core}\n')
     for name, unified in (('core', UNIFIED), ('vision', UNIFIED), ('language', language_unified)):
         _write(root / name / '.github/workflows/umi-v2.yml', _workflow(unified))
+    peers = {name: _commit(root / name, 'code and pins') for name in ('vision', 'language')}
+    _write(root / 'unified/install/peer-revisions.json', json.dumps({'core': CORE, **peers}))
     _write(root / 'core/.github/workflows/core-layout.yml',
            f'      - uses: actions/checkout@v4\n        with:\n'
            f'          repository: KartikP/brainscore-unified\n          ref: {layout_unified}\n')
@@ -82,6 +94,19 @@ def test_caller_unified_disagreement_fails(pins, tmp_path, capsys):
 def test_warning_sites_do_not_fail(pins, tmp_path, capsys):
     assert _run(pins, _repositories(tmp_path, layout_unified='9' * 40)) == 0
     assert 'warning: mismatch' in capsys.readouterr().out
+
+
+def test_peer_manifest_must_name_the_code_of_the_peer_source(pins, tmp_path, capsys):
+    """A later commit that moves only pins keeps the named commit's code; a code change does not."""
+    root = _repositories(tmp_path)
+    _write(root / 'vision/.github/workflows/umi-v2.yml', _workflow(UNIFIED) + '# pin moved\n')
+    _commit(root / 'vision', 'move the unified pin')
+    assert _run(pins, root) == 0
+    _write(root / 'vision/brainscore_vision/model.py', 'changed = True\n')
+    _commit(root / 'vision', 'change code')
+    assert _run(pins, root) == 1
+    out = capsys.readouterr().out
+    assert 'vision source' in out and 'MISMATCH' in out
 
 
 def test_abbreviated_sha_is_invalid(pins):

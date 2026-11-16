@@ -1,13 +1,13 @@
 # Extending the Unified Model Interface
 
-[Build tools and integrations](docs/guides/extend.md) | [Support matrix](docs/reference/features.md) | [Release qualification](docs/archive/production_release.md)
+[Build tools and integrations](docs/guides/extend.md) | [Your own package](docs/guides/your_own_package.md) | [Support matrix](docs/reference/features.md) | [Release qualification](docs/archive/production_release.md)
 
 Extend the unified interface through six registries and Capability.
 
 For a model registration, instantiate `BrainScoreModel`, the concrete `Subject`
 subclass that composes wrappers, recording, and capability callables. For benchmark
 type annotations or a custom implementation, use the abstract `Subject` contract.
-Import `BrainScoreModel` from `brainscore` and `Subject` from `brainscore_core.contract`. A native `Subject`
+Import `BrainScoreModel` from `brainscore` and `Subject` from `brainscore_core`. A native `Subject`
 declares identity and input/output channels and implements `participate(session)`;
 it does not need `process()` or a layer map. `BrainScoreModel` and the vision and
 language adapters inherit `Subject` too; there is no other base class. See [Concepts](docs/02_core_concepts.md#1-subject).
@@ -38,8 +38,8 @@ missing because it is not in a registry dict.
 A plugin is a subpackage whose `__init__.py` adds a factory to the
 matching registry. Every subpackage of `brainscore/{models,benchmarks,data,metrics}/` whose
 name does not start with `_` is imported when `brainscore` is imported, so a new folder
-registers by its presence; no other file changes. A plugin in another package (another repository) registers when you import that package before you load it. Load by id.
-Each plugin's test goes in `tests/test_<name>.py`.
+registers by its presence; no other file changes. A plugin in another package (another repository) registers when you import that package before you load it; there is no entry point. Load by id.
+A plugin's test goes in `tests/test_<name>.py` of the Brain-Score repository, or in the tests of your own package ([Your own package](docs/guides/your_own_package.md)).
 The folders in `templates/` are such plugins; started from the `templates/` folder, this
 runs as written:
 
@@ -74,7 +74,7 @@ The model template builds a `BrainScoreModel`; the benchmark template scores any
 | **Benchmark** | `brainscore/benchmarks/<name>/` | a `BenchmarkBase` subclass | `__call__(subject) -> Score` | `templates/new_benchmark/` |
 | **Metric** | `brainscore/metrics/<name>/` | a `Metric` subclass | `__call__(assembly1, assembly2) -> Score` | `templates/new_metric/` |
 | **Data / Stimulus set** | `brainscore/data/<name>/` | loaders registered in `data_registry` / `stimulus_set_registry` | return a `StimulusSet` and a `DataAssembly` | `templates/new_data/` |
-| **Tool** | `brainscore/tools/<name>.py` and one line in `_TOOLS` (`brainscore/tools/_registry.py`) | a `Tool` subclass | `on_event(event)`; see [Extend UMI](docs/guides/extend.md#a-new-tool) | `templates/new_tool/` |
+| **Tool** | in the repository: `brainscore/tools/<name>.py` and one line in `_TOOLS` (`brainscore/tools/_registry.py`); in your own package: `register_tool(identifier, factory)` | a `Tool` subclass | `on_event(event)`; see [Extend UMI](docs/guides/extend.md#a-new-tool) | `templates/new_tool/` |
 | **Capability** | constructor slots on `BrainScoreModel`, or your own package | a function (`answer` / `policy` / `intervention`) or a registered `Capability` | see below | `templates/new_capability/` |
 
 Reference registered data from a benchmark with `load_dataset` /

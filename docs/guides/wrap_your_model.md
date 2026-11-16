@@ -275,4 +275,4 @@ print(session.collect('behavior:rt').values.tolist())       # [450.0, 450.0]
 
 ## Register it (optional)
 
-You can always pass the object directly to `brainscore.score`. To load it by name, copy [templates/new_model](../../templates/new_model), implement the factory and its test, and register it in `brainscore/models`.
+You can always pass the object directly to `brainscore.score`. To load it by name, register a factory. In the Brain-Score repository: copy [templates/new_model](../../templates/new_model) into `brainscore/models`, and implement the factory and its test. In your own package: add the factory to `brainscore.model_registry` when the package is imported, and import the package before you load the model ([Your own package](your_own_package.md)).
