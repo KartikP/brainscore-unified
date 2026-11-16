@@ -34,6 +34,12 @@ fit, and the voxels were selected on other videos. Both ``-visualROI`` variants
 divide by these ceilings; whole cortex, ``-multimodal`` and
 ``-multimodal-auditoryROI`` report the raw correlation.
 
+The Lahner2024 family has two visual-ROI voxel sets. This class selects on the
+training-set videos (3958 voxels on the hosted data). The time-resolved class
+(``Lahner2024BOLDMoments_timeresolved``) selects on the test-set videos (7209
+voxels), with the same threshold. A ``-visualROI`` score of one class and of the
+other covers different voxels.
+
 Taken from brain-score/vision PR #1249 (YingtianDt):
     - BOLDMoments as the stimulus-set identifier
     - Citation
@@ -140,8 +146,8 @@ def boldmoments_test_set(stimulus_ids) -> List[str]:
     The one split rule of the Lahner2024 benchmarks. The GLM benchmark follows the
     protocol of the data set with it: one fit on the other videos (the training
     set), the correlation and the ceilings on the test-set videos, and the voxel
-    mask from the training-set videos. The time-resolved benchmark also uses it
-    (its mask and its presented subset), until its own change.
+    mask from the training-set videos. The time-resolved benchmark uses it for its
+    voxel mask and its presented subset.
     """
     return sorted({str(stimulus_id) for stimulus_id in stimulus_ids
                    if int(str(stimulus_id).rsplit('_', 1)[1]) > 1000})
@@ -208,8 +214,9 @@ def _split_half_reliability(assembly, stimuli: Sequence[str], n_splits: int = 20
 def reliability_on_test_set(assembly) -> np.ndarray:
     """``_split_half_reliability`` on the test-set videos of the GLM assembly. The GLM
     benchmark takes its per-voxel ceilings from it (the test-set videos are the scored
-    ones). The time-resolved benchmark still selects its voxel mask with it; that
-    use belongs to the time-resolved class and is replaced in its own change."""
+    ones). The time-resolved benchmark selects its voxel mask with it (7209 voxels at
+    the threshold 0.3 on the hosted data), so its visual-ROI voxels differ from the
+    GLM ones (selected on the training-set videos, 3958 voxels)."""
     test = boldmoments_test_set(assembly['stimulus_id'].values)
     if not test:
         raise ValueError('The assembly holds no test-set video (id above 1000): '
@@ -318,7 +325,8 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         reliability_threshold: score only the voxels whose split-half
             reliability on the training-set videos is at least this value.
             Every variant fits on the training-set videos and scores the
-            test-set videos (see the module docstring).
+            test-set videos (see the module docstring). The time-resolved
+            class selects on the test-set videos instead.
         voxel_mask_fn: score only the voxels of this mask (for example
             ``build_auditory_mask``). Give at most one of the two.
         identifier: the benchmark identifier (required; the registry key of the variant).

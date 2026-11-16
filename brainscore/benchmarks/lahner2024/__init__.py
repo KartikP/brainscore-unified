@@ -50,10 +50,18 @@ benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal-auditoryROI'] = part
     Lahner2024BOLDMoments, channels=_AUDIOVISUAL, voxel_mask_fn=build_auditory_mask,
     identifier='Lahner2024-fMRI-naturalistic-multimodal-auditoryROI')
 
-# TR time series: clip-mean onset-impulse HRF model, per-voxel ridge, whole runs
-# held out (blocks of 52 runs by default, the runs of one participant; blocks of 40
-# for the `-visualROI` variants, which score the 40 `train` task runs of a participant);
-# events selected by (subject, session, task, run).
+# TR time series: a regression of the continuous scanner time series of each run on
+# the model's features placed at the video onsets and convolved with the HRF;
+# per-voxel ridge, whole runs held out (blocks of 52 runs by default, the runs of one
+# participant; blocks of 40 for the `-visualROI` variants, which score the 40 `train`
+# task runs of a participant); events selected by (subject, session, task, run). Raw
+# correlation, no noise ceiling. Every participant saw every video, so under these
+# participant-out folds each scored video also occurs in training runs. The studies of
+# this data set analyze responses locked to each video (fit on the training set, test
+# on the test set), so these values are not comparable with published values. The 67
+# training-set and 9 test-set videos of the events that the stimulus set lacks get no
+# features. The `-visualROI` mask comes from the 93 test-set videos (7209 voxels), not
+# from the training-set videos as in the GLM class (3958 voxels).
 # `-improved`: per-run motion regression (9 fmriprep confounds, residuals replace the
 # BOLD before the z-score) and blocks of 10 runs held out inside each participant,
 # per-voxel r averaged across participants. No stored result measures the effect
