@@ -13,7 +13,6 @@ the registered loaders (``tests/lahner_synthetic.py``).
 import numpy as np
 import pytest
 from sklearn.linear_model import Ridge
-from sklearn.model_selection import KFold
 
 from brainscore.benchmarks.lahner2024 import (
     VISUAL_ROI_CEILING, Lahner2024BOLDMoments, Lahner2024BOLDMoments_timeresolved, RunBlocks)
@@ -21,7 +20,7 @@ from brainscore.benchmarks.lahner2024.benchmark import _split_half_reliability
 from brainscore.benchmarks.lahner2024.benchmark_timeresolved import TR_SEC
 from brainscore.temporal import double_gamma_hrf, hrf_convolve
 from tests.lahner_synthetic import (
-    CLIPS, GLM_CLIPS, GLM_REPS, N_TR, N_VOXELS, Recorder, glm_assembly, glm_values, install, tr_events,
+    GLM_CLIPS, GLM_REPS, N_TR, N_VOXELS, TEST_CLIPS, Recorder, glm_assembly, glm_values, install, tr_events,
     tr_runs, unit_values)
 
 WIDTH = 4   # features per clip of the default Recorder
@@ -52,13 +51,13 @@ def mask_of(voxels):
 # ── GLM betas ─────────────────────────────────────────────────────
 
 
-def glm_expected_r(values, mask, clips=GLM_CLIPS):
-    """5 shuffled folds over ``clips`` (seed 0), ridge at penalty 1, on the clip means."""
-    features = np.stack([unit_values(clip, 'neural:IT', WIDTH)[0] for clip in clips])
-    rows = [GLM_CLIPS.index(clip) for clip in clips]
-    neural = values.reshape(GLM_REPS, len(GLM_CLIPS), N_VOXELS).mean(0)[rows][:, mask]
-    folds = list(KFold(n_splits=5, shuffle=True, random_state=0).split(features))
-    return held_out_r(features, neural, folds)
+def glm_expected_r(values, mask):
+    """One ridge fit (penalty 1) on the training-set clips, r on the test-set clips."""
+    features = np.stack([unit_values(clip, 'neural:IT', WIDTH)[0] for clip in GLM_CLIPS])
+    neural = values.reshape(GLM_REPS, len(GLM_CLIPS), N_VOXELS).mean(0)[:, mask]
+    test = np.isin(GLM_CLIPS, TEST_CLIPS)
+    predictions = Ridge(alpha=1.0).fit(features[~test], neural[~test]).predict(features[test])
+    return pearson(neural[test], predictions)
 
 
 def test_a_constant_voxel_in_the_region_is_left_out_and_counted(monkeypatch, tmp_path):
@@ -85,12 +84,12 @@ def test_a_constant_voxel_in_the_region_is_left_out_and_counted(monkeypatch, tmp
 def test_with_a_measured_ceiling_a_voxel_without_r_or_ceiling_is_left_out(monkeypatch, tmp_path):
     """Version 1 divided the shorter vector of finite r by every ceiling: a shape error
     here. Version 2 leaves out the constant voxel (no r, no ceiling) and the voxel
-    whose reliability is at or below zero (an r, no ceiling). Only the training videos
-    are scored, and the ceilings come from them."""
+    whose reliability is at or below zero (an r, no ceiling). The test-set videos are
+    scored, and the ceilings come from them."""
     values = glm_values()
     constant = 20000
     values[:, constant] = 3.0
-    reliability = _split_half_reliability(glm_assembly(values), stimuli=CLIPS)
+    reliability = _split_half_reliability(glm_assembly(values), stimuli=TEST_CLIPS)
     reliable = [int(v) for v in np.flatnonzero(reliability > 0.3)[-30:]]
     unreliable = int(np.flatnonzero((reliability <= 0) & (np.arange(N_VOXELS) < 1000))[0])
     mask = mask_of(reliable + [constant, unreliable])
@@ -98,7 +97,7 @@ def test_with_a_measured_ceiling_a_voxel_without_r_or_ceiling_is_left_out(monkey
     score = Lahner2024BOLDMoments(ceiling=VISUAL_ROI_CEILING, voxel_mask_fn=lambda: mask, identifier='Lahner2024-fMRI-naturalistic')(
         Recorder({'vision:video'}))
 
-    expected = glm_expected_r(values, mask, CLIPS)
+    expected = glm_expected_r(values, mask)
     ceiling = np.sqrt(np.clip(reliability[mask], 0.0, 1.0))
     counts = ~np.isnan(expected) & (ceiling > 0)
     r = score.attrs['per_voxel_r']

@@ -18,20 +18,21 @@ from .benchmark_timeresolved import (
 #   and the sound track (also records neural:A1);
 # - the voxels: all, `reliability_threshold=0.3` (`-visualROI`: split-half
 #   reliability at least 0.3, chosen by reliability anywhere on the cortex, not by
-#   an atlas). The reliability is measured on the 93 BOLDMoments test-set videos
-#   (id above 1000) of the GLM assembly, for both classes. A variant with this mask
-#   never scores those videos: the GLM class presents and scores the 933 training
-#   videos of the assembly, and the time-resolved class scores only the `train` task
-#   runs (their videos are the training set) and holds out blocks of 40 runs per
-#   participant, which keeps one participant per block; or `voxel_mask_fn=build_auditory_mask`
+#   an atlas). The GLM class follows the protocol of the data set for every variant:
+#   one fit on the 933 training-set videos of the assembly, the correlation on the 93
+#   test-set videos (id above 1000), and the mask from the reliability on the
+#   training-set videos. The time-resolved class measures its mask on the 93 test-set
+#   videos of the GLM assembly, scores only the `train` task runs (their videos are
+#   the training set) and holds out blocks of 40 runs per participant, which keeps
+#   one participant per block; or `voxel_mask_fn=build_auditory_mask`
 #   (`-auditoryROI`: early auditory cortex, lateral STG and the planum, Destrieux
 #   atlas on fsaverage5);
 # - for TR time series, the fold rule and the confounds regressed out of the BOLD.
-# Only the GLM-beta visual ROI divides by a measured ceiling (`VISUAL_ROI_CEILING`):
-# per voxel, sqrt of the split-half reliability on the videos it scores (the 933
-# training videos), not on the test-set videos that choose the voxels, which a
-# participant saw 10 times instead of 3; the other variants return the raw correlation. Every line is version 2 (see the
-# two module docstrings for what changed from version 1).
+# Only the two GLM-beta visual-ROI variants divide by a measured ceiling
+# (`VISUAL_ROI_CEILING`): per voxel, sqrt of the split-half reliability on the videos
+# they score (the 93 test-set videos, each shown 10 times to a participant); the
+# other variants return the raw correlation. Every line is version 2 (see the two
+# module docstrings for what changed from version 1).
 _AUDIOVISUAL = ('vision:image', 'vision:video', 'audio')
 
 # GLM betas: one beta per voxel per stimulus per repetition.
@@ -44,7 +45,7 @@ benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal'] = partial(
     Lahner2024BOLDMoments, channels=_AUDIOVISUAL, identifier='Lahner2024-fMRI-naturalistic-multimodal')
 benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal-visualROI'] = partial(
     Lahner2024BOLDMoments, channels=_AUDIOVISUAL, reliability_threshold=0.3,
-    identifier='Lahner2024-fMRI-naturalistic-multimodal-visualROI')
+    identifier='Lahner2024-fMRI-naturalistic-multimodal-visualROI', ceiling=VISUAL_ROI_CEILING)
 benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal-auditoryROI'] = partial(
     Lahner2024BOLDMoments, channels=_AUDIOVISUAL, voxel_mask_fn=build_auditory_mask,
     identifier='Lahner2024-fMRI-naturalistic-multimodal-auditoryROI')
