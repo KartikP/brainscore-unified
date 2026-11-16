@@ -1,6 +1,6 @@
 # Data
 
-A **data plugin** holds the source files of a study: the stimuli that were shown and the responses that were recorded. A **benchmark** is an experiment over them: a protocol, the data it compares against, and a score. Keeping the two apart lets several benchmarks share one dataset. Lahner 2024, for example, backs a whole-cortex benchmark, a visual-ROI benchmark, a time-resolved one and a multimodal one.
+A **data plugin** holds the source files of a study: the stimuli that were shown and the responses that were recorded. A **benchmark** is an experiment over them: a protocol, the data it compares against, and a score. Keeping the two apart lets several benchmarks share one dataset. Lahner 2024, for example, backs a whole-cortex benchmark, a visual-ROI benchmark and a multimodal one.
 
 ## Load a dataset
 
@@ -23,7 +23,7 @@ A wrapper reads a stimulus file path only from the column names that the core ca
 
 | Dataset | Stimulus set | What it is | Files | Used by |
 | --- | --- | --- | --- | --- |
-| `Lahner2024-fMRI`, `-timeresolved`, `-timeresolved-events`, `-timeresolved-motion` | `BOLDMoments` | fMRI to 1,102 three-second videos (1,000 training-set, 102 test-set), as GLM betas and as TR time series with events and motion confounds; the hosted GLM betas and stimulus set hold 1,026 of the videos (933 and 93) | hosted | `Lahner2024-fMRI-naturalistic*` |
+| `Lahner2024-fMRI`, `-timeresolved`, `-timeresolved-events`, `-timeresolved-motion` | `BOLDMoments` | fMRI to 1,102 three-second videos (1,000 training-set, 102 test-set), as GLM betas and as TR time series with events and motion confounds; the hosted GLM betas and stimulus set hold 1,026 of the videos (933 and 93) | hosted | `Lahner2024-fMRI-naturalistic*` (GLM betas); the time series back the class `Lahner2024BOLDMoments_timeresolved`, which is not registered |
 | `LeBel2023-UTS03` | `LeBel2023-UTS03` (one row per TR), `LeBel2023-UTS03-words` (one row per word) | whole-cortex fMRI while listening to 25 stories, one participant | hosted (default settings); other settings build from the source pickle | `LeBel2023-UTS03-encoding*` |
 | `Algonauts2025-{friends,friends-s7,ood}-sub{01,02,03,05}` | `Algonauts2025-{friends,friends-s7,ood}` | Courtois NeuroMod fMRI while watching Friends and films, Schaefer 1,000 parcels | local: data-use agreement | `Algonauts2025-friends-sub*`; the held-out `friends-s7` and `ood` splits have no fMRI and serve prediction export only (`brainscore.tools.algonauts2025_predictions`, see the [benchmark README](../../brainscore/benchmarks/algonauts2025/README.md)) |
 | `EWoK-core-1.0` | `EWoK-core-1.0` | world-knowledge contrasts and their answer keys | local: gated text | `EWoK-core-1.0-logprobs`, `-choice` |
