@@ -290,3 +290,19 @@ def test_a_saved_numeric_answer_reads_back_as_the_live_result(tmp_path, channel,
     assert read.payload == kept.payload
     assert {key: type(value) for key, value in read.payload.items()} == \
         {key: type(value) for key, value in kept.payload.items()}
+
+
+@pytest.mark.parametrize('options', [[float('nan'), 'b'],
+                                     [np.datetime64('2020-01-01'), np.datetime64('2020-01-02')],
+                                     [np.timedelta64(1, 'D'), np.timedelta64(2, 'D')], [1 + 2j, 2 + 3j]])
+def test_an_answer_reads_back_from_a_record_with_the_options_the_table_holds(tmp_path, options):
+    import json
+    from brainscore.run_record import PayloadCodec
+
+    session = Session([], ['behavior:probabilities'], TaskContext(response=Choice(options)))
+    session.respond(StreamEvent('behavior:probabilities', np.array([0.2, 0.8]), None, {'stimulus_id': 's'}))
+    codec = PayloadCodec(tmp_path)
+    (read,) = codec.decode(json.loads(json.dumps(codec.encode(list(session.emitted)))))
+    held = session.collect('behavior:probabilities')['choice'].values
+    assert read.payload['choice'].dtype == held.dtype
+    assert [str(option) for option in read.payload['choice']] == [str(option) for option in held]
