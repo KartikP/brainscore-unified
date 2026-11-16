@@ -87,7 +87,13 @@ In an experiment with several conditions, attach the `Intervene` tool: it sends 
 
 **Axes.** `axis=-1` indexes the last tensor axis (units of a linear layer). For convolution outputs `(batch, channels, height, width)`, `axis=1` selects channels and `axis=None` indexes the flattened features.
 
-**Caching.** Activation caches check the weights and settings before reusing results. If your intervention changes state the cache cannot see, run with `RESULTCACHING_DISABLE=1`.
+**A custom intervention part.** `intervention=` takes any function `StateChange -> (PerturbationApplied, cleanup)`. The model does the following around it:
+
+- It keeps the cleanup under the returned `handle_id`, which must be new for each call. Another return is refused: the model runs the returned cleanup, if there is one, and raises.
+- Each apply and each undo makes the behavioral readout fit again at the next task; a readout fitted with `TaskContext(readout_fit='intact')` stays. That fit can switch off only changes made by `pytorch_intervention`; with a custom change active, that fit stops with `ExecutionNotFeasibleError`.
+- While any intervention is active, the model reads no stored activations and stores none. After the last undo it uses them again. Their key holds the extractor's network: its weights, buffers, structure and forward hooks. A change that is still there after the undo and that the key cannot see (for example a Python attribute a module reads) needs `RESULTCACHING_DISABLE=1`.
+- The other parts (`answer`, `reply`, `likelihood`, `policy`) are not told of a change. A part that keeps results of its own must not keep them across a change; `reset()` of the model calls the `reset()` of each part that has one.
+- A cleanup that raises keeps its handle, and `reset()` of the model raises and names it, so you can try again.
 
 ## Choose units by function
 
