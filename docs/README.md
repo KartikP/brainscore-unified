@@ -27,6 +27,7 @@ Each guide answers one "how do I" question.
 | Silence or change units, or choose units by function | [Perturb and select units](guides/perturb_and_select_units.md) |
 | Run a game, simulator or robot task | [Closed loop](guides/closed_loop.md) |
 | Compare conditions, record activity, replay a run | [Experiments](guides/experiments.md) |
+| Get a new kind of output from a subject (an action, a measurement) | [A new kind of output](guides/new_output.md) |
 | Add my own channel, tool or capability | [Extend UMI](guides/extend.md) |
 
 ## Reference

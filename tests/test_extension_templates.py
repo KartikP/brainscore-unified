@@ -184,6 +184,7 @@ NEEDS_DOWNLOADS = {
     ('docs/guides/data.md', 0): 'the hosted LeBel2023 assembly',
     ('docs/guides/behavior.md', 7): 'a Hugging Face chat model and its processor',
     ('docs/guides/wrap_your_model.md', 6): 'CLIP and its image and text wrappers',
+    ('docs/guides/new_output.md', 3): 'a Hugging Face vision-language model and its processor',
 }
 
 
@@ -194,6 +195,16 @@ def _documented_pages():
     pages += sorted(TEMPLATES.glob('**/README.md'))
     return [page for page in pages
             if re.search(r'^```python', page.read_text(encoding='utf-8'), flags=re.M)]
+
+
+def test_new_output_episode_ends_as_documented():
+    """The screen task of the new-output guide ends with a click on its third step."""
+    text = (DOCUMENTS / 'docs/guides/new_output.md').read_text(encoding='utf-8')
+    blocks = re.findall(r'^```python[^\n]*\n(.*?)^```', text, flags=re.S | re.M)
+    namespace = {}
+    exec(compile('\n'.join(blocks[:3]), 'new_output.md', 'exec'), namespace)
+    assert namespace['reasons'] == ['terminal']
+    assert [namespace['KINDS'][step['kind']] for step in namespace['actions']] == ['run', 'run', 'click']
 
 
 @pytest.mark.integration
