@@ -257,6 +257,31 @@ for _capability in (_NEURAL, _BEHAVIOR, _MOTOR, InterventionSessions()):
     register_capability(_capability)
 
 
+def _presented_times(session, events, n_rows):
+    """The time of each row of the presented table: that of the first input event that presented it.
+
+    The session's own table is presented in row order: one event per row, or one event
+    per input column with ``meta['table_row']``. Rows rebuilt from events (no table) are
+    keyed as core rebuilds them: ``stimulus_index``, else ``stimulus_id``, else the
+    event's position. A row no event presented has no time.
+    """
+    times = [None] * n_rows
+    seen = set()
+    own_table = getattr(session, 'stimuli', None) is not None
+    position, keys = -1, {}
+    for index, event in enumerate(events):
+        if own_table:
+            row = event.meta.get('table_row')
+            position = row if row is not None else position + 1
+        else:
+            key = event.meta.get('stimulus_index', event.meta.get('stimulus_id', index))
+            position = keys.setdefault(key, len(keys))
+        if 0 <= position < n_rows and position not in seen:
+            seen.add(position)
+            times[position] = event.t_ms
+    return times
+
+
 def drive_behavior_and_neural_session(subject, session, driver: str = "interact") -> None:
     """Record ``neural:<region>`` while the subject does the session's task.
 
@@ -278,23 +303,37 @@ def drive_behavior_and_neural_session(subject, session, driver: str = "interact"
     # reads the next. Otherwise the inputs are read first. A subject without the
     # trait keeps no history, so it can answer the whole table at once; one that
     # keeps history is answered trial by trial so a begin can fall between trials.
+    # Each batch is (stimuli, t_ms): a trial answers at the time of its input, or with no
+    # time when its input has none (rule 4.2); its index is in meta['trial_index'].
+    # The whole table answered at once is many trials: its events carry no time.
     if plan.delivery == 'stream':
         batches = enumerate(_drivers.stream_trials(session, task))
     else:
-        stimuli = _drivers.behavior_stimuli_from_session(session, task)
+        # Every input is read first. A trial is a row of the presented table; it keeps the
+        # time of the input events that presented it, never a time column of the table.
+        events = [event for event in _drivers.drain_session_inputs(session)
+                  if event.channel != 'instruction']
+        stimuli = (_drivers.session_stimuli(session, events)
+                   if events or getattr(session, 'stimuli', None) is not None
+                   else _drivers.behavior_stimuli_from_session(session, task))
         if stimuli is None:
             raise ValueError("Recording during a task needs stimuli to present.")
-        batches = ([(index, _drivers.preserve_stimulus_set_type(stimuli, stimuli.iloc[[index]]))
-                    for index in range(len(stimuli))]
-                   if plan.delivery == 'per_trial' else [(0, stimuli)])
-    for index, batch in batches:
+        if plan.delivery == 'per_trial':
+            times = _presented_times(session, events, len(stimuli))
+            batches = enumerate((_drivers.preserve_stimulus_set_type(stimuli, stimuli.iloc[[index]]),
+                                 times[index]) for index in range(len(stimuli)))
+        else:
+            batches = [(0, (stimuli, None))]
+    for index, (batch, t_ms) in batches:
         if index == 0 or task.trial_memory == 'none':
             subject._begin_episode()
         behavior, neural = subject._behavioral.respond(batch, answers, regions)
+        trial = {} if plan.delivery == 'table' else {"trial_index": index}
         # A value that is a StreamEvent keeps its meta: a reply's extra data (send_outputs).
         _drivers.send_outputs(session, {channel: behavior[channel] for channel in answers},
-                              float(index), {"driver": driver, "task_type": task.task_type})
+                              t_ms, {"driver": driver, "task_type": task.task_type, **trial})
         for region in regions:
-            session.respond(StreamEvent(channel=f"neural:{region}", payload=neural[region], t_ms=float(index),
-                                     meta={"driver": driver, "record": region, "during": "behavior"}))
+            session.respond(StreamEvent(channel=f"neural:{region}", payload=neural[region], t_ms=t_ms,
+                                        meta={"driver": driver, "record": region, "during": "behavior",
+                                              **trial}))
 

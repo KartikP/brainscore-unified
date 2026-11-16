@@ -75,8 +75,12 @@ def replay_sessions(directory):
             # Older records have no request metadata. Keep the observed channel
             # names scoped to this repetition rather than mixing different repetitions.
             session.outputs = tuple(sorted(trial_outputs[key]))
-        # SessionProtocol collects results after the final observation.
-        session.collect = lambda: [event.payload for event in session.emitted]
+        if 'outputs' not in settings[key]:
+            # The recorded session requested no outputs, so its collect() gave its events;
+            # the replay does the same. A channel is collected as in any session.
+            collect = session.collect
+            session.collect = lambda channel=None: (list(session.emitted) if channel is None
+                                                    else collect(channel))
         yield session
     return SessionProtocol('saved-session-inputs', factory, conditions=conditions, repetitions=repetitions,
         required_input_channels={e.channel for group in inputs.values() for e in group

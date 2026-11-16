@@ -124,8 +124,33 @@ def test_a_streaming_session_gets_each_trial_as_it_ends():
     net = Net()
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
     session = _run(_model(net), task, ['behavior:choice', 'neural:A'], streaming=True)
-    assert [e.t_ms for e in session.emitted if e.channel == 'neural:A'] == [0.0, 1.0, 2.0]
-    assert session.collect('neural:A').sizes['presentation'] == 3
+    recorded = [e for e in session.emitted if e.channel == 'neural:A']
+    assert len({e.meta['trial_index'] for e in recorded}) == len(STIMULI)   # one event per trial
+    assert session.collect('neural:A').sizes['presentation'] == len(STIMULI)
+
+
+@pytest.mark.parametrize('streaming', [True, False])
+@pytest.mark.parametrize('timed', [True, False])
+def test_an_answer_and_its_recording_carry_the_time_of_their_trial(streaming, timed):
+    """Rule 4.2: time is the input's time, or None; never a trial counter.
+
+    A streamed trial answers at the time of its input; the whole table, answered at
+    once, is many trials and carries no time. The trial index is in meta.
+    """
+    stimuli = STIMULI.copy()
+    if timed:
+        stimuli['t_ms'] = [100.0, 600.0, 1100.0]
+    stimuli.identifier = 'everywhere-timed' if timed else STIMULI.identifier
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
+    session = stimulus_session(stimuli, ['behavior:choice', 'neural:A'], task=task, streaming=streaming)
+    _model(Net()).participate(session)
+    assert session.emitted
+    for event in session.emitted:
+        if streaming:
+            index = event.meta['trial_index']
+            assert event.t_ms == (stimuli['t_ms'].iloc[index] if timed else None)
+        else:
+            assert event.t_ms is None
 
 
 def test_an_extractor_without_record_is_recorded_through_the_model():
@@ -163,3 +188,31 @@ def test_a_streaming_session_answers_a_trial_before_it_reads_the_next():
     session.respond = lambda event: (log.append(event.channel), respond(event))[1]
     _model(Net()).participate(session)
     assert log == ['read', 'behavior:choice', 'neural:A'] * 3
+
+
+@pytest.mark.parametrize('table_times', [None, [10.0, 20.0]])
+def test_a_trial_answered_alone_keeps_the_time_of_its_input_events(table_times):
+    """Rule 4.2: answered one trial at a time, a trial carries the time of the input
+    events that presented it; a time column of an attached table never replaces it."""
+    from brainscore_core.streaming import Session, StreamEvent
+    input_times = [125.0, 875.0]
+    events = [StreamEvent('text', text, t_ms, {'stimulus_id': sid, 'stimulus_index': index})
+              for index, (sid, text, t_ms) in enumerate(zip('ab', ['x', 'yy'], input_times))]
+    table = None
+    if table_times is not None:
+        table = StimulusSet({'stimulus_id': ['a', 'b'], 'sentence': ['x', 'yy'], 't_ms': table_times})
+        table.identifier = 'listed-with-table'
+    net = Net()
+
+    def reply(prompt):
+        net.forward(prompt.text())
+        return 'cat'
+    model = BrainScoreModel('toy', extractor={'text': Recordable(net)},
+                            region_layer_map={'A': LayerSelector('early', modality='text')},
+                            reply=reply, memory='trial_history')
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), trial_memory='history')
+    session = Session(events, ['behavior:choice', 'neural:A'], task, stimuli=table)
+    model.participate(session)
+    assert {event.channel for event in session.emitted} == {'behavior:choice', 'neural:A'}
+    for event in session.emitted:
+        assert event.t_ms == input_times[event.meta['trial_index']]
