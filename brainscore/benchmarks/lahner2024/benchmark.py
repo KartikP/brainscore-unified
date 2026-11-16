@@ -12,7 +12,7 @@ estimate; no time-series regression required), ``neuroid`` is cortical
 vertices across L/R hemispheres, and ``presentation`` is 1026 videos × 10
 participants. The coordinate that tells the participants apart is named
 ``repetition``: its 10 values are the 10 participants, not repeated showings
-to one person. We average the participants to get one response per video.
+to one person. The benchmark averages the participants to get one response per video.
 
 The benchmark follows the protocol of the data set. BOLDMoments has 1000
 training-set videos, each shown 3 times to a participant, and 102 test-set
@@ -533,7 +533,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         # one fixed fold, so held_out_r correlates over the test-set rows only. Ridge
         # (scikit-learn, penalty 1) on the raw features: it centres through its
         # intercept; a StandardScaler over-rescales features of unequal variance and
-        # cost about 0.18 raw r here (2026-04-24 replication note).
+        # lowers the fit.
         test = np.isin(np.asarray(clip_ids, dtype=str), self._split()[1])
         per_voxel_r, _ = cross_validated_r(
             features, neural_mat, [(~test, test)], ridge(1.0, SklearnRidge()))
@@ -548,9 +548,8 @@ class Lahner2024BOLDMoments(BenchmarkBase):
 # noise. Under the protocol of the data set the constant is the median of
 # sqrt(reliability on the scored videos, the 93 test-set videos) over the voxels of the
 # mask (reliability of at least 0.3 on the 933 training-set videos) that have a
-# positive ceiling. Measured on the hosted data 2026-11-15: the mask has 3958 voxels,
-# every one with a positive ceiling, and this is their median (work record:
-# cloud_verify/lahner_repair/protocol_facts_j38.json). It is what ``benchmark.ceiling``
+# positive ceiling. Measured on the hosted data: the mask has 3958 voxels, every one
+# with a positive ceiling, and this is their median. It is what ``benchmark.ceiling``
 # reports for both ``-visualROI`` variants; the score divides each voxel by its own
 # ceiling and does not read this value.
 VISUAL_ROI_CEILING = 0.8515666971964203

@@ -44,10 +44,10 @@ REGION_LAYER_MAP = {
     'V1': 'encoder.layer.4',
     'V2': 'encoder.layer.9',
     'V4': 'encoder.layer.15',
-    # IT → encoder.layer.16 by analogy with V-JEPA v1 per-voxel sweep on
-    # Lahner2024 (layer 16 peaks at 0.61 raw ROI r vs last layer 0.54 —
-    # see 2026-04-24 replication note). V-JEPA v2 has the same 24-layer
-    # ViT-L architecture; a dedicated v2 sweep would be a small follow-up.
+    # IT → encoder.layer.16 by analogy with the V-JEPA v1 per-voxel layer
+    # sweep on Lahner2024, where layer 16 predicted the visual ROI better
+    # than the last layer. V-JEPA v2 has the same 24-layer ViT-L
+    # architecture; no sweep was run for v2.
     'IT': 'encoder.layer.16',
 }
 

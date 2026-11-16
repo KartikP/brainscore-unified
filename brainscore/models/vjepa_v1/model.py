@@ -75,9 +75,8 @@ REGION_LAYER_MAP = {
     'V1': 'backbone.blocks.4',
     'V2': 'backbone.blocks.9',
     'V4': 'backbone.blocks.15',
-    # IT → blocks.16 based on 2026-04-24 per-voxel layer sweep on Lahner2024:
-    # blocks.16 peaks at 0.611 ROI r; blocks.23 drops to 0.536 (we were
-    # defaulting to the last layer, costing ~0.08 raw r).
+    # IT → blocks.16 from a per-voxel layer sweep on Lahner2024: blocks.16
+    # predicted the visual ROI better than the last layer (blocks.23).
     'IT': 'backbone.blocks.16',
 }
 

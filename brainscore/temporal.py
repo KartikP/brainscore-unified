@@ -334,11 +334,10 @@ def expand_clip_to_frames(
 #    Failing to HRF-convolve forces the regressor to learn an implicit
 #    delay which conflates model and BOLD timing.
 #
-# Lahner2024 in its current form does NOT need either: the packaged
-# assembly is pre-computed GLM betas (one value per clip, already
-# HRF-deconvolved at packaging time). These utilities are for the
-# future naturalistic time-series benchmarks (IBC, Courtois NeuroMod,
-# Algonauts 2023) that M8/M12 target.
+# The Lahner2024 GLM benchmarks need neither: their assembly is
+# pre-computed GLM betas (one value per clip, already HRF-deconvolved at
+# packaging time). The Lahner2024 time-resolved benchmarks, which regress
+# the continuous BOLD time series, use both.
 
 
 def contiguous_block_cv(
