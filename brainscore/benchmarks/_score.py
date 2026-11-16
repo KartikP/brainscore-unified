@@ -23,10 +23,11 @@ trial (``response_state``) and writes:
   summed over the answers; ``counts_by_condition`` when the answers are given by
   condition;
 - ``answer_policy``: what the metric does with an invalid and a missing trial;
-- ``result_validity``: ``'valid'``, or ``'invalid'`` when the share of invalid and
-  missing trials is above the benchmark's ``invalid_limit`` (no limit by default);
-  ``result_validity_reason`` then gives the share and the limit. Such a result is
-  returned, not raised.
+- ``result_validity``: ``'no limit stated'`` when the benchmark passes no
+  ``invalid_limit`` (the default; no check was made). With a limit: ``'invalid'``
+  when the share of invalid and missing trials is above it, and
+  ``result_validity_reason`` then gives the share and the limit; ``'valid'``
+  otherwise. Such a result is returned, not raised.
 
 A metric selects its valid rows with ``answer['response_state'].values == 'valid'``.
 
@@ -92,7 +93,7 @@ def _answer_attrs(answers, answer_policy, invalid_limit) -> dict:
     if by_condition is not None:
         attrs['counts_by_condition'] = by_condition
     attrs['answer_policy'] = answer_policy
-    attrs['result_validity'] = 'valid'
+    attrs['result_validity'] = 'no limit stated' if invalid_limit is None else 'valid'
     if invalid_limit is not None and attrs['n_trials']:
         share = (attrs['n_invalid'] + attrs['n_missing']) / attrs['n_trials']
         if share > invalid_limit:
@@ -119,7 +120,8 @@ def benchmark_score(benchmark, *, raw: float, metric: str, ceiling: Optional[Sco
     ``answers`` (a stored behavior answer, a list of them, or a mapping of condition to
     answer; a behavior score of a benchmark this benchmark runs stands for its answer)
     adds the counts of the trial states, ``answer_policy`` (required with it)
-    and ``result_validity`` against ``invalid_limit`` (a share; none by default).
+    and ``result_validity`` against ``invalid_limit`` (a share; none by default, and
+    then ``result_validity`` is ``'no limit stated'``).
     """
     reserved = sorted(set(attrs) & set(_DERIVED))
     if reserved:

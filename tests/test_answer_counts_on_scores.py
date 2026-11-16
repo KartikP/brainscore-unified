@@ -30,7 +30,21 @@ def test_the_counts_of_the_states_and_the_policy():
     attrs = score.attrs
     assert (attrs['n_trials'], attrs['n_valid'], attrs['n_invalid'], attrs['n_missing']) == (4, 2, 1, 1)
     assert attrs['answer_policy'] == POLICY
-    assert attrs['result_validity'] == 'valid' and 'result_validity_reason' not in attrs
+    assert attrs['result_validity'] == 'no limit stated' and 'result_validity_reason' not in attrs
+
+
+def test_without_a_limit_no_check_is_claimed_even_when_every_answer_is_missing():
+    score = benchmark_score(_Benchmark(), raw=0.0, metric='accuracy', answer_policy=POLICY,
+                            answers=_answer(['missing', 'missing', 'missing']))
+    assert score.attrs['n_missing'] == 3
+    assert score.attrs['result_validity'] == 'no limit stated'
+    assert 'result_validity_reason' not in score.attrs
+
+
+def test_at_or_below_the_limit_the_result_is_valid():
+    score = benchmark_score(_Benchmark(), raw=0.5, metric='accuracy', answer_policy=POLICY,
+                            answers=_answer(['valid', 'invalid', 'missing', 'valid']), invalid_limit=0.5)
+    assert score.attrs['result_validity'] == 'valid' and 'result_validity_reason' not in score.attrs
 
 
 def test_above_the_limit_the_result_is_returned_marked_invalid():

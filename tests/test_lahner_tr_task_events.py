@@ -14,16 +14,11 @@ from brainscore.benchmarks.lahner2024.benchmark_timeresolved import (
 from brainscore.data.lahner2024 import MOTION_COLUMNS
 from brainscore.temporal import double_gamma_hrf, hrf_convolve
 from tests.lahner_synthetic import (
-    CLIPS, N_TR, N_VOXELS, Recorder, install, tr_events, tr_runs, unit_values)
+    CLIPS, N_TR, N_VOXELS, TIME_RESOLVED_CONFIGURATIONS, Recorder, build_time_resolved, install,
+    tr_events, tr_runs, unit_values)
 
 PREFIX = 'Lahner2024-fMRI-naturalistic'
-TR_SUFFIXES = (
-    '-timeresolved', '-timeresolved-visualROI',
-    '-timeresolved-improved', '-timeresolved-improved-visualROI',
-    '-timeresolved-multimodal', '-timeresolved-multimodal-visualROI',
-    '-timeresolved-multimodal-auditoryROI',
-)
-TR_IDENTIFIERS = tuple(PREFIX + suffix for suffix in TR_SUFFIXES)
+TR_IDENTIFIER = PREFIX + '-timeresolved'   # the class is not registered; built directly
 AUDIOVISUAL = ('vision:image', 'vision:video', 'audio')
 
 
@@ -88,21 +83,28 @@ GLM_IDENTIFIERS = tuple(PREFIX + suffix for suffix in (
     '', '-visualROI', '-multimodal', '-multimodal-visualROI', '-multimodal-auditoryROI'))
 
 
-@pytest.mark.parametrize('identifier', TR_IDENTIFIERS + GLM_IDENTIFIERS)
+@pytest.mark.parametrize('identifier', GLM_IDENTIFIERS)
 def test_every_registration_is_version_2(identifier):
     benchmark = load(identifier)
     assert benchmark.identifier == identifier
     assert benchmark.version == 2
 
 
+@pytest.mark.parametrize('name', sorted(TIME_RESOLVED_CONFIGURATIONS))
+def test_every_time_resolved_configuration_is_version_2(name):
+    benchmark = build_time_resolved(name)
+    assert benchmark.identifier == name
+    assert benchmark.version == 2
+
+
 def test_no_older_version_is_offered():
     with pytest.raises(TypeError):
-        load(TR_IDENTIFIERS[0], version=1)
+        Lahner2024BOLDMoments_timeresolved(identifier=TR_IDENTIFIER, version=1)
 
 
 # ── Score labels (3A) and fold rules ──────────────────────────────
 
-# The registry lines with folds small enough for four runs.
+# Configurations of the class with folds small enough for four runs.
 CONFIGURATIONS = {
     'one stream': dict(folds=RunBlocks(2)),
     'improved': dict(folds=ParticipantRunBlocks(1), confounds=MOTION_COLUMNS),

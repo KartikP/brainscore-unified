@@ -340,9 +340,8 @@ def _rows_of(X, run_idx):
 
 
 class TestIdentityLahnerTimeResolved:
-    """``Lahner2024-fMRI-naturalistic-timeresolved{,-visualROI,-improved,
-    -improved-visualROI}``: scikit-learn ridge at penalty 1, voxel batches of 2000,
-    through the two fold rules."""
+    """``Lahner2024BOLDMoments_timeresolved`` (not registered): scikit-learn ridge at
+    penalty 1, voxel batches of 2000, through the two fold rules."""
 
     def test_run_blocks(self):
         from brainscore.benchmarks.lahner2024 import RunBlocks

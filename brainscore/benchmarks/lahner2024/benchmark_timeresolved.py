@@ -6,6 +6,26 @@ predicts the per-TR BOLD time-series of each scanning run rather than a
 per-clip GLM beta. M12-lite — the first benchmark that exercises the
 temporal kit (`hrf_convolve`, `contiguous_block_cv`) end-to-end.
 
+## Not registered
+
+This class is not in the benchmark registry. It does not separate a trained model
+from the same model with random weights: of the seven variants that were
+registered, none scored more than 0.016 above its random-weight floor and two
+variants scored below the floor (measured 2026-11-16 on the hosted data with this
+code, models ``clip-vit-b-32``, ``videomae-base``, ``vjepa1-vitl``,
+``clip-wav2vec2`` and ``vjepa1-wav2vec2`` and their random-weight floors). The
+class and its tests stay: they test the temporal tools (binning, the response
+shape, block folds, the reduction inside each fold, the mask from the test-set
+videos). To use it, build it directly with the parts in the docstring of the
+class, for example::
+
+    Lahner2024BOLDMoments_timeresolved(
+        folds=RunBlocks(40), reliability_threshold=0.3, identifier='...')
+
+The arguments of the seven measured configurations are stated in
+``tests/lahner_synthetic.py`` (``TIME_RESOLVED_CONFIGURATIONS``). A time-resolved
+variant that follows the data set's own analysis is planned.
+
 ## Design: clip-mean onset-impulse HRF model
 
 For each (participant, session, task, run), the brain produces a continuous BOLD
@@ -28,14 +48,13 @@ separate benchmark.
 
 - They regress the continuous scanner time series of each run on the model's
   features placed at the video onsets and convolved with a response shape (the
-  double-gamma HRF). The registered variants report the raw correlation; none
-  passes a noise ceiling.
+  double-gamma HRF). They report the raw correlation unless a ceiling is
+  passed.
 - The folds hold out whole runs, not videos. Every participant saw every
   video (each training-set video 3 times, each test-set video 10 times: 4020
-  events a participant). Under the participant-out rule (every variant
-  without ``-improved``) every scored video therefore also occurs in the
-  training runs. Under the within-participant rule (the ``-improved``
-  variants) a scored video also occurs in the training runs unless all its
+  events a participant). Under the participant-out rule (``RunBlocks``)
+  every scored video therefore also occurs in the training runs. Under the
+  within-participant rule (``ParticipantRunBlocks``) a scored video also occurs in the training runs unless all its
   showings fall in the held-out block of runs.
 - The studies of this data set, the data set paper included, analyze responses
   locked to each video, fitted on the training-set videos and tested on the
@@ -46,7 +65,7 @@ separate benchmark.
   stimulus set holds 1026 of them. The 67 training-set videos and 9 test-set
   videos that it lacks get no features: their events add nothing to the design,
   while the scanner responses to them stay in the scored time series.
-- The voxel mask of the ``-visualROI`` variants is reliability of at least 0.3
+- The voxel mask from ``reliability_threshold=0.3`` is reliability of at least 0.3
   on the 93 test-set videos of the GLM assembly (7209 voxels on the hosted
   data). The GLM class selects on its training-set videos (3958 voxels), so the
   two classes' visual-ROI scores cover different voxels.
@@ -321,16 +340,16 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
     videos, 93 of them in the test set): a ``test`` run is in no fold, and the
     videos shown only in it are not presented to the subject. The run filter comes
     before the folds, the reduction and the design. With 40 runs a participant, the
-    default rule holds out blocks of 40 (``RunBlocks(40)``, set in the registry
-    line), which is still one participant per block.
+    fold rule to pass is blocks of 40 (``RunBlocks(40)``), which is still one
+    participant per block.
 
     Args:
         channels: what the benchmark sends, as for ``Lahner2024BOLDMoments``.
         folds: the fold rule, ``RunBlocks(52)`` (default) or ``ParticipantRunBlocks(10)``.
         confounds: columns of the motion sidecar regressed out of each run's
             BOLD before the z-score (``MOTION_COLUMNS``); none by default.
-        ceiling: a scalar; when given, the raw median is divided by it. No
-            registered variant passes one: the values are raw correlations.
+        ceiling: a scalar; when given, the raw median is divided by it. Without
+            one the value is the raw correlation.
         reliability_threshold: score only the voxels whose GLM-beta reliability
             on the 93 test-set videos (``reliability_on_test_set``) is at least
             this value; both assemblies share the fsaverage5 voxels. This differs
@@ -339,7 +358,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
             state the fold rule for 40 runs a participant in that case.
         voxel_mask_fn: score only the voxels of this mask (for example
             ``build_auditory_mask``). Give at most one of the two.
-        identifier: the benchmark identifier (required; the registry key of the variant).
+        identifier: the benchmark identifier (required; the class is not registered).
     """
 
     trial_memory = 'none'   # each clip is an independent trial

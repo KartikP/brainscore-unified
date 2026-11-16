@@ -1,4 +1,5 @@
-"""Each Lahner variant is one registry line that names its full identifier."""
+"""Each registered Lahner variant is one registry line that names its full identifier; the
+time-resolved class has no registry line."""
 import functools
 
 import pytest
@@ -10,8 +11,11 @@ from brainscore.benchmarks.lahner2024 import Lahner2024BOLDMoments, Lahner2024BO
 LAHNER = sorted(key for key in brainscore.benchmark_registry if key.startswith('Lahner2024-'))
 
 
-def test_the_lahner_variants_are_the_twelve_registered_before():
-    assert len(LAHNER) == 12 and 'Lahner2024-fMRI-naturalistic-timeresolved-multimodal-auditoryROI' in LAHNER
+def test_only_the_five_glm_variants_are_registered():
+    # The time-resolved class is not registered (see `lahner2024/__init__.py`).
+    assert not [key for key in brainscore.benchmark_registry if 'timeresolved' in key]
+    assert LAHNER == sorted('Lahner2024-fMRI-naturalistic' + suffix for suffix in (
+        '', '-visualROI', '-multimodal', '-multimodal-visualROI', '-multimodal-auditoryROI'))
 
 
 @pytest.mark.parametrize('key', LAHNER)

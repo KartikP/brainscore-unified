@@ -203,27 +203,6 @@
    ]
   },
   {
-   "subject": "clip-vit-b-32",
-   "benchmark": "Lahner2024-fMRI-naturalistic-timeresolved-visualROI",
-   "value": 0.08772171288728714,
-   "kind": "reference",
-   "environment": "reference-2026-11-15",
-   "tolerance": 0.0,
-   "runs": [
-    "clean13",
-    "clean15"
-   ]
-  },
-  {
-   "subject": "vjepa1-wav2vec2",
-   "benchmark": "Lahner2024-fMRI-naturalistic-timeresolved-multimodal-visualROI",
-   "value": 0.08733426779508591,
-   "kind": "reference",
-   "environment": "reference-2026-11-15",
-   "tolerance": 0.0,
-   "runs": ["clean18", "clean19"]
-  },
-  {
    "subject": "vjepa1-wav2vec2",
    "benchmark": "Lahner2024-fMRI-naturalistic-multimodal-auditoryROI",
    "value": 0.06489513679876427,
@@ -231,39 +210,6 @@
    "environment": "reference-2026-11-15",
    "tolerance": 0.0,
    "runs": ["clean18", "clean19"]
-  },
-  {
-   "subject": "videomae-base",
-   "benchmark": "Lahner2024-fMRI-naturalistic-timeresolved",
-   "value": 0.031850092113018036,
-   "kind": "reference",
-   "environment": "reference-2026-11-15",
-   "tolerance": 0.0,
-   "runs": [
-    "clean13",
-    "clean15"
-   ]
-  },
-  {
-   "subject": "vjepa1-vitl",
-   "benchmark": "Lahner2024-fMRI-naturalistic-timeresolved-improved-visualROI",
-   "value": 0.13225853443145752,
-   "kind": "reference",
-   "environment": "reference-2026-11-15",
-   "tolerance": 0.0,
-   "runs": ["clean18", "clean19"]
-  },
-  {
-   "subject": "clip-wav2vec2",
-   "benchmark": "Lahner2024-fMRI-naturalistic-timeresolved-multimodal-auditoryROI",
-   "value": 0.022395163774490356,
-   "kind": "reference",
-   "environment": "reference-2026-11-15",
-   "tolerance": 0.0,
-   "runs": [
-    "clean13",
-    "clean15"
-   ]
   },
   {
    "subject": "clip-vit-b-32",

@@ -835,7 +835,7 @@ def test_one_unparsed_choice_reply_of_six_counts_wrong_and_is_counted(prepared, 
     items = json.loads((tmp_path / 'run' / 'item-scores.json').read_text())
     assert sorted(item['accuracy'] for item in items) == [0.5, 1.0, 1.0]
     assert sum(item['n_invalid'] for item in items) == 1
-    assert value.attrs['result_validity'] == 'valid'
+    assert value.attrs['result_validity'] == 'no limit stated'
 
 
 def test_a_positive_log_probability_is_scored_and_counted_as_invalid(prepared, tmp_path):

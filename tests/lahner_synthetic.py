@@ -213,3 +213,42 @@ class Recorder(Subject):
                 assembly = NeuroidAssembly(block[:, 0, :], dims=['presentation', 'neuroid'], coords={
                     'stimulus_id': ('presentation', ids), **neuroid})
             session.respond(StreamEvent(channel, assembly, t_ms=None))
+
+
+# ── The seven configurations of the time-resolved class ────────────
+
+# The class is not registered. These are the arguments of its seven former registry
+# lines (commit 8202a62), with their identifiers; the measured table of 2026-11-16
+# names these seven configurations. Name -> constructor arguments.
+_TR = 'Lahner2024-fMRI-naturalistic-timeresolved'
+_AUDIOVISUAL = ('vision:image', 'vision:video', 'audio')
+
+
+def _time_resolved_configurations():
+    from brainscore.benchmarks.lahner2024 import (
+        ParticipantRunBlocks, RunBlocks, build_auditory_mask)
+    from brainscore.data.lahner2024 import MOTION_COLUMNS as HOSTED_MOTION_COLUMNS
+    return {
+        _TR: {},
+        _TR + '-visualROI': dict(folds=RunBlocks(40), reliability_threshold=0.3),
+        _TR + '-improved': dict(folds=ParticipantRunBlocks(10), confounds=HOSTED_MOTION_COLUMNS),
+        _TR + '-improved-visualROI': dict(folds=ParticipantRunBlocks(10),
+                                          confounds=HOSTED_MOTION_COLUMNS,
+                                          reliability_threshold=0.3),
+        _TR + '-multimodal': dict(channels=_AUDIOVISUAL),
+        _TR + '-multimodal-visualROI': dict(channels=_AUDIOVISUAL, folds=RunBlocks(40),
+                                            reliability_threshold=0.3),
+        _TR + '-multimodal-auditoryROI': dict(channels=_AUDIOVISUAL,
+                                              voxel_mask_fn=build_auditory_mask),
+    }
+
+
+TIME_RESOLVED_CONFIGURATIONS = _time_resolved_configurations()
+TIME_RESOLVED_SINGLE_TOWER = list(TIME_RESOLVED_CONFIGURATIONS)[:4]
+TIME_RESOLVED_TWO_TOWERS = list(TIME_RESOLVED_CONFIGURATIONS)[4:]
+
+
+def build_time_resolved(name):
+    """The time-resolved class built with the arguments of one former registry line."""
+    from brainscore.benchmarks.lahner2024 import Lahner2024BOLDMoments_timeresolved
+    return Lahner2024BOLDMoments_timeresolved(**TIME_RESOLVED_CONFIGURATIONS[name], identifier=name)

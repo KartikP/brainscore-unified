@@ -1,41 +1,34 @@
 from functools import partial
 
 from brainscore import benchmark_registry
-from brainscore.data.lahner2024 import MOTION_COLUMNS
 from .auditory_roi import build_auditory_mask
 from .benchmark import Lahner2024BOLDMoments, VISUAL_ROI_CEILING
-from .benchmark_timeresolved import (
+# The time-resolved class is not registered (see the end of this file); it stays importable.
+from .benchmark_timeresolved import (  # noqa: F401
     Lahner2024BOLDMoments_timeresolved,
     ParticipantRunBlocks,
     RunBlocks,
 )
 
 # One registry line per variant: the class, the full identifier (the registry key) and the parts
-# that make the variant.
-# Two classes, one per neural target: GLM betas (one estimate per clip) and TR
-# time series. The parts:
+# that make the variant. The registered class fits GLM betas (one estimate per clip).
+# The parts:
 # - `channels`: the visual stream only (records neural:IT), or the visual stream
 #   and the sound track (also records neural:A1);
 # - the voxels: all, `reliability_threshold=0.3` (`-visualROI`: split-half
 #   reliability at least 0.3, chosen by reliability anywhere on the cortex, not by
-#   an atlas). The GLM class follows the protocol of the data set for every variant:
-#   one fit on the 933 training-set videos of the assembly, the correlation on the 93
-#   test-set videos (id above 1000), and the mask from the reliability on the
-#   training-set videos. The time-resolved class measures its mask on the 93 test-set
-#   videos of the GLM assembly, scores only the `train` task runs (their videos are
-#   the training set) and holds out blocks of 40 runs per participant, which keeps
-#   one participant per block; or `voxel_mask_fn=build_auditory_mask`
-#   (`-auditoryROI`: early auditory cortex, lateral STG and the planum, Destrieux
-#   atlas on fsaverage5);
-# - for TR time series, the fold rule and the confounds regressed out of the BOLD.
-# Only the two GLM-beta visual-ROI variants divide by a measured ceiling
-# (`VISUAL_ROI_CEILING`): per voxel, sqrt of the split-half reliability on the videos
-# they score (the 93 test-set videos, each shown 10 times to a participant); the
-# other variants return the raw correlation. Every line is version 2 (see the two
-# module docstrings for what changed from version 1).
+#   an atlas), or `voxel_mask_fn=build_auditory_mask` (`-auditoryROI`: early
+#   auditory cortex, lateral STG and the planum, Destrieux atlas on fsaverage5).
+# The class follows the protocol of the data set for every variant: one fit on the
+# 933 training-set videos of the assembly, the correlation on the 93 test-set videos
+# (id above 1000), and the mask from the reliability on the training-set videos.
+# Only the two visual-ROI variants divide by a measured ceiling (`VISUAL_ROI_CEILING`):
+# per voxel, sqrt of the split-half reliability on the videos they score (the 93
+# test-set videos, each shown 10 times to a participant); the other variants return
+# the raw correlation. Every line is version 2 (see the module docstring of
+# `benchmark.py` for what changed from version 1).
 _AUDIOVISUAL = ('vision:image', 'vision:video', 'audio')
 
-# GLM betas: one beta per voxel per stimulus per repetition.
 benchmark_registry['Lahner2024-fMRI-naturalistic'] = partial(
     Lahner2024BOLDMoments, identifier='Lahner2024-fMRI-naturalistic')
 benchmark_registry['Lahner2024-fMRI-naturalistic-visualROI'] = partial(
@@ -50,41 +43,13 @@ benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal-auditoryROI'] = part
     Lahner2024BOLDMoments, channels=_AUDIOVISUAL, voxel_mask_fn=build_auditory_mask,
     identifier='Lahner2024-fMRI-naturalistic-multimodal-auditoryROI')
 
-# TR time series: a regression of the continuous scanner time series of each run on
-# the model's features placed at the video onsets and convolved with the HRF;
-# per-voxel ridge, whole runs held out (blocks of 52 runs by default, the runs of one
-# participant; blocks of 40 for the `-visualROI` variants, which score the 40 `train`
-# task runs of a participant); events selected by (subject, session, task, run). Raw
-# correlation, no noise ceiling. Every participant saw every video, so under these
-# participant-out folds each scored video also occurs in training runs. The studies of
-# this data set analyze responses locked to each video (fit on the training set, test
-# on the test set), so these values are not comparable with published values. The 67
-# training-set and 9 test-set videos of the events that the stimulus set lacks get no
-# features. The `-visualROI` mask comes from the 93 test-set videos (7209 voxels), not
-# from the training-set videos as in the GLM class (3958 voxels).
-# `-improved`: per-run motion regression (9 fmriprep confounds, residuals replace the
-# BOLD before the z-score) and blocks of 10 runs held out inside each participant,
-# per-voxel r averaged across participants. No stored result measures the effect
-# of these changes on the score.
-benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved'] = partial(
-    Lahner2024BOLDMoments_timeresolved, identifier='Lahner2024-fMRI-naturalistic-timeresolved')
-benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-visualROI'] = partial(
-    Lahner2024BOLDMoments_timeresolved, folds=RunBlocks(40), reliability_threshold=0.3,
-    identifier='Lahner2024-fMRI-naturalistic-timeresolved-visualROI')
-benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-improved'] = partial(
-    Lahner2024BOLDMoments_timeresolved, folds=ParticipantRunBlocks(10),
-    confounds=MOTION_COLUMNS, identifier='Lahner2024-fMRI-naturalistic-timeresolved-improved')
-benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-improved-visualROI'] = partial(
-    Lahner2024BOLDMoments_timeresolved, folds=ParticipantRunBlocks(10),
-    confounds=MOTION_COLUMNS, reliability_threshold=0.3,
-    identifier='Lahner2024-fMRI-naturalistic-timeresolved-improved-visualROI')
-benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-multimodal'] = partial(
-    Lahner2024BOLDMoments_timeresolved, channels=_AUDIOVISUAL,
-    identifier='Lahner2024-fMRI-naturalistic-timeresolved-multimodal')
-benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-multimodal-visualROI'] = partial(
-    Lahner2024BOLDMoments_timeresolved, channels=_AUDIOVISUAL, folds=RunBlocks(40),
-    reliability_threshold=0.3,
-    identifier='Lahner2024-fMRI-naturalistic-timeresolved-multimodal-visualROI')
-benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-multimodal-auditoryROI'] = partial(
-    Lahner2024BOLDMoments_timeresolved, channels=_AUDIOVISUAL, voxel_mask_fn=build_auditory_mask,
-    identifier='Lahner2024-fMRI-naturalistic-timeresolved-multimodal-auditoryROI')
+# The TR time-series class (`Lahner2024BOLDMoments_timeresolved`) is not registered.
+# It does not separate a trained model from the same model with random weights: of
+# the seven variants that were registered, none scored more than 0.016 above its
+# random-weight floor and two variants scored below the floor (measured 2026-11-16 on
+# the hosted data with this code, models clip-vit-b-32, videomae-base, vjepa1-vitl,
+# clip-wav2vec2 and vjepa1-wav2vec2 and their random-weight floors).
+# To use it, build it directly, for example
+# `Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(40), reliability_threshold=0.3,
+# identifier='...')`; its docstring lists the parts. A time-resolved variant that
+# follows the data set's own analysis is planned.
