@@ -481,15 +481,17 @@ class BehavioralReadout:
     _ANSWER_FORMATS = (('Choice', 'behavior:choice'), ('Scale', 'behavior:rating'),
                        ('Text', 'behavior:text'))
 
-    def _choose_path(self, task, formats=()) -> Tuple[str, Optional[str]]:
+    def _choose_path(self, task, formats=(), recording: bool = False) -> Tuple[str, Optional[str]]:
         """The part that answers ``task`` on the requested ``formats`` and the probability source.
 
         The task decides what the subject does; the requested outputs decide what
         is measured (Contract Rule 4.5). Under a choice task the owner of the
-        choice gives its answer unless the session requests only probabilities or a
-        reaction time; the owner of the probabilities runs when, and only when, the
-        session requests probabilities or a reaction time. A session that requests
-        only those runs only their owner. A format that the session does not request needs no owner:
+        choice gives its answer, except that a session that requests only
+        probabilities or a reaction time, records no region (``recording``), has
+        trial memory ``'none'`` and a subject that keeps no trial history runs only
+        their owner: nothing reads that answer. The
+        owner of the probabilities runs when, and only when, the session requests
+        probabilities or a reaction time. A format that the session does not request needs no owner:
         a reaction-time link names the rt format; it is no setting of the choice.
 
         A session that requests ``behavior:log_probabilities`` is answered by the
@@ -515,13 +517,13 @@ class BehavioralReadout:
         this choice; the refusal is an error of the run. A session makes it
         once, in its plan (``_model/plan.py``).
         """
-        return self._choose(task, formats)
+        return self._choose(task, formats, recording)
 
     def _choice_owner_serves(self, task) -> None:
         """Refuse a task whose choice format has no owner that can serve it (part of one choice)."""
         self._choose(task, ['behavior:choice'])
 
-    def _choose(self, task, formats):
+    def _choose(self, task, formats, recording=False):
         from brainscore_core.compatibility import ExecutionNotFeasibleError
         from brainscore_core.responses import Choice, Scale
         owner, response = self.owner, task.response
@@ -605,9 +607,11 @@ class BehavioralReadout:
                     f"Subject '{owner.identifier}' cannot give implied probabilities: "
                     'it needs likelihood= or a readout (behavioral_readout_layer=, '
                     'fitting_stimuli).', task_type=task.task_type)
-        if wanted and not requested - self._PROBABILITY_SIDE:
-            # Only the probability side is requested: its owner gives the pass alone; no part
-            # writes an answer that no output requests (ADR-0063 decision 1).
+        if (wanted and not requested - self._PROBABILITY_SIDE and not recording
+                and task.trial_memory == 'none' and self.owner._memory != 'trial_history'):
+            # Only the probability side is requested, no region is recorded and no later trial
+            # reads this one: the answer of the choice owner would be read by nothing, so only
+            # the probability owner runs (ADR-0063 decision 1).
             return source, source
         if {path, source} != {'likelihood', 'readout'}:
             return path, source
@@ -633,7 +637,7 @@ class BehavioralReadout:
         response, path, probability_source = task.response, self.response_path, self.probability_source
         planned = self._planned(task, channels) if response is not None else None
         if response is not None:
-            path, probability_source = planned or self._choose_path(task, channels)
+            path, probability_source = planned or self._choose_path(task, channels, bool(regions))
         layers = {region: list(region_selector(owner, region).layer_paths) for region in regions}
         if response is None:
             with parts.serving(channels):

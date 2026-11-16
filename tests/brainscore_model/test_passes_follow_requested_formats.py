@@ -60,3 +60,30 @@ def test_a_requested_choice_still_runs_the_answer_part():
                                TaskContext(response=Choice(['cat', 'dog']), fitting_stimuli=FITTING))
     subject(calls, {'behavior': 'generation'}).participate(session)
     assert calls.count('answer') == len(STIMULI)
+
+
+def test_with_trial_history_the_reply_still_runs_and_later_trials_read_it():
+    """A later trial reads the earlier reply: the probabilities equal those of a session that
+    also requests the choice, and the reply runs for every trial."""
+    def build(calls):
+        def reply(prompt):
+            calls.append('reply')
+            return 'dog'
+
+        def score(prompt, candidates):
+            calls.append('likelihood')
+            earlier = [answered for _, answered in prompt.history]
+            return {'cat': -1.0, 'dog': -1.0 - 0.5 * earlier.count('cat') + 0.5 * earlier.count('dog')}
+        return BrainScoreModel('history', extractor={'text': features}, reply=reply, likelihood=score,
+                               memory='trial_history', capability_config={'behavior-sessions': {
+                                   'behavior:probabilities': ('likelihood', 'softmax')}})
+    task = TaskContext(response=Choice(['cat', 'dog']), trial_memory='history')
+    rows = {}
+    for outputs in (['behavior:probabilities'], ['behavior:choice', 'behavior:probabilities']):
+        calls = []
+        session = stimulus_session(STIMULI, outputs, task)
+        build(calls).participate(session)
+        rows[len(outputs)] = session.collect('behavior:probabilities').values.tolist()
+        assert calls.count('reply') == len(STIMULI)
+    assert rows[1] == rows[2]
+    assert rows[1][0] != rows[1][1]          # the second trial read the first reply

@@ -185,7 +185,7 @@ def _choose_answering_part(model, session, task, answers, regions, delivery, pas
     """
     readout = model._behavioral
     readout.validate_task(task)
-    pick = readout._choose_path(task, answers)
+    pick = readout._choose_path(task, answers, bool(regions))
     path = pick[0]
     if (task.response is not None and path != 'readout' and model._memory == 'trial_history'
             and model._reply is None and model._likelihood is None):

@@ -309,10 +309,13 @@ REPLY_ROWS = [[110.0, 111.0, 112.0], [111.0, 112.0, 113.0], [112.0, 113.0, 114.0
 @pytest.mark.parametrize('outputs, calls, rows', [
     (['behavior:choice', 'behavior:probabilities', 'neural:A'], ['likelihood', 'reply'] * 3, LIKELIHOOD_ROWS),
     (['behavior:choice', 'neural:A'], ['reply'] * 3, REPLY_ROWS),
+    # Probabilities with a region: the recording still comes from the pass of the task's answer.
+    (['behavior:probabilities', 'neural:A'], ['likelihood', 'reply'] * 3, LIKELIHOOD_ROWS),
     (['neural:A'], ['reply'] * 3, REPLY_ROWS),
-    # Probabilities alone: only their owner runs; no part writes an answer that no output requests.
+    # Probabilities alone (no region, no trial history): only their owner runs; nothing reads a reply.
     (['behavior:probabilities'], ['likelihood'] * 3, None),
-], ids=['choice, probabilities and neural', 'choice and neural', 'neural only', 'probabilities only'])
+], ids=['choice, probabilities and neural', 'choice and neural', 'probabilities and neural', 'neural only',
+        'probabilities only'])
 def test_the_requested_formats_decide_the_passes_and_the_recording(parts, outputs, calls, rows):
     """The likelihood (the owner of the probabilities) runs only when the session requests
     them, and it scores the prompt first, so a recording comes from its pass. Otherwise
