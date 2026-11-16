@@ -173,8 +173,8 @@ def test_records_name_only_registered_benchmarks_and_every_known_reader():
     check, an extra one refuses a benchmark that does not need the asset.
 
     For every asset: ``used_by`` names only registered benchmarks, with no repeats.
-    For the assets below, whose readers are known: ``used_by`` names exactly the
-    registered benchmarks that read the asset. A new asset needs no row here."""
+    For the assets below, whose readers are known: the asset is still declared and
+    ``used_by`` still lists each known reader. A new asset or a new reader needs no line here."""
     from brainscore import benchmark_registry
     registered = set(benchmark_registry)
     for name, asset in local.REGISTRY.items():
@@ -200,7 +200,8 @@ def test_records_name_only_registered_benchmarks_and_every_known_reader():
     assert all(identifiers for name, identifiers in known.items() if name not in none)
     for name, readers in known.items():
         assert name in local.REGISTRY, f'the local asset {name!r} is no longer declared'
-        assert set(local.REGISTRY[name].used_by) == readers, name
+        missing = sorted(readers - set(local.REGISTRY[name].used_by))
+        assert not missing, f'{name}: used_by no longer lists its known readers {missing}'
 
 
 def test_the_asset_list_needs_no_ml_import():
