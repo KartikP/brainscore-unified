@@ -23,7 +23,7 @@ import numpy as np
 
 from . import answers, parts
 from .dispatch import detect_modalities, extract_for_modality, pick_modality, record
-from .recording import gather_region, per_stimulus, region_modality, region_selector
+from .recording import gather_region, openable_paths, per_stimulus, region_modality, region_selector
 
 
 # A likelihood part gives each option's summed log probability: the continuation
@@ -627,7 +627,8 @@ class BehavioralReadout:
         labels = labels_of(response)
         # Every trial's prompt is built first, so a bad layout fails before any compute
         # (for a session with its table, the plan built them before the readout fit).
-        prompts, row_labels, axis = trial_prompts(task, stimuli)
+        shown = openable_paths(stimuli)   # the parts see paths that open; the stored answer keeps the table
+        prompts, row_labels, axis = trial_prompts(task, shown)
         neural, outputs, extras = {}, {}, []
         rt_source = None   # (float64 probabilities, row validity, record) for a reaction time
 
@@ -708,7 +709,7 @@ class BehavioralReadout:
                         stimulus_row=row, instruction=task.instruction,
                         label_set=list(prompt.response.labels)))
                     return reply, scores, extra
-            replies, neural = per_stimulus(owner, stimuli, layers, call, prompts)
+            replies, neural = per_stimulus(owner, stimuli, layers, call, prompts, shown)
             scores = None
             if path == 'generation':
                 replies, scores, extras = (list(column) for column in zip(*replies)) if replies else ([], [], [])
@@ -823,7 +824,7 @@ class BehavioralReadout:
                 parts.note('answer', self.owner._answer)
                 return answers.reply_and_meta(self.owner._answer(
                     stimulus_row=row, instruction=task.instruction, label_set=label_set))[0]
-            replies, neural = per_stimulus(self.owner, stimuli, layers, call)
+            replies, neural = per_stimulus(self.owner, stimuli, layers, call, shown=openable_paths(stimuli))
             stamp = self._stamp('answer', 'prompt')
             return (answers.legacy_one_hot(replies, label_set, stimuli),
                     {region: assembly.assign_attrs(recording=stamp) for region, assembly in neural.items()})

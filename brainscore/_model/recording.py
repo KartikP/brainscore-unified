@@ -146,7 +146,38 @@ def open_recordings(owner, stimuli, layers, groups=None):
     return recordings
 
 
-def per_stimulus(owner, stimuli, layers, call, prompts=None):
+def openable_paths(stimuli):
+    """``stimuli`` as the parts of a model see it: each picture, clip or sound cell is a path that opens.
+
+    An old stimulus set keeps a bare file name in its column and the file's place in its
+    path map (``stimulus_paths``, read by ``get_stimulus``), as the extractors read it. A cell
+    that already names an existing file stays. The table that is stored with the answer is
+    not this one: it keeps the stimulus set's own values. The same table when nothing changes.
+    """
+    import os
+    from brainscore_core.io_catalog import stimulus_columns
+    from brainscore_core.responses import PART_CHANNELS
+    if getattr(stimuli, 'stimulus_paths', None) is None or 'stimulus_id' not in stimuli.columns:
+        return stimuli
+    path_channels = {PART_CHANNELS[kind] for kind in ('image', 'video', 'audio')}
+    columns = [column for column, channel in stimulus_columns().items()
+               if channel in path_channels and column in stimuli.columns]
+    shown = None
+    for column in columns:
+        values = list(stimuli[column].values)
+        for row, (stimulus_id, cell) in enumerate(zip(stimuli['stimulus_id'].values, values)):
+            if isinstance(cell, str) and not os.path.exists(cell):
+                try:
+                    values[row] = str(stimuli.get_stimulus(stimulus_id))
+                except KeyError:
+                    continue
+        if values != list(stimuli[column].values):
+            shown = stimuli.copy() if shown is None else shown
+            shown[column] = values
+    return stimuli if shown is None else shown
+
+
+def per_stimulus(owner, stimuli, layers, call, prompts=None, shown=None):
     """Call ``call(row, prompt)`` once per stimulus, recording ``layers`` on each first pass.
 
     Each trial's recording is compared with the first trial's as soon as it is
@@ -158,8 +189,9 @@ def per_stimulus(owner, stimuli, layers, call, prompts=None):
     replies, trials = [], []
     with ExitStack() as stack:
         live = {regions: stack.enter_context(r) for regions, r in recordings.items()}
+        shown_rows = [row for _, row in (stimuli if shown is None else shown).iterrows()]
         for index, (_, row) in enumerate(stimuli.iterrows()):
-            replies.append(call(row, None if prompts is None else prompts[index]))
+            replies.append(call(shown_rows[index], None if prompts is None else prompts[index]))
             trials.append({regions: recording.take(row) for regions, recording in live.items()})
             for regions, taken in trials[-1].items():
                 for layer, trial in taken.items():
