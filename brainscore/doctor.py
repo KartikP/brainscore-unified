@@ -153,10 +153,12 @@ def report():
             lines.append(f'  XX {package:<14s} {error}')
             problems += 1
 
-    from brainscore_core.environment_check import environment_fingerprint
+    from brainscore_core.environment_check import _math_threads, environment_fingerprint
     lines.append('')
     # The value every score's software carries: scores compare bit for bit only when it is equal.
     lines.append(f'environment fingerprint  {environment_fingerprint()}')
+    # Also in every score's software: the threads change the last digits, so they must be equal too.
+    lines.append(f'math threads             {_math_threads()}')
 
     lock = _lock_file()
     lines.append('')
