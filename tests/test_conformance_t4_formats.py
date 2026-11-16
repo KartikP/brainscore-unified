@@ -57,7 +57,7 @@ RECORDS = {
 SCORES = {
     'behavior:choice': dict.fromkeys(RECORDS['behavior:choice'], 0.75),
     'behavior:probabilities': {'likelihood': 0.7749999761581421, 'readout': 0.5012450218200684,
-                               'cells': 0.7749999761581421, 'assembly': 0.7749999761581421},
+                               'cells': 0.775, 'assembly': 0.7749999761581421},
     'behavior:rating': {'reply': 0.967821581748397, 'cells': 0.967821581748397,
                         'assembly': 0.967821581748397},
     'behavior:rt': dict.fromkeys(RECORDS['behavior:rt'], 0.9967631883679134),
@@ -116,6 +116,8 @@ def test_each_producer_answers_the_same_benchmark(fmt, producer):
     assert (score.attrs['n_invalid'], score.attrs['n_missing']) == (0, 0)
     answer = sessions[0].collect(fmt)
     dims, dtype = SCHEMA[fmt]
+    if (fmt, producer) == ('behavior:probabilities', 'cells'):
+        dtype = np.float64   # its cells are float64 arrays; the format keeps the digits given
     assert tuple(answer.dims) == dims and answer.values.dtype == np.dtype(dtype)
     assert list(answer['stimulus_id'].values) == pseudo.IDS
     if 'choice' in dims:
