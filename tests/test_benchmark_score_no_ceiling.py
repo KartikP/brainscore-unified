@@ -21,7 +21,7 @@ from tests.lahner_synthetic import Recorder, install
 pytestmark = pytest.mark.unit
 
 RAW = 0.1 + 0.2            # not exactly representable: a division by 1.0 must keep it
-MEASURED = 0.7305          # the Lahner visual-region ceiling
+MEASURED = 0.7305          # a measured ceiling, any value below 1
 PER_TARGET = 0.5123        # a median of per-target r / c
 
 
