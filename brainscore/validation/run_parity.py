@@ -14,17 +14,26 @@ so that running it is one command rather than a remembered incantation.
 
     RESULTCACHING_DISABLE=1 python -m brainscore.validation.run_parity --resnet18 <path> --gpt2 <dir>
 
-Staging the two reference checkpoints, on a machine with a GPU::
+Staging the two reference checkpoints::
 
     python - <<'PY'
-    import torch
+    import os, shutil, torch
+    from huggingface_hub import snapshot_download
     from torchvision.models import resnet18, ResNet18_Weights
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    os.makedirs('parity/gpt2')
     torch.save(resnet18(weights=ResNet18_Weights.IMAGENET1K_V1).state_dict(),
                'parity/resnet18.pt')
-    AutoModelForCausalLM.from_pretrained('gpt2').save_pretrained('parity/gpt2')
-    AutoTokenizer.from_pretrained('gpt2').save_pretrained('parity/gpt2')
+    names = ['config.json', 'merges.txt', 'model.safetensors', 'tokenizer.json',
+             'tokenizer_config.json', 'vocab.json']
+    snapshot = snapshot_download('gpt2', allow_patterns=names)
+    for name in names:
+        shutil.copy(os.path.join(snapshot, name), 'parity/gpt2')
     PY
+
+The two FP32 policies accept only these six GPT-2 files as the Hub serves them
+(``parity_runtime.CPU_GPT2_SHA256``). A directory written by ``save_pretrained`` has
+other bytes and is refused. The benchmark data must be on the machine before the
+run (load each benchmark once): the tool refuses a download.
 
 Activation snapshots use temporary disk space and bounded comparison chunks.
 The scoring metric still needs RAM. Peak memory and runtime of this revision
