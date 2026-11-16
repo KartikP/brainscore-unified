@@ -91,6 +91,31 @@ class ChanceBaseline(Subject):
                                                source_format='behavior:probabilities')})
         session.respond(StreamEvent('behavior:choice', answer, None, {}))
 
+    def _label_set(self) -> list:
+        """The labels of the task: its ``label_set``, else the labels of its fitting stimuli.
+
+        An old probabilities benchmark gives fitting stimuli with their labels and no label
+        set. The label column and the order are those of the readout of ``BrainScoreModel``
+        (``BehavioralReadout.extract_labels``; first occurrence), so a readout and this model
+        give probabilities columns in the same order for one benchmark. Other tasks (odd one
+        out, reading times) have no chance answer here: refused, not invented.
+        """
+        from brainscore_core.compatibility import ExecutionNotFeasibleError
+        task = self._task
+        task_type = getattr(task, 'task_type', None)
+        if task is not None and task.label_set:
+            return list(task.label_set)
+        fitting = getattr(task, 'fitting_stimuli', None)
+        if task_type == 'probabilities' and getattr(fitting, 'columns', None) is not None:
+            from brainscore._model.behavior import ProbabilitiesClassifier
+            from brainscore._model.behavioral import BehavioralReadout
+            labels = BehavioralReadout.extract_labels(fitting)
+            return list(ProbabilitiesClassifier._labels_to_indices(labels)[1].values())
+        raise ExecutionNotFeasibleError(
+            f"chance-baseline answers a probabilities task with a label_set or with fitting "
+            f"stimuli that carry the labels; it has no chance answer for task_type={task_type!r}.",
+            channels={'behavior'}, task_type=task_type)
+
     def start_task(self, task_or_type, fitting_stimuli=None, **kwargs) -> None:
         if isinstance(task_or_type, TaskContext):
             self._task = task_or_type
@@ -109,12 +134,7 @@ class ChanceBaseline(Subject):
         if isinstance(input_event, (StateChange, Mapping)):
             raise NotImplementedError
         stimuli = input_event
-        if self._task is None or not self._task.label_set:
-            raise ValueError(
-                "ChanceBaseline needs a task with label_set. Give the session "
-                "TaskContext(task_type='probabilities', label_set=[...]).")
-
-        label_set = list(self._task.label_set)
+        label_set = self._label_set()
         n_stimuli = len(stimuli)
         n_labels = len(label_set)
         # Uniform distribution over labels
