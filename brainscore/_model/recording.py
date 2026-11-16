@@ -146,34 +146,50 @@ def open_recordings(owner, stimuli, layers, groups=None):
     return recordings
 
 
-def openable_paths(stimuli):
-    """``stimuli`` as the parts of a model see it: each picture, clip or sound cell is a path that opens.
+def _needs_path(cell) -> bool:
+    """A string that is a local file name which does not open as it is.
 
-    An old stimulus set keeps a bare file name in its column and the file's place in its
-    path map (``stimulus_paths``, read by ``get_stimulus``), as the extractors read it. A cell
-    that already names an existing file stays. The table that is stored with the answer is
-    not this one: it keeps the stimulus set's own values. The same table when nothing changes.
+    A string with a URI scheme (``http:``, ``https:``, ``data:``, ``file:``) is not a local
+    name and is never replaced.
     """
     import os
+    import re
+    return (isinstance(cell, str) and not re.match(r'^[A-Za-z][A-Za-z0-9+.\-]+:', cell)
+            and not os.path.exists(cell))
+
+
+def openable_paths(stimuli, task=None):
+    """``stimuli`` as the parts of a model see them: a picture, clip or sound cell is a path that opens.
+
+    An old stimulus set keeps a bare file name in its column and the file's place in its
+    path map (``stimulus_paths``, read by ``get_stimulus``), as the extractors read it. Only
+    a cell used as media is changed: a column the task presents as text (``present`` entry
+    ``'text:<column>'``) keeps its value; a cell that already opens, and a string with a URI
+    scheme, stay. The map holds one path for a stimulus, so it is given to a media cell only
+    when the row has exactly one media cell that needs a path; with two or more nothing is
+    resolved (no guess). The table that is stored with the answer is not this one: it keeps
+    the stimulus set's own values. The same table when nothing changes.
+    """
     from brainscore_core.io_catalog import stimulus_columns
     from brainscore_core.responses import PART_CHANNELS
     if getattr(stimuli, 'stimulus_paths', None) is None or 'stimulus_id' not in stimuli.columns:
         return stimuli
     path_channels = {PART_CHANNELS[kind] for kind in ('image', 'video', 'audio')}
+    as_text = {entry.split(':', 1)[1] for entry in (getattr(task, 'present', None) or ())
+               if ':' in entry and entry.split(':', 1)[0] not in ('image', 'video', 'audio')}
     columns = [column for column, channel in stimulus_columns().items()
-               if channel in path_channels and column in stimuli.columns]
+               if channel in path_channels and column in stimuli.columns and column not in as_text]
     shown = None
-    for column in columns:
-        values = list(stimuli[column].values)
-        for row, (stimulus_id, cell) in enumerate(zip(stimuli['stimulus_id'].values, values)):
-            if isinstance(cell, str) and not os.path.exists(cell):
-                try:
-                    values[row] = str(stimuli.get_stimulus(stimulus_id))
-                except KeyError:
-                    continue
-        if values != list(stimuli[column].values):
-            shown = stimuli.copy() if shown is None else shown
-            shown[column] = values
+    for position, stimulus_id in enumerate(stimuli['stimulus_id'].values):
+        needing = [column for column in columns if _needs_path(stimuli[column].values[position])]
+        if len(needing) != 1:
+            continue
+        try:
+            path = str(stimuli.get_stimulus(stimulus_id))
+        except KeyError:
+            continue
+        shown = stimuli.copy() if shown is None else shown
+        shown.iloc[position, shown.columns.get_loc(needing[0])] = path
     return stimuli if shown is None else shown
 
 

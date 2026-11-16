@@ -627,7 +627,7 @@ class BehavioralReadout:
         labels = labels_of(response)
         # Every trial's prompt is built first, so a bad layout fails before any compute
         # (for a session with its table, the plan built them before the readout fit).
-        shown = openable_paths(stimuli)   # the parts see paths that open; the stored answer keeps the table
+        shown = openable_paths(stimuli, task)   # the parts see paths that open; the stored answer keeps the table
         prompts, row_labels, axis = trial_prompts(task, shown)
         neural, outputs, extras = {}, {}, []
         rt_source = None   # (float64 probabilities, row validity, record) for a reaction time
@@ -824,7 +824,7 @@ class BehavioralReadout:
                 parts.note('answer', self.owner._answer)
                 return answers.reply_and_meta(self.owner._answer(
                     stimulus_row=row, instruction=task.instruction, label_set=label_set))[0]
-            replies, neural = per_stimulus(self.owner, stimuli, layers, call, shown=openable_paths(stimuli))
+            replies, neural = per_stimulus(self.owner, stimuli, layers, call, shown=openable_paths(stimuli, self.task))
             stamp = self._stamp('answer', 'prompt')
             return (answers.legacy_one_hot(replies, label_set, stimuli),
                     {region: assembly.assign_attrs(recording=stamp) for region, assembly in neural.items()})

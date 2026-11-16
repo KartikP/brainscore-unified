@@ -75,3 +75,37 @@ def test_a_table_with_existing_paths_gives_the_same_rows(tmp_path):
     assert all(os.path.exists(path) for path in shown['image_file_name'])
     assert list(shown['stimulus_id']) == list(old['stimulus_id'])
     assert list(shown['object_name']) == list(old['object_name'])
+
+
+def test_a_cell_presented_as_text_keeps_its_value(tmp_path):
+    from brainscore._model.recording import openable_paths
+    table = _old_stimulus_set(str(tmp_path), 'picture-text')
+    table['image_path'] = table['image_file_name']
+    table = StimulusSet(table.drop(columns=['image_file_name']))
+    table.identifier = 'picture-text'
+    table.stimulus_paths = {sid: os.path.join(str(tmp_path), f'{n}.png') for sid, n in zip(table['stimulus_id'], 'abc')}
+    task = TaskContext(response=Choice(['cat', 'dog']), present=('text:image_path',))
+    assert list(openable_paths(table, task)['image_path']) == ['a.png', 'b.png', 'c.png']   # text: untouched
+    seen = []
+    model = BrainScoreModel(identifier='text-cell', in_channels={'vision:image'},
+                            reply=lambda prompt: seen.append(prompt.text()) or 'cat')
+    session = stimulus_session(table, ['behavior:choice'], task)
+    model.participate(session)
+    assert all(name in text for name, text in zip(['a.png', 'b.png', 'c.png'], seen))
+    assert str(tmp_path) not in ''.join(seen)
+
+
+def test_a_string_with_a_uri_scheme_is_never_replaced(tmp_path):
+    from brainscore._model.recording import openable_paths
+    table = _old_stimulus_set(str(tmp_path), 'picture-uri')
+    table['image_file_name'] = ['https://example.invalid/a.png', 'data:image/png;base64,AAAA', 'file:///x/c.png']
+    assert openable_paths(table) is table
+
+
+def test_with_two_media_cells_that_need_a_path_nothing_is_resolved(tmp_path):
+    from brainscore._model.recording import openable_paths
+    table = _old_stimulus_set(str(tmp_path), 'picture-two')
+    table['audio_path'] = ['x.wav', 'y.wav', 'z.wav']
+    assert openable_paths(table) is table                       # two bare media cells: no guess
+    table['audio_path'] = [os.path.join(str(tmp_path), 'a.png')] * 3   # one cell opens already: the other is resolved
+    assert all(os.path.exists(p) for p in openable_paths(table)['image_file_name'])
