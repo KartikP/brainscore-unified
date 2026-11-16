@@ -120,7 +120,7 @@ def test_registered_scoring_preserves_raw_score_and_repetitions(scored_reference
     assert score.attrs['configuration']['repetitions'] == 2
     assert resets == [1, 2]
     assert len(calls) == 6
-    # Step 9: the counts of the trial states of every call, and the policy.
+    # The counts of the trial states of every call, and the policy.
     assert (score.attrs['n_trials'], score.attrs['n_valid'], score.attrs['n_invalid'],
             score.attrs['n_missing']) == (6, 6, 0, 0)
     assert score.attrs['result_validity'] == 'no limit stated'

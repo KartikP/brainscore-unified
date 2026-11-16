@@ -1,4 +1,4 @@
-"""A format the session does not request needs no owner (stage 3, S3-01 and S3-02).
+"""A format the session does not request needs no owner.
 
 The task's response names the formats it can be answered in; the session's requested
 outputs decide what is measured. A reaction-time link names the rt format; it is no
@@ -33,7 +33,7 @@ def _linked(link):
 def test_a_linked_choice_session_is_answered_without_a_probability_owner(link):
     calls = []
     choice = _run(_api(calls), ['behavior:choice'], _linked(link)).collect('behavior:choice')
-    assert calls == ['answer'] * 3            # a plain Choice goes to answer= (point r)
+    assert calls == ['answer'] * 3            # a plain Choice goes to answer=
     assert choice.values.tolist() == [[1.0, 0.0]] * 3
 
 

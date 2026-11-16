@@ -1,4 +1,4 @@
-"""The declared answer formats come from the owner statements only (rules 2.4, 4.11; stage 2, C3).
+"""The declared answer formats come from the owner statements only (rules 2.4, 4.11).
 
 A format is declared when exactly one part gives it natively or a statement
 names its owner; ``behavior:rt`` with ``behavior:probabilities``. A derived
@@ -41,8 +41,8 @@ NEURAL_ONLY = ('benchmarks/grid_game/benchmark.py', 'models/multimodal_av_blip2_
                'models/multimodal_av_vjepa_wav2vec2/model.py', 'models/random_wav2vec2/model.py',
                'models/videomae_base/model.py', 'models/vjepa/model.py', 'models/vjepa_v1/model.py',
                'tools/auto_register.py', 'validation/benchmark_parity.py')
-# Declared behavior formats per library call, before the stage 2 chunk and now (a
-# likelihood part also gives behavior:log_probabilities natively since stage 3, S4).
+# Declared behavior formats per library call, before the owner statements and now (a
+# likelihood part now also gives behavior:log_probabilities natively).
 DECLARED = {
     'model_helpers/causal_lm.py': ({B, CH, P, RA, RT, TE}, {CH, P, LP, RA, RT, TE}),
     'models/api_closed/model.py': ({B, CH, RA, TE}, {B, CH, RA, TE}),
@@ -132,12 +132,12 @@ def test_each_library_call_is_compatible_where_the_matrix_says(where, wired, sta
 
 
 def test_the_matrix_changes_only_where_the_declarations_change():
-    """The changed cells: causal_lm loses bare behavior (plan, section 3, point g), so
-    it is N/A on the facade; since stage 3, S7, ROAR and dyslexia request
+    """The changed cells: causal_lm loses bare behavior, so
+    it is N/A on the facade; ROAR and dyslexia now request
     behavior:choice, which causal_lm gives through its reply, so those cells are
     applicable again (the stand-in maps a VWFA region; the real registration does not). The readout-only
-    registrations state ('readout', 'argmax') and keep behavior:choice. Since stage 3,
-    S4, EWoK logprobs requests behavior:log_probabilities, which only a likelihood
+    registrations state ('readout', 'argmax') and keep behavior:choice. EWoK logprobs now
+    requests behavior:log_probabilities, which only a likelihood
     gives, so the readout-only registrations are N/A there (before, the run raised:
     raw scores came only from a likelihood)."""
     changed = {(where, name) for where, (before, after) in COMPATIBLE.items() for name in before ^ after}

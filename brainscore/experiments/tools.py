@@ -205,7 +205,7 @@ class PatchActivity(Ablate):
 def _forward_hook(stack, module, hook):
     """Run ``hook`` on each forward call of ``module`` until ``stack`` closes.
 
-    The one place the experiment tools hook a module (R11); recording uses
+    The one place the experiment tools hook a module; recording uses
     ActivationWindow and interventions use pytorch_intervention.
     """
     stack.callback(module.register_forward_hook(hook).remove)

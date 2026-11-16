@@ -147,8 +147,8 @@ def record(model, stimuli, multi_modality: bool = False, check_only: bool = Fals
     repeat a static response across the bins, as legacy vision models do.
     ``check_only`` makes the dispatch refusals of the recording and calls no
     extractor: a session's plan checks every region before the first pass. In
-    that check, a missing input (R20) and an extractor that cannot record the
-    region (R24) are ``ExecutionNotFeasibleError`` (Status terms); a direct call
+    that check, a missing input and an extractor that cannot record the
+    region are ``ExecutionNotFeasibleError`` (Status terms); a direct call
     keeps ``ValueError`` and ``NotImplementedError`` with the same messages.
     """
     if not model._input_keys:

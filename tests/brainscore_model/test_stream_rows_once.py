@@ -378,7 +378,7 @@ def test_stream_windows_are_unchanged():
     assert [event.meta['stream_index'] for event in session.emitted] == [0, 1, 2]
 
 
-# --- ported Codex probes (v5, v6, v7) -------------------------------------------
+# --- ported probes ---------------------------------------------------------------
 
 @pytest.mark.parametrize('positions', [[0, 0], [0, 1]])
 def test_v5_external_stream_positions_do_not_erase_distinct_presentations(positions):
@@ -430,7 +430,7 @@ def test_v7_missing_index_cannot_collapse_external_repeated_id_events():
     assert len(run_external(events, stimuli)) == 2
 
 
-# --- null index labels and the catalog (Codex PR B review) ------------------------
+# --- null index labels and the catalog -------------------------------------------
 
 @pytest.mark.parametrize('label', [np.nan, pd.NA], ids=['NaN', 'pdNA'])
 @pytest.mark.parametrize('kind', KINDS)

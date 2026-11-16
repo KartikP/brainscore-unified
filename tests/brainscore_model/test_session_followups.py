@@ -70,7 +70,7 @@ def positional_concat(assemblies):
 
 @pytest.mark.parametrize('strategy', ['manual', 'xarray'])
 def test_same_physical_clock_requires_actual_value_alignment(strategy):
-    """Codex v6 probe: rows [a, b] and [b, a] with matching clocks pair by stimulus."""
+    """Rows [a, b] and [b, a] with matching clocks pair by stimulus."""
     a = clock_block(['a', 'b'], [1, 2], 'early')
     b = clock_block(['b', 'a'], [20, 10], 'late')
     try:
@@ -162,7 +162,7 @@ MIX = {'mix': CompositeSelector((('early', None), ('late', None)), modality='tex
 
 @pytest.mark.parametrize('mode', ['readout', 'generation'])
 def test_task_composite_refuses_missing_selected_layer(mode):
-    """Codex v6 probe: readout and generation refuse it, like the neural session path."""
+    """Readout and generation refuse it, like the neural session path."""
     m = task_model(ToyNet(), Incomplete, MIX)
     with pytest.raises(ValueError, match='layer|neuroid|activity'):
         _run(m, TASKS[mode], ['neural:mix'])
@@ -313,7 +313,7 @@ def paused_first_session(extract_hook=None):
 
 
 def test_concurrent_sessions_on_one_model_keep_native_outputs():
-    """Codex v6 probe on the per-channel default: the second session is refused
+    """On the per-channel default: the second session is refused
     clearly, and the first keeps exactly its standalone outputs."""
     m, first, release, results, errors = paused_first_session()
     try:

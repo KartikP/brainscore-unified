@@ -1,5 +1,5 @@
 """ExperimentResult.trials() shows the state core stored for each trial and its reason,
-from the finalized answers the runner saves after each session (step 9, chunk 9.5)."""
+from the finalized answers the runner saves after each session."""
 import pytest
 
 from brainscore import BrainScoreModel
@@ -88,7 +88,7 @@ def test_a_session_whose_history_limit_dropped_responses_publishes_none():
     assert published == []
 
 
-# --- M9-06: one row per presented trial and occurrence, from the finalized answers ---------
+# --- one row per presented trial and occurrence, from the finalized answers ---------
 
 import numpy as np
 
@@ -249,7 +249,7 @@ def test_a_failed_session_falls_back_to_the_observed_events_and_says_so(tmp_path
     assert 'choice_state' not in trials
 
 
-# --- M9-07: a stimulus column of arrays --------------------------------------------------
+# --- a stimulus column of arrays --------------------------------------------------
 
 def test_a_stimulus_column_of_arrays_is_left_out_of_the_presented_trials(tmp_path):
     stimuli = StimulusSet({'stimulus_id': ['cat', 'boat', 'unknown'], 'sentence': ['cat', 'boat', 'ambiguous'],
@@ -266,7 +266,7 @@ def test_a_stimulus_column_of_arrays_is_left_out_of_the_presented_trials(tmp_pat
     assert set(answer['payload'].meta['trials']) == {'stimulus_id', 'sentence'}     # no 'vector'
 
 
-# --- M9-08: the fallback keeps every observed row ----------------------------------------
+# --- the fallback keeps every observed row ----------------------------------------
 
 def _one_row(stimulus_id, label):
     row = [1.0, 0.0] if label == 'animal' else [0.0, 1.0]

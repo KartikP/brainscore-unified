@@ -52,7 +52,7 @@ CLASSES = {'text': 'TextWrapper', 'audio': 'AudioWrapper', 'video': 'VideoWrappe
 
 
 # Case names are the reference keys, recorded under the layer_aggregation names
-# of that time; the values are the names of today (one value set, step 6).
+# of that time; the values are the names of today (one set of names for all wrappers).
 CASE_AGGREGATIONS = {
     'text': [('last_token', 'last'), ('mean_tokens', 'mean'), ('per_token', 'sequence')],
     'audio': [('mean_time', 'mean'), ('time_series', 'sequence')],

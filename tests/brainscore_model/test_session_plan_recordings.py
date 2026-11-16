@@ -1,4 +1,4 @@
-"""The recording plan of a session (step 10, chunks P3 and P4).
+"""The recording plan of a session.
 
 During a task or a policy step, the plan decides once which extractor records
 which region (``plan_recordings``) and refuses a region that cannot be recorded

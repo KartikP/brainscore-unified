@@ -7,7 +7,7 @@
    (readout). Finite rows (with ties) match exactly, as values and dtypes.
    A source row with a non-finite value (NaN, +inf, -inf) had a choice
    before and is invalid now, as is every conversion of it: the one stated
-   change (decision D3).
+   change.
 2. A derived answer of a BrainScoreModel always carries a record that names
    its conversion, parameters and source format.
 The core version (the functions alone) is core
@@ -65,7 +65,7 @@ def test_readout_argmax_matches_the_replaced_code_bit_for_bit(index):
 
 
 def test_stated_change_a_non_finite_source_row_is_now_invalid():
-    """The one stated change against 7bc821e (decision D3): a source row with a NaN,
+    """The one stated change against 7bc821e: a source row with a NaN,
     +inf or -inf value is invalid, and so is every conversion of it. Before, it got a
     choice (the first NaN position, or the most probable finite option)."""
     old = _old_softmax()(NON_FINITE)

@@ -176,7 +176,7 @@ class _Requests:
 @pytest.mark.unit
 def test_every_production_row_names_the_format_the_facade_requests():
     """T5: each production row names the channel its benchmark's old call is asked on
-    (stage 5: the probabilities task stays on bare behavior; a label list is behavior:choice)."""
+    (the probabilities task stays on bare behavior; a label list is behavior:choice)."""
     import pandas as pd
     from brainscore_core.legacy_facade import LegacyBenchmarkFacade
     from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet

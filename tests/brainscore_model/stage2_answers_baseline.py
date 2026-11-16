@@ -100,7 +100,8 @@ def _cases():
 
 
 def stage3_cases():
-    """(outputs, task, stimuli) of the task forms stage 3 changes: ROAR (a plain Choice with
+    """(outputs, task, stimuli) of the task forms that changed when the requested formats
+    began to choose the answering parts: ROAR (a plain Choice with
     an instruction and fitting stimuli), EWoK log scores (options per row, log probabilities,
     verbatim, no fitting stimuli) and EWoK choice (verbatim, no fitting stimuli)."""
     from brainscore_core.contract import TaskContext

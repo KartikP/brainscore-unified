@@ -169,7 +169,7 @@ def _imports_sklearn_regression(tree):
     return False
 
 
-# The accepted recipients of a ceiling built as Score(...) (decision D2): the score
+# The accepted recipients of a ceiling built as Score(...): the score
 # builder ``benchmark_score`` and the benchmark base class constructor, reached as
 # ``super().__init__`` or ``BenchmarkBase.__init__`` / ``BenchmarkBase(...)``.
 CEILING_RECIPIENTS = ('benchmark_score', 'super().__init__', 'BenchmarkBase.__init__',

@@ -580,7 +580,7 @@ class TestApiReply:
                         else answer.values) == ['long']
         assert [call['model'] for call in calls] == ['gpt-4o-2024-08-06'] * 2
         assert calls[0]['settings'] == {'max_tokens': 8}
-        # A plain Choice goes to the answer part (point r), which phrases its own prompt.
+        # A plain Choice goes to the answer part, which phrases its own prompt.
         assert calls[1]['messages'][0]['content'][-1] == {
             'type': 'text',
             'text': 'xyz\n\nAnswer with exactly one of: short, long.'}

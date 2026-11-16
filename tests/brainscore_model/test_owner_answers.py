@@ -1,4 +1,4 @@
-"""The owner of the requested answer format gives the answer (rule 4.11; stage 2, C4).
+"""The owner of the requested answer format gives the answer (rule 4.11).
 
 For a task with a response, the part that answers is the owner of the answer
 format: the log probabilities (``behavior:log_probabilities``) when the session
@@ -138,7 +138,7 @@ def test_each_answered_format_comes_from_its_owner(parts):
             assert record['method'] == owner, (parts, name, channel)
 
 
-# --- Z01: one format of a crossed likelihood/readout pair -----------------------------
+# --- one format of a crossed likelihood/readout pair ----------------------------------
 
 CROSSED = {
     'likelihood choice': {'behavior:choice': ('likelihood', 'softmax_argmax'),
@@ -178,7 +178,7 @@ def test_both_formats_of_a_crossed_pair_are_refused_before_compute(arrangement):
     assert calls == []
 
 
-# --- stage 3, S2: the formats the session requests choose the parts -------------------
+# --- the formats the session requests choose the parts --------------------------------
 
 def _count_fits(model):
     """Wrap the readout fit so each call is counted; the fit itself still runs."""
@@ -216,7 +216,7 @@ def test_one_configured_task_serves_two_sessions_of_different_formats(owners):
     assert fits == [1]
 
 
-# --- the passes of a task stay as before stage 3 (review finding S2-01) -----------------
+# --- the passes of a task stay as before the requested formats chose the parts ----------
 
 class _PassNet:
     """Each part's pass gives its own activity (likelihood 100, reply 110, answer 120,
@@ -294,7 +294,7 @@ REPLY_ROWS = [[110.0, 111.0, 112.0], [111.0, 112.0, 113.0], [112.0, 113.0, 114.0
     (['behavior:choice', 'behavior:probabilities', 'neural:A'], ['likelihood', 'reply'] * 3, LIKELIHOOD_ROWS),
     (['behavior:choice', 'neural:A'], ['reply'] * 3, REPLY_ROWS),
     (['neural:A'], ['reply'] * 3, REPLY_ROWS),
-    # Probabilities alone: as before stage 3, the reply still gives the trial's answer pass.
+    # Probabilities alone: as before the requested formats chose the parts, the reply still gives the trial's answer pass.
     (['behavior:probabilities'], ['likelihood', 'reply'] * 3, None),
 ], ids=['choice, probabilities and neural', 'choice and neural', 'neural only', 'probabilities only'])
 def test_the_requested_formats_decide_the_passes_and_the_recording(parts, outputs, calls, rows):
@@ -313,7 +313,7 @@ def test_the_requested_formats_decide_the_passes_and_the_recording(parts, output
         'generation', 'prompt')
 
 
-# --- S7a: within generation, a plain Choice goes to answer= (point r) ---------------
+# --- within generation, a plain Choice goes to answer= --------------------------------
 
 @pytest.mark.parametrize('verbatim, called', [(False, 'answer'), (True, 'reply')],
                          ids=['plain choice', 'verbatim choice'])

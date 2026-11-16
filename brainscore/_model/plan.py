@@ -181,7 +181,7 @@ def _choose_answering_part(model, session, task, answers, regions, delivery, pas
     the input it presents, a readout extraction (the readout layer and its regions) that
     no extractor of that input can make, a bad prompt layout and rows with different
     numbers of options (whole table only; one trial at a time or a stream compares
-    nothing across trials). Any other source is checked per batch (stated limit, O2).
+    nothing across trials). Any other source is checked per batch (a stated limit).
     """
     readout = model._behavioral
     readout.validate_task(task)
