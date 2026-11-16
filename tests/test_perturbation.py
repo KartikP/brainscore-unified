@@ -274,6 +274,11 @@ class TestLayerResolution:
             extractor={'vision': lambda stimuli, layers=None: stimuli},
             intervention=pytorch_intervention(net),
         )
+        with torch.no_grad():                   # fixed weights: layer 0 passes its input on
+            net[0].weight.copy_(torch.eye(4))
+            net[2].weight.copy_(torch.eye(4))
+        x = torch.tensor([[1., 2., 3., 4.]])
+        assert torch.equal(net[0](x), x)
         # Sequential's children are accessed by integer index
         applied = apply_state_change(bs, StateChange(
             kind='ablation',
@@ -281,7 +286,11 @@ class TestLayerResolution:
             perturbation=Perturbation(kind='zero'),
         ))
         assert isinstance(applied, PerturbationApplied)
+        assert torch.count_nonzero(net[0](x)) == 0             # the silenced layer outputs zero
+        assert torch.count_nonzero(net(x)) == 0
         bs.reset()
+        assert torch.equal(net[0](x), x)                        # and is back after reset()
+        assert torch.equal(net(x), x)
 
 
 # ── Drive (stimulation) ──────────────────────────────────────────────
