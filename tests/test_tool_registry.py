@@ -21,7 +21,10 @@ MINIMAL = {
 
 
 def test_the_minimal_configurations_cover_every_registered_tool():
-    assert sorted(MINIMAL) == sorted(list_tools())
+    missing, extra = sorted(set(list_tools()) - set(MINIMAL)), sorted(set(MINIMAL) - set(list_tools()))
+    assert not missing, (f'add a minimal configuration for {missing} to MINIMAL in tests/test_tool_registry.py: '
+                         'the next test loads every registered tool with it, offline')
+    assert not extra, f'MINIMAL names tools that are not registered: {extra}; remove their lines'
 
 
 @pytest.mark.parametrize('identifier', sorted(MINIMAL))
