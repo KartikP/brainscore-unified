@@ -113,11 +113,26 @@ STATEMENTS = {
 }
 
 
+# The sessions of SESSIONS each part set refuses (ExecutionNotFeasibleError); every
+# other session with a declared output must succeed. A legacy task without an
+# instruction needs a readout; a verbatim Choice needs a reply, or a likelihood that
+# owns the choice when log probabilities are requested.
+REFUSED_SESSIONS = {
+    ('answer',): {'legacy readout', 'log probabilities'},
+    ('answer', 'likelihood'): {'legacy readout', 'log probabilities'},
+    ('answer', 'behavioral_readout_layer'): {'log probabilities'},
+    ('answer', 'likelihood', 'behavioral_readout_layer'): {'log probabilities'},
+    ('answer', 'reply'): {'legacy readout'},
+    ('answer', 'reply', 'likelihood'): {'legacy readout'},
+}
+
+
 @pytest.mark.parametrize('parts', sorted(STATEMENTS), ids='+'.join)
 def test_each_answered_format_comes_from_its_owner(parts):
     """Every session of SESSIONS on every part set: each answered format channel was given
     by the part that owns it (the probabilities' owner also gives the choice that comes
-    with log probabilities; a reaction time names the probabilities' method)."""
+    with log probabilities; a reaction time names the probabilities' method). A session
+    is refused exactly when ``REFUSED_SESSIONS`` says so."""
     model = _model(*parts, owners=STATEMENTS[parts])
     owners = model._behavioral.owners
     for name, (description, outputs) in SESSIONS.items():
@@ -125,10 +140,11 @@ def test_each_answered_format_comes_from_its_owner(parts):
         requested = [c for c in outputs if c in model.out_channels]
         if not requested:
             continue
-        try:
-            session = _run(model, requested, task)
-        except ExecutionNotFeasibleError:
+        if name in REFUSED_SESSIONS.get(parts, set()):
+            with pytest.raises(ExecutionNotFeasibleError):
+                _run(model, requested, task)
             continue
+        session = _run(model, requested, task)
         for channel in requested:
             if channel == 'behavior':
                 continue                  # bare behavior: the legacy fallback stays
