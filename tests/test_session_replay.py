@@ -251,3 +251,42 @@ def test_a_replay_of_a_record_without_an_output_request_gives_the_same_trial_tab
     replay = Experiment(subject=Namer(), protocol=replay_sessions(recorded.directory), tools=tools(),
                         output_dir=tmp_path / 'replay').run()
     assert recorded.trials().equals(replay.trials())
+
+
+@pytest.mark.parametrize('channel, response, number', [('behavior:rating', 'scale', 2.0),
+                                                       ('behavior:rt', 'rt', 412.0)])
+def test_a_saved_numeric_answer_reads_back_as_the_live_result(tmp_path, channel, response, number):
+    """A session that requested no outputs gives its events as the result; a number
+    answered as a cell reads back from the saved result as it was kept."""
+    from brainscore.experiments.runner import ExperimentResult
+    from brainscore_core.responses import Scale
+
+    task = TaskContext(response=Scale(0, 5) if response == 'scale'
+                       else Choice(['a', 'b'], reaction_time='surprisal'))
+
+    class Numbers(Subject):
+        identifier = 'numbers'
+        in_channels = {'text'}
+        out_channels = {channel}
+
+        def reset(self):
+            pass
+
+        def participate(self, session):
+            while (event := session.next_input()) is not None:
+                if event.channel == 'text':
+                    session.respond(StreamEvent(channel, number, event.t_ms,
+                                                {'stimulus_id': 'trial', 'units': 'ms'}))
+
+    @contextmanager
+    def factory(repetition):
+        yield Session([StreamEvent('text', 'prompt', 1.0, {'stimulus_id': 'trial'})], None, task)
+
+    live = Experiment(subject=Numbers(), protocol=SessionProtocol(
+        'numbers', factory, required_input_channels={'text'}, requested_output_channels={channel}),
+        tools=[RecordInputsOutputs()], output_dir=tmp_path / 'run').run()
+    (kept,), = live.value
+    (read,), = ExperimentResult.open(live.directory).value
+    assert read.payload == kept.payload
+    assert {key: type(value) for key, value in read.payload.items()} == \
+        {key: type(value) for key, value in kept.payload.items()}
