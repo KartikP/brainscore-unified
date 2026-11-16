@@ -137,9 +137,11 @@ def boldmoments_test_set(stimulus_ids) -> List[str]:
     """The BOLDMoments test-set videos among ``stimulus_ids``: id above 1000
     (``stimulus_1001`` to ``stimulus_1102``), sorted, without repeats.
 
-    The one rule for the GLM benchmark: the test-set videos of the assembly give
-    the voxel mask and the ceilings, and the variants that use either present
-    and score only the videos outside the test set.
+    The one split rule of the Lahner2024 benchmarks. The GLM benchmark follows the
+    protocol of the data set with it: one fit on the other videos (the training
+    set), the correlation and the ceilings on the test-set videos, and the voxel
+    mask from the training-set videos. The time-resolved benchmark also uses it
+    (its mask and its presented subset), until its own change.
     """
     return sorted({str(stimulus_id) for stimulus_id in stimulus_ids
                    if int(str(stimulus_id).rsplit('_', 1)[1]) > 1000})
@@ -385,14 +387,19 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         return self._ceiling_rel
 
     def _split(self) -> Tuple[List[str], List[str]]:
-        """``(training-set ids, test-set ids)`` of the assembly. Every presented
-        stimulus must have BOLD in the assembly, and both sets must be present;
-        otherwise this raises, before any subject runs."""
+        """``(training-set ids, test-set ids)`` of the assembly. The presented table
+        and the assembly must hold the same videos (a video of the assembly that is not
+        presented would enter the mask and the ceilings but not the fit or the score),
+        and both sets must be present; otherwise this raises, before any subject runs."""
         ids = {str(i) for i in self.assembly['stimulus_id'].values}
-        missing = sorted({str(i) for i in self.stimulus_set['stimulus_id']} - ids)
-        if missing:
-            raise ValueError(f'{len(missing)} stimuli have no BOLD in the assembly, '
-                             f'for example {missing[:3]}.')
+        table = {str(i) for i in self.stimulus_set['stimulus_id']}
+        no_bold, not_presented = sorted(table - ids), sorted(ids - table)
+        if no_bold or not_presented:
+            raise ValueError(
+                'The stimulus table and the assembly must hold the same videos: '
+                f'{len(no_bold)} stimuli of the table have no BOLD in the assembly '
+                f'(for example {no_bold[:3]}), and {len(not_presented)} videos of the '
+                f'assembly are not in the table (for example {not_presented[:3]}).')
         test = boldmoments_test_set(ids)
         if not test:
             raise ValueError('The assembly holds no test-set video (id above 1000): '
@@ -533,9 +540,9 @@ class Lahner2024BOLDMoments(BenchmarkBase):
 # noise. Under the protocol of the data set the constant is the median of
 # sqrt(reliability on the scored videos, the 93 test-set videos) over the voxels of the
 # mask (reliability of at least 0.3 on the 933 training-set videos) that have a
-# positive ceiling. The value below was measured 2026-11-15 under the earlier rule
-# (ceilings on the training-set videos, mask on the test-set videos) and is set again
-# from a cloud measurement. It is what ``benchmark.ceiling`` reports for both
-# ``-visualROI`` variants; the score divides each voxel by its own ceiling and does
-# not read this value.
-VISUAL_ROI_CEILING = 0.5849361770948155
+# positive ceiling. Measured on the hosted data 2026-11-15: the mask has 3958 voxels,
+# every one with a positive ceiling, and this is their median (work record:
+# cloud_verify/lahner_repair/protocol_facts_j38.json). It is what ``benchmark.ceiling``
+# reports for both ``-visualROI`` variants; the score divides each voxel by its own
+# ceiling and does not read this value.
+VISUAL_ROI_CEILING = 0.8515666971964203

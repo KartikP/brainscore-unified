@@ -92,6 +92,32 @@ def test_a_benchmark_refuses_an_assembly_without_one_of_the_sets(monkeypatch, tm
     assert subject.seen == []                     # it fails before the subject runs
 
 
+@pytest.mark.parametrize('assembly_lacks, table_lacks', [(['stimulus_0002'], []),
+                                                         ([], ['stimulus_1003'])])
+def test_a_benchmark_refuses_a_table_and_an_assembly_that_differ(monkeypatch, tmp_path,
+                                                                 assembly_lacks, table_lacks):
+    """A table video without BOLD, or an assembly video that is not presented (it would
+    enter the mask and the ceilings but not the fit or the score), is refused before the
+    subject runs; the error names the count and examples in each direction."""
+    values = glm_values()
+    install(monkeypatch, tmp_path, glm=values)
+    rows = np.array([clip not in assembly_lacks for _ in range(GLM_REPS) for clip in GLM_CLIPS])
+    part = glm_assembly(values).isel(presentation=rows)
+    monkeypatch.delitem(brainscore.data_registry, 'Lahner2024-fMRI')
+    monkeypatch.setitem(brainscore.data_registry, 'Lahner2024-fMRI', lambda *a, **k: part)
+    monkeypatch.setattr(lahner.Lahner2024BOLDMoments, 'stimulus_set', property(
+        lambda self: (lambda s: s[~s['stimulus_id'].isin(table_lacks)])(
+            brainscore.load_stimulus_set('BOLDMoments'))))
+    subject = Recorder({'vision:video'})
+    with pytest.raises(ValueError) as error:
+        brainscore.load_benchmark(VISUAL_ROI)(subject)
+    message = str(error.value)
+    assert f'{len(assembly_lacks)} stimuli of the table have no BOLD' in message
+    assert f'{len(table_lacks)} videos of the assembly are not in the table' in message
+    assert all(clip in message for clip in assembly_lacks + table_lacks)
+    assert subject.seen == []
+
+
 def test_one_rule_gives_the_test_set_reliability():
     """``reliability_on_test_set`` (the GLM ceilings; the time-resolved mask until its own
     change) is ``_split_half_reliability`` on the test-set videos, and a call needs a
