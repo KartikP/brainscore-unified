@@ -114,6 +114,26 @@
     "language": "a3670c5"
    },
    "note": "the second run of the two Fedorenko2016-ridge rows on the code of the twenty-fifth push (a second machine of the same type with the reference fingerprint, store off)"
+  },
+  "reference3-run1": {
+   "date": "2026-11-16",
+   "commits": {
+    "core": "1c66351",
+    "unified": "df24fb6",
+    "vision": "87731849",
+    "language": "8b0875a"
+   },
+   "note": "the first run of two old pairs on the code of the twenty-seventh push (reference machine, store off): a label benchmark and the odd-one-out benchmark with an old vision model"
+  },
+  "reference3-run2": {
+   "date": "2026-11-16",
+   "commits": {
+    "core": "1c66351",
+    "unified": "df24fb6",
+    "vision": "87731849",
+    "language": "8b0875a"
+   },
+   "note": "the second run of two old pairs on the code of the twenty-seventh push (reference machine, store off): a label benchmark and the odd-one-out benchmark with an old vision model"
   }
  },
  "scores": [
@@ -613,6 +633,32 @@
    ],
    "math_threads": "openblas=16,openblas=16,openmp=16,openmp=8,torch=8",
    "note": "measured on this branch; the earlier value 0.648146 of this row came from an old baseline file, not from the leaderboard, and no leaderboard value is known here"
+  },
+  {
+   "subject": "alexnet",
+   "benchmark": "Geirhos2021colour-top1",
+   "value": 0.8640625,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "reference3-run1",
+    "reference3-run2"
+   ],
+   "math_threads": "openblas=1,openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
+  },
+  {
+   "subject": "alexnet",
+   "benchmark": "Hebart2023-match",
+   "value": 0.37471702326070433,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "reference3-run1",
+    "reference3-run2"
+   ],
+   "math_threads": "openblas=1,openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   }
  ]
 }
