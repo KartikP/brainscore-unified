@@ -2,7 +2,7 @@
 
 1. Parity: the core conversions give the numbers of the inline code they
    replace, bit for bit. The old ``softmax`` is read from the base commit
-   (``tests/reference_answers_7bc821e.py``, a frozen copy of 7bc821e); the old choice was
+   (``tests/reference_answers_before_response_formats.py``, a frozen copy of 7bc821e); the old choice was
    ``probabilities.argmax(1)`` (likelihood) and ``values.argmax(1)``
    (readout). Finite rows (with ties) match exactly, as values and dtypes.
    A source row with a non-finite value (NaN, +inf, -inf) had a choice
@@ -20,7 +20,7 @@ from brainscore_core.contract import TaskContext
 from brainscore_core.response_formats import argmax, response_record, softmax, softmax_argmax
 from brainscore_core.responses import Choice
 from tests.brainscore_model.test_task_responses import STIMULI, _ask, _model
-from tests.reference_answers_7bc821e import softmax as _softmax_7bc821e
+from tests.reference_answers_before_response_formats import softmax as _softmax_7bc821e
 
 pytestmark = pytest.mark.unit
 

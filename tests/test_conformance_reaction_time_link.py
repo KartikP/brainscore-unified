@@ -53,8 +53,8 @@ def test_the_link_reads_the_float64_rows_not_the_stored_float32_copy(monkeypatch
 
 def _old_answers():
     """The answers module of 7bc821e: its softmax, implied_array and reaction_time."""
-    from tests import reference_answers_7bc821e
-    return vars(reference_answers_7bc821e)
+    from tests import reference_answers_before_response_formats
+    return vars(reference_answers_before_response_formats)
 
 
 def _likelihood_rt(scores, link):
