@@ -10,8 +10,8 @@ through a 12-layer transformer encoder.
 
 This is the first unified-interface model that uses ``VideoWrapper``
 instead of ``PytorchWrapper`` / ``VLMVisionWrapper`` / ``TextWrapper``.
-Scoring on Lahner2024 will reveal whether native temporal processing
-meaningfully beats the frame-aggregation path (CLIP 0.4606 visual-ROI).
+On Lahner2024 it takes whole clips, where an image model sees frames
+sampled from each clip (the frame route).
 
 Architecture details:
     - Input: (B, 16, 3, 224, 224) video tensor, normalized per VideoMAE

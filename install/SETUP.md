@@ -63,11 +63,15 @@ It reads the Python version from the line `# python==3.11.15` of the lock and cr
 environment with `conda create --override-channels -c conda-forge python==3.11.15 pip`.
 It installs `unified/install/lock-linux-py311-cu124.txt` (it names the PyTorch CUDA 12.4 index
 itself, and also `pip`, `setuptools` and `wheel`, so the environment ends with their locked
-versions; the environment fingerprint counts them), then installs the four repositories from their checkouts with `--no-deps`. On another
-platform the option stops with a message; the pinned setup above and the bounds of the doctor
+versions; the environment fingerprint counts them), then installs the four repositories from their checkouts with `--no-deps`.
+On another platform the option stops with a message; the pinned setup above and the bounds of the doctor
 apply there. Do not combine the lock with `v2-constraints.txt`: that file is the CPU test
 profile. It names the lock's versions (torch and torchvision without the `+cu124` tag, so
 the CPU wheel installs).
+
+The doctor compares the Python, `pip`, `setuptools`, `wheel` and every package with the lock, and
+prints the environment fingerprint and the math threads; every score records both
+(see [Score a model](../docs/guides/score_a_model.md) for when two scores compare bit for bit).
 
 The script refuses to overwrite an existing conda environment. Choose a
 different name when needed:

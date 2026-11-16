@@ -28,7 +28,7 @@ python -m pip install -c unified/install/v2-constraints.txt \
 python -m brainscore.doctor
 ```
 
-This checks package versions and that the result cache is writable. If the cache points to a drive that is not mounted, set `RESULTCACHING_HOME=/some/writable/folder` before starting Python, or `RESULTCACHING_DISABLE=1` to turn caching off.
+This checks package versions and that the result cache is writable, and prints the environment fingerprint and the math threads that every score records. If the cache points to a drive that is not mounted, set `RESULTCACHING_HOME=/some/writable/folder` before starting Python, or `RESULTCACHING_DISABLE=1` to turn caching off.
 
 More detail, including common conda mistakes, is in [install/README.md](../../install/README.md).
 

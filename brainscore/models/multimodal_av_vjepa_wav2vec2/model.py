@@ -34,7 +34,7 @@ AUDIO_LAYER = 'encoder.layers.6'  # mid-encoder block; speech features
 # so BrainScoreModel records each region from the tower that has it.
 REGION_LAYER_MAP = {
     # Vision tower (V-JEPA v1 ViT-L; mid-encoder block 16 was the
-    # per-voxel layer-sweep peak on Lahner2024 — see CLAUDE.md notes).
+    # per-voxel layer-sweep peak on Lahner2024).
     'V1': 'backbone.blocks.4',
     'V4': 'backbone.blocks.15',
     'IT': 'backbone.blocks.16',

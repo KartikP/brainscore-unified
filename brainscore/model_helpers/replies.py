@@ -6,9 +6,12 @@
                         'behavior:probabilities': ('likelihood', 'softmax')}})
 
 Both receive a ``brainscore_core.responses.Prompt``: the trial's parts in order
-(instruction, stimulus parts, the response's directive). They are shown as one
-user message in that order; images as images, clips as video with their real
-frame rate. ``reply(prompt)`` returns the model's raw reply; the task's response
+(instruction, stimulus parts, the response's directive). The task's instruction,
+the text part named ``instruction``, is the system turn (or comes first in the
+user turn when the chat template takes no system turn). The other parts are
+shown as one user message in their order; images as images, clips as video with
+their real frame rate. A screen in a stimulus column named ``instruction`` is an
+image part and is shown like the other parts. ``reply(prompt)`` returns the model's raw reply; the task's response
 parses it. Under a ``verbatim`` choice, ``likelihood`` scores
 ``f"{text} {candidate}"`` as plain text, with no chat template and no
 beginning-of-sequence token, as EWoK's ``score`` does; ``reply`` still uses the
