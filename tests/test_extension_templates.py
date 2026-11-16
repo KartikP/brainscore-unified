@@ -203,7 +203,7 @@ def test_new_output_episode_ends_as_documented():
     blocks = re.findall(r'^```python[^\n]*\n(.*?)^```', text, flags=re.S | re.M)
     namespace = {}
     exec(compile('\n'.join(blocks[:3]), 'new_output.md', 'exec'), namespace)
-    assert namespace['reasons'] == ['terminal']
+    assert namespace['reason'] == 'terminal'
     assert [namespace['KINDS'][step['kind']] for step in namespace['actions']] == ['run', 'run', 'click']
 
 

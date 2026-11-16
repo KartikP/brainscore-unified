@@ -11,6 +11,7 @@ from ._model.behavioral import BehavioralReadout, answer_owners, statement_hint
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import Subject, TaskContext
 from ._model import dispatch
+from brainscore_core import io_catalog
 from brainscore_core.io_catalog import MODALITY_TO_INPUT_CHANNEL, canonical_modality
 from brainscore_core.events import InputEvent, OutputEvent, StateChange
 from ._model.intervention import Interventions
@@ -166,7 +167,8 @@ class BrainScoreModel(Subject):
         :param policy_in_channels: the input channels the policy reads (default
             ``('observation',)``); a session sends it only these.
         :param policy_out_channels: the output channels the policy answers on
-            (default ``('motor',)``); a benchmark may request any of them.
+            (default ``('motor',)``); a benchmark may request any of them. Each
+            is a registered output channel; another name is refused here.
         :param intervention: ``StateChange -> (PerturbationApplied, cleanup)``;
             applies an intervention and returns its undo function. It declares
             the ``lesion``, ``stimulation`` and ``pharmacological`` inputs and
@@ -262,6 +264,17 @@ class BrainScoreModel(Subject):
                 f"it does not declare."
             )
         self._required_channels = frozenset(required)
+
+        for channel in sorted(self._policy_out_channels):
+            if not (io_catalog.has(channel) and io_catalog.get(channel).direction
+                    in (io_catalog.OUTPUT, io_catalog.BOTH)):
+                raise ValueError(
+                    f"policy_out_channels names {channel!r}, which is not a registered output "
+                    f"channel. Register it with register_channel (from brainscore_core.extensions) "
+                    f"before the model is built, or answer on a registered output such as 'motor'.")
+            problem = io_catalog.form_problem(channel)
+            if problem:
+                raise ValueError(f"policy_out_channels: {problem}")
 
     @property
     def capability_config(self):

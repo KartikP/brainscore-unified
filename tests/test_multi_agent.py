@@ -109,10 +109,9 @@ def test_a_subject_whose_session_ends_without_an_answer_stops_the_conversation()
 
 def test_an_answer_on_text_is_refused():
     """``text`` is an input; a subject answers on ``behavior:text``."""
-    agent = BrainScoreModel('old-form', policy=lambda row: {'text': 'hi'}, policy_in_channels=('text',),
-                            policy_out_channels=('text', 'behavior:text'))
-    with pytest.raises(ValueError, match='not requested'):
-        multi_agent_rollout([agent], DialogueMediator(), n_turns=1)
+    with pytest.raises(ValueError, match="'text'"):
+        BrainScoreModel('old-form', policy=lambda row: {'text': 'hi'}, policy_in_channels=('text',),
+                        policy_out_channels=('text', 'behavior:text'))
 
 
 # ── session tools and recordings on a conversation ───────────────────
