@@ -306,3 +306,20 @@ def test_an_answer_reads_back_from_a_record_with_the_options_the_table_holds(tmp
     held = session.collect('behavior:probabilities')['choice'].values
     assert read.payload['choice'].dtype == held.dtype
     assert [str(option) for option in read.payload['choice']] == [str(option) for option in held]
+
+
+@pytest.mark.parametrize('stimulus_id', [np.int8(3), np.float32(1.5), np.datetime64('2020-01-01T00:00:00.000000000')])
+def test_answers_saved_and_read_back_collect_as_the_live_answers(tmp_path, stimulus_id):
+    import json
+    from brainscore.run_record import PayloadCodec
+    from brainscore_core.responses import Text
+
+    def session():
+        return Session([], ['behavior:text'], TaskContext(response=Text()))
+    live = session()
+    live.respond(StreamEvent('behavior:text', 'hello', None, {'stimulus_id': stimulus_id}))
+    live.respond(StreamEvent('behavior:text', 'again', None, {'stimulus_id': 's1'}))
+    codec = PayloadCodec(tmp_path)
+    read = session()
+    read.emitted.extend(codec.decode(json.loads(json.dumps(codec.encode(list(live.emitted))))))
+    assert read.collect('behavior:text').identical(live.collect('behavior:text'))
