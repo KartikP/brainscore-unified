@@ -5,7 +5,7 @@ names its owner; ``behavior:rt`` with ``behavior:probabilities``. A derived
 format with no statement is not declared. Bare ``behavior`` needs ``answer=`` or
 a readout with an extractor.
 
-The registration rows build every ``BrainScoreModel(...)`` call of the library
+The registration rows build the ``BrainScoreModel(...)`` calls of the library named in the tables
 (found by the scan of ``test_answer_ownership``) with stand-in parts, its real
 statement, the same two extractors (text and vision), a ``VWFA`` region and an
 intervention, so that the pre-flight matrix shows the behavior part only.
@@ -124,11 +124,16 @@ def _scan():
 
 def _calls(where):
     """The library calls in the file ``where``, as (wired parts, stated owners)."""
-    return [(wired, stated) for path, wired, stated in _scan() if path == where]
+    calls = [(wired, stated) for path, wired, stated in _scan() if path == where]
+    assert calls, (f'the table names {where!r}, but the library has no readable BrainScoreModel call '
+                   'there: remove its row from DECLARED and COMPATIBLE, or rename it')
+    return calls
 
 
-def test_every_library_call_is_in_the_tables():
-    assert {where for where, _, _ in _scan()} == set(DECLARED) == set(COMPATIBLE)
+def test_the_two_tables_name_the_same_library_calls():
+    """A library call that is in neither table passes: the rule-based tests below
+    (session support, every declared format answered) cover every call the scan reads."""
+    assert set(DECLARED) == set(COMPATIBLE)
 
 
 @pytest.mark.parametrize('where', sorted(DECLARED))
