@@ -6,8 +6,9 @@ See `EXTENDING.md` (Seam 2) for the contract.
 ## Use it
 
 1. Copy this folder to `brainscore/benchmarks/<your_name>/`.
-2. Edit `benchmark.py`. Implement `_load_assembly()` (your measurements + stimulus_set),
-   `_ceiling()`, and `__call__(subject)`. Pick your metric via `load_metric(...)`.
+2. Replace `standin_data.py` with your data package: `load_assembly()` (your measurements +
+   stimulus_set) and `BIBTEX`. Then edit `benchmark.py`: the ceiling in `__init__`, the
+   metric via `load_metric(...)`, and `__call__(subject)`.
 3. Pick your identifier in `benchmark_registry['<your-id>']`.
 4. Nothing else to edit: the folder registers by its presence.
 5. Move `test_benchmark.py` to `tests/test_<your_name>.py`, adapt it and run it.

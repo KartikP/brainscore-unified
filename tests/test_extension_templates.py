@@ -38,6 +38,23 @@ def _load(relative, name):
     return module
 
 
+def _load_package(folder, name):
+    """Import a template folder as a package, so its relative imports resolve."""
+    import sys
+    spec = importlib.util.spec_from_file_location(name, TEMPLATES / folder / '__init__.py',
+                                                  submodule_search_locations=[str(TEMPLATES / folder)])
+    module = importlib.util.module_from_spec(spec)
+    for loaded in [key for key in sys.modules if key.startswith(name + '.')]:
+        del sys.modules[loaded]                        # run the submodules again, too
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        del sys.modules[name]
+        raise
+    return module
+
+
 def test_templates_teach_only_public_slot_names():
     for path in sorted(TEMPLATES.rglob('*')):
         if path.suffix in ('.py', '.md'):
@@ -211,7 +228,7 @@ def test_documented_code_blocks_run(page, tmp_path):
 def benchmark():
     import brainscore
     # The template registers 'your-benchmark' on import; remove it afterwards.
-    _load('new_benchmark/benchmark.py', 'umi_template_benchmark')
+    _load_package('new_benchmark', 'umi_template_benchmark')
     try:
         yield brainscore.benchmark_registry['your-benchmark']()
     finally:
@@ -344,11 +361,11 @@ def test_the_benchmark_template_writes_its_stimuli_once_to_one_folder(tmp_path, 
     from PIL import Image
     import brainscore
     monkeypatch.setenv('BRAINSCORE_HOME', str(tmp_path))
-    module = _load('new_benchmark/benchmark.py', 'umi_template_benchmark_stimuli')
+    module = _load('new_benchmark/standin_data.py', 'umi_template_benchmark_stimuli')
     if 'your-benchmark' in brainscore.benchmark_registry:      # the import registers it
         del brainscore.benchmark_registry['your-benchmark']
-    first = module._load_assembly().stimulus_set.stimulus_paths
-    second = module._load_assembly().stimulus_set.stimulus_paths
+    first = module.load_assembly().stimulus_set.stimulus_paths
+    second = module.load_assembly().stimulus_set.stimulus_paths
     assert first == second
     assert [path.name for path in tmp_path.iterdir()] == ['your_benchmark_stimuli']
     folder = tmp_path / 'your_benchmark_stimuli'
@@ -361,7 +378,7 @@ def test_the_benchmark_template_writes_its_stimuli_once_to_one_folder(tmp_path, 
 
 
 @pytest.mark.parametrize('template, folder, load', [
-    ('new_benchmark/benchmark.py', 'your_benchmark_stimuli', '_load_assembly'),
+    ('new_benchmark/standin_data.py', 'your_benchmark_stimuli', 'load_assembly'),
     ('new_data/data.py', 'your_data_stimuli', '_build_example_files'),
 ])
 def test_a_template_refuses_a_link_where_a_stimulus_goes(tmp_path, monkeypatch, template, folder, load):
@@ -380,7 +397,7 @@ def test_a_template_refuses_a_link_where_a_stimulus_goes(tmp_path, monkeypatch, 
 
 
 @pytest.mark.parametrize('template, folder, load', [
-    ('new_benchmark/benchmark.py', 'your_benchmark_stimuli', '_load_assembly'),
+    ('new_benchmark/standin_data.py', 'your_benchmark_stimuli', 'load_assembly'),
     ('new_data/data.py', 'your_data_stimuli', '_build_example_files'),
 ])
 def test_two_threads_write_the_template_stimuli_at_once(tmp_path, monkeypatch, template, folder, load):
