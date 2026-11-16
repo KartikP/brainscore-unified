@@ -22,7 +22,7 @@ from .._model.recording import (open_recordings, planned_recordings, records_whi
                                 region_selector, trial_regions)
 from .registry import register_capability
 from brainscore_core import streaming_helpers as _drivers
-from brainscore_core.streaming import StreamEvent, parse_channel
+from brainscore_core.streaming import CONTROL_CHANNEL, RESPOND, StreamEvent, parse_channel
 
 # After every added capability (default order 1000), so an added one that
 # claims the same outputs runs the session.
@@ -191,6 +191,7 @@ class _PolicySteps:
         self.layers = {region: list(region_selector(subject, region).layer_paths)
                        for region in regions}
         self.step = 0
+        self.t_ms = None
         self._stack = ExitStack()
 
     def __enter__(self) -> '_PolicySteps':
@@ -199,6 +200,9 @@ class _PolicySteps:
         try:
             self.live = {regions: self._stack.enter_context(recording)
                          for regions, recording in recordings.items()}
+            # A step's recording carries the time of the step (rule 4.2): that of its
+            # respond signal, None when the environment has no clock.
+            self._stack.enter_context(self.session.observe(on_input=self._note_time))
         except BaseException:
             self._stack.close()
             raise
@@ -206,6 +210,10 @@ class _PolicySteps:
 
     def __exit__(self, *exc) -> bool:
         return self._stack.__exit__(*exc)
+
+    def _note_time(self, event) -> None:
+        if event.channel == CONTROL_CHANNEL and event.payload == RESPOND:
+            self.t_ms = event.t_ms
 
     def begin(self) -> None:
         self.step = 0
@@ -219,8 +227,9 @@ class _PolicySteps:
         stimuli = pd.DataFrame({'stimulus_id': [f'step_{self.step}']})
         for region, assembly in trial_regions(self.subject, [trial], stimuli, self.layers).items():
             self.session.respond(StreamEvent(
-                channel=f'neural:{region}', payload=assembly, t_ms=float(self.step),
-                meta={'driver': 'interact', 'record': region, 'during': 'policy'}))
+                channel=f'neural:{region}', payload=assembly, t_ms=self.t_ms,
+                meta={'driver': 'interact', 'record': region, 'during': 'policy',
+                      'step_num': self.step}))
         self.step += 1
         return outputs
 

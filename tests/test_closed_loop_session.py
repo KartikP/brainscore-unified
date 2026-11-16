@@ -102,6 +102,28 @@ def test_one_session_yields_motor_and_neural_from_one_forward_pass():
     np.testing.assert_allclose(np.asarray(neural.values).reshape(4, -1), expected, atol=1e-6)
 
 
+class _ClockedEnvironment(CountingEnvironment):
+    """The same steps, on a simulation clock of 40 ms per step."""
+
+    def clock(self):
+        return {'t_ms': 40.0 * self.n, 'time_source': 'simulation', 'time_inferred': False}
+
+
+@pytest.mark.parametrize('environment', [CountingEnvironment, _ClockedEnvironment])
+def test_a_recording_during_a_policy_step_carries_the_time_of_the_step(environment):
+    """Rule 4.2: the time of the step's action, or None without a clock; never the step counter."""
+    model = _recording_model(_network(), [])
+    session = Session(EnvironmentSource(environment(3)), ('motor', 'neural:V4'))
+    model.participate(session)
+    actions = {event.meta['step_num']: event.t_ms for event in session.emitted if event.channel == 'motor'}
+    recorded = [event for event in session.emitted if event.channel == 'neural:V4']
+    assert recorded
+    for event in recorded:
+        assert event.t_ms == actions[event.meta['step_num']]
+        if environment is CountingEnvironment:
+            assert event.t_ms is None
+
+
 def test_a_policy_without_an_extractor_is_refused_for_neural_outputs():
     model = BrainScoreModel('no-extractor', policy=lambda row: {'motor': 0})
     with pytest.raises(ExecutionNotFeasibleError, match=r"does not produce \['neural:V4'\]"):
