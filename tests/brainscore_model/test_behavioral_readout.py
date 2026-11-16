@@ -248,3 +248,20 @@ class TestBrainScoreModelGenerationPath:
                 label_set=['cat', 'dog'],
                 # no fitting_stimuli and no answer function
             ))
+
+
+def test_a_readout_layer_whose_features_keep_a_time_axis_is_refused_with_a_clear_error():
+    """A readout fits one feature vector per stimulus. Features with a time axis are refused
+    with an error that names the layer and the time axis; nothing reduces over time silently."""
+    def extract(stimuli, layers=None, **kwargs):
+        ids = list(stimuli['stimulus_id'])
+        return NeuroidAssembly(np.zeros((len(ids), 2, 3)), dims=['presentation', 'neuroid', 'time_bin'], coords={
+            'stimulus_id': ('presentation', ids), 'image_label': ('presentation', list(stimuli['image_label'])),
+            'neuroid_id': ('neuroid', ['n0', 'n1']), 'layer': ('neuroid', ['clip_layer'] * 2),
+            'time_bin_start_ms': ('time_bin', [0, 100, 200]), 'time_bin_end_ms': ('time_bin', [100, 200, 300])})
+    model = BrainScoreModel('time-axis-readout', extractor={'vision': extract},
+                            behavioral_readout_layer='clip_layer')
+    task = TaskContext(task_type='probabilities',
+                       fitting_stimuli=_make_image_stimulus_set(['cat', 'dog'] * 3, identifier='time_fit'))
+    with pytest.raises(ExecutionNotFeasibleError, match=r"'clip_layer' keep a time axis"):
+        behavioral_response(model, _make_image_stimulus_set(['cat', 'dog'], identifier='time_test'), task)
