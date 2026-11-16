@@ -117,11 +117,16 @@ def test_the_random_null_has_the_weights_of_its_old_copy(tiny_wav2vec2):
     """The old ``random_wav2vec2`` builder also seeded numpy; Wav2Vec2 initialises from torch only."""
     from transformers import Wav2Vec2Model
     from brainscore.models._shared import build_audio_wrapper
-    np.random.seed(123)
-    _, shared = build_audio_wrapper('random-wav2vec2-base', random_init=True)
-    torch.manual_seed(0)
-    np.random.seed(0)
-    old = Wav2Vec2Model(tiny_wav2vec2).eval()                       # frozen copy of the old builder
+    numpy_state = np.random.get_state()
+    try:
+        with torch.random.fork_rng():
+            np.random.seed(123)
+            _, shared = build_audio_wrapper('random-wav2vec2-base', random_init=True)
+            torch.manual_seed(0)
+            np.random.seed(0)
+            old = Wav2Vec2Model(tiny_wav2vec2).eval()               # frozen copy of the old builder
+    finally:
+        np.random.set_state(numpy_state)
     assert shared.state_dict().keys() == old.state_dict().keys()
     for name, tensor in old.state_dict().items():
         assert torch.equal(shared.state_dict()[name], tensor), name

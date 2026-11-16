@@ -48,9 +48,10 @@ class Processor:
 class Tower(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        torch.manual_seed(0)
-        self.blocks = torch.nn.ModuleList([torch.nn.Sequential(torch.nn.Linear(4, 4), torch.nn.ReLU(),
-                                                               torch.nn.Linear(4, 4))])
+        with torch.random.fork_rng():
+            torch.manual_seed(0)
+            self.blocks = torch.nn.ModuleList([torch.nn.Sequential(torch.nn.Linear(4, 4), torch.nn.ReLU(),
+                                                                   torch.nn.Linear(4, 4))])
 
     def forward(self, hidden, grid_thw):
         return self.blocks[0](hidden)

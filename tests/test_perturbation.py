@@ -451,10 +451,11 @@ class _GatedMLP(torch.nn.Module):
 
     def __init__(self, d=6, h=10):
         super().__init__()
-        torch.manual_seed(0)
-        self.gate_proj = torch.nn.Linear(d, h, bias=False)
-        self.up_proj = torch.nn.Linear(d, h, bias=False)
-        self.down_proj = torch.nn.Linear(h, d, bias=False)
+        with torch.random.fork_rng():
+            torch.manual_seed(0)
+            self.gate_proj = torch.nn.Linear(d, h, bias=False)
+            self.up_proj = torch.nn.Linear(d, h, bias=False)
+            self.down_proj = torch.nn.Linear(h, d, bias=False)
 
     def forward(self, x):
         return self.down_proj(torch.nn.functional.silu(self.gate_proj(x)) * self.up_proj(x))

@@ -23,9 +23,10 @@ class Attention(torch.nn.Module):
 class Net(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        torch.manual_seed(0)
-        self.proj = torch.nn.Linear(3, 8)
-        self.attn = Attention()
+        with torch.random.fork_rng():
+            torch.manual_seed(0)
+            self.proj = torch.nn.Linear(3, 8)
+            self.attn = Attention()
 
 
 def _subject(net):

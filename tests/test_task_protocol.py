@@ -247,8 +247,9 @@ class CharProcessor:
 class TinyLM2(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        torch.manual_seed(0)
-        self.embed, self.head = torch.nn.Embedding(27, 8), torch.nn.Linear(8, 27)
+        with torch.random.fork_rng():
+            torch.manual_seed(0)
+            self.embed, self.head = torch.nn.Embedding(27, 8), torch.nn.Linear(8, 27)
         self.device = torch.device('cpu')
 
     def forward(self, input_ids, attention_mask, token_type_ids):
@@ -467,10 +468,11 @@ class TinyVLM(torch.nn.Module):
     """Token 27 stands for image tokens; the decoder is `lm.layers`."""
     def __init__(self):
         super().__init__()
-        torch.manual_seed(0)
-        self.embed = torch.nn.Embedding(28, 4)
-        self.lm = torch.nn.Module()
-        self.lm.layers = torch.nn.ModuleList([torch.nn.Linear(4, 4)])
+        with torch.random.fork_rng():
+            torch.manual_seed(0)
+            self.embed = torch.nn.Embedding(28, 4)
+            self.lm = torch.nn.Module()
+            self.lm.layers = torch.nn.ModuleList([torch.nn.Linear(4, 4)])
         self.config = type('Config', (), {'image_token_id': 27, 'video_token_id': None})()
         self.device = torch.device('cpu')
 

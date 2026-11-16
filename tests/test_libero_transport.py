@@ -600,6 +600,8 @@ def evaluate_in_process(out, port, route='umi', **upstream):
         example('evaluate').run(module, source, args)
     except SystemExit as exit:
         return exit.code
+    finally:
+        sys.modules.pop(module.__name__, None)      # registered by upstream_module
     return 0
 
 
