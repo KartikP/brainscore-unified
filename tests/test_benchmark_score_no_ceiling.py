@@ -6,7 +6,6 @@ now. The score value and the raw value are identical; only the ceiling attribute
 (1.0 -> not estimated) and, for the template, the normalized flag change.
 """
 import math
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -16,6 +15,7 @@ from brainscore.benchmarks import benchmark_score, not_estimated
 from brainscore_core.metrics import Score
 from tests._benchmark_score_before_no_ceiling import benchmark_score as old_benchmark_score
 from tests._benchmark_score_before_no_ceiling import not_estimated as old_not_estimated
+from tests.benchmark_stand_in import StandInBenchmark
 from tests.lahner_synthetic import Recorder, install
 
 pytestmark = pytest.mark.unit
@@ -26,7 +26,7 @@ PER_TARGET = 0.5123        # a median of per-target r / c
 
 
 def _bench(ceiling):
-    return SimpleNamespace(ceiling=ceiling, version=2)
+    return StandInBenchmark(ceiling=ceiling, version=2)
 
 
 def _array_raw():
