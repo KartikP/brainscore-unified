@@ -35,7 +35,7 @@ Where your protocol fixes the exact text, use `Choice(..., verbatim=True)`: the 
 
 ## What your library must not do
 
-- **Add a channel.** The behavior formats above are a closed list; core refuses any other `behavior` address.
+- **Add a `behavior` format.** The behavior formats above are a closed list; core refuses any other `behavior` address. An action or a measurement that is not an answer is another kind of output: see [A new kind of output](new_output.md).
 - **Send a private format.** An answer is one of the formats above, in its schema; core refuses a payload that does not match.
 - **Add its own switch to `Choice`.** A task takes `Choice`, `Scale` and `Text` themselves, not a subclass. The settings of a format are its fields (`labels`, `verbatim`, the generation settings of `Text`).
 
