@@ -141,7 +141,9 @@ the default). `TaskContext(..., readout_fit='intact')` fits it with every change
 off and tests the changed network, as an animal trained before a lesion is tested after it.
 Each change stays in place during the fit, so the order of the hooks on the network does
 not change. Only a change made by `pytorch_intervention` can be switched off; with
-another intervention part active, the fit stops with an error.
+another intervention part active, the fit stops with an error. A change made by a network
+tool (`Ablate`, `ScaleActivity`, `PatchActivity`) is not the subject's: it stays on, so the
+fit sees the changed network.
 
 For models that generate answers, `RecordNeural(..., during='prompt')` keeps the prompt
 forward pass. The extractor must support recording during answers. Declared channels
