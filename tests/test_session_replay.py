@@ -251,3 +251,75 @@ def test_a_replay_of_a_record_without_an_output_request_gives_the_same_trial_tab
     replay = Experiment(subject=Namer(), protocol=replay_sessions(recorded.directory), tools=tools(),
                         output_dir=tmp_path / 'replay').run()
     assert recorded.trials().equals(replay.trials())
+
+
+@pytest.mark.parametrize('channel, response, number', [('behavior:rating', 'scale', 2.0),
+                                                       ('behavior:rt', 'rt', 412.0)])
+def test_a_saved_numeric_answer_reads_back_as_the_live_result(tmp_path, channel, response, number):
+    """A session that requested no outputs gives its events as the result; a number
+    answered as a cell reads back from the saved result as it was kept."""
+    from brainscore.experiments.runner import ExperimentResult
+    from brainscore_core.responses import Scale
+
+    task = TaskContext(response=Scale(0, 5) if response == 'scale'
+                       else Choice(['a', 'b'], reaction_time='surprisal'))
+
+    class Numbers(Subject):
+        identifier = 'numbers'
+        in_channels = {'text'}
+        out_channels = {channel}
+
+        def reset(self):
+            pass
+
+        def participate(self, session):
+            while (event := session.next_input()) is not None:
+                if event.channel == 'text':
+                    session.respond(StreamEvent(channel, number, event.t_ms,
+                                                {'stimulus_id': 'trial', 'units': 'ms'}))
+
+    @contextmanager
+    def factory(repetition):
+        yield Session([StreamEvent('text', 'prompt', 1.0, {'stimulus_id': 'trial'})], None, task)
+
+    live = Experiment(subject=Numbers(), protocol=SessionProtocol(
+        'numbers', factory, required_input_channels={'text'}, requested_output_channels={channel}),
+        tools=[RecordInputsOutputs()], output_dir=tmp_path / 'run').run()
+    (kept,), = live.value
+    (read,), = ExperimentResult.open(live.directory).value
+    assert read.payload == kept.payload
+    assert {key: type(value) for key, value in read.payload.items()} == \
+        {key: type(value) for key, value in kept.payload.items()}
+
+
+@pytest.mark.parametrize('options', [[float('nan'), 'b'],
+                                     [np.datetime64('2020-01-01'), np.datetime64('2020-01-02')],
+                                     [np.timedelta64(1, 'D'), np.timedelta64(2, 'D')], [1 + 2j, 2 + 3j]])
+def test_an_answer_reads_back_from_a_record_with_the_options_the_table_holds(tmp_path, options):
+    import json
+    from brainscore.run_record import PayloadCodec
+
+    session = Session([], ['behavior:probabilities'], TaskContext(response=Choice(options)))
+    session.respond(StreamEvent('behavior:probabilities', np.array([0.2, 0.8]), None, {'stimulus_id': 's'}))
+    codec = PayloadCodec(tmp_path)
+    (read,) = codec.decode(json.loads(json.dumps(codec.encode(list(session.emitted)))))
+    held = session.collect('behavior:probabilities')['choice'].values
+    assert read.payload['choice'].dtype == held.dtype
+    assert [str(option) for option in read.payload['choice']] == [str(option) for option in held]
+
+
+@pytest.mark.parametrize('stimulus_id', [np.int8(3), np.float32(1.5), np.datetime64('2020-01-01T00:00:00.000000000')])
+def test_answers_saved_and_read_back_collect_as_the_live_answers(tmp_path, stimulus_id):
+    import json
+    from brainscore.run_record import PayloadCodec
+    from brainscore_core.responses import Text
+
+    def session():
+        return Session([], ['behavior:text'], TaskContext(response=Text()))
+    live = session()
+    live.respond(StreamEvent('behavior:text', 'hello', None, {'stimulus_id': stimulus_id}))
+    live.respond(StreamEvent('behavior:text', 'again', None, {'stimulus_id': 's1'}))
+    codec = PayloadCodec(tmp_path)
+    read = session()
+    read.emitted.extend(codec.decode(json.loads(json.dumps(codec.encode(list(live.emitted))))))
+    assert read.collect('behavior:text').identical(live.collect('behavior:text'))
