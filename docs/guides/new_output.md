@@ -20,7 +20,7 @@ A channel names *what* flows in a session and what its payload looks like. A cap
 | Registered with | `register_channel` (core) | `register_capability` (unified) |
 | Needed by | every subject that sends the output | `BrainScoreModel` only |
 
-A new kind of output needs a new capability only when no part of `BrainScoreModel` can produce it. A policy can return any registered channel in its `policy_out_channels`, so an action or a per-step measurement needs no capability. A subject that is not a `BrainScoreModel` implements `participate(session)` and needs no capability at all.
+A new kind of output needs a new capability only when no part of `BrainScoreModel` can produce it. A policy can return any registered output channel in its `policy_out_channels` (the model refuses another name when it is built), so an action or a per-step measurement needs no capability. A subject that is not a `BrainScoreModel` implements `participate(session)` and needs no capability at all.
 
 ## Example: a screen task
 
@@ -77,19 +77,17 @@ agent = BrainScoreModel(identifier='screen-agent', policy=policy,
                         policy_in_channels=('observation',), policy_out_channels=('motor',))
 ```
 
-Run one episode. The actions come back from the session; the reason the episode ended is in the `end` signal on the `control` channel:
+Run one episode. The actions and the reason the episode ended come back from the session:
 
 ```python
 from brainscore_core.streaming_helpers import environment_session
 
-reasons = []
 with environment_session(ScreenTask()) as session:
-    with session.observe(on_input=lambda event: reasons.append(event.meta['reason'])
-                         if event.channel == 'control' and event.payload == 'end' else None):
-        agent.participate(session)
+    agent.participate(session)
 actions = [event.payload for event in session.collect('motor')]
+reason = session.source.end_reason   # 'terminal', 'truncated' or 'failure'; None while it runs
 agent.reset()
-print([KINDS[step['kind']] for step in actions], reasons)   # ['run', 'run', 'click'] ['terminal']
+print([KINDS[step['kind']] for step in actions], reason)   # ['run', 'run', 'click'] terminal
 ```
 
 - **The session takes one action per step.** A list of actions in one step fails a mapping specification ("Expected a mapping"). Without an `action_spec()` the environment receives the list unchecked. A sequence of actions is the episode.
@@ -117,4 +115,4 @@ def vlm_policy(row):
     return {'motor': dict(zip(('kind', 'x', 'y', 'key'), numbers))}
 ```
 
-**Limits.** A model that answers in a form the specification refuses ends the episode as `failure`. `MappingSpec` has no form for "one of several kinds, each with its own fields"; every action carries every field. A `BrainScoreModel` accepts a `policy_out_channels` entry that is not registered, and the session refuses it only at the first response. `HumanAgreementBenchmark` compares integer actions; a structured action needs an integer code first.
+**Limits.** A model that answers in a form the specification refuses ends the episode as `failure`. `MappingSpec` has no form for "one of several kinds, each with its own fields"; every action carries every field. `HumanAgreementBenchmark` compares integer actions; a structured action needs an integer code first.

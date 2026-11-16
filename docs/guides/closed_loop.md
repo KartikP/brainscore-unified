@@ -50,6 +50,7 @@ from brainscore_core.streaming_helpers import environment_session, run_environme
 with environment_session(MyEnvironment(), seed=0) as session:
     agent.participate(session)
 actions = session.collect('motor')
+print(session.source.end_reason)   # 'terminal': the reason the episode ended
 agent.reset()
 
 # or, in one call:
