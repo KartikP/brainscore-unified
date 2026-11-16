@@ -11,7 +11,8 @@ from brainscore.experiments import (
 )
 from brainscore.experiments.replay import _equal, read_events
 from brainscore import BrainScoreModel
-from brainscore_core.contract import TaskContext
+from brainscore_core.contract import Subject, TaskContext
+from brainscore_core.responses import Choice
 from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.streaming_helpers import (
     stimulus_session,
@@ -183,3 +184,38 @@ def test_neural_replay_with_generic_collector_restores_each_trials_request(tmp_p
         output_dir=tmp_path / 'replay',
     ).run()
     assert compare_outputs(baseline.directory, replay.directory)['equal']
+
+
+class JointReader(Subject):
+    """A stand-in subject that answers each word and records a region with it."""
+    identifier = 'joint-reader'
+    in_channels = {'text'}
+    out_channels = {'behavior:choice', 'neural:A'}
+
+    def participate(self, session):
+        while (event := session.next_input()) is not None:
+            if event.channel != 'text':
+                continue
+            meta = {'stimulus_id': event.meta['stimulus_id']}
+            session.respond(StreamEvent('behavior:choice', 'yes' if len(event.payload) > 3 else 'no',
+                                        event.t_ms, meta))
+            session.respond(StreamEvent('neural:A', np.array([float(len(event.payload)), 1.0]),
+                                        event.t_ms, meta))
+
+
+
+def test_a_recorded_joint_session_replays_to_equal_outputs(tmp_path):
+    """A record of a session that requests an answer and a region replays, and the replayed
+    outputs compare as equal to the recorded ones."""
+    subject = JointReader()
+    channels = ('behavior:choice', 'neural:A')
+    task = TaskContext(instruction='Long word?', response=Choice(['yes', 'no']))
+
+    @contextmanager
+    def factory(trial):
+        yield stimulus_session(stimuli(), channels, task)
+
+    recorded = run(subject, factory, tmp_path / 'recorded', channels)
+    replay = Experiment(subject=subject, protocol=replay_sessions(recorded.directory),
+                        tools=[RecordInputsOutputs()], output_dir=tmp_path / 'replay').run()
+    assert compare_outputs(recorded.directory, replay.directory)['equal']
