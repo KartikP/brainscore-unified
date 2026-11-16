@@ -40,6 +40,8 @@ class TaskProtocol(SessionProtocol):
     ``readout_fit`` says which network the readout is fitted on while a change
     is active: ``TaskContext(..., readout_fit='intact')`` fits it before the
     change and tests the changed network, as an animal trained before a lesion.
+    Only the subject's own interventions are switched off for that fit; a change
+    made by a network tool (``Ablate``, ``ScaleActivity``) stays on.
     """
 
     def __init__(self, stimuli, task, *, identifier='task', conditions=None,
