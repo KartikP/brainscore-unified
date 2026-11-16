@@ -1,5 +1,12 @@
 """Check that every UMI pin site names the same core and unified commits.
 
+It also checks the vision and language entries of unified's
+``install/peer-revisions.json``: the named commit must have the code of the
+vision and language sources it reads. Only the pin files of a peer
+(``requirements-v2.txt``, ``.github/workflows/umi-v2.yml``) may differ,
+because a peer commit that moves its unified pin comes after the commit that
+unified names.
+
 The coordinated v2 repositories pin each other in several files. A pin that
 differs between sites makes a change pass in one CI system and fail in another.
 This script reads every site and prints one table. It exits with status 1 when
@@ -56,6 +63,11 @@ USES_UNIFIED = re.compile(
 INPUT_UNIFIED = re.compile(r'^\s*unified_revision:\s*(\S+)', re.MULTILINE)
 LAYOUT_UNIFIED = re.compile(r'repository:\s*KartikP/brainscore-unified\s*\n\s*ref:\s*(\S+)')
 JENKINS_UNIFIED = re.compile(r'^\s*unified_revision=(\S+)', re.MULTILINE)
+CODE_DIFFERS = 'code differs: '    # the value of a peer source whose code is not the named commit's
+# The files of a peer that only move pins. A peer commit that changes only these
+# has the code of the commit before it, so the peer manifest of unified may name
+# that earlier commit (each peer pins unified, and unified names each peer).
+PEER_PIN_FILES = frozenset({'requirements-v2.txt', '.github/workflows/umi-v2.yml'})
 
 
 def _token() -> Optional[str]:
@@ -66,10 +78,16 @@ def _token() -> Optional[str]:
     return result.stdout.strip() or None if result.returncode == 0 else None
 
 
-def github_file(repository: str, ref: str, path: str) -> Optional[str]:
-    """Return one file at one ref, or None when GitHub does not serve it."""
-    url = f'https://api.github.com/repos/{repository}/contents/{quote(path)}?ref={quote(ref)}'
-    headers = {'Accept': 'application/vnd.github.raw', 'User-Agent': 'umi-check-pins'}
+def github_file(repository: str, ref: str, path: str, api: bool = False) -> Optional[str]:
+    """Return one file at one ref, or None when GitHub does not serve it.
+
+    ``api=True`` reads ``path`` as a JSON endpoint of the repository instead
+    (for example ``compare/<base>...<head>``).
+    """
+    url = (f'https://api.github.com/repos/{repository}/{quote(path, safe="/.")}' if api else
+           f'https://api.github.com/repos/{repository}/contents/{quote(path)}?ref={quote(ref)}')
+    headers = {'Accept': 'application/vnd.github+json' if api else 'application/vnd.github.raw',
+               'User-Agent': 'umi-check-pins'}
     token = _token()
     if token:
         headers['Authorization'] = f'Bearer {token}'
@@ -101,6 +119,17 @@ class Source:
             return github_file(self.repository, self.ref, path)
         file = self.path / path
         return file.read_text() if file.is_file() else None
+
+    def changed_since(self, revision: str) -> Optional[set[str]]:
+        """The files that differ between ``revision`` and what this source reads; None when unknown."""
+        if self.path is not None:
+            result = subprocess.run(['git', '-C', str(self.path), 'diff', '--name-only', revision, '--'],
+                                    capture_output=True, text=True)
+            return set(result.stdout.split()) if result.returncode == 0 else None
+        text = github_file(self.repository, self.ref, f'compare/{revision}...{self.ref}', api=True)
+        if text is None:
+            return None
+        return {entry['filename'] for entry in json.loads(text).get('files', [])}
 
     def read_at(self, revision: str, path: str) -> Optional[str]:
         """Read a file at another commit of this repository."""
@@ -172,8 +201,16 @@ def collect(sources: dict[str, Source], infrastructure: Optional[Source]) -> lis
     """Read every pin site. A missing file or pattern gives a row with value None."""
     rows = []
     manifest = sources['unified'].read('install/peer-revisions.json')
-    rows.append(Row('core', 'unified install/peer-revisions.json',
-                    json.loads(manifest).get('core') if manifest else None))
+    peers = json.loads(manifest) if manifest else {}
+    rows.append(Row('core', 'unified install/peer-revisions.json', peers.get('core')))
+    for name in ('vision', 'language'):
+        # The peer commit the manifest names must have the code that the peer source holds.
+        named = peers.get(name)
+        rows.append(Row(name, 'unified install/peer-revisions.json', named))
+        changed = sources[name].changed_since(named) if _valid(named) else None
+        other = sorted(changed - PEER_PIN_FILES) if changed is not None else None
+        code = None if other is None else f'{CODE_DIFFERS}{other[0]}' if other else named
+        rows.append(Row(name, f'{name} source: code of the named commit', code))
     for name in ('vision', 'language'):
         for value in _requirement_refs(sources[name].read('requirements-v2.txt')):
             rows.append(Row('core', f'{name} requirements-v2.txt', value))
@@ -214,13 +251,15 @@ def judge(rows: list[Row]) -> bool:
     are identical.
     """
     ok = True
-    for pin in ('core', 'unified'):
+    for pin in ('core', 'unified', 'vision', 'language'):
         group = [row for row in rows if row.pin == pin]
         votes = Counter(row.value for row in group if row.required and _valid(row.value))
         expected = votes.most_common(1)[0][0] if votes else None
         for row in group:
             if row.value is None:
                 row.status = 'UNREADABLE'
+            elif row.value.startswith(CODE_DIFFERS):
+                row.status = 'MISMATCH'
             elif not _valid(row.value):
                 row.status = 'INVALID'
             elif expected is None or row.value == expected:

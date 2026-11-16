@@ -158,7 +158,10 @@ To run the same set on GitHub, start the offline workflow manually with the
 ## Check that the pins agree
 
 `check_pins.py` reads the core pin and the unified pin at every site and fails
-when they disagree:
+when they disagree. It also fails when the vision or language commit named in
+`peer-revisions.json` has other code than the vision or language source it reads;
+only the peer's pin files (`requirements-v2.txt`, `.github/workflows/umi-v2.yml`)
+may differ:
 
 ```bash
 python unified/install/check_pins.py --root /path/to/siblings
