@@ -149,8 +149,9 @@ def open_recordings(owner, stimuli, layers, groups=None):
 def _needs_path(cell) -> bool:
     """A string that is a local file name which does not open as it is.
 
-    A string with a URI scheme (``http:``, ``https:``, ``data:``, ``file:``) is not a local
-    name and is never replaced.
+    A string with a URI scheme of two or more characters (``http:``, ``https:``, ``data:``,
+    ``file:``) is not a local name and is never replaced. One letter before a colon is read
+    as a drive letter of a local path, not as a scheme.
     """
     import os
     import re
