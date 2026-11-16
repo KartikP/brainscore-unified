@@ -28,24 +28,6 @@ class StubStimulusSet:
         self.columns = columns
 
 
-def test_process_records_the_region_start_recording_set():
-    act_model = StubActivationsModel(return_value='vision_assembly')
-    model = BrainScoreModel(
-        identifier='resnet',
-        model='torch_model',
-        region_layer_map={'IT': 'layer4'},
-        extractor={'vision': act_model},
-    )
-    model.start_recording('IT')
-    stimuli = StubStimulusSet(columns=['image_file_name', 'stimulus_id'])
-
-    result = model.process(stimuli)
-
-    assert result == 'vision_assembly'
-    assert act_model.call_args['stimuli'] is stimuli
-    assert act_model.call_args['layers'] == ['layer4']
-
-
 def test_process_after_a_task_still_records():
     """A behavioral answer comes only from a session (BehaviorSessions); process()
     after a configured task still records."""

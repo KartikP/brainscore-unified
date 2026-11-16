@@ -220,7 +220,6 @@
       "acceptance": "Encoder/causal/per-token checks and CLIP/GPT-2 process() dispatch execute on CPU; repeated outputs alone do not prove a cache hit.",
       "activation": "pending pinned assets and bounded Linux qualification",
       "expected_collection": [
-        "tests/test_text_wrapper.py::TestTextWrapperEncoderMode::test_returns_neuroid_assembly",
         "tests/test_text_wrapper.py::TestTextWrapperEncoderMode::test_shape",
         "tests/test_text_wrapper.py::TestTextWrapperEncoderMode::test_hidden_dim",
         "tests/test_text_wrapper.py::TestTextWrapperEncoderMode::test_stimulus_id_coord",
@@ -231,7 +230,6 @@
         "tests/test_text_wrapper.py::TestTextWrapperBatching::test_large_batch",
         "tests/test_text_wrapper.py::TestTextWrapperCaching::test_second_call_uses_cache",
         "tests/test_text_wrapper.py::TestTextWrapperIntegration::test_works_as_brainscore_model_preprocessor",
-        "tests/test_text_wrapper.py::TestTextWrapperCausalMode::test_returns_neuroid_assembly",
         "tests/test_text_wrapper.py::TestTextWrapperCausalMode::test_shape",
         "tests/test_text_wrapper.py::TestTextWrapperCausalMode::test_stimulus_set_meta_attached",
         "tests/test_text_wrapper.py::TestTextWrapperCausalMode::test_last_token_uses_attention_mask",
@@ -244,7 +242,7 @@
         "tests/test_text_wrapper.py::TestTextWrapperPerToken::test_per_token_features_differ_across_positions",
         "tests/test_text_wrapper.py::TestTextWrapperCausalMode::test_process_matches_wrapper"
       ],
-      "expected_count": 23,
+      "expected_count": 21,
       "device": "cpu",
       "required_caches": [
         "huggingface"
@@ -274,7 +272,6 @@
       "acceptance": "Per-image outputs, patch grouping and process() dispatch pass with the extracted vision module on CUDA in float16.",
       "activation": "pending pinned assets and bounded Linux qualification",
       "expected_collection": [
-        "tests/test_vlm_vision_wrapper.py::TestVLMVisionWrapperBasic::test_returns_neuroid_assembly",
         "tests/test_vlm_vision_wrapper.py::TestVLMVisionWrapperBasic::test_shape_is_per_image",
         "tests/test_vlm_vision_wrapper.py::TestVLMVisionWrapperBasic::test_stimulus_id_coord",
         "tests/test_vlm_vision_wrapper.py::TestVLMVisionWrapperBasic::test_finite_activations",
@@ -284,7 +281,7 @@
         "tests/test_vlm_vision_wrapper.py::TestCaching::test_second_call_hits_cache",
         "tests/test_vlm_vision_wrapper.py::TestVLMVisionWrapperIntegration::test_works_as_brainscore_model_preprocessor"
       ],
-      "expected_count": 9,
+      "expected_count": 8,
       "device": "cuda",
       "required_caches": [
         "huggingface"

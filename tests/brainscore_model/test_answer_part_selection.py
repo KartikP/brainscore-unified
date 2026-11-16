@@ -1,9 +1,10 @@
 """Which part answers each task form, for every set of answer parts (rule 4.11).
 
 The parts are ``answer`` (A), ``reply`` (P), ``likelihood`` (L) and a readout
-layer with an extractor (R). Each of the 15 part sets carries the statement a
-registrant writes for it (``STATEMENTS`` of ``test_owner_answers.py``). For each
-task form, ``EXPECTED`` states literally what happens:
+layer with an extractor (R). Each part set carries the statement a registrant writes
+for it (``STATEMENTS`` of ``test_owner_answers.py``). For each task form, ``EXPECTED``
+states literally what happens for the five part sets that registrations use;
+``OTHER_PART_SETS`` keeps one cell for each outcome the other ten part sets show:
 
 - ``'<method>:<parts>'``: the session succeeds, the response record names the
   method (for a reaction time, ``link/<method of its probabilities>``), and exactly
@@ -13,6 +14,10 @@ task form, ``EXPECTED`` states literally what happens:
   the message names the part it lacks (``REFUSALS``), and no part is called;
 - ``'-'``: the model does not declare the requested channel, so pre-flight
   makes the pair N/A before any session.
+
+A registered part set is built with the statement its registrations carry
+(``REGISTERED_STATEMENTS``): the readout-only models state that the readout answers
+``behavior:choice`` by argmax.
 
 These are the selection facts the fixed-order table pinned before it was
 deleted: the legacy forms (label set absent, empty or given; instruction and
@@ -35,7 +40,7 @@ from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice, Scale, Text
 from brainscore_core.streaming_helpers import stimulus_session
 from tests.brainscore_model.stage2_answers_baseline import RATINGS
-from tests.brainscore_model.test_answer_ownership import OPTIONS, _model
+from tests.brainscore_model.test_answer_ownership import OPTIONS, REGISTERED_PART_SETS, REGISTERED_STATEMENTS, _model
 from tests.brainscore_model.test_behavior_paths import FITTING, STIMULI, _features
 from tests.brainscore_model.test_owner_answers import STATEMENTS
 
@@ -43,6 +48,10 @@ pytestmark = pytest.mark.unit
 
 PART = {'A': 'answer', 'P': 'reply', 'L': 'likelihood', 'R': 'behavioral_readout_layer'}
 CALLED = {'answer': 'answer', 'reply': 'reply', 'likelihood': 'likelihood', 'extract': 'readout'}
+# The part sets that registrations use: readout only (CLIP, random ViT, GPT-2), answer and
+# readout (BLIP-2), all four (the Qwen family), reply and likelihood (causal LM), answer and
+# reply (the API models).
+REGISTERED = ('R', 'AR', 'APLR', 'PL', 'AP')
 
 
 # --- an answer part, a reply part and a likelihood part, no readout: a Scale -----------
@@ -81,6 +90,8 @@ REFUSALS = {
                 r"Paths tried: generation needs reply=",
     'owner': r"'behavior:choice' is owned by 'generation', which cannot serve this task "
              r"\(task settings: verbatim(, labels per row)?\); no other part answers it",
+    'per-row': r"cannot give a Choice answer with the task settings labels per row\. "
+               r"Paths tried: generation needs reply=.*readout needs behavioral_readout_layer=",
     'tokenization': r"gives behavior:log_probabilities only for a verbatim Choice "
                     r"\(Choice\(\.\.\., verbatim=True\)\)",
     'implied': r"cannot give implied probabilities: it needs likelihood= or a readout "
@@ -131,227 +142,191 @@ FORMS = _forms()
 
 EXPECTED = {
     'legacy instr=False labels=None fit=False': {
-        'A': '!legacy', 'P': '-', 'L': '-', 'R': '!legacy',
-        'AP': '!legacy', 'AL': '!legacy', 'AR': '!legacy', 'PL': '-',
-        'PR': '!legacy', 'LR': '!legacy', 'APL': '!legacy', 'APR': '!legacy',
-        'ALR': '!legacy', 'PLR': '!legacy', 'APLR': '!legacy',
+        'R': '!legacy', 'AR': '!legacy', 'APLR': '!legacy',
+        'PL': '-', 'AP': '!legacy',
     },
     'legacy instr=False labels=None fit=True': {
-        'A': '!legacy', 'P': '-', 'L': '-', 'R': 'readout:readout',
-        'AP': '!legacy', 'AL': '!legacy', 'AR': 'readout:readout', 'PL': '-',
-        'PR': 'readout:readout', 'LR': 'readout:readout', 'APL': '!legacy', 'APR': 'readout:readout',
-        'ALR': 'readout:readout', 'PLR': 'readout:readout', 'APLR': 'readout:readout',
+        'R': 'readout:readout', 'AR': 'readout:readout', 'APLR': 'readout:readout',
+        'PL': '-', 'AP': '!legacy',
     },
     'legacy instr=False labels=[] fit=False': {
-        'A': '!legacy', 'P': '-', 'L': '-', 'R': '!legacy',
-        'AP': '!legacy', 'AL': '!legacy', 'AR': '!legacy', 'PL': '-',
-        'PR': '!legacy', 'LR': '!legacy', 'APL': '!legacy', 'APR': '!legacy',
-        'ALR': '!legacy', 'PLR': '!legacy', 'APLR': '!legacy',
+        'R': '!legacy', 'AR': '!legacy', 'APLR': '!legacy',
+        'PL': '-', 'AP': '!legacy',
     },
     'legacy instr=False labels=[] fit=True': {
-        'A': '!legacy', 'P': '-', 'L': '-', 'R': 'readout:readout',
-        'AP': '!legacy', 'AL': '!legacy', 'AR': 'readout:readout', 'PL': '-',
-        'PR': 'readout:readout', 'LR': 'readout:readout', 'APL': '!legacy', 'APR': 'readout:readout',
-        'ALR': 'readout:readout', 'PLR': 'readout:readout', 'APLR': 'readout:readout',
+        'R': 'readout:readout', 'AR': 'readout:readout', 'APLR': 'readout:readout',
+        'PL': '-', 'AP': '!legacy',
     },
     "legacy instr=False labels=['cat', 'dog'] fit=False": {
-        'A': '!legacy', 'P': '-', 'L': '-', 'R': '!legacy',
-        'AP': '!legacy', 'AL': '!legacy', 'AR': '!legacy', 'PL': '-',
-        'PR': '!legacy', 'LR': '!legacy', 'APL': '!legacy', 'APR': '!legacy',
-        'ALR': '!legacy', 'PLR': '!legacy', 'APLR': '!legacy',
+        'R': '!legacy', 'AR': '!legacy', 'APLR': '!legacy',
+        'PL': '-', 'AP': '!legacy',
     },
     "legacy instr=False labels=['cat', 'dog'] fit=True": {
-        'A': '!legacy', 'P': '-', 'L': '-', 'R': 'readout:readout',
-        'AP': '!legacy', 'AL': '!legacy', 'AR': 'readout:readout', 'PL': '-',
-        'PR': 'readout:readout', 'LR': 'readout:readout', 'APL': '!legacy', 'APR': 'readout:readout',
-        'ALR': 'readout:readout', 'PLR': 'readout:readout', 'APLR': 'readout:readout',
+        'R': 'readout:readout', 'AR': 'readout:readout', 'APLR': 'readout:readout',
+        'PL': '-', 'AP': '!legacy',
     },
     'legacy instr=True labels=None fit=False': {
-        'A': '!legacy', 'P': '-', 'L': '-', 'R': '!legacy',
-        'AP': '!legacy', 'AL': '!legacy', 'AR': '!legacy', 'PL': '-',
-        'PR': '!legacy', 'LR': '!legacy', 'APL': '!legacy', 'APR': '!legacy',
-        'ALR': '!legacy', 'PLR': '!legacy', 'APLR': '!legacy',
+        'R': '!legacy', 'AR': '!legacy', 'APLR': '!legacy',
+        'PL': '-', 'AP': '!legacy',
     },
     'legacy instr=True labels=None fit=True': {
-        'A': '!legacy', 'P': '-', 'L': '-', 'R': 'readout:readout',
-        'AP': '!legacy', 'AL': '!legacy', 'AR': 'readout:readout', 'PL': '-',
-        'PR': 'readout:readout', 'LR': 'readout:readout', 'APL': '!legacy', 'APR': 'readout:readout',
-        'ALR': 'readout:readout', 'PLR': 'readout:readout', 'APLR': 'readout:readout',
+        'R': 'readout:readout', 'AR': 'readout:readout', 'APLR': 'readout:readout',
+        'PL': '-', 'AP': '!legacy',
     },
     'legacy instr=True labels=[] fit=False': {
-        'A': '!legacy', 'P': '-', 'L': '-', 'R': '!legacy',
-        'AP': '!legacy', 'AL': '!legacy', 'AR': '!legacy', 'PL': '-',
-        'PR': '!legacy', 'LR': '!legacy', 'APL': '!legacy', 'APR': '!legacy',
-        'ALR': '!legacy', 'PLR': '!legacy', 'APLR': '!legacy',
+        'R': '!legacy', 'AR': '!legacy', 'APLR': '!legacy',
+        'PL': '-', 'AP': '!legacy',
     },
     'legacy instr=True labels=[] fit=True': {
-        'A': '!legacy', 'P': '-', 'L': '-', 'R': 'readout:readout',
-        'AP': '!legacy', 'AL': '!legacy', 'AR': 'readout:readout', 'PL': '-',
-        'PR': 'readout:readout', 'LR': 'readout:readout', 'APL': '!legacy', 'APR': 'readout:readout',
-        'ALR': 'readout:readout', 'PLR': 'readout:readout', 'APLR': 'readout:readout',
+        'R': 'readout:readout', 'AR': 'readout:readout', 'APLR': 'readout:readout',
+        'PL': '-', 'AP': '!legacy',
     },
     "legacy instr=True labels=['cat', 'dog'] fit=False": {
-        'A': 'generation:answer', 'P': '-', 'L': '-', 'R': '!legacy',
-        'AP': 'generation:answer', 'AL': 'generation:answer', 'AR': 'generation:answer', 'PL': '-',
-        'PR': '!legacy', 'LR': '!legacy', 'APL': 'generation:answer', 'APR': 'generation:answer',
-        'ALR': 'generation:answer', 'PLR': '!legacy', 'APLR': 'generation:answer',
+        'R': '!legacy', 'AR': 'generation:answer', 'APLR': 'generation:answer',
+        'PL': '-', 'AP': 'generation:answer',
     },
     "legacy instr=True labels=['cat', 'dog'] fit=True": {
-        'A': 'generation:answer', 'P': '-', 'L': '-', 'R': 'readout:readout',
-        'AP': 'generation:answer', 'AL': 'generation:answer', 'AR': 'generation:answer', 'PL': '-',
-        'PR': 'readout:readout', 'LR': 'readout:readout', 'APL': 'generation:answer', 'APR': 'generation:answer',
-        'ALR': 'generation:answer', 'PLR': 'readout:readout', 'APLR': 'generation:answer',
+        'R': 'readout:readout', 'AR': 'generation:answer', 'APLR': 'generation:answer',
+        'PL': '-', 'AP': 'generation:answer',
     },
     'scale fit=False': {
-        'A': '-', 'P': 'generation:reply', 'L': '-', 'R': '!scale',
-        'AP': 'generation:reply', 'AL': '-', 'AR': '!scale', 'PL': 'generation:reply',
-        'PR': 'generation:reply', 'LR': '!scale', 'APL': 'generation:reply', 'APR': 'generation:reply',
-        'ALR': '!scale', 'PLR': 'generation:reply', 'APLR': 'generation:reply',
+        'R': '!scale', 'AR': '!scale', 'APLR': 'generation:reply',
+        'PL': 'generation:reply', 'AP': 'generation:reply',
     },
     'scale fit=True': {
-        'A': '-', 'P': 'generation:reply', 'L': '-', 'R': 'readout:readout',
-        'AP': 'generation:reply', 'AL': '-', 'AR': 'readout:readout', 'PL': 'generation:reply',
-        'PR': 'generation:reply', 'LR': 'readout:readout', 'APL': 'generation:reply', 'APR': 'generation:reply',
-        'ALR': 'readout:readout', 'PLR': 'generation:reply', 'APLR': 'generation:reply',
+        'R': 'readout:readout', 'AR': 'readout:readout', 'APLR': 'generation:reply',
+        'PL': 'generation:reply', 'AP': 'generation:reply',
     },
     'text fit=False': {
-        'A': '-', 'P': 'generation:reply', 'L': '-', 'R': '-',
-        'AP': 'generation:reply', 'AL': '-', 'AR': '-', 'PL': 'generation:reply',
-        'PR': 'generation:reply', 'LR': '-', 'APL': 'generation:reply', 'APR': 'generation:reply',
-        'ALR': '-', 'PLR': 'generation:reply', 'APLR': 'generation:reply',
+        'R': '-', 'AR': '-', 'APLR': 'generation:reply',
+        'PL': 'generation:reply', 'AP': 'generation:reply',
     },
     'plain choice fit=False': {
-        'A': 'generation:answer', 'P': 'generation:reply', 'L': '-', 'R': '-',
-        'AP': 'generation:answer', 'AL': 'generation:answer', 'AR': 'generation:answer', 'PL': 'generation:reply',
-        'PR': 'generation:reply', 'LR': 'likelihood:likelihood', 'APL': 'generation:answer', 'APR': 'generation:answer',
-        'ALR': 'generation:answer', 'PLR': 'generation:reply', 'APLR': 'generation:answer',
+        'R': '!choice', 'AR': 'generation:answer', 'APLR': 'generation:answer',
+        'PL': 'generation:reply', 'AP': 'generation:answer',
     },
     'plain probabilities fit=False': {
-        'A': '-', 'P': '-', 'L': '-', 'R': '!choice',
-        'AP': '-', 'AL': 'likelihood:answer+likelihood', 'AR': '!implied', 'PL': 'likelihood:likelihood+reply',
-        'PR': '!implied', 'LR': 'likelihood:likelihood', 'APL': 'likelihood:answer+likelihood', 'APR': '!implied',
-        'ALR': 'likelihood:answer+likelihood', 'PLR': 'likelihood:likelihood+reply', 'APLR': 'likelihood:answer+likelihood',
+        'R': '!choice', 'AR': '!implied', 'APLR': 'likelihood:answer+likelihood',
+        'PL': 'likelihood:likelihood+reply', 'AP': '-',
     },
     'per-row choice fit=False': {
-        'A': 'generation:answer', 'P': 'generation:reply', 'L': '-', 'R': '-',
-        'AP': 'generation:reply', 'AL': 'generation:answer', 'AR': 'generation:answer', 'PL': 'generation:reply',
-        'PR': 'generation:reply', 'LR': 'likelihood:likelihood', 'APL': 'generation:reply', 'APR': 'generation:reply',
-        'ALR': 'generation:answer', 'PLR': 'generation:reply', 'APLR': 'generation:reply',
+        'R': '!per-row', 'AR': 'generation:answer', 'APLR': 'generation:reply',
+        'PL': 'generation:reply', 'AP': 'generation:reply',
     },
     'per-row verbatim choice fit=False': {
-        'A': '!verbatim', 'P': 'generation:reply', 'L': '-', 'R': '-',
-        'AP': 'generation:reply', 'AL': '!owner', 'AR': '!verbatim', 'PL': 'generation:reply',
-        'PR': 'generation:reply', 'LR': 'likelihood:likelihood', 'APL': 'generation:reply', 'APR': 'generation:reply',
-        'ALR': '!owner', 'PLR': 'generation:reply', 'APLR': 'generation:reply',
+        'R': '!verbatim', 'AR': '!verbatim', 'APLR': 'generation:reply',
+        'PL': 'generation:reply', 'AP': 'generation:reply',
     },
     'verbatim choice fit=False': {
-        'A': '!verbatim', 'P': 'generation:reply', 'L': '-', 'R': '-',
-        'AP': 'generation:reply', 'AL': '!owner', 'AR': '!verbatim', 'PL': 'generation:reply',
-        'PR': 'generation:reply', 'LR': 'likelihood:likelihood', 'APL': 'generation:reply', 'APR': 'generation:reply',
-        'ALR': '!owner', 'PLR': 'generation:reply', 'APLR': 'generation:reply',
+        'R': '!verbatim', 'AR': '!verbatim', 'APLR': 'generation:reply',
+        'PL': 'generation:reply', 'AP': 'generation:reply',
     },
     'text fit=True': {
-        'A': '-', 'P': 'generation:reply', 'L': '-', 'R': '-',
-        'AP': 'generation:reply', 'AL': '-', 'AR': '-', 'PL': 'generation:reply',
-        'PR': 'generation:reply', 'LR': '-', 'APL': 'generation:reply', 'APR': 'generation:reply',
-        'ALR': '-', 'PLR': 'generation:reply', 'APLR': 'generation:reply',
+        'R': '-', 'AR': '-', 'APLR': 'generation:reply',
+        'PL': 'generation:reply', 'AP': 'generation:reply',
     },
     'plain choice fit=True': {
-        'A': 'generation:answer', 'P': 'generation:reply', 'L': '-', 'R': '-',
-        'AP': 'generation:answer', 'AL': 'generation:answer', 'AR': 'generation:answer', 'PL': 'generation:reply',
-        'PR': 'generation:reply', 'LR': 'likelihood:likelihood', 'APL': 'generation:answer', 'APR': 'generation:answer',
-        'ALR': 'generation:answer', 'PLR': 'generation:reply', 'APLR': 'generation:answer',
+        'R': 'readout:readout', 'AR': 'generation:answer', 'APLR': 'generation:answer',
+        'PL': 'generation:reply', 'AP': 'generation:answer',
     },
     'plain probabilities fit=True': {
-        'A': '-', 'P': '-', 'L': '-', 'R': 'readout:readout',
-        'AP': '-', 'AL': 'likelihood:answer+likelihood', 'AR': 'readout:answer+readout', 'PL': 'likelihood:likelihood+reply',
-        'PR': 'readout:readout+reply', 'LR': 'likelihood:likelihood', 'APL': 'likelihood:answer+likelihood', 'APR': 'readout:answer+readout',
-        'ALR': 'likelihood:answer+likelihood', 'PLR': 'likelihood:likelihood+reply', 'APLR': 'likelihood:answer+likelihood',
+        'R': 'readout:readout', 'AR': 'readout:answer+readout', 'APLR': 'likelihood:answer+likelihood',
+        'PL': 'likelihood:likelihood+reply', 'AP': '-',
     },
     'per-row choice fit=True': {
-        'A': 'generation:answer', 'P': 'generation:reply', 'L': '-', 'R': '-',
-        'AP': 'generation:reply', 'AL': 'generation:answer', 'AR': 'generation:answer', 'PL': 'generation:reply',
-        'PR': 'generation:reply', 'LR': 'likelihood:likelihood', 'APL': 'generation:reply', 'APR': 'generation:reply',
-        'ALR': 'generation:answer', 'PLR': 'generation:reply', 'APLR': 'generation:reply',
+        'R': '!per-row', 'AR': 'generation:answer', 'APLR': 'generation:reply',
+        'PL': 'generation:reply', 'AP': 'generation:reply',
     },
     'per-row verbatim choice fit=True': {
-        'A': '!verbatim', 'P': 'generation:reply', 'L': '-', 'R': '-',
-        'AP': 'generation:reply', 'AL': '!owner', 'AR': '!verbatim', 'PL': 'generation:reply',
-        'PR': 'generation:reply', 'LR': 'likelihood:likelihood', 'APL': 'generation:reply', 'APR': 'generation:reply',
-        'ALR': '!owner', 'PLR': 'generation:reply', 'APLR': 'generation:reply',
+        'R': '!verbatim', 'AR': '!verbatim', 'APLR': 'generation:reply',
+        'PL': 'generation:reply', 'AP': 'generation:reply',
     },
     'verbatim choice fit=True': {
-        'A': '!verbatim', 'P': 'generation:reply', 'L': '-', 'R': '-',
-        'AP': 'generation:reply', 'AL': '!owner', 'AR': '!owner', 'PL': 'generation:reply',
-        'PR': 'generation:reply', 'LR': 'likelihood:likelihood', 'APL': 'generation:reply', 'APR': 'generation:reply',
-        'ALR': '!owner', 'PLR': 'generation:reply', 'APLR': 'generation:reply',
+        'R': 'readout:readout', 'AR': '!owner', 'APLR': 'generation:reply',
+        'PL': 'generation:reply', 'AP': 'generation:reply',
     },
     'reaction time evidence_margin fit=False': {
-        'A': '-', 'P': '-', 'L': '-', 'R': '!choice',
-        'AP': '-', 'AL': 'link/likelihood:answer+likelihood', 'AR': '!implied', 'PL': 'link/likelihood:likelihood+reply',
-        'PR': '!implied', 'LR': 'link/likelihood:likelihood', 'APL': 'link/likelihood:answer+likelihood', 'APR': '!implied',
-        'ALR': 'link/likelihood:answer+likelihood', 'PLR': 'link/likelihood:likelihood+reply', 'APLR': 'link/likelihood:answer+likelihood',
+        'R': '!choice', 'AR': '!implied', 'APLR': 'link/likelihood:answer+likelihood',
+        'PL': 'link/likelihood:likelihood+reply', 'AP': '-',
     },
     'reaction time evidence_margin fit=True': {
-        'A': '-', 'P': '-', 'L': '-', 'R': 'link/readout:readout',
-        'AP': '-', 'AL': 'link/likelihood:answer+likelihood', 'AR': 'link/readout:answer+readout', 'PL': 'link/likelihood:likelihood+reply',
-        'PR': 'link/readout:readout+reply', 'LR': 'link/likelihood:likelihood', 'APL': 'link/likelihood:answer+likelihood', 'APR': 'link/readout:answer+readout',
-        'ALR': 'link/likelihood:answer+likelihood', 'PLR': 'link/likelihood:likelihood+reply', 'APLR': 'link/likelihood:answer+likelihood',
+        'R': 'link/readout:readout', 'AR': 'link/readout:answer+readout', 'APLR': 'link/likelihood:answer+likelihood',
+        'PL': 'link/likelihood:likelihood+reply', 'AP': '-',
     },
     'reaction time surprisal fit=False': {
-        'A': '-', 'P': '-', 'L': '-', 'R': '!choice',
-        'AP': '-', 'AL': 'link/likelihood:answer+likelihood', 'AR': '!implied', 'PL': 'link/likelihood:likelihood+reply',
-        'PR': '!implied', 'LR': 'link/likelihood:likelihood', 'APL': 'link/likelihood:answer+likelihood', 'APR': '!implied',
-        'ALR': 'link/likelihood:answer+likelihood', 'PLR': 'link/likelihood:likelihood+reply', 'APLR': 'link/likelihood:answer+likelihood',
+        'R': '!choice', 'AR': '!implied', 'APLR': 'link/likelihood:answer+likelihood',
+        'PL': 'link/likelihood:likelihood+reply', 'AP': '-',
     },
     'reaction time surprisal fit=True': {
-        'A': '-', 'P': '-', 'L': '-', 'R': 'link/readout:readout',
-        'AP': '-', 'AL': 'link/likelihood:answer+likelihood', 'AR': 'link/readout:answer+readout', 'PL': 'link/likelihood:likelihood+reply',
-        'PR': 'link/readout:readout+reply', 'LR': 'link/likelihood:likelihood', 'APL': 'link/likelihood:answer+likelihood', 'APR': 'link/readout:answer+readout',
-        'ALR': 'link/likelihood:answer+likelihood', 'PLR': 'link/likelihood:likelihood+reply', 'APLR': 'link/likelihood:answer+likelihood',
+        'R': 'link/readout:readout', 'AR': 'link/readout:answer+readout', 'APLR': 'link/likelihood:answer+likelihood',
+        'PL': 'link/likelihood:likelihood+reply', 'AP': '-',
     },
     'log probabilities fit=False': {
-        'A': '-', 'P': '-', 'L': 'likelihood:likelihood', 'R': '-',
-        'AP': '-', 'AL': '!owner', 'AR': '-', 'PL': 'likelihood:likelihood',
-        'PR': '-', 'LR': 'likelihood:likelihood', 'APL': 'likelihood:likelihood', 'APR': '-',
-        'ALR': '!owner', 'PLR': 'likelihood:likelihood', 'APLR': 'likelihood:likelihood',
+        'R': '-', 'AR': '-', 'APLR': 'likelihood:likelihood',
+        'PL': 'likelihood:likelihood', 'AP': '-',
     },
     'log probabilities fit=True': {
-        'A': '-', 'P': '-', 'L': 'likelihood:likelihood', 'R': '-',
-        'AP': '-', 'AL': '!owner', 'AR': '-', 'PL': 'likelihood:likelihood',
-        'PR': '-', 'LR': 'likelihood:likelihood', 'APL': 'likelihood:likelihood', 'APR': '-',
-        'ALR': '!owner', 'PLR': 'likelihood:likelihood', 'APLR': 'likelihood:likelihood',
+        'R': '-', 'AR': '-', 'APLR': 'likelihood:likelihood',
+        'PL': 'likelihood:likelihood', 'AP': '-',
     },
     'log probabilities not verbatim fit=False': {
-        'A': '-', 'P': '-', 'L': '!tokenization', 'R': '-',
-        'AP': '-', 'AL': '!tokenization', 'AR': '-', 'PL': '!tokenization',
-        'PR': '-', 'LR': '!tokenization', 'APL': '!tokenization', 'APR': '-',
-        'ALR': '!tokenization', 'PLR': '!tokenization', 'APLR': '!tokenization',
+        'R': '-', 'AR': '-', 'APLR': '!tokenization',
+        'PL': '!tokenization', 'AP': '-',
     },
     'log probabilities not verbatim fit=True': {
-        'A': '-', 'P': '-', 'L': '!tokenization', 'R': '-',
-        'AP': '-', 'AL': '!tokenization', 'AR': '-', 'PL': '!tokenization',
-        'PR': '-', 'LR': '!tokenization', 'APL': '!tokenization', 'APR': '-',
-        'ALR': '!tokenization', 'PLR': '!tokenization', 'APLR': '!tokenization',
+        'R': '-', 'AR': '-', 'APLR': '!tokenization',
+        'PL': '!tokenization', 'AP': '-',
     },
 }
 
+# One cell for each outcome that the part sets no registration uses show: they keep each
+# outcome of the selection (a refusal, a method and the parts it calls) under test.
+OTHER_PART_SETS = {
+    ('plain probabilities fit=False', 'PR'): '!implied',
+    ('legacy instr=False labels=None fit=False', 'A'): '!legacy',
+    ('per-row verbatim choice fit=False', 'AL'): '!owner',
+    ('scale fit=False', 'LR'): '!scale',
+    ('log probabilities not verbatim fit=False', 'L'): '!tokenization',
+    ('per-row verbatim choice fit=False', 'A'): '!verbatim',
+    ('legacy instr=False labels=None fit=False', 'P'): '-',
+    ("legacy instr=True labels=['cat', 'dog'] fit=False", 'A'): 'generation:answer',
+    ('scale fit=False', 'P'): 'generation:reply',
+    ('plain probabilities fit=False', 'AL'): 'likelihood:answer+likelihood',
+    ('plain choice fit=False', 'LR'): 'likelihood:likelihood',
+    ('plain probabilities fit=False', 'PLR'): 'likelihood:likelihood+reply',
+    ('reaction time evidence_margin fit=False', 'AL'): 'link/likelihood:answer+likelihood',
+    ('reaction time evidence_margin fit=False', 'LR'): 'link/likelihood:likelihood',
+    ('reaction time evidence_margin fit=False', 'PLR'): 'link/likelihood:likelihood+reply',
+    ('reaction time evidence_margin fit=True', 'APR'): 'link/readout:answer+readout',
+    ('reaction time evidence_margin fit=True', 'PR'): 'link/readout:readout+reply',
+    ('plain probabilities fit=True', 'APR'): 'readout:answer+readout',
+    ('legacy instr=False labels=None fit=True', 'PR'): 'readout:readout',
+    ('plain probabilities fit=True', 'PR'): 'readout:readout+reply',
+}
 
-def test_every_task_form_has_an_expectation_for_every_part_set():
+
+def test_every_task_form_has_a_cell_for_every_registered_part_set():
+    """A new task form adds one cell for each of the five part sets that registrations use."""
     assert set(EXPECTED) == set(FORMS)
-    for expectations in EXPECTED.values():
-        assert {tuple(PART[letter] for letter in key) for key in expectations} == set(STATEMENTS)
+    for form, expectations in EXPECTED.items():
+        assert {tuple(PART[letter] for letter in key) for key in expectations} == REGISTERED_PART_SETS, form
+    assert {form for form, _ in OTHER_PART_SETS} <= set(FORMS)
+    assert not {key for _, key in OTHER_PART_SETS} & set(REGISTERED)
 
 
-@pytest.mark.parametrize('form', sorted(FORMS))
-@pytest.mark.parametrize('key', ['A', 'P', 'L', 'R', 'AP', 'AL', 'AR', 'PL', 'PR', 'LR',
-                                 'APL', 'APR', 'ALR', 'PLR', 'APLR'])
+CELLS = {(form, key): outcome for form, cells in EXPECTED.items() for key, outcome in cells.items()}
+CELLS.update(OTHER_PART_SETS)
+
+
+@pytest.mark.parametrize('form, key', sorted(CELLS))
 def test_the_stated_part_answers_or_the_stated_refusal_is_raised(form, key):
     parts = tuple(PART[letter] for letter in key)
     stimuli, channel, task = FORMS[form]
-    expected = EXPECTED[form][key]
+    expected = CELLS[form, key]
     calls = []
-    model = _model(*parts, owners=STATEMENTS[parts], calls=calls)
+    # A registered part set states what its registrations state; another, the statement of STATEMENTS.
+    owners = REGISTERED_STATEMENTS[parts] if key in REGISTERED else STATEMENTS[parts]
+    model = _model(*parts, owners=owners, calls=calls)
     if expected == '-':
         assert channel not in model.out_channels
         return

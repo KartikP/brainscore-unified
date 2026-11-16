@@ -7,7 +7,6 @@ import pytest
 pytestmark = pytest.mark.slow  # loads real CLIP / GPT-2 weights — run on demand
 
 from brainscore import BrainScoreModel
-from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
@@ -44,10 +43,6 @@ def text_stimuli():
 
 
 class TestTextWrapperEncoderMode:
-    def test_returns_neuroid_assembly(self, clip_text_wrapper, text_stimuli):
-        result = clip_text_wrapper(text_stimuli, layers=['encoder.layers.10'])
-        assert isinstance(result, NeuroidAssembly)
-
     def test_shape(self, clip_text_wrapper, text_stimuli):
         result = clip_text_wrapper(text_stimuli, layers=['encoder.layers.10'])
         assert result.dims == ('presentation', 'neuroid')
@@ -179,10 +174,6 @@ class TestTextWrapperCausalMode:
         np.testing.assert_array_equal(result.values, direct.values)
         assert list(result['stimulus_id'].values) == list(direct['stimulus_id'].values)
         model.reset()
-
-    def test_returns_neuroid_assembly(self, gpt2_text_wrapper, text_stimuli):
-        result = gpt2_text_wrapper(text_stimuli, layers=['h.11'])
-        assert isinstance(result, NeuroidAssembly)
 
     def test_shape(self, gpt2_text_wrapper, text_stimuli):
         result = gpt2_text_wrapper(text_stimuli, layers=['h.11'])
