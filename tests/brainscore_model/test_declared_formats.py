@@ -10,6 +10,7 @@ The registration rows build every ``BrainScoreModel(...)`` call of the library
 statement, the same two extractors (text and vision), a ``VWFA`` region and an
 intervention, so that the pre-flight matrix shows the behavior part only.
 """
+from functools import lru_cache
 from types import SimpleNamespace
 
 import pytest
@@ -114,21 +115,32 @@ def _compatible(model):
     return found
 
 
-REGISTRATIONS = _registrations()[0]
+@lru_cache(maxsize=None)
+def _scan():
+    # The source scan runs inside a test, never at import: one plugin the scan cannot
+    # read must not stop the collection of the tier.
+    return _registrations()[0]
+
+
+def _calls(where):
+    """The library calls in the file ``where``, as (wired parts, stated owners)."""
+    return [(wired, stated) for path, wired, stated in _scan() if path == where]
 
 
 def test_every_library_call_is_in_the_tables():
-    assert {where for where, _, _ in REGISTRATIONS} == set(DECLARED) == set(COMPATIBLE)
+    assert {where for where, _, _ in _scan()} == set(DECLARED) == set(COMPATIBLE)
 
 
-@pytest.mark.parametrize('where, wired, stated', REGISTRATIONS, ids=[r[0] for r in REGISTRATIONS])
-def test_each_library_call_declares_the_formats_of_the_table(where, wired, stated):
-    assert _behavior(_stand_in(wired, stated)) == DECLARED[where][1]
+@pytest.mark.parametrize('where', sorted(DECLARED))
+def test_each_library_call_declares_the_formats_of_the_table(where):
+    for wired, stated in _calls(where):
+        assert _behavior(_stand_in(wired, stated)) == DECLARED[where][1]
 
 
-@pytest.mark.parametrize('where, wired, stated', REGISTRATIONS, ids=[r[0] for r in REGISTRATIONS])
-def test_each_library_call_is_compatible_where_the_matrix_says(where, wired, stated):
-    assert _compatible(_stand_in(wired, stated)) == COMPATIBLE[where][1]
+@pytest.mark.parametrize('where', sorted(COMPATIBLE))
+def test_each_library_call_is_compatible_where_the_matrix_says(where):
+    for wired, stated in _calls(where):
+        assert _compatible(_stand_in(wired, stated)) == COMPATIBLE[where][1]
 
 
 def test_the_matrix_changes_only_where_the_declarations_change():
@@ -212,14 +224,15 @@ def test_a_readout_layer_without_an_extractor_declares_no_behavior():
 
 # --- reviewer questions --------------------------------------------------------
 
-@pytest.mark.parametrize('where, wired, stated', REGISTRATIONS, ids=[r[0] for r in REGISTRATIONS])
-def test_session_support_uses_the_declared_set(where, wired, stated):
-    model = _stand_in(wired, stated)
-    behavior = next(c for c in model._declared_capabilities() if c.identifier == 'behavior-sessions') \
-        if _behavior(model) else None
-    for channel in (B, CH, P, LP, RA, RT, TE):
-        supported = behavior is not None and behavior.supports_session(model, [channel])
-        assert supported == (channel in model.out_channels), (where, channel)
+def test_session_support_uses_the_declared_set():
+    """For every library call the scan reads, a new one included."""
+    for where, wired, stated in _scan():
+        model = _stand_in(wired, stated)
+        behavior = next(c for c in model._declared_capabilities() if c.identifier == 'behavior-sessions') \
+            if _behavior(model) else None
+        for channel in (B, CH, P, LP, RA, RT, TE):
+            supported = behavior is not None and behavior.supports_session(model, [channel])
+            assert supported == (channel in model.out_channels), (where, channel)
 
 
 # One session per format that requests that format alone.
@@ -237,14 +250,14 @@ SESSIONS = {
 }
 
 
-@pytest.mark.parametrize('where, wired, stated', [r for r in REGISTRATIONS if r[1]],
-                         ids=[r[0] for r in REGISTRATIONS if r[1]])
-def test_every_declared_format_is_answered(where, wired, stated):
-    model = _stand_in(wired, stated)
-    for channel in sorted(_behavior(model)):
-        session = stimulus_session(STIMULI, [channel], SESSIONS[channel])
-        model.participate(session)
-        assert session.collect(channel).sizes['presentation'] == len(STIMULI), (where, channel)
+def test_every_declared_format_is_answered():
+    """For every library call with an answer part that the scan reads, a new one included."""
+    for where, wired, stated in _scan():
+        model = _stand_in(wired, stated)
+        for channel in sorted(_behavior(model)):
+            session = stimulus_session(STIMULI, [channel], SESSIONS[channel])
+            model.participate(session)
+            assert session.collect(channel).sizes['presentation'] == len(STIMULI), (where, channel)
 
 
 def test_a_behavior_request_without_a_task_shows_the_line_to_write_before_any_answer():
