@@ -33,10 +33,10 @@ class TestReport:
         assert f'environment fingerprint  {environment_fingerprint()}' in text
 
     def test_prints_the_math_threads_next_to_the_fingerprint(self):
-        from brainscore_core.environment_check import _math_threads
+        from brainscore_core.environment_check import math_threads
         lines = doctor.report()[0].splitlines()
         index = next(i for i, l in enumerate(lines) if l.startswith('environment fingerprint'))
-        assert lines[index + 1] == f'math threads             {_math_threads()}'
+        assert lines[index + 1] == f'math threads             {math_threads()}'
 
     def test_another_process_prints_the_same_fingerprint_as_a_score_here(self):
         """Two processes of one environment give one value, whatever each imported first."""
