@@ -257,11 +257,29 @@ for _capability in (_NEURAL, _BEHAVIOR, _MOTOR, InterventionSessions()):
     register_capability(_capability)
 
 
-def _trial_time(trial):
-    """The time of a one-row trial: its ``t_ms`` column, as its input events carry it, or None."""
-    if 't_ms' not in trial.columns or pd.isna(trial['t_ms'].iloc[0]):
-        return None
-    return float(trial['t_ms'].iloc[0])
+def _presented_times(session, events, n_rows):
+    """The time of each row of the presented table: that of the first input event that presented it.
+
+    The session's own table is presented in row order: one event per row, or one event
+    per input column with ``meta['table_row']``. Rows rebuilt from events (no table) are
+    keyed as core rebuilds them: ``stimulus_index``, else ``stimulus_id``, else the
+    event's position. A row no event presented has no time.
+    """
+    times = [None] * n_rows
+    seen = set()
+    own_table = getattr(session, 'stimuli', None) is not None
+    position, keys = -1, {}
+    for index, event in enumerate(events):
+        if own_table:
+            row = event.meta.get('table_row')
+            position = row if row is not None else position + 1
+        else:
+            key = event.meta.get('stimulus_index', event.meta.get('stimulus_id', index))
+            position = keys.setdefault(key, len(keys))
+        if 0 <= position < n_rows and position not in seen:
+            seen.add(position)
+            times[position] = event.t_ms
+    return times
 
 
 def drive_behavior_and_neural_session(subject, session, driver: str = "interact") -> None:
@@ -291,13 +309,21 @@ def drive_behavior_and_neural_session(subject, session, driver: str = "interact"
     if plan.delivery == 'stream':
         batches = enumerate(_drivers.stream_trials(session, task))
     else:
-        stimuli = _drivers.behavior_stimuli_from_session(session, task)
+        # Every input is read first. A trial is a row of the presented table; it keeps the
+        # time of the input events that presented it, never a time column of the table.
+        events = [event for event in _drivers.drain_session_inputs(session)
+                  if event.channel != 'instruction']
+        stimuli = (_drivers.session_stimuli(session, events)
+                   if events or getattr(session, 'stimuli', None) is not None
+                   else _drivers.behavior_stimuli_from_session(session, task))
         if stimuli is None:
             raise ValueError("Recording during a task needs stimuli to present.")
-        trials = [_drivers.preserve_stimulus_set_type(stimuli, stimuli.iloc[[index]])
-                  for index in range(len(stimuli))]
-        batches = (enumerate((trial, _trial_time(trial)) for trial in trials)
-                   if plan.delivery == 'per_trial' else [(0, (stimuli, None))])
+        if plan.delivery == 'per_trial':
+            times = _presented_times(session, events, len(stimuli))
+            batches = enumerate((_drivers.preserve_stimulus_set_type(stimuli, stimuli.iloc[[index]]),
+                                 times[index]) for index in range(len(stimuli)))
+        else:
+            batches = [(0, (stimuli, None))]
     for index, (batch, t_ms) in batches:
         if index == 0 or task.trial_memory == 'none':
             subject._begin_episode()
