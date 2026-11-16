@@ -488,7 +488,8 @@ def score(model_identifier, benchmark_identifier,
 
     # A legacy domain benchmark (marked by its domain loader) receives the
     # permanent facade, which runs its calls as sessions through participate.
-    from brainscore_core.legacy_facade import declared_visual_degrees, subject_for_benchmark
+    from brainscore_core.legacy_facade import (
+        declared_visual_degrees, record_replaced_answers, subject_for_benchmark)
     received = subject_for_benchmark(subject, benchmark,
                                      visual_degrees=declared_visual_degrees(subject))
 
@@ -512,6 +513,7 @@ def score(model_identifier, benchmark_identifier,
         benchmark_identifier=benchmark_id,
     )
     result.attrs['compatibility'] = compatibility.as_attrs()
+    record_replaced_answers(result, received)
     return result
 
 
