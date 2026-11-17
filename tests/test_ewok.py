@@ -614,6 +614,7 @@ def test_an_empty_context_is_refused_as_ewok_cannot_score_it(tiny_lm):
     from brainscore_core.responses import trial_prompt
     net, tok = tiny_lm
     _, likelihood = chat_parts(net, tok)
+    likelihood = likelihood['continuation']
     from brainscore.benchmarks.ewok.benchmark import _TASKS
     task = TaskContext(response=_TASKS['logprobs'][0])
     prompt = trial_prompt(task, {'stimulus_id': 'a', 'text': '', 'options': ('the cat', 'the dog')})

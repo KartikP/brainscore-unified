@@ -15,7 +15,8 @@ One registration declares, and answers through ``participate`` (or ``process``):
   ``verbatim`` choice it scores ``f"{text} {option}"`` as plain text, with no
   chat template and no beginning-of-sequence token, as EWoK's ``score`` does;
   otherwise the text is a user turn of the chat template and each option is
-  scored as the assistant's reply.
+  scored as the assistant's reply. Under a ``Segments`` task it gives the log
+  probability of each part given the earlier parts (``segment_log_probabilities``).
 """
 from copy import deepcopy
 from typing import Any, Mapping, Optional, Sequence
@@ -23,7 +24,8 @@ from typing import Any, Mapping, Optional, Sequence
 from brainscore import BrainScoreModel
 from brainscore_core.responses import Choice, Text
 
-from brainscore.model_helpers.replies import _generation_settings, _plain_text_scores, _scores_alone
+from brainscore.model_helpers.replies import (_generation_settings, _plain_text_scores, _scores_alone,
+                                             segment_log_probabilities)
 from brainscore.model_helpers.text_wrapper import TextWrapper
 from brainscore.model_helpers.intervention import pytorch_intervention
 
@@ -68,7 +70,16 @@ class _CausalLMParts:
                                       **settings)[:, enc['input_ids'].shape[1]:]
         return self.tokenizer.decode(out[0], skip_special_tokens=True).strip()
 
-    def likelihood(self, prompt, candidates: Sequence[str]) -> dict:
+    @property
+    def likelihood(self) -> dict:
+        """The likelihood part by layout: options after the trial's text, and the parts of a
+        Segments row (``segment_log_probabilities``)."""
+        return {'continuation': self._continuation, 'segment': self._segments}
+
+    def _segments(self, prompt):
+        return segment_log_probabilities(self.model, self.tokenizer, prompt.response.segments)
+
+    def _continuation(self, prompt, candidates: Sequence[str]) -> dict:
         """The summed log probability of each candidate after the trial's text."""
         if isinstance(prompt.response, Choice) and prompt.response.verbatim:
             return _plain_text_scores(self.model, self.tokenizer, prompt, candidates)

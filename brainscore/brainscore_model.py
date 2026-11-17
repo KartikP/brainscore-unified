@@ -158,6 +158,14 @@ class BrainScoreModel(Subject):
             probability}``; scores candidate replies without generating. Gives
             choices and their implied probabilities. Run the prompt on its own
             before any candidate, so a recording during scoring is the prompt pass.
+            Or a mapping by layout, ``{'continuation': that callable, 'segment':
+            (prompt) -> (values, parameters)}``: the ``segment`` entry answers a
+            ``Segments`` task on ``behavior:log_probabilities`` with one log
+            probability for each of the row's parts (``prompt.response.segments``),
+            given the earlier parts, and the record's parameters of what it
+            computed (layout, context, tokenization, aggregation, units). A
+            callable states the continuation layout only; a ``Segments`` task is
+            then refused before any call.
         :param policy: ``row -> {output channel: payload}``; chooses an action for
             closed-loop / embodied evaluation. A row is a mapping of channel ->
             payload for one step; the policy needs no Brain-Score import. A value
@@ -237,7 +245,8 @@ class BrainScoreModel(Subject):
         self._visual_degrees = visual_degrees
         self._capability_config = dict(capability_config or {})
         self._behavioral_readout_layer = behavioral_readout_layer
-        self._answer, self._reply, self._likelihood = answer, reply, likelihood
+        self._answer, self._reply = answer, reply
+        self._likelihood, self._segment_likelihood = _likelihood_layouts(likelihood)
         self._memory = memory
         self._policy = policy
         self._policy_in_channels = frozenset(policy_in_channels)
@@ -619,7 +628,7 @@ class BrainScoreModel(Subject):
         (``policy=agent.act`` resets ``agent``), once per object: two parts of
         one owner reset it one time.
         """
-        parts = [self._policy, self._answer, self._reply, self._likelihood,
+        parts = [self._policy, self._answer, self._reply, self._likelihood, self._segment_likelihood,
                  *self._extractors.values()]
         seen, failures = set(), []
         for part in parts:
@@ -657,3 +666,17 @@ class BrainScoreModel(Subject):
         the legacy benchmark facade, which places vision stimuli by it.
         """
         return self._visual_degrees
+
+
+def _likelihood_layouts(likelihood):
+    """``(continuation part, segment part)`` of a ``likelihood=`` argument: a callable is the
+    continuation layout; a mapping names its layouts (``'continuation'``, required, and
+    ``'segment'``)."""
+    from collections.abc import Mapping
+    if not isinstance(likelihood, Mapping):
+        return likelihood, None
+    unknown = set(likelihood) - {'continuation', 'segment'}
+    if unknown or 'continuation' not in likelihood:
+        raise ValueError(f"likelihood= maps the layouts 'continuation' (required) and 'segment' "
+                         f"to their parts; got {sorted(likelihood)}")
+    return likelihood['continuation'], likelihood.get('segment')
