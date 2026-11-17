@@ -13,7 +13,7 @@ turn where CogGym's own client sends a separate system text. Scores can
 therefore differ a little from scores made with CogGym's own client.
 
 CogGym's evaluator runs in its own environment, in a child process (``_coggym_worker.py``)
-started with the Python of CogGym's folder (``_coggym_folder.py``). Its pre-flight gives the
+started with the Python of CogGym's folder (``_environment_folder.py``). Its pre-flight gives the
 trials and prompts; one process per run serves every repetition and the analysis, and each
 model call comes back here as one request and one reply. The subject, the sessions, the
 recording and ``reset`` stay in this process; nothing is installed into it.
@@ -52,8 +52,8 @@ import pandas as pd
 
 from brainscore.experiments import CallableProtocol
 from brainscore.harnesses._child_process import ChildFailed, ChildProcess
-from brainscore.harnesses._coggym_folder import (REFERENCE_REVISION, _command_environment, environment_python,
-                                                 ready_folder)
+from brainscore.harnesses._environment_folder import (Library, _command_environment, environment_python,
+                                                      ready_folder)
 from brainscore.harnesses.adapter import run_request
 from brainscore.harnesses.coggym_validation import SLIDER_VALIDATION_POLICY
 from brainscore_core.compatibility import ExecutionNotFeasibleError
@@ -63,6 +63,14 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
 DEFAULT_EXPERIMENT = 'Hu2023Fine/exp1'
+# CogGym at the pinned commit, its pinned packages and the files of the checkout the worker reads.
+COGGYM = Library(
+    name='CogGym', repository='https://github.com/lance-ying/coggym.git',
+    commit='a1cd9df1118fec80eba7463de237d1497d77e041',
+    requirements=Path(__file__).with_name('coggym_requirements.txt'),
+    required_files=('evaluation/__init__.py', 'evaluation/providers.py', 'evaluation/cli.py',
+                    'evaluation/analyze.py', 'evaluation/public_manifest.json',
+                    'evaluation/trial_selection_map.json', 'EML'))
 # The input channel and the stimulus column of each kind of message part.
 _PART_CHANNELS = {'text': 'text', 'image': 'vision:image', 'video': 'vision:video'}
 _PART_COLUMNS = {'text': 'text', 'image': 'image_path', 'video': 'video_path'}
@@ -87,8 +95,8 @@ def _check_checkout(checkout):
         ).strip()
 
     try:
-        if git('rev-parse', 'HEAD') != REFERENCE_REVISION:
-            raise ValueError(f'CogGym requires revision {REFERENCE_REVISION}')
+        if git('rev-parse', 'HEAD') != COGGYM.commit:
+            raise ValueError(f'CogGym requires revision {COGGYM.commit}')
         if git('status', '--porcelain', '--untracked-files=no', '--',
                'evaluation', 'EML'):
             raise ValueError('CogGym evaluation code or experiment data has tracked edits')
@@ -110,12 +118,11 @@ def _refuse_start(identifier: str, folder: Path, error: ChildFailed) -> None:
     """An evaluator that could not import a module becomes one load error with the next step."""
     if error.error_type in ('ModuleNotFoundError', 'ImportError'):
         from brainscore import LoadError
-        from brainscore.harnesses._coggym_folder import REQUIREMENTS
         raise LoadError(
             f"{identifier}: CogGym's evaluator could not start in {folder}: {error}. The folder's "
             f'environment lacks a module that CogGym imports. Next step: remove {folder} and load '
             f'the benchmark again with installs allowed (BS_INSTALL_DEPENDENCIES unset), so '
-            f'Brain-Score makes it anew; if the error comes back, the pinned list {REQUIREMENTS} '
+            f'Brain-Score makes it anew; if the error comes back, the pinned list {COGGYM.requirements} '
             f'lacks the package.') from error
 
 
@@ -344,7 +351,7 @@ class CogGymRunner:
         self.experiment = experiment
         self.modalities = tuple(sorted(set(modalities)))
         # CogGym's folder (made at the first use when installs are allowed), then its checkout.
-        self.folder = ready_folder(f'CogGym.{experiment.replace("/", ".")}', folder).resolve()
+        self.folder = ready_folder(COGGYM, f'CogGym.{experiment.replace("/", ".")}', folder).resolve()
         self.checkout = self.folder / 'checkout'
         _check_checkout(self.checkout)
         manifest = json.loads((self.checkout / 'evaluation' / 'public_manifest.json').read_text())
@@ -412,7 +419,7 @@ class CogGymRunner:
 
     def describe(self) -> dict[str, Any]:
         return {
-            'reference_revision': REFERENCE_REVISION,
+            'reference_revision': COGGYM.commit,
             'experiment': self.experiment, 'model': self.model,
             'modalities': list(self.modalities),
             'temperature': self.temperature, 'max_tokens': self.max_tokens,

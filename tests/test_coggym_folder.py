@@ -32,7 +32,7 @@ REQUIREMENTS = Path(brainscore.__file__).parent / 'harnesses' / 'coggym_requirem
 def fresh(commands, tmp_path, monkeypatch):
     """Installs allowed and an empty place for CogGym's folders."""
     monkeypatch.setenv('BS_INSTALL_DEPENDENCIES', 'yes')
-    monkeypatch.setenv('BRAINSCORE_COGGYM_FOLDER', str(tmp_path / 'folders'))
+    monkeypatch.setenv('BRAINSCORE_ENVIRONMENTS_HOME', str(tmp_path / 'folders'))
     return commands
 
 
@@ -57,7 +57,7 @@ def test_the_requirements_pin_every_package():
 
 def test_a_fresh_machine_gets_the_folder_at_the_pinned_commit_with_its_own_environment(fresh, tmp_path):
     _load()
-    (folder,) = [path for path in (tmp_path / 'folders').iterdir() if not path.name.startswith('.')]
+    (folder,) = [path for path in (tmp_path / 'folders' / 'CogGym').iterdir() if not path.name.startswith('.')]
     assert PINNED_COMMIT in folder.name
     marker = json.loads((folder / 'ready.json').read_text())
     assert marker['revision'] == PINNED_COMMIT and 'google-genai==3.2.0' in marker['freeze']
@@ -68,7 +68,7 @@ def test_a_fresh_machine_gets_the_folder_at_the_pinned_commit_with_its_own_envir
     assert install['executable'].startswith(str(tmp_path / 'folders'))     # the folder's Python, not this one
     assert '--no-deps' in install['args'] and str(REQUIREMENTS) in install['args']
     assert any('check' in call['args'] for call in fresh.of('pip'))
-    assert _partials(tmp_path / 'folders') == []
+    assert _partials(tmp_path / 'folders' / 'CogGym') == []
     # A second load finds the folder ready: nothing is cloned or installed again.
     count = len(fresh.of('pip')) + len(fresh.of('venv'))
     _load()
@@ -91,14 +91,14 @@ def test_a_failed_creation_is_a_clear_error_and_leaves_no_folder(fresh, tmp_path
     with pytest.raises(LoadError) as failed:
         _load()
     assert BENCHMARK in str(failed.value) and 'Nothing was left' in str(failed.value)
-    assert [path for path in (tmp_path / 'folders').iterdir() if not path.name.endswith('.lock')] == []
+    assert [path for path in (tmp_path / 'folders' / 'CogGym').iterdir() if not path.name.endswith('.lock')] == []
 
 
 def test_a_clone_at_another_commit_is_refused_and_leaves_no_folder(fresh, tmp_path):
     fresh.behave(head='f' * 40)
     with pytest.raises(LoadError, match=PINNED_COMMIT):
         _load()
-    assert [path for path in (tmp_path / 'folders').iterdir() if not path.name.endswith('.lock')] == []
+    assert [path for path in (tmp_path / 'folders' / 'CogGym').iterdir() if not path.name.endswith('.lock')] == []
 
 
 def test_a_folder_the_user_had_is_never_changed(fresh, tmp_path):
@@ -152,17 +152,17 @@ def test_a_killed_creator_leaves_no_command_running_and_the_next_load_succeeds(f
     else:
         os.kill(git, signal.SIGKILL)
         pytest.fail('git outlived the process that started it')
-    assert _partials(tmp_path / 'folders')            # the killed creator's temporary folder
+    assert _partials(tmp_path / 'folders' / 'CogGym')            # the killed creator's temporary folder
     fresh.behave()
     _load()
-    assert _partials(tmp_path / 'folders') == []
+    assert _partials(tmp_path / 'folders' / 'CogGym') == []
 
 
 def test_a_read_only_place_is_one_clear_error(fresh, tmp_path, monkeypatch):
     read_only = tmp_path / 'read-only'
     read_only.mkdir()
     read_only.chmod(0o500)
-    monkeypatch.setenv('BRAINSCORE_COGGYM_FOLDER', str(read_only / 'nested'))
+    monkeypatch.setenv('BRAINSCORE_ENVIRONMENTS_HOME', str(read_only / 'nested'))
     try:
         with pytest.raises(LoadError) as refused:
             _load()
@@ -170,7 +170,7 @@ def test_a_read_only_place_is_one_clear_error(fresh, tmp_path, monkeypatch):
         read_only.chmod(0o700)
     message = str(refused.value)
     assert BENCHMARK in message and str(read_only / 'nested') in message
-    assert 'BRAINSCORE_COGGYM_FOLDER' in message and fresh.calls == []
+    assert 'BRAINSCORE_ENVIRONMENTS_HOME' in message and fresh.calls == []
 
 
 def test_a_sibling_that_only_looks_like_a_temporary_folder_is_never_removed(fresh, tmp_path):
@@ -253,3 +253,12 @@ def test_a_complete_folder_renamed_to_a_temporary_name_is_never_removed(fresh, t
     _load()
     assert (saved / 'saved-result.txt').read_text() == 'mine'
     assert (folder / 'ready.json').exists()
+
+
+@pytest.mark.parametrize('value', ['', 'relative/folders'])
+def test_a_place_that_is_empty_or_not_absolute_is_refused_before_anything_runs(fresh, monkeypatch, value):
+    monkeypatch.setenv('BRAINSCORE_ENVIRONMENTS_HOME', value)
+    with pytest.raises(LoadError) as refused:
+        _load()
+    assert BENCHMARK in str(refused.value) and 'BRAINSCORE_ENVIRONMENTS_HOME' in str(refused.value)
+    assert fresh.calls == []

@@ -93,15 +93,16 @@ def write_ready_folder(folder: Path, **sources) -> Path:
     requirements. ``sources`` go to ``write_checkout``."""
     import hashlib
     import sys
-    from brainscore.harnesses import _coggym_folder
+    from brainscore.harnesses._environment_folder import environment_python
+    from brainscore.harnesses.coggym import COGGYM
     write_checkout(Path(folder) / 'checkout', **sources)
-    python = _coggym_folder.environment_python(folder)
+    python = environment_python(folder)
     python.parent.mkdir(parents=True, exist_ok=True)
     python.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
     python.chmod(0o755)
     (Path(folder) / 'ready.json').write_text(json.dumps({
-        'revision': _coggym_folder.REFERENCE_REVISION,
-        'requirements_sha256': hashlib.sha256(_coggym_folder.REQUIREMENTS.read_bytes()).hexdigest(),
+        'revision': COGGYM.commit,
+        'requirements_sha256': hashlib.sha256(COGGYM.requirements.read_bytes()).hexdigest(),
         'freeze': ['stand-in==0']}))
     return Path(folder)
 
@@ -122,10 +123,7 @@ class StandIn:
 
 
 def default_place(root: Path) -> Path:
-    """Where Brain-Score puts CogGym's folder under ``root``: the pinned commit and the first 12
-    characters of the hash of the shipped requirements."""
-    import hashlib
-    import brainscore
-    requirements = Path(brainscore.__file__).parent / 'harnesses' / 'coggym_requirements.txt'
-    return Path(root) / ('a1cd9df1118fec80eba7463de237d1497d77e041-'
-                         + hashlib.sha256(requirements.read_bytes()).hexdigest()[:12])
+    """Where Brain-Score puts CogGym's folder when ``BRAINSCORE_ENVIRONMENTS_HOME`` is ``root``."""
+    from brainscore.harnesses._environment_folder import default_folder
+    from brainscore.harnesses.coggym import COGGYM
+    return Path(root) / 'CogGym' / default_folder(COGGYM).name

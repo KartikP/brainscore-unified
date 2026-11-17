@@ -85,7 +85,7 @@ def test_all_public_experiments_registered_lazily():
 
 def test_with_installs_off_a_missing_folder_stops_the_load_before_model_use(monkeypatch, tmp_path):
     # No folder at the place of CogGym's folders, and installs are off: one clear error.
-    monkeypatch.setenv('BRAINSCORE_COGGYM_FOLDER', str(tmp_path / 'none'))
+    monkeypatch.setenv('BRAINSCORE_ENVIRONMENTS_HOME', str(tmp_path / 'none'))
     monkeypatch.setenv('BS_INSTALL_DEPENDENCIES', 'no')
     with pytest.raises(LoadError, match='BS_INSTALL_DEPENDENCIES'):
         brainscore.load_benchmark('CogGym.Hu2023Fine.exp1')
@@ -95,8 +95,8 @@ def test_with_installs_off_a_missing_folder_stops_the_load_before_model_use(monk
 
 
 def test_the_default_folder_and_explicit_provider_reset(reference, tmp_path, monkeypatch):
-    # A ready folder at the default place under BRAINSCORE_COGGYM_FOLDER: no folder= needed.
-    monkeypatch.setenv('BRAINSCORE_COGGYM_FOLDER', str(tmp_path / 'folders'))
+    # A ready folder at the default place under BRAINSCORE_ENVIRONMENTS_HOME: no folder= needed.
+    monkeypatch.setenv('BRAINSCORE_ENVIRONMENTS_HOME', str(tmp_path / 'folders'))
     write_ready_folder(default_place(tmp_path / 'folders'), analyze=ANALYZE_ROW)
     benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1')
     with pytest.raises(ValueError, match='reset=adapter.reset'):

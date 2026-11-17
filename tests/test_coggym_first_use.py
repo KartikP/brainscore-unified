@@ -5,14 +5,14 @@ git and the Python that makes the environment and runs pip are recording stand-i
 (``tests/coggym_commands.py``): nothing is cloned or installed.
 """
 import os
-from pathlib import Path
 
 import pytest
 
 import brainscore
 from brainscore import LoadError
 
-from .coggym_commands import PINNED_COMMIT, commands  # noqa: F401  (commands is a fixture)
+from .coggym_commands import commands  # noqa: F401  (commands is a fixture)
+from .coggym_stand_in import default_place
 
 pytestmark = pytest.mark.unit
 
@@ -23,7 +23,7 @@ BENCHMARK = 'CogGym.Hu2023Fine.exp1'
 def fresh(commands, tmp_path, monkeypatch):
     """Installs allowed and an empty place for CogGym's folders."""
     monkeypatch.setenv('BS_INSTALL_DEPENDENCIES', 'yes')
-    monkeypatch.setenv('BRAINSCORE_COGGYM_FOLDER', str(tmp_path / 'folders'))
+    monkeypatch.setenv('BRAINSCORE_ENVIRONMENTS_HOME', str(tmp_path / 'folders'))
     return commands
 
 
@@ -53,18 +53,9 @@ def test_pip_cannot_be_sent_outside_the_folder_environment(fresh, tmp_path, monk
     assert not site.exists()
 
 
-def _default_folder(root):
-    """The default folder name: the pinned commit and the first 12 characters of the hash of the
-    shipped requirements."""
-    import hashlib
-    import brainscore.harnesses
-    requirements = Path(brainscore.harnesses.__file__).with_name('coggym_requirements.txt')
-    return root / f'{PINNED_COMMIT}-{hashlib.sha256(requirements.read_bytes()).hexdigest()[:12]}'
-
-
 def test_a_folder_that_appears_while_the_folder_is_made_is_never_replaced(fresh, tmp_path):
     """Another program makes the destination (empty) while Brain-Score makes its folder."""
-    destination = _default_folder(tmp_path / 'folders')
+    destination = default_place(tmp_path / 'folders')
     fresh.behave(make=str(destination))
     with pytest.raises(LoadError) as refused:
         _load()
@@ -79,7 +70,7 @@ def test_a_folder_made_at_the_instant_of_publication_is_never_replaced(fresh, tm
     The other program acts inside the file-system call that publishes (``os.rename``, or the
     encoding of the destination's name for the atomic call): the narrowest race there is.
     """
-    destination = _default_folder(tmp_path / 'folders')
+    destination = default_place(tmp_path / 'folders')
     rename, fsencode = os.rename, os.fsencode
     made = []
 

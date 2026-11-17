@@ -47,7 +47,7 @@ class CogGymBenchmark(BenchmarkBase):
     """One public experiment, returning upstream raw R² without a human ceiling.
 
     CogGym's evaluator runs in its own environment, in a folder Brain-Score makes at the first
-    load (``folder`` names another one; ``BRAINSCORE_COGGYM_FOLDER`` moves the default place;
+    load (``folder`` names another one; ``BRAINSCORE_ENVIRONMENTS_HOME`` moves the default place;
     ``BS_INSTALL_DEPENDENCIES=no`` forbids making it). ``reset`` is the
     adapter's reset(repetition) callback; it must preserve instrumentation.
     Scoring needs it: give it here or to ``protocol``.

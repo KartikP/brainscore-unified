@@ -1,13 +1,15 @@
-"""The folder Brain-Score makes for CogGym: the pinned checkout and CogGym's own environment.
+"""The folder Brain-Score makes for an outside experiment library: the library's checkout at a
+pinned commit and the library's own environment. One ``Library`` describes the library.
 
-``<folder>/checkout`` is the authors' repository at the pinned commit; ``<folder>/env`` is a
-virtual environment with CogGym's pinned packages only (``coggym_requirements.txt``,
+``<folder>/checkout`` is the library's repository at the pinned commit; ``<folder>/env`` is a
+virtual environment with the library's pinned packages only (its requirements file,
 installed with ``--no-deps`` and checked with ``pip check``); ``<folder>/ready.json`` says the
 folder is complete (the commit, the requirements' hash and the environment's ``pip freeze``).
 Nothing is installed into the scoring environment.
 
-The default place is ``~/.brain-score/coggym/<commit>-<requirements hash>`` (the root can be
-moved with ``BRAINSCORE_COGGYM_FOLDER``), so a changed pin gets a new folder. The folder is
+The default place is ``~/.brain-score/environments/<name>/<commit>-<hash>`` (the root of every
+library's folders can be moved with ``BRAINSCORE_ENVIRONMENTS_HOME``), so a changed pin gets a
+new folder. The folder is
 made at the first use when ``BS_INSTALL_DEPENDENCIES`` allows installs (``yes``, the default, or
 ``newenv``: the folder's environment is a new one either way): in a temporary
 sibling folder, checked, then published by a rename that never replaces (an existing folder
@@ -19,27 +21,22 @@ temporary folder stays until the next creation removes it. Linux and macOS only.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import errno
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import stat
 import subprocess
 import sys
 import tempfile
 
-REFERENCE_REVISION = 'a1cd9df1118fec80eba7463de237d1497d77e041'
-REPOSITORY = 'https://github.com/lance-ying/coggym.git'
-REQUIREMENTS = Path(__file__).with_name('coggym_requirements.txt')
-# The files of the checkout that the worker reads.
 _SUPERVISOR = Path(__file__).with_name('_supervise.py')
 # The record inside a temporary folder that this code made it.
 _CREATION_RECORD = '.brainscore-creation.json'
-_REQUIRED = ('evaluation/__init__.py', 'evaluation/providers.py', 'evaluation/cli.py',
-             'evaluation/analyze.py', 'evaluation/public_manifest.json',
-             'evaluation/trial_selection_map.json', 'EML')
 # Seconds one git or pip command may take (a stated bound, not a measured budget).
 _COMMAND_TIMEOUT_S = 3600
 # The only variables of this process that a git or pip command sees: the user, the locale,
@@ -54,33 +51,59 @@ _PASSED_VARIABLES = (
     'PIP_PROXY', 'PIP_TIMEOUT', 'PIP_RETRIES')
 
 
+@dataclasses.dataclass(frozen=True)
+class Library:
+    """An outside experiment library: what Brain-Score needs to make its folder."""
+    name: str                       # one plain word: the folder's parent and the messages
+    repository: str                 # what ``git clone`` takes
+    commit: str                     # the full commit (40 hex characters)
+    requirements: Path              # the pinned packages, one ``name==version`` per line
+    required_files: tuple = ()      # paths in the checkout that must exist
+
+    def __post_init__(self) -> None:
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', self.name):
+            raise ValueError(f'a library name is one plain word, not {self.name!r}')
+        if not re.fullmatch(r'[0-9a-f]{40}', self.commit):
+            raise ValueError(f'{self.name}: the commit must be a full commit (40 hex characters), '
+                             f'not {self.commit!r}')
+
+
 def environment_python(folder: Path) -> Path:
-    """The Python of the folder's CogGym environment."""
+    """The Python of the folder's own environment."""
     return Path(folder) / 'env' / 'bin' / 'python'
 
 
-def default_folder() -> Path:
-    """``<root>/<commit>-<requirements hash>``; the root is ``BRAINSCORE_COGGYM_FOLDER`` or
-    ``~/.brain-score/coggym``."""
-    root = os.environ.get('BRAINSCORE_COGGYM_FOLDER') or str(Path.home() / '.brain-score' / 'coggym')
-    return Path(root).expanduser() / f'{REFERENCE_REVISION}-{_requirements_hash()[:12]}'
+def default_folder(library: Library) -> Path:
+    """``<root>/<name>/<commit>-<hash>``; the root is ``BRAINSCORE_ENVIRONMENTS_HOME`` or
+    ``~/.brain-score/environments``. A root that is empty or not absolute is refused."""
+    value = os.environ.get('BRAINSCORE_ENVIRONMENTS_HOME', '~/.brain-score/environments')
+    root = Path(value).expanduser()
+    if not value or not root.is_absolute():
+        raise ValueError(f'BRAINSCORE_ENVIRONMENTS_HOME must name an absolute folder, not {value!r}')
+    return root / library.name / f'{library.commit}-{_requirements_hash(library)[:12]}'
 
 
-def ready_folder(identifier: str, folder: Path | None = None) -> Path:
-    """The ready CogGym folder for ``identifier`` (a benchmark identifier, for the messages):
-    ``folder``, or the default one; made first when it is absent and installs are allowed."""
+def ready_folder(library: Library, identifier: str, folder: Path | None = None) -> Path:
+    """The ready folder of ``library`` for ``identifier`` (a benchmark identifier, for the
+    messages): ``folder``, or the default one; made first when it is absent and installs are
+    allowed."""
     from brainscore import LoadError
     from brainscore_core.plugin_management.import_plugin import installation_preference
-    if not REQUIREMENTS.is_file():
-        raise LoadError(f'{identifier}: this Brain-Score installation lacks {REQUIREMENTS}, the pinned '
-                        f"packages of CogGym's environment (a packaging fault). Next step: install "
-                        f'Brain-Score from a source that ships it.')
-    folder = Path(folder) if folder is not None else default_folder()
+    name = library.name
+    if not library.requirements.is_file():
+        raise LoadError(f'{identifier}: this Brain-Score installation lacks {library.requirements}, '
+                        f"the pinned packages of {name}'s environment (a packaging fault). Next step: "
+                        f'install Brain-Score from a source that ships it.')
+    try:
+        folder = Path(folder) if folder is not None else default_folder(library)
+    except ValueError as error:
+        raise LoadError(f'{identifier}: {error}. Next step: set it to an absolute path, or unset '
+                        f'it.') from None
     if not folder.exists():
         if installation_preference() == 'no':
             raise LoadError(
-                f"{identifier} needs CogGym's folder {folder} (CogGym at commit "
-                f"{REFERENCE_REVISION} and CogGym's own environment), and it is not there. "
+                f"{identifier} needs {name}'s folder {folder} ({name} at commit "
+                f"{library.commit} and {name}'s own environment), and it is not there. "
                 f"BS_INSTALL_DEPENDENCIES=no forbids making it. Next step: load the benchmark "
                 f"once with BS_INSTALL_DEPENDENCIES unset (or 'yes'); Brain-Score then makes the "
                 f"folder (a clone and an install into that folder only; the scoring environment "
@@ -88,37 +111,37 @@ def ready_folder(identifier: str, folder: Path | None = None) -> Path:
         try:
             with _creation_lock(folder):
                 if not folder.exists():
-                    _make(identifier, folder)
+                    _make(library, identifier, folder)
         except OSError as error:
             # The lock, the folder's parent or the temporary folder could not be made: nothing of
             # this attempt exists to remove.
             raise LoadError(
-                f"{identifier}: Brain-Score could not make CogGym's folder {folder}: "
+                f"{identifier}: Brain-Score could not make {name}'s folder {folder}: "
                 f"{type(error).__name__}: {error}. Next step: make {folder.parent} writable, or "
-                f"put CogGym's folders elsewhere (BRAINSCORE_COGGYM_FOLDER, or folder=).") from error
-    _check_ready(identifier, folder)
+                f"put the folders elsewhere (BRAINSCORE_ENVIRONMENTS_HOME, or folder=).") from error
+    _check_ready(library, identifier, folder)
     return folder
 
 
-def _check_ready(identifier, folder):
+def _check_ready(library, identifier, folder):
     from brainscore import LoadError
     try:
         marker = json.loads((folder / 'ready.json').read_text())
     except (OSError, ValueError):
         marker = None
-    expected = {'revision': REFERENCE_REVISION, 'requirements_sha256': _requirements_hash()}
+    expected = {'revision': library.commit, 'requirements_sha256': _requirements_hash(library)}
     complete = (isinstance(marker, dict) and {key: marker.get(key) for key in expected} == expected
                 and isinstance(marker.get('freeze'), list)
                 and all(isinstance(line, str) for line in marker['freeze']))
     if not complete or not environment_python(folder).exists():
         raise LoadError(
-            f'{identifier}: {folder} exists but is not a ready CogGym folder for commit '
-            f'{REFERENCE_REVISION} and the pinned requirements (no matching ready.json, or no '
+            f'{identifier}: {folder} exists but is not a ready {library.name} folder for commit '
+            f'{library.commit} and the pinned requirements (no matching ready.json, or no '
             f'environment). Brain-Score does not change a folder it did not finish. Next step: '
-            f'remove it yourself, or use another place (BRAINSCORE_COGGYM_FOLDER, or folder=).')
+            f'remove it yourself, or use another place (BRAINSCORE_ENVIRONMENTS_HOME, or folder=).')
 
 
-def _make(identifier, folder):
+def _make(library, identifier, folder):
     from brainscore import LoadError
     folder.parent.mkdir(parents=True, exist_ok=True)
     partial = Path(tempfile.mkdtemp(prefix=f'.{folder.name}.partial-', dir=folder.parent))
@@ -126,27 +149,28 @@ def _make(identifier, folder):
         # The record that this code made this temporary folder: only such a folder is ever
         # removed by a later creation (a name alone proves nothing).
         (partial / _CREATION_RECORD).write_text(json.dumps({
-            'folder': str(folder), 'made_by': 'brainscore CogGym folder creation', 'pid': os.getpid()}))
+            'folder': str(folder), 'made_by': f'brainscore {library.name} folder creation',
+            'pid': os.getpid()}))
         checkout, python = partial / 'checkout', environment_python(partial)
         # No checkout of the default branch, and no local hooks: only the pinned commit is checked out.
-        _run(['git', 'clone', '--quiet', '--no-checkout', REPOSITORY, str(checkout)])
+        _run(['git', 'clone', '--quiet', '--no-checkout', library.repository, str(checkout)])
         _run(['git', '-c', 'core.hooksPath=/dev/null', '-C', str(checkout), 'checkout', '--quiet',
-              REFERENCE_REVISION])
+              library.commit])
         head = _run(['git', '-C', str(checkout), 'rev-parse', 'HEAD']).strip()
-        if head != REFERENCE_REVISION:
-            raise ValueError(f'the clone is at {head}, not at {REFERENCE_REVISION}')
-        missing = [name for name in _REQUIRED if not (checkout / name).exists()]
+        if head != library.commit:
+            raise ValueError(f'the clone is at {head}, not at {library.commit}')
+        missing = [name for name in library.required_files if not (checkout / name).exists()]
         if missing:
             raise ValueError(f'the checkout lacks {missing}')
         _run([sys.executable, '-m', 'venv', str(partial / 'env')])
         # Every package at its pinned version, nothing resolved beyond the list; then a check.
         # Into this environment only (pip refuses to run outside a virtual environment).
         _run([str(python), '-m', 'pip', 'install', '--require-virtualenv', '--no-deps', '--no-input',
-              '--disable-pip-version-check', '-r', str(REQUIREMENTS)])
+              '--disable-pip-version-check', '-r', str(library.requirements)])
         _run([str(python), '-m', 'pip', 'check', '--disable-pip-version-check'])
         freeze = _run([str(python), '-m', 'pip', 'freeze', '--all', '--disable-pip-version-check'])
         (partial / 'ready.json').write_text(json.dumps({
-            'revision': REFERENCE_REVISION, 'requirements_sha256': _requirements_hash(),
+            'revision': library.commit, 'requirements_sha256': _requirements_hash(library),
             'freeze': sorted(line for line in freeze.splitlines() if line.strip())}, indent=2) + '\n')
         # One step that never replaces: a folder that appeared meanwhile belongs to someone else.
         _rename_no_replace(partial, folder)
@@ -157,7 +181,7 @@ def _make(identifier, folder):
             detail = (f'{folder} appeared while Brain-Score made the folder; it belongs to another '
                       f'program or person and is not changed.')
         raise LoadError(
-            f"{identifier}: Brain-Score could not make CogGym's folder {folder}: "
+            f"{identifier}: Brain-Score could not make {library.name}'s folder {folder}: "
             f"{type(error).__name__}: {error}" + (f'\n{detail.strip()[-2000:]}' if detail else '')
             + f"\nNothing was left at {folder}. Next step: check the network, the disk and the "
             f"permissions of {folder.parent}, and load the benchmark again.") from error
@@ -201,7 +225,7 @@ def _run(command) -> str:
     this process stops waiting, and when this process dies (the supervisor sees its pipe close).
     """
     from brainscore.harnesses._child_process import ChildProcess
-    with tempfile.TemporaryDirectory(prefix='coggym-command-') as logs:
+    with tempfile.TemporaryDirectory(prefix='brainscore-command-') as logs:
         with ChildProcess([sys.executable, '-I', str(_SUPERVISOR), *command],
                           env=_command_environment(), log_directory=Path(logs)) as child:
             try:
@@ -255,5 +279,5 @@ def _created_here(candidate: Path, folder: Path) -> bool:
         return False
 
 
-def _requirements_hash() -> str:
-    return hashlib.sha256(REQUIREMENTS.read_bytes()).hexdigest()
+def _requirements_hash(library: Library) -> str:
+    return hashlib.sha256(library.requirements.read_bytes()).hexdigest()
