@@ -235,7 +235,7 @@ def test_rajalingham_checks_a_rebuild_against_the_files_its_tool_reads(tmp_path,
     original = data_builder_registry['rajalingham2018-2afc']()
     monkeypatch.setitem(sys.modules, 'brainscore_vision', _made_up_rajalingham())
     # The made-up rebuild differs from the registered files, which ship in the plugin folder: the check fails.
-    with pytest.raises(ValueError, match=r'trials\.csv: its content differs from the expected record: rows'):
+    with pytest.raises(ValueError, match=r'trials\.csv: its content differs from the registered copy .*rows'):
         package_data('rajalingham2018-2afc', output=tmp_path / 'first')
     assert not (tmp_path / 'first').exists()
     monkeypatch.setitem(data_builder_registry, 'rajalingham-fixture',
@@ -279,34 +279,82 @@ def test_a_file_equal_to_its_registered_sha1_is_identical(tmp_path, monkeypatch,
     assert re.search(r'table\.csv .*\n    check: identical\n', capsys.readouterr().out)
 
 
-def test_a_file_with_other_bytes_and_the_same_content_passes(tmp_path, monkeypatch, capsys, offline):
-    registered = b'x,y\n1.0,a\n2.0,b\n'
+def _array(values, coordinate=None, dtype=float):
+    """A one-variable netCDF assembly."""
+    coordinate = list(range(len(values))) if coordinate is None else coordinate
+    return xr.DataArray(np.array(values, dtype=dtype), dims=['presentation'],
+                        coords={'stimulus_id': ('presentation', coordinate)}, name='data').to_dataset()
+
+
+def _table(**columns):
+    return pd.DataFrame(columns).to_csv(index=False).encode()
+
+
+# (file, registered content, built content, the check passes): every pair has other bytes.
+CONTENT_PAIRS = {
+    'netcdf order': ('a.nc', _array([1, 2, 4, 3]), _array([1, 3, 2, 4]), False),
+    'netcdf values': ('a.nc', _array([1, 4, 4]), _array([2, 2, 5]), False),
+    'netcdf missing location': ('a.nc', _array([np.nan, 0]), _array([0, np.nan]), False),
+    'netcdf one value outside its tolerance': ('a.nc', _array([1e6, 0]), _array([1e6, 0.4]), False),
+    'netcdf coordinate type': ('a.nc', _array([1, 2], [1, 2]), _array([1, 2], ['1', '2']), False),
+    'json float location': ('a.json', {'a': 1.0}, {'b': 1.0}, False),
+    'json container type': ('a.json', {'a': []}, {'a': {}}, False),
+    'json path': ('a.json', {'a/b': 1}, {'a': {'b': 1}}, False),
+    'csv NA text': ('a.csv', b'x,y\nNA,1\nfoo,2\n', b'x,y\nnull,1\nfoo,2\n', False),
+    'csv separator': ('a.csv', _table(x=['a\x1fb', 'c']), _table(x=['a', 'b\x1fc']), False),
+    'csv integers as floats': ('a.csv', b'x\n1\n2\n', b'x\n1.0\n2.0\n', False),
+    'csv equal content': ('a.csv', b'x,y\n1.0,a\n2.0,b\n', b'x,y\n1.00,a\n2.0000000001,b\n', True),
+    'netcdf equal content': ('a.nc', _array([1.0, 2.0], [0.0, 1.0]), _array([1.0, 2.0000000001], [-0.0, 1.0]), True),
+    'json equal content': ('a.json', {'a': [1.0, 'x']}, {'a': [1.0000000001, 'x']}, True),
+}
+
+
+def _bytes(content, folder):
+    """The bytes of a made-up file: given, a JSON structure, or a netCDF data set."""
+    if isinstance(content, bytes):
+        return content
+    if isinstance(content, dict):
+        return json.dumps(content).encode()
+    content.to_netcdf(folder / 'written.nc')
+    return (folder / 'written.nc').read_bytes()
+
+
+@pytest.mark.parametrize('pair', sorted(CONTENT_PAIRS))
+def test_other_bytes_pass_only_with_the_same_content_as_the_registered_copy(
+        pair, tmp_path, monkeypatch, capsys, offline):
+    file, registered, built, passes = CONTENT_PAIRS[pair]
+    registered, built = _bytes(registered, tmp_path), _bytes(built, tmp_path)
+    assert registered != built
     sha1 = hashlib.sha1(registered).hexdigest()
     (tmp_path / 'brainio' / sha1).mkdir(parents=True)          # the registered copy in the brainio cache
-    (tmp_path / 'brainio' / sha1 / 'table.csv').write_bytes(registered)
-    source = _made_up_plugin(tmp_path, monkeypatch, {'table.csv': b'x,y\n1.00,a\n2.0000000001,b\n'},
-                             sha1={'table.csv': sha1})
-    package_data('made-up', source=source, output=tmp_path / 'out')
-    assert 'check: same content, bytes differ' in capsys.readouterr().out
+    (tmp_path / 'brainio' / sha1 / file).write_bytes(registered)
+    source = _made_up_plugin(tmp_path, monkeypatch, {file: built}, sha1={file: sha1})
+    if passes:
+        package_data('made-up', source=source, output=tmp_path / 'out')
+        assert 'check: same content, bytes differ' in capsys.readouterr().out
+    else:
+        with pytest.raises(ValueError, match=f'{file}: its content differs from the registered copy'):
+            package_data('made-up', source=source, output=tmp_path / 'out')
+        assert not (tmp_path / 'out').exists()
 
 
-def test_a_file_whose_content_differs_from_the_record_stops_the_build(tmp_path, monkeypatch, offline):
-    def assembly(values, stimuli):
-        return xr.DataArray(np.array(values, dtype=float), dims=['presentation'],
-                            coords={'stimulus_id': ('presentation', stimuli)}, name='data')
-    source = _made_up_plugin(tmp_path, monkeypatch, {'assy.nc': assembly([0.1, 0.2, 0.3], ['a', 'b', 'c'])})
+@pytest.mark.parametrize('passes', [True, False])
+def test_with_no_copy_a_recorded_digest_decides(passes, tmp_path, monkeypatch, capsys, offline):
+    source = _made_up_plugin(tmp_path, monkeypatch, {'a.nc': _bytes(_array([0.1, 0.2]), tmp_path)})
     first = package_data('made-up', source=source, output=tmp_path / 'first')
-    # The record a cloud run copies from build.json into data_packaging/expected.json.
+    # The record a cloud run copies from build.json into data_packaging/expected.json; no copy is here.
     record = json.loads((first / 'build.json').read_text())['files']
+    record['a.nc']['sha1'] = '0' * 40
     (tmp_path / 'scripts' / 'expected.json').write_text(json.dumps({'made-up': record}))
-    source = _made_up_plugin(tmp_path, monkeypatch, {'assy.nc': assembly([0.1, 0.2, 0.33], ['a', 'b', 'd'])})
-    with pytest.raises(ValueError) as failed:
+    _made_up_plugin(tmp_path, monkeypatch, {'a.nc': _bytes(_array([0.1, 0.2 if passes else 0.2000001]), tmp_path)})
+    if passes:
         package_data('made-up', source=source, output=tmp_path / 'second')
-    message = str(failed.value)
-    assert 'assy.nc: its content differs' in message
-    assert 'coordinates stimulus_id' in message
-    assert re.search(r'variables data: values differ by up to 0\.0\d', message)
-    assert not (tmp_path / 'second').exists()
+        assert 'check: same content, bytes differ' in capsys.readouterr().out
+    else:
+        with pytest.raises(ValueError, match='its content differs from the record, and no registered copy is on '
+                                             'this machine to measure the difference'):
+            package_data('made-up', source=source, output=tmp_path / 'second')
+        assert not (tmp_path / 'second').exists()
 
 
 def test_a_file_with_no_expected_record_states_its_counts(tmp_path, monkeypatch, capsys, offline):

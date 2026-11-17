@@ -60,7 +60,7 @@ must be new. A successful build contains:
 | --- | --- |
 | `items.json` | Validated items with stable IDs |
 | `manifest.json` | Counts, source hashes, exclusions, and the items checksum |
-| `build.json` | The size, sha1, content summary and check result of each file |
+| `build.json` | The size, sha1, counts, content digest and check result of each file |
 
 Check that the dataset loads without loading a model:
 

@@ -192,111 +192,128 @@ def _sha1(path: Path) -> str:
     return digest.hexdigest()
 
 
-_TOLERANCE = 1e-6      # float parts agree when within this fraction of the sum of magnitudes (at least 1)
+TOLERANCE = 1e-6       # a float agrees when |built - expected| <= TOLERANCE * max(1, |expected|)
 
 
-def _digest(values) -> str:
-    """The sha1 of values compared exactly (text, integers, booleans, coordinates), in order."""
-    digest = hashlib.sha1()
-    for value in values:
-        digest.update(str(value).encode() + b'\x1f')
-    return digest.hexdigest()
+def _read(path: Path):
+    """The parsed content of a file, or ``None`` for a kind with no parser (compared by bytes only).
 
-
-def _floats(values) -> dict:
-    """Float values as counts of missing values and three sums; the weighted sum sees order."""
-    import numpy as np
-    values = np.asarray(values, dtype=float).ravel()
-    missing = np.isnan(values)
-    values = np.where(missing, 0.0, values)
-    weights = np.arange(1, values.size + 1) / max(values.size, 1)
-    return {'missing': int(missing.sum()), 'sum': float(values.sum()),
-            'weighted': float((values * weights).sum()), 'magnitude': float(np.abs(values).sum())}
-
-
-def _values(values) -> dict:
-    import numpy as np
-    values = np.asarray(values)
-    return _floats(values) if values.dtype.kind == 'f' else {'sha1': _digest(values.ravel())}
-
-
-def _content(path: Path) -> dict:
-    """A small summary of a file's content, by its kind: the unit of the content check.
-
-    CSV: rows, columns, each column's values. JSON: list items, every leaf with its
-    place. netCDF: dimensions, coordinates, data variables. Any other kind: its sha1.
-    Floats are kept as sums (compared with a tolerance); all else as a sha1 (compared exactly).
+    A table is read as the LeBel loader reads it (``keep_default_na=False``: text such as ``NA``
+    stays text); a netCDF file as xarray loads it; JSON as its structure.
     """
     if path.suffix == '.csv':
         import pandas as pd
-        table = pd.read_csv(path)
-        return {'kind': 'csv', 'rows': len(table), 'columns': list(map(str, table.columns)),
-                'values': {str(column): _values(table[column].to_numpy()) for column in table.columns}}
+        return pd.read_csv(path, keep_default_na=False)
     if path.suffix == '.json':
-        content = json.loads(path.read_text())
-        exact, floats = [], []
-
-        def walk(node, place):
-            if isinstance(node, dict):
-                for key in sorted(node):
-                    walk(node[key], f'{place}/{key}')
-            elif isinstance(node, list):
-                for index, item in enumerate(node):
-                    walk(item, f'{place}/{index}')
-            elif isinstance(node, float):
-                floats.append(node)
-            else:
-                exact.append(f'{place}={json.dumps(node)}')
-        walk(content, '')
-        return {'kind': 'json', 'items': len(content) if isinstance(content, list) else None,
-                'leaves': _digest(exact), 'floats': _floats(floats)}
+        return json.loads(path.read_text())
     if path.suffix == '.nc':
         import xarray as xr
         with xr.open_dataset(path) as data:
-            return {'kind': 'netcdf',
-                    'dimensions': {str(dim): int(size) for dim, size in data.sizes.items()},
-                    'coordinates': {str(name): {'dimensions': list(map(str, coord.dims)),
-                                                'sha1': _digest(coord.values.astype(str).ravel())}
-                                    for name, coord in data.coords.items()},
-                    'variables': {str(name): {'dimensions': list(map(str, variable.dims)), **_values(variable.values)}
-                                  for name, variable in data.data_vars.items()}}
-    return {'kind': 'bytes', 'sha1': _sha1(path)}
+            return data.load()
+    return None
 
 
-def _counts(content: dict) -> str:
-    """The counts a person reads: rows of a CSV, dimension sizes of a netCDF file, items of a JSON list."""
-    if content['kind'] == 'csv':
-        return f"rows {content['rows']}"
-    if content['kind'] == 'netcdf':
-        return ', '.join(f'{dim} {size}' for dim, size in content['dimensions'].items())
-    if content['kind'] == 'json' and content['items'] is not None:
-        return f"items {content['items']}"
-    return ''
+def _counts(content) -> str:
+    """The counts a person reads: rows of a table, dimension sizes of a netCDF file, items of a JSON list."""
+    if hasattr(content, 'columns'):
+        return f'rows {len(content)}'
+    if hasattr(content, 'data_vars'):
+        return ', '.join(f'{dim} {size}' for dim, size in content.sizes.items())
+    return f'items {len(content)}' if isinstance(content, list) else ''
 
 
-def _differences(built, expected, place: str = '') -> list:
-    """What differs between two content summaries: exact parts equal, float parts within the tolerance."""
-    if isinstance(expected, dict) and 'magnitude' in expected and isinstance(built, dict) and 'magnitude' in built:
-        found = []
-        if built['missing'] != expected['missing']:
-            found.append(f"{place}: missing values {built['missing']} != {expected['missing']}")
-        tolerance = _TOLERANCE * max(1.0, expected['magnitude'])
-        largest = max(abs(built[key] - expected[key]) for key in ('sum', 'weighted', 'magnitude'))
-        if largest > tolerance:
-            found.append(f'{place}: values differ by up to {largest:.6g} (tolerance {tolerance:.3g})')
-        return found
-    if isinstance(expected, dict) and isinstance(built, dict):
-        found = []
-        for key in [*expected, *(key for key in built if key not in expected)]:
-            where = f'{place} {key}'.strip()
-            if key not in built:
-                found.append(f'{where}: absent')
-            elif key not in expected:
-                found.append(f'{where}: not expected')
+def _array_differences(built, expected, where: str, exact: bool = False) -> list:
+    """Type kind and shape exactly; missing values at the same places; each float within the tolerance
+    of its own expected value (``exact``: equal); every other value equal."""
+    import numpy as np
+    built, expected = np.asarray(built), np.asarray(expected)
+    if built.dtype.kind != expected.dtype.kind or built.shape != expected.shape:
+        return [f'{where}: type {built.dtype.kind} shape {built.shape} != type {expected.dtype.kind} '
+                f'shape {expected.shape}']
+    if built.dtype.kind != 'f':
+        differ = int(np.sum(built != expected))
+        return [f'{where}: {differ} values differ'] if differ else []
+    missing = np.isnan(built)
+    if (missing != np.isnan(expected)).any():
+        return [f'{where}: missing values at other places']
+    with np.errstate(invalid='ignore'):
+        gap = np.abs(built - expected)
+        off = ~((built == expected) | missing | (not exact and gap <= TOLERANCE * np.maximum(1, np.abs(expected))))
+    return [f'{where}: {int(off.sum())} values differ, the largest by {np.nanmax(gap[off]):.6g}'] if off.any() else []
+
+
+def _table_differences(built, expected) -> list:
+    if list(built.columns) != list(expected.columns) or len(built) != len(expected):
+        return [f'columns {list(built.columns)}, rows {len(built)} != columns {list(expected.columns)}, '
+                f'rows {len(expected)}']
+    return [found for column in expected.columns for found in
+            _array_differences(built[column].to_numpy(), expected[column].to_numpy(), f'column {column}')]
+
+
+def _netcdf_differences(built, expected) -> list:
+    if dict(built.sizes) != dict(expected.sizes):
+        return [f'dimensions {dict(built.sizes)} != {dict(expected.sizes)}']
+    found = []
+    for kind, built_part, expected_part in (('coordinate', built.coords, expected.coords),
+                                            ('variable', built.data_vars, expected.data_vars)):
+        if set(built_part) != set(expected_part):
+            found.append(f'{kind} names {sorted(built_part)} != {sorted(expected_part)}')
+        for name in sorted(set(built_part) & set(expected_part)):
+            if built_part[name].dims != expected_part[name].dims:
+                found.append(f'{kind} {name}: dimensions {built_part[name].dims} != {expected_part[name].dims}')
             else:
-                found += _differences(built[key], expected[key], where)
-        return found
-    return [] if built == expected else [f'{place}: {built} != {expected}']
+                found += _array_differences(built_part[name].values, expected_part[name].values,
+                                            f'{kind} {name}', exact=kind == 'coordinate')
+    return found
+
+
+def _json_differences(built, expected, where: str = '$') -> list:
+    if type(built) is not type(expected):
+        return [f'{where}: {type(built).__name__} != {type(expected).__name__}']
+    if isinstance(expected, dict):
+        if set(built) != set(expected):
+            return [f'{where}: keys {sorted(built)} != {sorted(expected)}']
+        return [found for key in expected for found in _json_differences(built[key], expected[key], f'{where}[{key!r}]')]
+    if isinstance(expected, list):
+        if len(built) != len(expected):
+            return [f'{where}: {len(built)} items != {len(expected)}']
+        return [found for index, (b, e) in enumerate(zip(built, expected))
+                for found in _json_differences(b, e, f'{where}[{index}]')]
+    if isinstance(expected, float):
+        return _array_differences([built], [expected], where)
+    return [] if built == expected else [f'{where}: {built!r} != {expected!r}']
+
+
+def _differences(built, expected) -> list:
+    """What differs between two parsed contents of the same kind (one comparison for each kind)."""
+    if hasattr(expected, 'columns'):
+        return _table_differences(built, expected)
+    if hasattr(expected, 'data_vars'):
+        return _netcdf_differences(built, expected)
+    return _json_differences(built, expected)
+
+
+def _content_digest(content) -> str:
+    """The exact digest of a parsed content: the record that decides when no registered copy is here.
+
+    JSON: its canonical text (types, structure and escaping are kept; a float's text round-trips
+    to its exact bits). A table or netCDF file: for each column, coordinate and variable its name,
+    dimensions, type and shape, then its values (numbers by their bytes, other values as JSON text).
+    """
+    if not hasattr(content, 'columns') and not hasattr(content, 'data_vars'):
+        return hashlib.sha1(json.dumps(content, sort_keys=True).encode()).hexdigest()
+    if hasattr(content, 'columns'):
+        parts = [(f'column {column}', ['row'], content[column].to_numpy()) for column in content.columns]
+    else:
+        parts = [(f'{kind} {name}', list(map(str, part.dims)), part.values)
+                 for kind, items in (('coordinate', content.coords), ('variable', content.data_vars))
+                 for name, part in items.items()]
+    digest = hashlib.sha1()
+    for name, dims, values in parts:      # each header fixes the length of the values after it
+        digest.update(json.dumps([name, dims, values.dtype.str, values.shape]).encode())
+        digest.update(values.tobytes() if values.dtype.kind in 'biufc'
+                      else json.dumps(values.ravel().tolist(), default=repr).encode())
+    return digest.hexdigest()
 
 
 def brainio_home() -> Path:
@@ -324,25 +341,31 @@ def _registered_copy(builder: DataBuilder, file: str, sha1: str) -> Path | None:
     return None
 
 
-def _check(builder: DataBuilder, recorded: dict, relative: str, entry: dict) -> tuple:
+def _check(builder: DataBuilder, recorded: dict, relative: str, entry: dict, content) -> tuple:
     """``(outcome, problem)`` of one written file against its expected record; ``problem`` is '' or why it fails."""
     file = Path(relative).name
     sha1 = builder.sha1.get(file) or recorded.get('sha1')
     if not sha1:
-        return f"no expected record: {_counts(entry['content']) or str(entry['bytes']) + ' bytes'}", ''
+        return f"no expected record: {entry['counts'] or str(entry['bytes']) + ' bytes'}", ''
     if sha1 == entry['sha1']:
         return 'identical', ''
     copy = _registered_copy(builder, file, sha1)
-    expected = _content(copy) if copy else recorded.get('content')
-    if expected is None:
-        return 'failed', (f'its sha1 differs from the expected {sha1}, and no registered copy is on this machine '
-                          f'to compare the content: put the registered file at {brainio_home() / sha1 / file} '
-                          '(`brainscore.load_dataset` fetches a hosted file there), then run again with --output')
-    differences = _differences(entry['content'], expected)
-    if differences:
-        return 'failed', 'its content differs from the expected record: ' + '; '.join(differences[:5]) + (
-            f'; and {len(differences) - 5} more' if len(differences) > 5 else '')
-    return 'same content, bytes differ', ''
+    if copy and content is not None:
+        differences = _differences(content, _read(copy))
+        if differences:
+            return 'failed', f'its content differs from the registered copy {copy}: ' + '; '.join(
+                differences[:5]) + (f'; and {len(differences) - 5} more' if len(differences) > 5 else '')
+        return 'same content, bytes differ', ''
+    if copy:
+        return 'failed', f'its bytes differ from the registered copy {copy}, and only bytes are compared for this kind'
+    if recorded.get('digest') and entry['digest']:
+        if recorded['digest'] == entry['digest']:
+            return 'same content, bytes differ', ''
+        return 'failed', ('its content differs from the record, and no registered copy is on this machine to '
+                          f'measure the difference: put the registered file at {brainio_home() / sha1 / file}')
+    return 'failed', (f'its sha1 differs from the expected {sha1}, and no registered copy is on this machine '
+                      f'to compare the content: put the registered file at {brainio_home() / sha1 / file} '
+                      '(`brainscore.load_dataset` fetches a hosted file there), then run again with --output')
 
 
 def package_data(name: str, source: str | Path | None = None,
@@ -385,16 +408,16 @@ def package_data(name: str, source: str | Path | None = None,
                 raise
             # A required input the script did not find: the source is incomplete.
             raise LocalDataMissing(_missing(name, builder, native, str(missing))) from missing
-        files = {}
+        files, problems, recorded = {}, [], _expected(name, builder)
         for path in sorted(p for p in staging.rglob('*') if p.is_file()):
             if path.is_symlink():
                 raise ValueError('a data script must not create symlinks')
             relative = path.relative_to(staging).as_posix()
-            files[relative] = {'bytes': path.stat().st_size, 'sha1': _sha1(path), 'content': _content(path)}
-        recorded = _expected(name, builder)
-        problems = []
-        for relative, entry in files.items():
-            entry['check'], problem = _check(builder, recorded.get(relative, {}), relative, entry)
+            content = _read(path)
+            entry = files[relative] = {'bytes': path.stat().st_size, 'sha1': _sha1(path),
+                                       'counts': '' if content is None else _counts(content),
+                                       'digest': None if content is None else _content_digest(content)}
+            entry['check'], problem = _check(builder, recorded.get(relative, {}), relative, entry, content)
             if problem:
                 problems.append(f'  {relative}: {problem}')
         if problems:
@@ -402,7 +425,7 @@ def package_data(name: str, source: str | Path | None = None,
                                          f'to {destination}.', *problems]))
         placed = _place_hosted(builder, staging, files) if builder.reads == 'brainio' and destination == read_place else {}
         (staging / 'build.json').write_text(json.dumps(
-            {'schema_version': 3, 'name': name, 'source': builder.source, 'files': files},
+            {'schema_version': 4, 'name': name, 'source': builder.source, 'files': files},
             indent=2, allow_nan=False) + '\n')
         # Keep packaged data private by default: some sources forbid redistribution.
         for entry in [staging, *staging.rglob('*')]:
@@ -454,7 +477,7 @@ def _report(name: str, builder: DataBuilder, destination: Path, read_place: Path
         if index == _LISTED_FILES:
             print(f'  ... and {len(files) - index} more files (all in build.json)')
             break
-        counts = _counts(entry['content'])
+        counts = entry['counts']
         print(f"  {relative}  {entry['bytes']} bytes  sha1 {entry['sha1']}" + (f'  ({counts})' if counts else ''))
         print(f"    check: {entry['check']}")
     # (i) where the data is now, (ii) whether the benchmarks read it there, (iii) the check.
