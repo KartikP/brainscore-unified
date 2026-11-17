@@ -34,9 +34,9 @@ CLIP / Qwen-VL / BLIP-2 / VideoMAE / V-JEPA / Wav2Vec2 by hand):
   4. **Sizing / dtype warnings.** Flags huge feature dims (LayerPCA needed),
      low-precision weights (device-alignment gotcha), and gated weights.
 
-Nothing here forces a layer choice — the provisional map is evenly spaced over
-the detected blocks purely so the model is *runnable immediately*; the
-layer-mapping explorer is what turns it into a brain-optimal map.
+Nothing here searches for a layer: the provisional map places each region at
+its stated relative depth in the detected blocks (the depth hypothesis,
+``DEFAULT_*_REGIONS``); the layer-mapping explorer can test it against data.
 
 Pure-Python module structure inspection — ``torch`` is imported lazily and only
 where a live wrapper is actually constructed.
@@ -44,20 +44,33 @@ where a live wrapper is actually constructed.
 import dataclasses
 import re
 import textwrap
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
-# Canonical brain regions, ordered shallow → deep, used only to *space* a
-# provisional map across the detected blocks. The layer-mapping explorer
-# refines this.
-DEFAULT_VISION_REGIONS: Tuple[str, ...] = ('V1', 'V2', 'V4', 'IT')
-DEFAULT_LANGUAGE_REGIONS: Tuple[str, ...] = ('language_system',)
-DEFAULT_AUDIO_REGIONS: Tuple[str, ...] = ('A1',)
+# The depth hypothesis: the relative depth of each brain region in each kind of
+# model part. A part with N blocks gives a region the block at index
+# f * (N - 1), rounded half up (``space_layers``). No data chose these values;
+# change a value only with a new version word, so a score's provenance names the
+# table it used. A projector (merger, Q-Former, MLP) gets no region.
+DEPTH_HYPOTHESIS = 'depth hypothesis v1'
+# Vision encoder (stills and clips through the same blocks).
+DEFAULT_VISION_REGIONS: Mapping[str, float] = {
+    'V1': 0.10,     # local edge and patch features, as in the early visual cortex
+    'V2': 0.25,     # local features combined over larger fields
+    'V4': 0.50,     # shape and texture parts at mid-depth
+    'IT': 0.90,     # object-level features near the top, below the last block
+    'VWFA': 0.90,   # ventral temporal cortex at the IT level; its benchmark localizes units here
+}
+# Causal language model: contextual meaning before the next-token layers.
+DEFAULT_LANGUAGE_REGIONS: Mapping[str, float] = {'language_system': 0.67}
+# Audio encoder: acoustic features at mid-depth; later layers are phonetic and lexical.
+DEFAULT_AUDIO_REGIONS: Mapping[str, float] = {'A1': 0.50}
 
 
 # ── modality → wrapper recommendation ─────────────────────────────────────
 
 # Each modality maps to (wrapper class name, default layer_aggregation,
-# the brain regions a provisional map spaces over).
+# the region depths a provisional map uses).
 _MODALITY_WRAPPER = {
     'vision':       ('PytorchWrapper',   None,           DEFAULT_VISION_REGIONS),
     'vision_flat':  ('VLMVisionWrapper', 'mean', DEFAULT_VISION_REGIONS),
@@ -124,7 +137,7 @@ class WrapperRecommendation:
                                         #   submodule_path when that is set)
     submodule_path: Optional[str]       # wrap this sub-module, or None for the full model
     layer_aggregation: Optional[str]    # for text/audio wrappers
-    regions: Tuple[str, ...]            # canonical regions a provisional map spaces over
+    regions: Mapping[str, float]        # region -> relative depth (the depth hypothesis)
     reason: str
 
     def provisional_region_layer_map(self) -> Dict[str, str]:
@@ -300,24 +313,23 @@ def _classify_tower(top: str, submodule: Any, meta: Dict[str, Any]) -> Tuple[str
     return mod, f"tower {top!r}: {why}"
 
 
-# ── provisional region→layer spacing ────────────────────────────────────────
+# ── region→layer map from the depth hypothesis ──────────────────────────────
 
 def space_layers(block_paths: Sequence[str],
-                 regions: Sequence[str]) -> Dict[str, str]:
-    """Evenly space ``regions`` (shallow→deep) across ``block_paths``.
+                 depths: Mapping[str, float]) -> Dict[str, str]:
+    """The layer of each region of ``depths`` (region -> relative depth f) in a part
+    whose blocks are ``block_paths``, shallow to deep: the block at index
+    ``f * (N - 1)`` of the N blocks, rounded half up in exact decimals.
 
-    Purely a *runnable starting point* — the layer-mapping explorer is what
-    finds the brain-optimal assignment. The deepest region is placed at the
-    last block; intermediate regions at evenly spaced depths.
+    ``DEFAULT_{VISION,LANGUAGE,AUDIO}_REGIONS`` hold the stated depths
+    (``DEPTH_HYPOTHESIS``). The map uses no data; the layer-mapping explorer
+    can test it against a benchmark.
     """
     n = len(block_paths)
-    m = len(regions)
-    if n == 0 or m == 0:
+    if n == 0:
         return {}
-    if m == 1:
-        return {regions[0]: block_paths[-1]}
-    positions = [round(i * (n - 1) / (m - 1)) for i in range(m)]
-    return {regions[i]: block_paths[positions[i]] for i in range(m)}
+    return {region: block_paths[int((Decimal(str(f)) * (n - 1)).quantize(Decimal(1), ROUND_HALF_UP))]
+            for region, f in depths.items()}
 
 
 # ── top-level inspection ─────────────────────────────────────────────────────
@@ -510,8 +522,8 @@ preprocessing, then refine REGION_LAYER_MAP with the layer-mapping explorer:
 """
 {chr(10).join(imports)}
 {warns_block}
-# Provisional map (evenly spaced over detected blocks — REFINE with the
-# layer-mapping explorer; this is only a runnable starting point).{agg_hint}
+# Provisional map ({DEPTH_HYPOTHESIS} over the detected blocks; no layer
+# search).{agg_hint}
 REGION_LAYER_MAP = {{
 {map_lines}
 }}
@@ -558,8 +570,8 @@ def auto_register(model: Any,
     cannot guess).
 
     :param region_layer_map: override the provisional map. When omitted, an
-        evenly-spaced provisional map over the detected blocks is used — runnable
-        immediately, refine later with the layer-mapping explorer.
+        provisional map from the depth hypothesis over the detected blocks is
+        used; ``regions`` names a subset of its regions.
     """
     from brainscore import BrainScoreModel
 
@@ -576,8 +588,12 @@ def auto_register(model: Any,
             "wrapper by hand — auto_register builds single-tower models only.")
 
     if region_layer_map is None:
-        regs = tuple(regions) if regions else rec.regions
-        region_layer_map = space_layers(rec.block_layers, regs)
+        unknown = set(regions or ()) - set(rec.regions)
+        if unknown:
+            raise ValueError(f"No stated depth for {sorted(unknown)} in a {rec.modality} part; "
+                             f"the depth hypothesis states {sorted(rec.regions)}.")
+        depths = {r: rec.regions[r] for r in regions} if regions else rec.regions
+        region_layer_map = space_layers(rec.block_layers, depths)
 
     if rec.modality in ('vision',):
         if preprocessing is None:
