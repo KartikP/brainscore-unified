@@ -102,7 +102,7 @@ data_builder_registry['lahner2024-frames'] = lambda: DataBuilder(
     needs='opencv-python and Pillow; the hosted clips (fetched once into the brainio cache; size not '
           'measured); disk for the frames and time not measured.',
     writes=f'one PNG per clip and time ({", ".join(map(str, DEFAULT_SAMPLE_TIMES_MS))} ms): '
-           f'`<clip>_t<ms>.png`.',
+           '`<clip>_t<ms>.png`.',
     reads=LAHNER_FRAMES.name,
     build='python -m brainscore.data.lahner2024.data_packaging.prepare_frames --frames-dir {output}',
     fetches=True,
@@ -115,8 +115,8 @@ data_builder_registry['lahner2024-sound'] = lambda: DataBuilder(
     needs='ffmpeg and ffprobe on the PATH; the hosted clips (fetched once into the brainio cache; size '
           'not measured); about 100 MB of sound (3 s at 16 kHz, 16 bit, for each of 1,026 clips, '
           'computed); time not measured.',
-    writes=f'one 16 kHz mono WAV per clip (`<clip>.wav`; a silent file for a clip with no sound) and '
-           f'`manifest.json`.',
+    writes='one 16 kHz mono WAV per clip (`<clip>.wav`; a silent file for a clip with no sound) and '
+           '`manifest.json`.',
     reads=LAHNER_SOUND.name,
     build='python -m brainscore.data.lahner2024.data_packaging.prepare_audio_tracks --audio-dir {output}',
     fetches=True,
