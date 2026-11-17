@@ -17,7 +17,7 @@ What a model from the builder gives (the parts are wired by default; the registr
 | `behavior:choice`, `rating`, `text` | the reply (writing) | |
 | `behavior:log_probabilities` | the likelihood of each option | a verbatim choice on text |
 | `behavior:probabilities`, `rt` | the readout on the IT layer | the task's fitting stimuli |
-| `perturbation` (inputs `lesion`, `stimulation`, `pharmacological`) | `pytorch_intervention` over both parts | |
+| `perturbation` (inputs `lesion`, `stimulation`, `pharmacological`) | `pytorch_intervention` over both parts | a vision part without `image_processor_kwargs`: a part recorded as `LayerPCA` components gets none (a lesion addresses module units), so induced dyslexia is N/A for it |
 | `motor` (inputs `observation`, `instruction`, `reward`) | `api_policy` with the model's reply as its client | an environment such as `GridGame-reach-5x5` |
 
 The policy asks the model exactly as an API model is asked (the defaults of `api_policy`):

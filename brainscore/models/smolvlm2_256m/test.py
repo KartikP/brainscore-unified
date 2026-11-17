@@ -46,7 +46,9 @@ def test_declarations(model):
     assert isinstance(model, Subject) and model.identifier == 'smolvlm2-256m'
     assert {'vision:image', 'text'} <= model.in_channels
     assert {'neural:V1', 'neural:IT', 'neural:VWFA', 'neural:language_system', 'behavior:choice',
-            'behavior:probabilities', 'perturbation', 'motor'} <= model.out_channels
+            'behavior:probabilities', 'motor'} <= model.out_channels
+    # Its vision layers are recorded as LayerPCA components, which a lesion cannot address.
+    assert 'perturbation' not in model.out_channels
 
 
 def test_records_the_vision_part_from_pictures(model, tmp_path):

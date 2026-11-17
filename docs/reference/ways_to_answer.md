@@ -18,7 +18,7 @@ Each registered model answers with the parts its registration wires: writing (a 
 | `qwen3.6-27b` | control, instruction, lesion, pharmacological, stimulation, text, vision:image, vision:video | IT, V1, V2, V4, language_system | writing, likelihood, readout | choice (writing), log_probabilities (likelihood), probabilities (readout), rating (writing), rt (readout), text (writing) |
 | `random-vjepa1-random-wav2vec2`, `random-vjepa1-wav2vec2`, `vjepa1-random-wav2vec2`, `vjepa1-wav2vec2` | audio, control, vision:video | A1, IT, V1, V4 | - | - |
 | `random-wav2vec2-base` | audio, control | A1 | - | - |
-| `smolvlm2-256m` | control, instruction, lesion, observation, pharmacological, reward, stimulation, text, vision:image | IT, V1, V2, V4, VWFA, language_system | writing, likelihood, readout | choice (writing), log_probabilities (likelihood), probabilities (readout), rating (writing), rt (readout), text (writing) |
+| `smolvlm2-256m` | control, instruction, observation, reward, text, vision:image | IT, V1, V2, V4, VWFA, language_system | writing, likelihood, readout | choice (writing), log_probabilities (likelihood), probabilities (readout), rating (writing), rt (readout), text (writing) |
 | `videomae-base`, `vjepa1-vitl`, `vjepa2-vitl` | control, vision:video | IT, V1, V2, V4 | - | - |
 
 "own code": the subject is not a `BrainScoreModel`; its own `participate` gives the answer (`chance-baseline` gives uniform probabilities).

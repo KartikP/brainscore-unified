@@ -301,6 +301,20 @@ def test_other_dtypes_export_as_the_legacy_wrapper_exports_them(dtype):
     assert got.dtype == expected.dtype and np.array_equal(got, expected)
 
 
+def test_a_pixel_part_recorded_through_pca_takes_no_lesion():
+    """PCA components are not the units a lesion addresses: no intervention part, no
+    perturbation, and induced dyslexia is N/A, with the reason in the provenance."""
+    from brainscore.benchmarks.induced_dyslexia.benchmark import InducedDyslexia
+    from brainscore_core.compatibility import CompatibilityError, check_compatibility
+    subject = _build(image_processor_kwargs={})
+    assert 'perturbation' not in subject.out_channels and 'lesion' not in subject.in_channels
+    assert 'LayerPCA' in subject._provenance['intervention']
+    with pytest.raises(CompatibilityError, match='perturbation'):
+        check_compatibility(subject, InducedDyslexia(reading_benchmark=object(), localizer_stimuli=None,
+                                                     identifier='induced-dyslexia-stand-in'))
+    assert _build()._provenance['intervention'] == 'on'
+
+
 def test_a_missing_class_is_named_before_the_download_check(monkeypatch):
     import brainscore.models._downloads as downloads
 
@@ -636,9 +650,14 @@ def test_every_builder_registration_gives_what_it_declares(monkeypatch, tmp_path
         assert {channel_of[key] for key in inner.extractor} <= subject.in_channels, identifier
         assert {f'neural:{region}' for region in inner.region_layer_map} <= subject.out_channels, identifier
         assert {'behavior:choice', 'behavior:probabilities', 'behavior:log_probabilities', 'behavior:rating',
-                'behavior:rt', 'behavior:text', 'perturbation', 'neural:VWFA', 'motor'} <= subject.out_channels, identifier
-        assert {'lesion', 'stimulation', 'pharmacological', 'observation', 'instruction',
-                'reward'} <= subject.in_channels, identifier
+                'behavior:rt', 'behavior:text', 'neural:VWFA', 'motor'} <= subject.out_channels, identifier
+        assert {'observation', 'instruction', 'reward'} <= subject.in_channels, identifier
+        # The lesion inputs and their record come with the intervention part, and only with it.
+        lesions = {'lesion', 'stimulation', 'pharmacological'}
+        if inner._intervention is not None:
+            assert lesions <= subject.in_channels and 'perturbation' in subject.out_channels, identifier
+        else:
+            assert not lesions & subject.in_channels and 'perturbation' not in subject.out_channels, identifier
         for channel in sorted(subject.out_channels) + sorted({'vision:video'} & subject.in_channels):
             if channel == 'neural:A1':
                 continue    # the audio extractor is the registration's own part; its test.py runs it

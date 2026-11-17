@@ -191,7 +191,10 @@ def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
     :param intervention: wire ``pytorch_intervention`` over the parts' block lists, so the subject
         takes ``lesion``, ``stimulation`` and ``pharmacological`` and answers ``perturbation``; a
         change names a layer as its region does (``blocks.10``, ``layers.2``). ``False`` for a
-        family whose parts' block lists start with the same name.
+        family whose parts' block lists start with the same name. A vision part given
+        ``image_processor_kwargs`` gets none: its layers are recorded as ``LayerPCA`` components,
+        and a lesion addresses the module's own units, so a unit selected from a recording would
+        not be the unit lesioned.
     :param policy: wire ``api_policy`` with the model's own reply as its client, so the subject
         acts on ``motor`` from ``observation``, ``instruction`` and ``reward`` (a grid game), asked
         exactly as an API model is (the defaults of ``api_policy``). ``False`` leaves it out.
@@ -247,7 +250,12 @@ def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
         region_layer_map.update({region: LayerSelector(name=layer, modality='audio') for region, layer
                                  in depth_layers(audio_blocks, DEPTH_TABLE['audio']).items()})
 
-    parts = {'intervention': _intervention(model, vision, language, audio)} if intervention else {}
+    # Recording and intervention must share unit coordinates; PCA components are not module units.
+    intervention_status = ('off: the vision layers are recorded as LayerPCA components, not the '
+                           'units a lesion addresses' if image_processor_kwargs is not None
+                           else 'on' if intervention else 'off: stated by the registration')
+    wired = intervention and image_processor_kwargs is None
+    parts = {'intervention': _intervention(model, vision, language, audio)} if wired else {}
     reply, likelihood = chat_parts(model, processor, chat_template_kwargs=chat_template_kwargs)
     if policy:
         from brainscore.model_helpers.api_behavioral import api_policy
@@ -266,4 +274,5 @@ def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
     return ProvenanceSubject(subject, {
         'checkpoint': hf_id, 'revision': revision or 'not pinned', 'dtype': dtype, 'device_map': device_map,
         'region_layer_map_status': f'{DEPTH_HYPOTHESIS}: {status}; no layer search',
+        'intervention': intervention_status,
         **dict(provenance or {})})
