@@ -49,7 +49,7 @@ NEURAL_ONLY = ('benchmarks/grid_game/benchmark.py', 'models/multimodal_av_blip2_
 DECLARED = {
     'model_helpers/causal_lm.py': ({B, CH, P, RA, RT, TE}, {CH, P, LP, RA, RT, TE}),
     'models/api_closed/model.py': ({B, CH, RA, TE}, {B, CH, RA, TE}),
-    'models/blip2_opt_2_7b/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
+    'models/blip2_opt_2_7b/model.py': ({B, CH, P, RA, RT}, {B, CH, P, LP, RA, RT, TE}),   # + reply, likelihood
     'models/clip_vit_b_32/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
     'models/gpt2_small/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
     'models/qwen36_27b/model.py': ({B, CH, P, RA, RT, TE}, {B, CH, P, LP, RA, RT, TE}),
@@ -74,7 +74,7 @@ ALL = set(BENCHMARKS)
 COMPATIBLE = {
     'model_helpers/causal_lm.py': (ALL, ALL - {'facade'}),
     'models/api_closed/model.py': (ALL - {'EWoK logprobs'}, ALL - {'EWoK logprobs'}),
-    'models/blip2_opt_2_7b/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
+    'models/blip2_opt_2_7b/model.py': (ALL - {'CogGym'}, ALL),   # its reply and likelihood parts
     'models/clip_vit_b_32/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
     'models/gpt2_small/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
     'models/qwen36_27b/model.py': (ALL, ALL),
@@ -156,12 +156,14 @@ def test_the_matrix_changes_only_where_the_declarations_change():
     registrations state ('readout', 'argmax') and keep behavior:choice. EWoK logprobs now
     requests behavior:log_probabilities, which only a likelihood
     gives, so the readout-only registrations are N/A there (before, the run raised:
-    raw scores came only from a likelihood)."""
+    raw scores came only from a likelihood). blip2-opt-2.7b later gained a reply and a likelihood
+    part, so it is applicable to CogGym and keeps EWoK logprobs: the one pair that becomes applicable."""
     changed = {(where, name) for where, (before, after) in COMPATIBLE.items() for name in before ^ after}
-    assert changed == {('model_helpers/causal_lm.py', 'facade')} | {
-        (where, 'EWoK logprobs') for where in ('models/blip2_opt_2_7b/model.py', 'models/clip_vit_b_32/model.py',
+    blip2 = 'models/blip2_opt_2_7b/model.py'
+    assert changed == {('model_helpers/causal_lm.py', 'facade'), (blip2, 'CogGym')} | {
+        (where, 'EWoK logprobs') for where in ('models/clip_vit_b_32/model.py',
                                                'models/gpt2_small/model.py', 'models/random_vit_b_32/model.py')}
-    assert all(after <= before for before, after in COMPATIBLE.values())
+    assert all(after <= before for where, (before, after) in COMPATIBLE.items() if where != blip2)
 
 
 def test_no_pair_that_answers_today_becomes_not_applicable():

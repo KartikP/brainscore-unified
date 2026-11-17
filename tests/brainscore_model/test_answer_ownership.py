@@ -194,7 +194,7 @@ def test_several_parts_that_do_not_own_the_output_are_refused_before_compute():
 
 
 QWEN = ('answer', 'reply', 'likelihood', 'behavioral_readout_layer')
-BLIP2 = ('answer', 'behavioral_readout_layer')
+BLIP2 = ('answer', 'behavioral_readout_layer')   # an answer part and a readout (blip2-opt-2.7b before its reply and likelihood)
 CAUSAL_LM = ('reply', 'likelihood')
 
 # --- the registered part sets ------------------------------------------------
@@ -214,6 +214,8 @@ REGISTERED_STATEMENTS = {
 # (qwen2.5-vl-3b, -7b, -3b-bf16, qwen3.6-27b) or the likelihood (the -vwfa variants), the
 # statement above.
 QWEN_READOUT_STATEMENT = {**REGISTERED_STATEMENTS[QWEN], 'behavior:probabilities': 'readout'}
+# blip2-opt-2.7b wires the same four parts and states that the readout keeps the rating.
+BLIP2_STATEMENT = {'behavior:rating': 'readout'}
 API = ('answer', 'reply')
 READOUT = ('behavioral_readout_layer',)
 
@@ -334,7 +336,7 @@ def test_every_registration_answers_each_format_with_the_part_of_its_part_set():
         model = _model(*wired, owners=stated)                 # construction accepts it
         if tuple(wired) not in LIBRARY_STATEMENTS:
             continue
-        references = [LIBRARY_STATEMENTS[tuple(wired)]] + ([QWEN_READOUT_STATEMENT] if tuple(wired) == QWEN else [])
+        references = [LIBRARY_STATEMENTS[tuple(wired)]] + ([QWEN_READOUT_STATEMENT, BLIP2_STATEMENT] if tuple(wired) == QWEN else [])
         found = _answering_parts(model)
         assert any(found == _answering_parts(_model(*wired, owners=reference)) for reference in references), (where, found)
 
