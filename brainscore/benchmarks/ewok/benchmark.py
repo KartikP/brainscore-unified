@@ -8,7 +8,8 @@ verbatim=True)``), and the subject returns the log probability of each target
 on ``behavior:log_probabilities``: the summed log probability of the target's
 tokens in ``f"{context} {target}"``, plain text, no template, as EWoK's
 ``score`` does (record layout ``'continuation'``). Only a ``likelihood`` part
-gives that format: a subject that does not declare it is N/A. The
+gives that format: a subject that does not declare it is N/A. No floor
+model gives log probabilities yet (``chance-baseline`` is N/A here). The
 scoring compares log p(T1 | C1) with log p(T1 | C2) and log p(T2 | C2) with
 log p(T2 | C1).
 Log-probability scores can differ slightly from EWoK's own evaluator, for two
