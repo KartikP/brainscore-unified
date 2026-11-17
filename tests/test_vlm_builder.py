@@ -25,7 +25,8 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 pytestmark = pytest.mark.unit
 
-WORDS = ['[PAD]', '[UNK]', 'system', 'user', 'assistant', ':', '<image>', 'cat', 'dog', 'the', 'sat']
+WORDS = ['[PAD]', '[UNK]', 'system', 'user', 'assistant', ':', '<image>', 'cat', 'dog', 'the', 'sat', 'Action', '1']
+REPLY = ['dog']    # the words every stand-in writes; a test may set another reply
 VISION_BLOCKS, LANGUAGE_LAYERS = 12, 4
 
 
@@ -84,7 +85,7 @@ class TinyVLM(torch.nn.Module):
         # The prompt pass a recording keeps, then the fixed reply.
         self(input_ids=input_ids, attention_mask=attention_mask, pixel_values=pixel_values,
              image_grid_thw=image_grid_thw)
-        return torch.cat([input_ids, torch.tensor([[WORDS.index('dog')]])], dim=1)
+        return torch.cat([input_ids, torch.tensor([[WORDS.index(word) for word in REPLY]])], dim=1)
 
 
 def _image_pixels(images, return_tensors='pt', **settings):
@@ -353,6 +354,62 @@ def test_a_lesion_reaches_the_named_part_and_is_undone(tmp_path):
     assert block(x).abs().sum() == before
 
 
+@pytest.fixture
+def replies(monkeypatch):
+    """Set the words the stand-ins write for this test."""
+    def set_reply(*words):
+        monkeypatch.setattr(sys.modules[__name__], 'REPLY', list(words))
+    return set_reply
+
+
+def _one_game(subject, seed=1, steps=3):
+    from brainscore.harnesses.grid_game import GridGameEnv, play_game
+    return play_game(subject, GridGameEnv(size=5, seed=seed, max_steps=steps))
+
+
+def test_the_model_plays_the_grid_game_with_a_legal_action_each_step(replies, monkeypatch):
+    from brainscore.harnesses.grid_game import ACTIONS
+    replies('Action', ':', '1')
+    shown = []
+    original = FakeProcessor.apply_chat_template
+
+    def record(self, messages, **settings):
+        shown.append(messages)
+        return original(self, messages, **settings)
+    monkeypatch.setattr(FakeProcessor, 'apply_chat_template', record)
+    subject = _build()
+    assert 'motor' in subject.out_channels
+    assert {'observation', 'instruction', 'reward'} <= subject.in_channels
+    game = _one_game(subject)
+    assert game['actions'] and set(game['actions']) == {1} and all(a in ACTIONS for a in game['actions'])
+    trace = subject._subject._policy.trace
+    assert [step['fallback'] for step in trace] == [False] * len(game['actions'])
+    # Asked as an API model is: one user turn, the api_policy text, then the frame.
+    turn = shown[-1][-1]['content']
+    assert [part['type'] for part in turn] == ['text', 'image']
+    assert turn[0]['text'].startswith('You control an agent in a grid world') and 'Action: <number>' in turn[0]['text']
+    subject.reset()
+    assert trace == []
+
+
+def test_an_unusable_reply_takes_a_seeded_random_legal_action(replies):
+    from brainscore.harnesses.grid_game import ACTIONS
+    replies('dog')
+    first, second = _one_game(_build()), _one_game(_build())
+    assert all(a in ACTIONS for a in first['actions']) and first['actions'] == second['actions']
+
+
+def test_the_grid_game_is_compatible_and_scores_through_participate(replies):
+    from brainscore import benchmark_registry
+    from brainscore_core.compatibility import check_compatibility
+    replies('Action', ':', '1')
+    benchmark = benchmark_registry['GridGame-reach-5x5']()
+    assert check_compatibility(_build(), benchmark).kind == 'full'
+    assert 'motor' not in _build(policy=False).out_channels
+    score = brainscore.score(_build(), benchmark, check_mem=False)
+    assert 0 <= float(score.attrs['success_rate']) <= 1
+
+
 def test_the_induced_dyslexia_benchmarks_are_compatible():
     from brainscore.benchmarks.induced_dyslexia.benchmark import InducedDyslexia
     from brainscore_core.compatibility import check_compatibility
@@ -443,7 +500,7 @@ class _StatedLayout(torch.nn.Module):
     def generate(self, input_ids, attention_mask=None, pixel_values=None, image_grid_thw=None, **_):
         self(input_ids=input_ids, attention_mask=attention_mask, pixel_values=pixel_values,
              image_grid_thw=image_grid_thw)
-        return torch.cat([input_ids, torch.tensor([[WORDS.index('dog')]])], dim=1)
+        return torch.cat([input_ids, torch.tensor([[WORDS.index(word) for word in REPLY]])], dim=1)
 
 
 def _builder_registrations():
@@ -523,6 +580,8 @@ def _given(subject, channel, folder):
             perturbation=Perturbation(kind='zero')))
         apply_state_change(subject, StateChange(kind='reset', handle_id=record.handle_id))
         return int(record.handle_id is not None)
+    if channel == 'motor':
+        return len(_one_game(subject)['actions'])
     if channel == 'vision:video':
         stimuli, task, channel = _clip(folder), TaskContext(task_type='passive'), 'neural:IT'
     elif channel.startswith('neural:'):
@@ -548,8 +607,9 @@ def test_every_builder_registration_gives_what_it_declares(monkeypatch, tmp_path
         assert {channel_of[key] for key in inner.extractor} <= subject.in_channels, identifier
         assert {f'neural:{region}' for region in inner.region_layer_map} <= subject.out_channels, identifier
         assert {'behavior:choice', 'behavior:probabilities', 'behavior:log_probabilities', 'behavior:rating',
-                'behavior:rt', 'behavior:text', 'perturbation', 'neural:VWFA'} <= subject.out_channels, identifier
-        assert {'lesion', 'stimulation', 'pharmacological'} <= subject.in_channels, identifier
+                'behavior:rt', 'behavior:text', 'perturbation', 'neural:VWFA', 'motor'} <= subject.out_channels, identifier
+        assert {'lesion', 'stimulation', 'pharmacological', 'observation', 'instruction',
+                'reward'} <= subject.in_channels, identifier
         for channel in sorted(subject.out_channels) + sorted({'vision:video'} & subject.in_channels):
             if channel == 'neural:A1':
                 continue    # the audio extractor is the registration's own part; its test.py runs it

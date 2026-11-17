@@ -59,6 +59,31 @@ def _load(identifier: str, hf_id: str, model_class: str, dtype: str, download_gb
     return model.eval(), pin_image_processor(processor, hf_id, **download)
 
 
+def _reply_client(reply):
+    """The model's own ``reply`` as an ``api_policy`` client: ``(model, system, messages, settings)``
+    -> text. Each message part keeps its order; a picture arrives as base64 data, as an API gets it.
+    The settings' ``max_tokens`` and ``temperature`` become the reply's ``Text`` settings."""
+    import base64
+    import io
+    from brainscore_core.responses import Prompt, Text
+
+    def local_model(model, system, messages, settings):
+        if len(messages) != 1:
+            raise ValueError(f'the policy client takes one user turn; got {len(messages)} messages')
+        parts, names = [], []
+        if system:
+            parts.append(('text', system)); names.append('instruction')
+        for part in messages[0]['content']:
+            if part['type'] == 'image':
+                parts.append(('image', io.BytesIO(base64.b64decode(part['data']))))
+            else:
+                parts.append(('text', part['text']))
+            names.append(part['type'])
+        return reply(Prompt(parts=tuple(parts), names=tuple(names), response=Text(
+            max_tokens=settings.get('max_tokens'), temperature=settings.get('temperature') or 0)))
+    return local_model
+
+
 def _placed(module) -> Optional[str]:
     """The one device where the loaded part's parameters are, so that its extractor keeps it there;
     None when they are spread over devices or not loaded (the extractor then leaves them as placed)."""
@@ -125,6 +150,7 @@ def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
                       probabilities: Union[str, Tuple[str, str]] = 'readout',
                       device_map: Optional[Union[str, dict]] = None, revision: Optional[str] = None,
                       chat_template_kwargs: Optional[Mapping] = None, intervention: bool = True,
+                      policy: bool = True,
                       provenance: Optional[Mapping[str, Any]] = None):
     """A subject for the vision-language checkpoint ``hf_id``, loaded as ``transformers.<model_class>``.
 
@@ -147,6 +173,9 @@ def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
         takes ``lesion``, ``stimulation`` and ``pharmacological`` and answers ``perturbation``; a
         change names a layer as its region does (``blocks.10``, ``layers.2``). ``False`` for a
         family whose parts' block lists start with the same name.
+    :param policy: wire ``api_policy`` with the model's own reply as its client, so the subject
+        acts on ``motor`` from ``observation``, ``instruction`` and ``reward`` (a grid game), asked
+        exactly as an API model is (the defaults of ``api_policy``). ``False`` leaves it out.
     :param provenance: the registration's own facts, added to the score's provenance.
     """
     if image_processor_kwargs is not None and video:
@@ -202,6 +231,11 @@ def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
 
     parts = {'intervention': _intervention(model, vision, language, audio)} if intervention else {}
     reply, likelihood = chat_parts(model, processor, chat_template_kwargs=chat_template_kwargs)
+    if policy:
+        from brainscore.model_helpers.api_behavioral import api_policy
+        parts.update(policy=api_policy(_reply_client(reply), identifier),
+                     # The reward reaches the policy in its row; the API policy's prompt does not show it.
+                     policy_in_channels=('observation', 'instruction', 'reward'))
     subject = BrainScoreModel(
         identifier, model, region_layer_map, extractor=extractor, **parts,
         reply=reply, likelihood=likelihood,       # the reply also answers a plain choice
