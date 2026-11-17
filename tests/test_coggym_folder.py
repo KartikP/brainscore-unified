@@ -229,3 +229,27 @@ def test_a_record_that_cannot_be_removed_after_publication_does_not_fail_the_loa
     finally:
         if folder.exists():
             folder.chmod(0o700)
+
+
+def test_a_complete_folder_renamed_to_a_temporary_name_is_never_removed(fresh, tmp_path, monkeypatch):
+    """A published folder that kept its creation record is renamed by the user to a name of the
+    temporary pattern and holds the user's file: the next load leaves it in place."""
+    from .coggym_stand_in import default_place
+    folder = default_place(tmp_path / 'folders')
+    fsencode = os.fsencode
+
+    def read_only_at_publication(name):
+        text = os.fspath(name)
+        if os.path.basename(text).startswith(f'.{folder.name}.partial-') and os.path.isdir(text):
+            os.chmod(text, 0o500)
+        return fsencode(name)
+    monkeypatch.setattr(os, 'fsencode', read_only_at_publication)
+    _load()                                          # the record stays in the published folder
+    monkeypatch.setattr(os, 'fsencode', fsencode)
+    folder.chmod(0o700)
+    saved = folder.parent / f'.{folder.name}.partial-saved'
+    folder.rename(saved)
+    (saved / 'saved-result.txt').write_text('mine')
+    _load()
+    assert (saved / 'saved-result.txt').read_text() == 'mine'
+    assert (folder / 'ready.json').exists()

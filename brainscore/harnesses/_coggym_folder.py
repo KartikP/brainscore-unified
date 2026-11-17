@@ -162,8 +162,8 @@ def _make(identifier, folder):
             + f"\nNothing was left at {folder}. Next step: check the network, the disk and the "
             f"permissions of {folder.parent}, and load the benchmark again.") from error
     # The rename above is the success boundary: the folder is complete and published. Removing
-    # the creation record is best effort; a record left inside the published folder is never read
-    # (only temporary siblings named '.<name>.partial-*' are checked for one).
+    # the creation record is best effort. A record left behind never leads to a deletion: a folder
+    # with ready.json (a complete folder, also one renamed to a temporary name) is never reclaimed.
     with contextlib.suppress(OSError):
         (folder / _CREATION_RECORD).unlink()
 
@@ -241,10 +241,13 @@ def _creation_lock(folder):
 
 
 def _created_here(candidate: Path, folder: Path) -> bool:
-    """Whether ``candidate`` is a temporary folder this code made for ``folder``: a folder (not a
-    link) that holds a creation record (a regular file, not a link) naming ``folder``."""
+    """Whether ``candidate`` is an unfinished temporary folder this code made for ``folder``: a
+    folder (not a link) that holds a creation record (a regular file, not a link) naming
+    ``folder`` and no ``ready.json``. A complete folder is never reclaimed, whatever its name."""
     try:
         record = candidate / _CREATION_RECORD
+        if os.path.lexists(candidate / 'ready.json'):
+            return False
         if not (stat.S_ISDIR(os.lstat(candidate).st_mode) and stat.S_ISREG(os.lstat(record).st_mode)):
             return False
         return json.loads(record.read_text()).get('folder') == str(folder)
