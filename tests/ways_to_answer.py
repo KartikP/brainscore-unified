@@ -28,8 +28,6 @@ WAYS = {'generation': 'writing', 'likelihood': 'likelihood', 'readout': 'readout
 SKELETONS = {
     'Qwen2_5_VLForConditionalGeneration': ('model.visual.blocks', 'model.language_model.layers'),
     'Qwen3_5ForConditionalGeneration': ('model.visual.blocks', 'model.language_model.layers'),
-    'Qwen3VLForConditionalGeneration': ('model.visual.blocks', 'model.language_model.layers'),
-    'SmolVLMForConditionalGeneration': ('model.vision_model.encoder.layers', 'model.text_model.layers'),
     'Blip2ForConditionalGeneration': ('vision_model.encoder.layers', 'language_model.model.decoder.layers'),
     'Wav2Vec2Model': ('encoder.layers',),
 }
@@ -141,6 +139,16 @@ def install_stand_ins():
     vjepa1.load_backbone = lambda identifier: network(skeleton=VJEPA1_BACKBONE)
     qwen25 = importlib.import_module('brainscore.models.qwen25_vl_3b.model')
     qwen25._bf16_provenance = lambda *args: {'checkpoint': 'stand-in'}     # hashes checkpoint files
+    # A registration made with the builder states its parts' paths: its stand-in network has
+    # blocks there (no table by class name). Set before a plugin's model.py imports the builder.
+    vlm = importlib.import_module('brainscore.model_helpers.vlm')
+    build = vlm.build_vlm_subject
+
+    def on_stated_paths(*args, **kwargs):
+        parts = [kwargs[name] for name in ('vision', 'language', 'audio') if kwargs.get(name)]
+        vlm._load = lambda *a: (network(skeleton=[f'{part[0]}.{part[1]}' for part in parts]), network())
+        return build(*args, **kwargs)
+    vlm.build_vlm_subject = on_stated_paths
 
 
 def _row(subject):

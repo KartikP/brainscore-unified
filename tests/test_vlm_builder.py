@@ -45,6 +45,7 @@ class _Vision(torch.nn.Module):
         self.blocks = torch.nn.ModuleList(torch.nn.Linear(4, 4) for _ in range(VISION_BLOCKS))
 
     def forward(self, pixel_values, grid_thw=None):
+        pixel_values = pixel_values.reshape(len(pixel_values), -1)[:, :4]    # (B, C, H, W) too
         for block in self.blocks:
             pixel_values = torch.tanh(block(pixel_values))
         return pixel_values
@@ -73,22 +74,60 @@ class TinyVLM(torch.nn.Module):
     def device(self):
         return next(self.parameters()).device
 
-    def forward(self, input_ids, attention_mask=None, pixel_values=None, **_):
+    def forward(self, input_ids, attention_mask=None, pixel_values=None, image_grid_thw=None, **_):
+        if pixel_values is not None:       # the pictures go through the vision part, as in a real model
+            self.model.visual(pixel_values, grid_thw=image_grid_thw)
         hidden = self.model.language_model(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
         return SimpleNamespace(logits=self.lm_head(hidden))
 
-    def generate(self, input_ids, attention_mask=None, **_):
-        self(input_ids=input_ids, attention_mask=attention_mask)    # the prompt pass a recording keeps
+    def generate(self, input_ids, attention_mask=None, pixel_values=None, image_grid_thw=None, **_):
+        # The prompt pass a recording keeps, then the fixed reply.
+        self(input_ids=input_ids, attention_mask=attention_mask, pixel_values=pixel_values,
+             image_grid_thw=image_grid_thw)
         return torch.cat([input_ids, torch.tensor([[WORDS.index('dog')]])], dim=1)
 
 
+def _image_pixels(images, return_tensors='pt', **settings):
+    """Each picture as (3, 2, 2): its mean colour in every pixel."""
+    return {'pixel_values': torch.stack([torch.tensor(np.asarray(image, np.float32).mean((0, 1)) / 255)
+                                         [:, None, None].expand(3, 2, 2) for image in images])}
+
+
+def _clip_patches(videos, video_metadata=None, return_tensors='pt'):
+    """A clip as flattened patches: two frames per time step, one patch per step."""
+    frames = torch.tensor(np.asarray(videos[0], np.float32)) / 255
+    steps = len(frames) // 2
+    patches = torch.stack([torch.cat([frames[2 * k:2 * k + 2].mean((0, 1, 2)), torch.ones(1)])
+                           for k in range(steps)])
+    return {'pixel_values_videos': patches, 'video_grid_thw': torch.tensor([[steps, 1, 1]])}
+
+
+_clip_patches.temporal_patch_size, _clip_patches.fps = 2, 2
+
+
+def _expected(module, rows, block):
+    """The output of ``blocks[block]`` for input rows, computed here, not by an extractor."""
+    x = torch.as_tensor(rows, dtype=torch.float32)
+    with torch.no_grad():
+        for index in range(block):
+            x = torch.tanh(module.blocks[index](x))
+        return module.blocks[block](x).numpy()    # a block's own output, before the next tanh
+
+
+def _mean_colours(stimuli):
+    from PIL import Image
+    return [[*(np.asarray(Image.open(path).convert('RGB'), np.float32).mean((0, 1)) / 255), 1.0]
+            for path in stimuli['image_file_name']]
+
+
 class FakeProcessor:
-    """A chat processor: word tokens, and four numbers per picture (its mean colour and 1)."""
+    """A chat processor in the flattened-patch layout: word tokens, and one patch of four numbers
+    per picture (its mean colour and 1)."""
 
     def __init__(self):
         self.tokenizer = _tokenizer()
-        self.image_processor = SimpleNamespace()
-        self.video_processor = SimpleNamespace(temporal_patch_size=2, fps=2)
+        self.image_processor = _image_pixels
+        self.video_processor = _clip_patches
 
     def apply_chat_template(self, messages, add_generation_prompt=False, **_):
         def words(content):
@@ -100,8 +139,9 @@ class FakeProcessor:
     def __call__(self, text, images=None, return_tensors='pt', padding=True, **_):
         inputs = dict(self.tokenizer(text, return_tensors='pt', padding=True, add_special_tokens=False))
         if images:
-            inputs['pixel_values'] = torch.tensor(
+            inputs['pixel_values'] = torch.tensor(          # one flattened patch for each picture
                 [[*(np.asarray(image, np.float32).mean((0, 1)) / 255), 1.0] for image in images])
+            inputs['image_grid_thw'] = torch.tensor([[1, 1, 1]] * len(images))
         return transformers.BatchFeature(inputs)
 
 
@@ -176,6 +216,20 @@ def test_image_processor_kwargs_record_the_vision_part_with_pca():
         _build(image_processor_kwargs={}, video=True)
 
 
+def test_image_processor_kwargs_give_the_vision_part_whole_pictures(tmp_path, monkeypatch):
+    from brainscore_vision.model_helpers.activations.pca import LayerPCA
+    monkeypatch.setattr(LayerPCA, 'hook', classmethod(lambda cls, extractor, n_components: None))  # no ImageNet fit
+    subject = _build(image_processor_kwargs={})
+    pictures = _pictures(tmp_path)
+    pictures.stimulus_paths = dict(zip(pictures['stimulus_id'], pictures['image_file_name']))
+    session = stimulus_session(pictures, ['neural:IT'], TaskContext(task_type='passive'))
+    subject.participate(session)
+    # The stand-in image processor gives each picture its mean colour; the vision part reads its first four values.
+    colours = [[row[0]] * 4 for row in _mean_colours(pictures)]     # (3, 2, 2) of one colour: red first
+    expected = _expected(subject._subject._model.model.visual, colours, 10)
+    assert np.allclose(session.collect('neural:IT').values, expected, atol=1e-6)
+
+
 def test_precision_and_device_map_reach_the_load():
     vlm.build_vlm_subject('tiny-vlm', 'Org/Tiny-VLM', 'TinyVLMForConditionalGeneration',
                           vision=('model.visual', 'blocks'), language=('model.language_model', 'layers'),
@@ -234,8 +288,11 @@ def test_a_neural_session_records_the_vision_part(tmp_path):
     session = stimulus_session(_pictures(tmp_path), ['neural:IT', 'neural:V1'], TaskContext(task_type='passive'))
     subject.participate(session)
     responses = {event.channel: event.payload for event in session.emitted}
-    assert responses['neural:IT'].shape == (2, 4) and responses['neural:V1'].shape == (2, 4)
-    assert responses['neural:IT'].attrs['provenance']['region_layer_map_status'].startswith('depth hypothesis v1')
+    visual = subject._subject._model.model.visual
+    pictures = _pictures(tmp_path)
+    assert np.allclose(responses['neural:IT'].values, _expected(visual, _mean_colours(pictures), 10), atol=1e-6)
+    assert np.allclose(responses['neural:V1'].values, _expected(visual, _mean_colours(pictures), 1), atol=1e-6)
+    assert responses['neural:IT'].attrs['provenance']['region_layer_map_status'].startswith(vlm.DEPTH_HYPOTHESIS)
 
 
 def _clip(folder, text=None):
@@ -270,10 +327,14 @@ def test_with_video_the_language_layer_is_recorded_during_an_answer_to_a_clip(tm
 
 def test_a_choice_session_is_answered_by_the_reply(tmp_path):
     subject = _build()
-    session = stimulus_session(_pictures(tmp_path), ['behavior:choice'], TaskContext(response=Choice(['cat', 'dog'])))
+    pictures = _pictures(tmp_path)
+    session = stimulus_session(pictures, ['behavior:choice', 'neural:IT'], TaskContext(response=Choice(['cat', 'dog'])))
     subject.participate(session)
     choices = session.collect('behavior:choice')
     assert list(choices.coords['choice'].values[choices.values.argmax(1)]) == ['dog', 'dog']
+    # IT is recorded during the answer, from the pictures the reply was shown.
+    expected = _expected(subject._subject._model.model.visual, _mean_colours(pictures), 10)
+    assert np.allclose(session.collect('neural:IT').values.reshape(2, -1), expected, atol=1e-6)
 
 
 def test_a_lesion_reaches_the_named_part_and_is_undone(tmp_path):
@@ -321,27 +382,68 @@ class _MeanIT(BenchmarkBase):
 def test_the_depth_hypothesis_reaches_the_score(tmp_path):
     score = brainscore.score(_build(), _MeanIT(_pictures(tmp_path)), check_mem=False)
     registration = [entry['registration'] for entry in score.attrs['provenance'] if 'registration' in entry]
-    assert registration and registration[0]['region_layer_map_status'] == (
-        'depth hypothesis v1: V1 0.10, V2 0.25, V4 0.50, IT 0.90, VWFA 0.90, language_system 0.67; '
-        'no layer search')
+    status = registration[0]['region_layer_map_status']
+    assert status.startswith(vlm.DEPTH_HYPOTHESIS) and status.endswith('no layer search')
+    assert all(f'{region} {depth:.2f}' in status for region, depth in vlm.DEPTH_TABLE['vision'].items())
     assert (registration[0]['checkpoint'], registration[0]['dtype']) == ('Org/Tiny-VLM', 'float32')
 
 
 # --- every registration made with the builder -------------------------------------
 
-class _AnyLayout(torch.nn.Module):
-    """Has every module path a registration names: the path asked for first ends in four blocks."""
+class _Part(torch.nn.Module):
+    """A model part with four blocks at the stated block path; it runs them in order."""
 
-    def get_submodule(self, target):
-        module = self
-        names = target.split('.')
-        for index, name in enumerate(names):
-            if name not in module._modules:
-                last = index == len(names) - 1
-                module.add_module(name, torch.nn.ModuleList(torch.nn.Linear(2, 2) for _ in range(4))
-                                  if last else torch.nn.Module())
-            module = module._modules[name]
-        return module
+    def __init__(self, blocks, words=False):
+        super().__init__()
+        parent = self
+        *names, last = blocks.split('.')
+        for name in names:
+            parent.add_module(name, torch.nn.Module())
+            parent = getattr(parent, name)
+        parent.add_module(last, torch.nn.ModuleList(torch.nn.Linear(4, 4) for _ in range(4)))
+        self._path = blocks
+        self.embed = torch.nn.Embedding(len(WORDS), 4) if words else None
+
+    def forward(self, pixel_values=None, input_ids=None, attention_mask=None, grid_thw=None, **_):
+        x = self.embed(input_ids) if self.embed is not None else (
+            pixel_values.reshape(len(pixel_values), -1)[:, :4].float())
+        for block in self.get_submodule(self._path):
+            x = torch.tanh(block(x))
+        return SimpleNamespace(last_hidden_state=x)
+
+
+class _StatedLayout(torch.nn.Module):
+    """A stand-in with its parts at the paths a registration states (a typo in a path fails
+    here, as it would on the real class); it shows pictures to its vision part and writes 'dog'."""
+
+    def __init__(self, vision, language):
+        super().__init__()
+        torch.manual_seed(0)
+        for (root, blocks), words in ((vision, False), (language, True)):
+            *names, last = root.split('.')
+            parent = self
+            for name in names:
+                if name not in parent._modules:
+                    parent.add_module(name, torch.nn.Module())
+                parent = parent._modules[name]
+            parent.add_module(last, _Part(blocks, words))
+        self._vision, self._language = vision[0], language[0]
+        self.head = torch.nn.Linear(4, len(WORDS))
+
+    @property
+    def device(self):
+        return self.head.weight.device
+
+    def forward(self, input_ids, attention_mask=None, pixel_values=None, image_grid_thw=None, **_):
+        if pixel_values is not None:
+            self.get_submodule(self._vision)(pixel_values=pixel_values, grid_thw=image_grid_thw)
+        hidden = self.get_submodule(self._language)(input_ids=input_ids).last_hidden_state
+        return SimpleNamespace(logits=self.head(hidden))
+
+    def generate(self, input_ids, attention_mask=None, pixel_values=None, image_grid_thw=None, **_):
+        self(input_ids=input_ids, attention_mask=attention_mask, pixel_values=pixel_values,
+             image_grid_thw=image_grid_thw)
+        return torch.cat([input_ids, torch.tensor([[WORDS.index('dog')]])], dim=1)
 
 
 def _builder_registrations():
@@ -359,18 +461,64 @@ def _builder_registrations():
     return found
 
 
-def test_every_builder_registration_declares_what_its_parts_can_do(monkeypatch):
+WORKED = {'qwen3-vl-2b', 'smolvlm2-256m'}
+
+
+def _on_stand_ins(monkeypatch):
+    """Each registration made with the builder, built on a stand-in with its stated paths."""
+    import importlib
+    from brainscore_vision.model_helpers.activations.pca import LayerPCA
+    monkeypatch.setattr(LayerPCA, 'hook', classmethod(lambda cls, extractor, n_components: None))  # no ImageNet fit
+    real = vlm.build_vlm_subject
+
+    def on_stand_in(*args, **kwargs):
+        monkeypatch.setattr(vlm, '_load', lambda *a: (_StatedLayout(kwargs['vision'], kwargs['language']),
+                                                      FakeProcessor()))
+        return real(*args, **{**kwargs, 'dtype': 'float32'})
     identifiers = _builder_registrations()
+    assert WORKED <= set(identifiers)
+    for identifier in identifiers:
+        package = model_registry[identifier].__module__
+        for name in (package, f'{package}.model'):
+            try:
+                module = importlib.import_module(name)
+            except ImportError:
+                continue
+            if hasattr(module, 'build_vlm_subject'):
+                monkeypatch.setattr(module, 'build_vlm_subject', on_stand_in)
+        yield identifier, model_registry[identifier]()
+
+
+def test_every_builder_registration_declares_what_its_parts_can_do(monkeypatch):
     channel_of = {'vision': 'vision:image', 'video': 'vision:video', 'text': 'text', 'audio': 'audio'}
-    for identifier in identifiers:      # the worked registrations and every later one
-        monkeypatch.setattr(vlm, '_load', lambda *args: (_AnyLayout(), FakeProcessor()))
-        subject = model_registry[identifier]()
+    for identifier, subject in _on_stand_ins(monkeypatch):
         inner = subject._subject
         assert subject.identifier == identifier
         assert {channel_of[key] for key in inner.extractor} <= subject.in_channels, identifier
         assert {f'neural:{region}' for region in inner.region_layer_map} <= subject.out_channels, identifier
         assert {'behavior:text', 'behavior:probabilities'} <= subject.out_channels, identifier
         assert subject._provenance['region_layer_map_status'].startswith(vlm.DEPTH_HYPOTHESIS), identifier
+
+
+@pytest.mark.parametrize('model_class, vision, language, config', [
+    ('Qwen3VLForConditionalGeneration', 'model.visual.blocks', 'model.language_model.layers', lambda t: t.Qwen3VLConfig(
+        text_config=dict(num_hidden_layers=2, hidden_size=64, intermediate_size=64, num_attention_heads=2,
+                         num_key_value_heads=1, head_dim=32, rope_scaling={'rope_type': 'default', 'mrope_section': [8, 4, 4]}),
+        vision_config=dict(depth=3, hidden_size=32, num_heads=2, intermediate_size=32, out_hidden_size=64,
+                           deepstack_visual_indexes=[0, 1]))),
+    ('SmolVLMForConditionalGeneration', 'model.vision_model.encoder.layers', 'model.text_model.layers', lambda t: t.SmolVLMConfig(
+        text_config=dict(vocab_size=1000, pad_token_id=2, num_hidden_layers=3, hidden_size=64, intermediate_size=64,
+                         num_attention_heads=2, num_key_value_heads=1),
+        vision_config=dict(num_hidden_layers=2, hidden_size=32, intermediate_size=32, num_attention_heads=2))),
+])
+def test_the_worked_registrations_name_paths_of_their_real_classes(model_class, vision, language, config):
+    """The real class, built from a small config on the meta device (no weights): each stated path
+    is a list of blocks."""
+    live = sys.modules['transformers']
+    with torch.device('meta'):
+        network = getattr(live, model_class)(config(live))
+    for path in (vision, language):
+        assert isinstance(network.get_submodule(path), torch.nn.ModuleList) and len(network.get_submodule(path)) > 1
 
 
 def _wide_pictures(folder, n=2):
