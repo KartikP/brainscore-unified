@@ -34,10 +34,8 @@ This template records responses with `neural_response(subject, stimuli, ['neural
 
 The benchmark keeps the table it presents as `stimulus_set` (and a behavioral task as `task`); pre-flight reads its input channels from them. It declares its requested output channels (`requested_output_channels`) and its `trial_memory` (`'none'` or `'history'`). A benchmark whose inputs do not come from one kept table declares them in `required_input_channels`. `score()` refuses a benchmark with neither.
 
-Before opening a PR, complete the
-[benchmark addition checklist](../../docs/archive/benchmark_addition_checklist.md) and attach the evidence
-for data-plugin loading, null floor, ceiling, modality ablations, timing assumptions, score attrs,
-and any EC2-only verification.
+Before opening a pull request, go through the
+[checklist of Write a benchmark](../../docs/guides/write_a_benchmark.md#checklist).
 
 ## Worked references (read these)
 

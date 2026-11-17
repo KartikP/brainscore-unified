@@ -42,5 +42,4 @@ from the end of each story; changing that convention changes the benchmark.
 The language-mask benchmark additionally needs the LanA atlas.
 
 Conversion happens in the loader, not through `brainscore.data prepare`.
-A source-content manifest and a fresh-build validation record remain part of the
-[dataset audit](../../../docs/archive/dataset_preparation.md).
+A source-content manifest and a fresh-build validation record are not done.

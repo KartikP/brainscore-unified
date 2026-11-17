@@ -1,13 +1,13 @@
 # Large model downloads
 
-The shipped BLIP-2, Qwen-VL, Qwen3.6-27B, and V-JEPA factories check their local
+The shipped BLIP-2, Qwen2.5-VL, Qwen2.5-0.5B-Instruct, Qwen3.6-27B, and V-JEPA factories check their local
 checkpoint cache before downloading. This includes their multimodal and ablation
 variants; even random V-JEPA v1 variants currently load a checkpoint before
 randomizing it. Smaller models and legacy domain factories keep their existing
 loading behaviour.
 
 A cold or partially populated cache raises `ModelDownloadRequired` before the
-first download. Like the [local-data convention](local_data.md), the message names
+first download. Like the message for local data ([Data](../guides/data.md)), it names
 the model, why it needs fetching, where to get it, where it will land, and how to
 proceed. It also reports free disk on the cache filesystem and an approximate
 budget: the full checkpoint size plus 10% and 1 GB of headroom. It never prompts
@@ -42,6 +42,8 @@ Approximate checkpoint sizes used by the guard (decimal GB):
 | --- | ---: | --- |
 | BLIP-2 OPT-2.7B | 15.5 | [Published weight shards](https://huggingface.co/Salesforce/blip2-opt-2.7b/tree/main); budgets one format, not both |
 | Qwen2.5-VL-3B | 7.6 | [Published weight shards](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct/tree/main), rounded up |
+| Qwen2.5-VL-7B | 16.6 | [Published weight shards](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct/tree/main) |
+| Qwen2.5-0.5B-Instruct | 1.0 | [Published weights](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct/tree/main) |
 | Qwen3.6-27B | 55.6 | [Published checkpoint](https://huggingface.co/Qwen/Qwen3.6-27B/tree/main) |
 | V-JEPA v2 ViT-L | 1.3 | [Transformers weights](https://huggingface.co/facebook/vjepa2-vitl-fpc64-256/tree/main), excluding the original training checkpoint |
 | V-JEPA v1 ViT-L | 5.2 | Approximate full [training checkpoint](https://github.com/facebookresearch/jepa#model-zoo), including optimizer state |

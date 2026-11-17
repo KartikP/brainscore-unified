@@ -4,7 +4,7 @@ A Brain-Score benchmark is an experiment with brain or behavior data from people
 
 **Start here:** [Lesson 1: your first subject](notebooks/lessons/01_your_first_subject.ipynb), then [Lesson 10: a whole study in one notebook](notebooks/lessons/10_run_an_experiment.ipynb) (design a task, record answers and activity, save the run, turn it into a benchmark). [Score a model](docs/guides/score_a_model.md) scores a first pair with no download. Reference: [Manual](docs/README.md) | [What UMI is](docs/01_what_is_umi.md) | [Core concepts](docs/02_core_concepts.md) | [All lessons](notebooks/README.md#lessons) | [Experiments](notebooks/README.md#experiments)
 
-UMI is a v2 source candidate. See the [release policy](docs/archive/production_release.md) for remaining qualification.
+UMI is a source candidate on the `unified-model-interface-v2` branches; its packages are not published on PyPI.
 
 ## Layout
 

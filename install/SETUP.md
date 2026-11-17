@@ -22,8 +22,7 @@ The supported shared environment is:
 | importlib-metadata | below 5 |
 
 Use the shared constraints in `install/v2-constraints.txt` for the reviewed CPU
-integration profile. Full platform and scientific qualification is tracked in
-[the production policy](../docs/archive/production_release.md).
+integration profile.
 
 ## One-command setup
 
