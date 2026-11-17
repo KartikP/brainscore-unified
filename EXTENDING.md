@@ -29,8 +29,8 @@ model_registry:        Dict[str, Callable[[], Subject]]
 data_builder_registry: Dict[str, Callable[[], DataBuilder]]   # local builds of protected data
 ```
 
-Each `load_*` checks this package first, then falls back to the `brainscore_vision` and
-`brainscore_language` registries, so legacy domain plugins remain loadable by id. Note
+Each `load_*` checks this package first, then falls back to the legacy domain
+registries (the order is below), so legacy domain plugins remain loadable by id. Note
 that those domain registries populate lazily — see
 [Finding models and benchmarks](docs/guides/score_a_model.md#find-models-and-benchmarks) before concluding something is
 missing because it is not in a registry dict.

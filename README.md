@@ -75,16 +75,15 @@ relative `-e ./core` entries from the file's own directory, so it fails with
 
 ## Local datasets and external experiments
 
-Use [local data builders](docs/archive/local_data.md) to prepare author-format files or
-retrieve data with a provider-supported request ID. See [EWoK](docs/archive/ewok.md) for
-world-knowledge scoring and [CogGym](docs/archive/coggym.md) for cognitive experiments
-with UMI recording and intervention tools.
+`python -m brainscore.data` lists the files you supply yourself and where to get each
+([Data](docs/guides/data.md)). [External libraries](docs/guides/external_libraries.md)
+shows how EWoK and CogGym map into benchmarks.
 
 ## Capability Status Matrix
 
 Status labels separate real numeric validation from local structural coverage.
 `EC2-only` means the full score needs large data, model weights, API calls, or
-benchmark compute that must not run on the local Mac. `Demo-only` means the
+benchmark compute that does not run on a laptop. `Demo-only` means the
 interface is exercised, but the result is not a brain-alignment claim.
 
 | Capability | Example | Status | Evidence |

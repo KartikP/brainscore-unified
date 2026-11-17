@@ -1,6 +1,6 @@
 # Brain-Score UMI manual
 
-The Unified Model Interface (UMI) is how Brain-Score runs experiments on models. This manual is short on purpose. Read the first three pages in order; use the rest when you need them.
+The Unified Model Interface (UMI) is how Brain-Score runs experiments on models. Read the first three pages in order; use the rest when you need them.
 
 ## Start here
 

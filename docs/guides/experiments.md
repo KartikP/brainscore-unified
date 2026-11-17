@@ -296,8 +296,8 @@ an external library object), name the methods to record instead, for example
 
 ### Connect an external experiment library (an adapter)
 
-An adapter maps an external library (CogGym, EWoK) onto the common channels
-(Contract Rules 3.8, 3.9). `brainscore.harnesses.adapter` holds what every adapter
+An adapter maps an external library (CogGym, EWoK) onto the common channels.
+`brainscore.harnesses.adapter` holds what every adapter
 shares, so a new adapter writes only what is specific to its library:
 
 1. How the library states a trial: one stimulus row (its parts in the library's
