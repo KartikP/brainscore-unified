@@ -7,6 +7,22 @@ fitted readout. The regions come from the stated depth hypothesis
 (`DEPTH_TABLE` in `brainscore/tools/auto_register.py`, asked for by the builder), not from a layer search;
 each score's provenance says so.
 
+What a model from the builder gives (the parts are wired by default; the registration does not list them):
+
+| Output | Part | Needs |
+|---|---|---|
+| `neural:V1`, `V2`, `V4`, `IT`, `VWFA` | the vision part (VWFA at the IT layer) | pictures; clips with `video` |
+| `neural:language_system` | the language model | text; pictures and clips in an answering pass |
+| `neural:A1` | the audio encoder | `audio` |
+| `behavior:choice`, `rating`, `text` | the reply (writing) | |
+| `behavior:log_probabilities` | the likelihood of each option | a verbatim choice on text |
+| `behavior:probabilities`, `rt` | the readout on the IT layer | the task's fitting stimuli |
+| `perturbation` (inputs `lesion`, `stimulation`, `pharmacological`) | `pytorch_intervention` over both parts | |
+
+A family that cannot take a part says so with one argument: `intervention=False` when its
+vision and language block paths start with the same name (the builder refuses with this advice).
+`motor` (a policy for an environment) is not given.
+
 A model plugin has the usual three files in `brainscore/models/<name>/`. The builder
 is only a helper that `get_model` calls: a `get_model` that builds a `BrainScoreModel`
 by hand registers the same way ([Wrap your model](wrap_your_model.md)).
