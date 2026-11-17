@@ -12,7 +12,9 @@ python notebooks/figure_sources/render_streaming_figures.py
 python notebooks/figure_sources/render_whole_brain_figures.py
 
 # Optional: repeat the full scientific evaluation before rendering.
-export BRAINSCORE_LEBEL_PICKLE=/path/to/assembly_lebel_uts03.pkl
+# The LeBel source pickle, in its one place
+mkdir -p ~/brainscore-data/sources/lebel2023
+mv /path/to/assembly_lebel_uts03.pkl ~/brainscore-data/sources/lebel2023/
 python notebooks/figure_sources/measure_whole_brain.py
 python notebooks/figure_sources/render_whole_brain_figures.py
 ```

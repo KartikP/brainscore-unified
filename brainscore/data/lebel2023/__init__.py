@@ -9,26 +9,13 @@ Registered, with no I/O until called:
 - stimulus set ``LeBel2023-UTS03-words``: one row per spoken word, with its running context.
 
 The default settings load hosted files (``hosted.py``). Other context settings, or a
-build before the files are hosted, convert the source pickle named by
-``BRAINSCORE_LEBEL_PICKLE`` (``data.py``).
+build before the files are hosted, convert the source pickle in the source folder of
+``package_data('lebel2023')`` (``data.py``).
 """
 
 from brainscore import data_builder_registry, data_registry, stimulus_set_registry
 from brainscore.data import local
 from brainscore.data.packaging import DataBuilder
-
-# Declared before the imports below: ``data.py`` reads LEBEL_PICKLE.
-LEBEL_PICKLE = local.register(local.LocalAsset(
-    name='lebel2023-pickle',
-    env_var='BRAINSCORE_LEBEL_PICKLE',
-    default_path='Downloads/assembly_lebel_uts03.pkl',
-    kind='neural data',
-    why_local='Needed only for non-default context settings; the default files are '
-              'hosted (brainscore/data/lebel2023/hosted.py).',
-    source='https://github.com/GT-LIT-Lab/litcoder_release',
-    obtain='The UTS03 assembly pickle for LeBel et al. 2023.',
-    used_by=[],      # every registered LeBel variant reads the hosted files
-))
 
 LANA_ATLAS = local.register(local.LocalAsset(
     name='lana-atlas',
@@ -59,8 +46,8 @@ data_builder_registry['lebel2023'] = lambda: DataBuilder(
     writes=f'`assy_{hosted.ASSEMBLY_ID}.nc`, `stimulus_{hosted.TR_STIMULI_ID}.csv`, '
            f'`stimulus_{hosted.WORD_STIMULI_ID}.csv`, with the registered default settings.',
     reads='brainio',
-    build='BRAINSCORE_LEBEL_PICKLE={source}/assembly_lebel_uts03.pkl '
-          'python -m brainscore.data.lebel2023.data_packaging.package_hosted --out {output}',
+    build='python -m brainscore.data.lebel2023.data_packaging.package_hosted '
+          '--pickle {source}/assembly_lebel_uts03.pkl --out {output}',
     requires=('assembly_lebel_uts03.pkl',),
     sha1={f'assy_{hosted.ASSEMBLY_ID}.nc': hosted.SHA1['assembly'],
           f'stimulus_{hosted.TR_STIMULI_ID}.csv': hosted.SHA1['TR stimuli'],

@@ -22,8 +22,8 @@ and peak near 8 GB.
 
 ## Data
 
-With the default settings the loaders fetch hosted files and check their sha1. For other context settings, build the data from the source pickle: point `BRAINSCORE_LEBEL_PICKLE` at it, or place it
-at `~/Downloads/assembly_lebel_uts03.pkl`. The first load converts it to a
+With the default settings the loaders fetch hosted files and check their sha1. For other context settings, build the data from the source pickle: place it
+at `~/brainscore-data/sources/lebel2023/assembly_lebel_uts03.pkl` (or under `$BRAINSCORE_DATA_HOME/sources/lebel2023`). The first load converts it to a
 `NeuroidAssembly` and caches the result under `~/.brainscore-umi-cache/lebel2023`
 (override with `BRAINSCORE_LEBEL_CACHE`); later loads take under a second. See the [data README](../../data/lebel2023/README.md).
 

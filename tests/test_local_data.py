@@ -191,12 +191,11 @@ def test_records_name_only_registered_benchmarks_and_every_known_reader():
         'coggym-checkout': family('CogGym.'),
         'ewok-core-1.0': family('EWoK-core-1.0-'),
         'lana-atlas': {'LeBel2023-UTS03-encoding-languagemask'},
-        'lebel2023-pickle': set(),       # the registered variants read the hosted files
         # Needed only by the route a subject takes; the benchmark checks them when read.
         'lahner2024-frames': set(),
         'lahner2024-sound': set(),
     }
-    none = {'lebel2023-pickle', 'lahner2024-frames', 'lahner2024-sound'}
+    none = {'lahner2024-frames', 'lahner2024-sound'}
     assert all(identifiers for name, identifiers in known.items() if name not in none)
     for name, readers in known.items():
         assert name in local.REGISTRY, f'the local asset {name!r} is no longer declared'

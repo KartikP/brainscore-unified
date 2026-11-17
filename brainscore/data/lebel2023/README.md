@@ -17,8 +17,10 @@ including story words, their onset times, TR times and cortical responses.
 It does not accept arbitrary LeBel files or raw scans.
 
 ```bash
-# The source pickle, and a new folder for the converted files
-export BRAINSCORE_LEBEL_PICKLE=/path/to/UTS03-assembly.pkl
+# The source pickle in its one place (or under $BRAINSCORE_DATA_HOME/sources/lebel2023)
+mkdir -p ~/brainscore-data/sources/lebel2023
+mv /path/to/UTS03-assembly.pkl ~/brainscore-data/sources/lebel2023/assembly_lebel_uts03.pkl
+# Optional: a new folder for the converted files of other settings
 export BRAINSCORE_LEBEL_CACHE=/path/to/new-cache
 ```
 

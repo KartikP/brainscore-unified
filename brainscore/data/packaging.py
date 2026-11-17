@@ -54,7 +54,7 @@ class DataBuilder:
         the files are used)
     :param then: the one step that remains after the data is where the benchmarks read it, if any
     :param build: the plugin's ``data_packaging`` script as a command line
-        (``python -m <module> <arguments>``, optionally led by ``NAME=value`` words);
+        (``python -m <module> <arguments>``);
         ``{source}``, ``{output}`` and ``{work}`` (a private folder for downloads and
         intermediate files, deleted after the build) are filled in. A script reads the
         source and never changes or deletes a file in it. Empty when there is no builder.
@@ -168,15 +168,9 @@ def _run(command: str, source: Path, output: Path, work: Path) -> None:
     """Run a ``python -m`` command line in this process, as the plugin's script."""
     words = shlex.split(command.format(**{key: shlex.quote(str(value)) for key, value in
                                           (('source', source), ('output', output), ('work', work))}))
-    environment = {}
-    while words and '=' in words[0]:
-        key, value = words.pop(0).split('=', 1)
-        environment[key] = value
     if words[:2] != ['python', '-m'] or len(words) < 3:
         raise ValueError(f'a build command is "python -m <module> ...", not {command!r}')
-    before = {key: os.environ.get(key) for key in environment}
     argv = sys.argv
-    os.environ.update(environment)
     sys.argv = words[2:]
     try:
         with warnings.catch_warnings():
@@ -188,11 +182,6 @@ def _run(command: str, source: Path, output: Path, work: Path) -> None:
             raise RuntimeError(f'{words[2]} stopped: {stop.code}') from None
     finally:
         sys.argv = argv
-        for key, value in before.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
 
 
 def _sha1(path: Path) -> str:
@@ -318,8 +307,7 @@ def brainio_home() -> Path:
 def _packaging_folder(builder: DataBuilder) -> Path:
     """The plugin's ``data_packaging`` folder: the folder of the build script."""
     import importlib.util
-    words = shlex.split(builder.build)
-    return Path(importlib.util.find_spec(words[words.index('-m') + 1]).origin).parent
+    return Path(importlib.util.find_spec(shlex.split(builder.build)[2]).origin).parent
 
 
 def _expected(name: str, builder: DataBuilder) -> dict:

@@ -23,7 +23,7 @@ import pickle
 from pathlib import Path
 
 from .. import local
-from . import LEBEL_PICKLE
+from ..packaging import source_folder
 
 import numpy as np
 import pandas as pd
@@ -46,9 +46,19 @@ SUBJECT = 'UTS03'
 IDENTIFIER = 'LeBel2023-UTS03'
 
 
-def _pickle_path() -> Path:
-    """Where the source pickle lives; override with BRAINSCORE_LEBEL_PICKLE."""
-    return LEBEL_PICKLE.resolved()
+PICKLE = 'assembly_lebel_uts03.pkl'
+
+
+def _pickle_path(pickle_path=None) -> Path:
+    """The source pickle: ``pickle_path``, else the one source folder of ``package_data('lebel2023')``
+    (``$BRAINSCORE_DATA_HOME/sources/lebel2023``, else ``~/brainscore-data/sources/lebel2023``)."""
+    path = Path(pickle_path) if pickle_path else source_folder('lebel2023') / PICKLE
+    if not path.exists():
+        raise local.LocalDataMissing(
+            f'The LeBel source pickle is not at {path}. Put the UTS03 assembly pickle of the LITCoder '
+            f'release (https://github.com/GT-LIT-Lab/litcoder_release) there as {PICKLE}, or give '
+            'pickle_path. The registered default settings read the hosted files and need no pickle.')
+    return path
 
 
 def _cache_dir() -> Path:
@@ -114,13 +124,7 @@ def build(pickle_path=None, context_window_tr: int = DEFAULT_CONTEXT_TR):
     Returns whole-cortex BOLD with no ROI mask applied: every measured vertex is
     a prediction target.
     """
-    if pickle_path:
-        path = Path(pickle_path)
-        if not path.exists():
-            raise local.LocalDataMissing(f'LeBel pickle not found at {path}')
-    else:
-        path = local.path(LEBEL_PICKLE.name)
-    source = _read_pickle(path)
+    source = _read_pickle(_pickle_path(pickle_path))
     context_sec = context_window_tr * TR_SEC
 
     rows, blocks = [], []
@@ -237,13 +241,7 @@ def build_word_level(pickle_path=None, context_words: int = DEFAULT_CONTEXT_WORD
 
     Returns ``(word_stimuli, assembly, tr_times_by_story)``.
     """
-    if pickle_path:
-        path = Path(pickle_path)
-        if not path.exists():
-            raise local.LocalDataMissing(f'LeBel pickle not found at {path}')
-    else:
-        path = local.path(LEBEL_PICKLE.name)
-    source = _read_pickle(path)
+    source = _read_pickle(_pickle_path(pickle_path))
 
     rows, blocks, tr_times_by_story = [], [], {}
     for story in source.stories:

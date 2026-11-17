@@ -578,6 +578,19 @@ def test_a_planted_upload_fails(name, tmp_path, monkeypatch, offline):
     assert not (tmp_path / 'out').exists()
 
 
+def test_the_lebel_source_pickle_has_one_place(tmp_path, monkeypatch, offline):
+    from brainscore.data.lebel2023 import data
+    monkeypatch.setenv('BRAINSCORE_LEBEL_PICKLE', str(tmp_path / 'elsewhere.pkl'))    # deleted: not read
+    with pytest.raises(LocalDataMissing, match=re.escape(str(tmp_path / 'home' / 'sources' / 'lebel2023'))):
+        data.build()
+    source = _lebel_source(tmp_path, monkeypatch, offline)
+    (tmp_path / 'home' / 'sources').mkdir(parents=True)
+    source.rename(tmp_path / 'home' / 'sources' / 'lebel2023')     # the folder package_data reads
+    stimuli, assembly = data.build()
+    assert len(stimuli) == assembly.sizes['presentation'] == 6
+    assert 'lebel2023-pickle' not in local.REGISTRY
+
+
 def test_a_rebuilt_hosted_file_goes_where_the_loader_reads_it(tmp_path, monkeypatch, capsys, offline):
     from brainscore.data.lebel2023 import hosted
     from brainscore_core.supported_data_standards.brainio import fetch

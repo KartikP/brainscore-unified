@@ -18,19 +18,19 @@ assets (``python -m brainscore.data``) stays light. Declaring an asset::
 
     from brainscore.data import local
 
-    LEBEL_PICKLE = local.register(local.LocalAsset(
-        name='lebel2023-pickle',
-        env_var='BRAINSCORE_LEBEL_PICKLE',
-        default_path='Downloads/assembly_lebel_uts03.pkl',
-        kind='neural data',
-        why_local='Redistributed per-subject by the provider, not by Brain-Score.',
-        source='https://github.com/GT-LIT-Lab/litcoder_release',
-        obtain='Download the UTS03 assembly pickle.',
+    LANA_ATLAS = local.register(local.LocalAsset(
+        name='lana-atlas',
+        env_var='BRAINSCORE_LANA_ATLAS',
+        default_path='Downloads/20425209/FS',
+        kind='atlas',
+        why_local='Fedorenko-lab resource distributed under its own terms.',
+        source='https://osf.io/kzwbh/',
+        obtain='The "FS Atlas" archive; unzip it.',
     ))
 
 Reading it::
 
-    path = local.path(LEBEL_PICKLE.name)       # raises LocalDataMissing if absent
+    path = local.path(LANA_ATLAS.name)         # raises LocalDataMissing if absent
 
 Seeing what is missing, without running anything::
 
