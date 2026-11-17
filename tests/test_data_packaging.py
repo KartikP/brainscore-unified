@@ -942,6 +942,16 @@ def test_a_printed_command_quotes_every_path(tmp_path, monkeypatch, offline):
     messages.append(str(missing.value))
     for asset in local.REGISTRY.values():                         # a missing local asset
         messages.append(asset.instructions())
+    # The one message whose command takes a real path: the Algonauts missing-media message.
+    from brainscore.data.algonauts2025 import per_scan_stimuli
+    root = shared / "lab's prepared"
+    film = shared / 'm1.mkv'
+    film.write_bytes(b'')
+    with pytest.raises(FileNotFoundError) as media:
+        per_scan_stimuli(pd.DataFrame({'stimulus_id': ['m1'], 'video_path': [str(film)]}), {'m1': 2},
+                         ['frames'], 'friends', 1, root)
+    arguments = shlex.split(str(media.value).split('`')[1])
+    assert arguments[arguments.index('--prepared-root') + 1] == str(root)
     for message in messages:
         for line in message.splitlines():
             if re.search(r'\b(python -m|rm|mv|cp|mkdir)\s', line):
