@@ -1,0 +1,94 @@
+{
+  "algonauts2025": {
+    "algonauts2025_friends_s7_sub01.nc": {
+      "bytes": 97032474,
+      "counts": "presentation 23499, neuroid 1000",
+      "digest": "252928c0833a27b8c220ece77a7ae188e636ef6d",
+      "sha1": "282f5486d5b286caa85d88fec6518b80581e57f9"
+    },
+    "algonauts2025_friends_s7_sub02.nc": {
+      "bytes": 96874690,
+      "counts": "presentation 23464, neuroid 1000",
+      "digest": "63d31e98e2aea3e44149d5e2f724914bffba7ec2",
+      "sha1": "6531fe65c543f1ef15fb1c6d143924649cfd35c4"
+    },
+    "algonauts2025_friends_s7_sub03.nc": {
+      "bytes": 97032474,
+      "counts": "presentation 23499, neuroid 1000",
+      "digest": "92eff308609ef77d4bb21d1a248223fbcd471303",
+      "sha1": "d343d72db1f5a06580ec50b2ce6a48e0c8b58c4e"
+    },
+    "algonauts2025_friends_s7_sub05.nc": {
+      "bytes": 97032474,
+      "counts": "presentation 23499, neuroid 1000",
+      "digest": "4c8b2cf216b6fa9fd034eb3db6040da7155622f7",
+      "sha1": "c5b82e856695bd651d29cd927b31a0d76967bf20"
+    },
+    "algonauts2025_friends_sub01.nc": {
+      "bytes": 725690026,
+      "counts": "presentation 162671, neuroid 1000",
+      "digest": "ea60a187ceb8b7f97697db31b92cb2394376cd17",
+      "sha1": "6b6a450cd658f85591837df58fdab8a08a8f150b"
+    },
+    "algonauts2025_friends_sub02.nc": {
+      "bytes": 725690026,
+      "counts": "presentation 162671, neuroid 1000",
+      "digest": "d7c740a5d108ef31a2e646994af0e3e03e3ca3e1",
+      "sha1": "af52960a491f351be9f940c2ad5b0ecaffc6b060"
+    },
+    "algonauts2025_friends_sub03.nc": {
+      "bytes": 721685202,
+      "counts": "presentation 161776, neuroid 1000",
+      "digest": "348b192fcbbd4d64347cf056c0c14a039971cafa",
+      "sha1": "302a1afd8ba0226032e8dec60c21f14aee43ec71"
+    },
+    "algonauts2025_friends_sub05.nc": {
+      "bytes": 719498858,
+      "counts": "presentation 161287, neuroid 1000",
+      "digest": "0e5c73a185d5d7a36d912836c88defa65e5553e1",
+      "sha1": "5049176d7fb56f21c141fd01225a51fc98a16eac"
+    },
+    "algonauts2025_ood_sub01.nc": {
+      "bytes": 20310450,
+      "counts": "presentation 4918, neuroid 1000",
+      "digest": "a7f5fc07be5d4e7ed5e9226e52bb88f1e24fcfae",
+      "sha1": "01929af76561801e6eb3d63c287574ae39ecdbc1"
+    },
+    "algonauts2025_ood_sub02.nc": {
+      "bytes": 20310450,
+      "counts": "presentation 4918, neuroid 1000",
+      "digest": "c1a9da219a1b9f35b08d37ae9bd53982036965aa",
+      "sha1": "b67f6fba9c788eeec5bac008f973dc07dc928412"
+    },
+    "algonauts2025_ood_sub03.nc": {
+      "bytes": 20310450,
+      "counts": "presentation 4918, neuroid 1000",
+      "digest": "853d6f7028c47d4faa4ac84bbe18361fbd4886c0",
+      "sha1": "fd8a89adabd14ea64430bbe3e5c56257293fde10"
+    },
+    "algonauts2025_ood_sub05.nc": {
+      "bytes": 20310450,
+      "counts": "presentation 4918, neuroid 1000",
+      "digest": "32b22e58f36be5e5d54af147c19b5e81d08ef942",
+      "sha1": "556ff447719bf8f9b47fd803627d27d219dcf3ff"
+    },
+    "algonauts2025_stim_friends.csv": {
+      "bytes": 77098,
+      "counts": "rows 336",
+      "digest": "312416b35f5700e7a023aee26f41b192000c1bd4",
+      "sha1": "6db6d7008aa7097288cb0bb94f52abc8da987291"
+    },
+    "algonauts2025_stim_friends_s7.csv": {
+      "bytes": 11389,
+      "counts": "rows 49",
+      "digest": "01d1f29482df1ee5814d84563a6dca60909e6684",
+      "sha1": "e29779e2076acc45255ca1f73faf7f94444d8042"
+    },
+    "algonauts2025_stim_ood.csv": {
+      "bytes": 2670,
+      "counts": "rows 12",
+      "digest": "d0c33593d44fe71a4f4efb8a2430dcb71bde6cf8",
+      "sha1": "9d95f943af8abee36970d1776351a9a9d63ef42d"
+    }
+  }
+}

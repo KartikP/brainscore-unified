@@ -184,7 +184,10 @@ def _sha1(path):
 
 
 def _without_record(name, monkeypatch):
-    """Made-up data is not the real data: drop the declaration's expected record (its sha1)."""
+    """Made-up data is not the real data: drop the expected record (the declaration's sha1 and expected.json)."""
+    from brainscore.data import packaging
+    expected = packaging._expected
+    monkeypatch.setattr(packaging, '_expected', lambda record, builder: {} if record == name else expected(record, builder))
     builder = data_builder_registry[name]()
     if builder.sha1:
         monkeypatch.delitem(data_builder_registry, name)
@@ -601,7 +604,8 @@ def test_algonauts_fails_as_a_whole_when_a_participant_lacks_its_input(tmp_path,
 
 
 @pytest.mark.skipif(__import__('shutil').which('ffmpeg') is None, reason='ffmpeg is needed')
-def test_algonauts_builds_every_file_the_registered_benchmarks_read(tmp_path, offline):
+def test_algonauts_builds_every_file_the_registered_benchmarks_read(tmp_path, monkeypatch, offline):
+    _without_record('algonauts2025', monkeypatch)
     import subprocess
     from brainscore.data.algonauts2025 import per_scan_stimuli, scans_per_stimulus
     film = tmp_path / 'film.mkv'
@@ -620,7 +624,8 @@ def test_algonauts_builds_every_file_the_registered_benchmarks_read(tmp_path, of
 
 
 @pytest.mark.skipif(__import__('shutil').which('ffmpeg') is None, reason='ffmpeg is needed')
-def test_the_algonauts_recovery_command_reads_the_folder_the_benchmark_names(tmp_path, offline):
+def test_the_algonauts_recovery_command_reads_the_folder_the_benchmark_names(tmp_path, monkeypatch, offline):
+    _without_record('algonauts2025', monkeypatch)
     import subprocess
     from brainscore.data.__main__ import main
     film = tmp_path / 'film.mkv'
@@ -642,6 +647,7 @@ def test_the_algonauts_recovery_command_reads_the_folder_the_benchmark_names(tmp
 @pytest.mark.skipif(__import__('shutil').which('ffmpeg') is None, reason='ffmpeg is needed')
 def test_algonauts_packaged_from_the_common_source_folder_passes_the_benchmark_check(
         tmp_path, monkeypatch, offline):
+    _without_record('algonauts2025', monkeypatch)
     # Two steps: the source in the one source folder, package_data, then the benchmark's pre-check.
     source = _algonauts_film_source(tmp_path, monkeypatch, offline)
     (tmp_path / 'home' / 'sources').mkdir(parents=True)
@@ -844,3 +850,18 @@ def test_missing_prepared_data_names_its_place_in_the_data_home_and_the_command(
     assert str(tmp_path / 'home' / 'algonauts2025-prepared') in str(missing.value)
     command = str(missing.value).split('Then convert it:')[1].split('\n')[1].strip()
     assert command == 'python -m brainscore.data package algonauts2025'
+
+
+@pytest.mark.parametrize('record', sorted(DATA.glob('*/data_packaging/expected.json')),
+                         ids=lambda path: path.parts[-3])
+def test_every_expected_record_holds_what_the_check_reads(record):
+    # The entries a cloud run copied from build.json: each is keyed by a registered name, then by a file.
+    entries = json.loads(record.read_text())
+    assert entries
+    for name, files in entries.items():
+        assert name in data_builder_registry, f'{record}: {name} is not a registered name'
+        assert files, f'{record}: {name} records no file'
+        for file, entry in files.items():
+            assert re.fullmatch(r'[0-9a-f]{40}', entry['sha1']), f'{record}: {file} has no sha1'
+            assert entry['digest'] is None or re.fullmatch(r'[0-9a-f]{40}', entry['digest']), \
+                f'{record}: {file} has no exact digest'
