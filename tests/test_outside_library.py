@@ -82,17 +82,54 @@ def test_a_made_up_library_runs_a_command_in_its_own_environment(lanternfield, t
     assert result.value == {'answers': ['yes', 'yes'], 'score': 1.0}
 
 
+def _python_reporting(path: Path, version: str, log: Path) -> str:
+    """A stand-in Python program that reports ``version``, and whose ``-m venv`` makes an
+    environment whose Python reports it too (pip there is the recording stand-in)."""
+    env_python = Path(sys.executable).with_name('env-python')        # the commands' stand-in
+    path.write_text(
+        f'#!/bin/sh\nif [ "$1" = "-c" ]; then echo {version}; exit; fi\necho "$@" >> "{log}"\n'
+        f'if [ "$1" = "-m" ] && [ "$2" = "venv" ]; then mkdir -p "$3/bin"\n'
+        f'  printf \'#!/bin/sh\\nif [ "$1" = "-c" ]; then echo {version}; exit; fi\\nexec "{env_python}" "$@"\\n\' > "$3/bin/python"\n'
+        f'  chmod +x "$3/bin/python"; exit; fi\nexec "{sys.executable}" "$@"\n')
+    path.chmod(0o755)
+    return str(path)
+
+
 def test_another_python_gives_another_folder_with_its_version(lanternfield, tmp_path):
     module, commands = lanternfield
     usual = module.ready_folder(module.LANTERNFIELD, 'Lanternfield.demo')
-    other, log = tmp_path / 'other-python', tmp_path / 'other-python.log'
-    other.write_text(f'#!/bin/sh\nif [ "$1" = "-c" ]; then echo 3.99.0; exit; fi\n'
-                     f'echo "$@" >> "{log}"\nexec "{sys.executable}" "$@"\n')
-    other.chmod(0o755)
-    folder = module.ready_folder(dataclasses.replace(module.LANTERNFIELD, python=str(other)), 'Lanternfield.demo')
+    log = tmp_path / 'other-python.log'
+    other = _python_reporting(tmp_path / 'other-python', '3.99.0', log)
+    folder = module.ready_folder(dataclasses.replace(module.LANTERNFIELD, python=other), 'Lanternfield.demo')
     assert folder != usual and folder.parent == usual.parent
     assert json.loads((folder / 'ready.json').read_text())['python'] == '3.99.0'
     assert log.read_text().startswith('-m venv')        # the named Python made the environment
+
+
+def test_a_folder_made_for_another_python_or_library_is_refused_also_when_named(lanternfield, tmp_path):
+    module, _ = lanternfield
+    log = tmp_path / 'python.log'
+    older = dataclasses.replace(module.LANTERNFIELD,
+                                python=_python_reporting(tmp_path / 'older', '3.98.0', log))
+    folder = module.ready_folder(older, 'Lanternfield.demo')
+    newer = dataclasses.replace(module.LANTERNFIELD,
+                                python=_python_reporting(tmp_path / 'newer', '3.99.0', log))
+    other_library = dataclasses.replace(older, name='Otherfield', repository='https://example.org/other.git')
+    for library, recorded, needed in [(newer, '3.98.0', '3.99.0'),
+                                      (other_library, 'Lanternfield', 'Otherfield')]:
+        with pytest.raises(LoadError) as refused:
+            module.ready_folder(library, 'Lanternfield.demo', folder)
+        assert recorded in str(refused.value) and needed in str(refused.value)
+    assert json.loads((folder / 'ready.json').read_text())['python'] == '3.98.0'      # unchanged
+
+
+def test_two_names_that_differ_only_by_case_get_two_folders(lanternfield):
+    module, _ = lanternfield
+    upper = module.ready_folder(module.LANTERNFIELD, 'Lanternfield.demo')
+    lower = module.ready_folder(dataclasses.replace(module.LANTERNFIELD, name='lanternfield'), 'Lanternfield.demo')
+    assert not upper.samefile(lower)
+    assert {json.loads((folder / 'ready.json').read_text())['library'] for folder in (upper, lower)} == {
+        'Lanternfield', 'lanternfield'}
 
 
 @pytest.mark.parametrize('program', ['missing', 'python2'])

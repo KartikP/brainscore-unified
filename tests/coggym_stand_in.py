@@ -92,6 +92,7 @@ def write_ready_folder(folder: Path, **sources) -> Path:
     whose Python runs this interpreter, and ``ready.json`` for the pinned commit and
     requirements. ``sources`` go to ``write_checkout``."""
     import hashlib
+    import platform
     import sys
     from brainscore.harnesses._environment_folder import environment_python
     from brainscore.harnesses.coggym import COGGYM
@@ -101,8 +102,9 @@ def write_ready_folder(folder: Path, **sources) -> Path:
     python.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
     python.chmod(0o755)
     (Path(folder) / 'ready.json').write_text(json.dumps({
-        'revision': COGGYM.commit,
+        'library': COGGYM.name, 'repository': COGGYM.repository, 'revision': COGGYM.commit,
         'requirements_sha256': hashlib.sha256(COGGYM.requirements.read_bytes()).hexdigest(),
+        'python': platform.python_version(),
         'freeze': ['stand-in==0']}))
     return Path(folder)
 
