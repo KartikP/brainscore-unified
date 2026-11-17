@@ -1,0 +1,215 @@
+"""The vision-language models of the UMI development study: one ``get_model`` for every entry of
+``model_configs.json``, by the rules of ``README.md``. Everything of the study is in this folder."""
+import json
+from decimal import ROUND_HALF_UP, Decimal
+from functools import partial
+from pathlib import Path
+
+from brainscore.model_helpers.provenance import ProvenanceSubject
+
+MODEL_CONFIGS = json.loads((Path(__file__).parent / 'model_configs.json').read_text())
+
+# The depth hypothesis: a region's layer is the block at f * (N - 1) of a part's N blocks,
+# rounded half up. No data chose these values; a change of a value takes a new version word.
+DEPTH_HYPOTHESIS = 'depth hypothesis v1'
+DEPTH_TABLE = {
+    'vision': {'V1': 0.10, 'V2': 0.25, 'V4': 0.50, 'IT': 0.90, 'VWFA': 0.90},
+    'language': {'language_system': 0.67},
+}
+# Share of each accelerator given over to weights under device_map='auto'; the rest holds activations.
+WEIGHT_FRACTION = 0.78
+
+
+def depth_layers(block_paths, depths):
+    """The block of each region of ``depths`` (region -> relative depth) among ``block_paths``."""
+    n = len(block_paths)
+    return {} if n == 0 else {region: block_paths[int((Decimal(str(f)) * (n - 1)).quantize(Decimal(1), ROUND_HALF_UP))]
+                              for region, f in depths.items()}
+
+
+class _StudySubject(ProvenanceSubject):
+    """The study's provenance on every response, and the one input the policy acts on: it reads the
+    observation's frame, so ``motor`` is answered from an observation only."""
+
+    @property
+    def output_inputs(self):
+        inputs = dict(self._subject.output_inputs)
+        if 'motor' in self._subject.out_channels:
+            inputs['motor'] = frozenset({'observation'})
+        return inputs
+
+
+def _refuse(identifier, config):
+    """A stated package that is missing, or a class this transformers lacks: named before any download."""
+    import importlib.util
+    import transformers
+    from brainscore import LoadError
+    for package in config['requires']:
+        if importlib.util.find_spec(package) is None:
+            raise LoadError(f"'{identifier}' needs the package '{package}', which is not installed. Next step: "
+                            f"pip install -r brainscore/models/umi_dev_models/requirements.txt, or install "
+                            f"'{package}' yourself.")
+    if not hasattr(transformers, config['model_class']):
+        raise LoadError(f"'{identifier}' needs transformers.{config['model_class']}, which transformers "
+                        f"{transformers.__version__} does not have.")
+
+
+def _load(identifier, config):
+    """The checkpoint and its processor (image part pinned), placed as ``device_map`` states."""
+    import torch
+    import transformers
+    from brainscore_core.hf_compat import pin_image_processor
+    from brainscore.models._downloads import hf_preflight
+    download = hf_preflight(identifier, config['hf_id'], config['download_gb'])
+    placement = {}
+    if config['device_map'] is not None:
+        placement['device_map'] = config['device_map']
+        if config['device_map'] == 'auto' and torch.cuda.is_available():
+            placement['max_memory'] = {index: int(torch.cuda.get_device_properties(index).total_memory * WEIGHT_FRACTION)
+                                       for index in range(torch.cuda.device_count())}
+    model = getattr(transformers, config['model_class']).from_pretrained(
+        config['hf_id'], dtype=getattr(torch, config['dtype']), **placement, **download)
+    if config['device_map'] is None:
+        from brainscore.model_helpers._device import select_device
+        model = model.to(select_device())
+    processor = transformers.AutoProcessor.from_pretrained(config['hf_id'], **download)
+    return model.eval(), pin_image_processor(processor, config['hf_id'], **download)
+
+
+def _one_device(identifier, module, part):
+    """The one device of a loaded part; its extractor is given it, so nothing is moved. Offloaded or
+    spread weights are refused: v2's extractors would move them or send inputs to meta."""
+    devices = {parameter.device for parameter in module.parameters()}
+    if len(devices) != 1 or next(iter(devices)).type == 'meta':
+        raise ValueError(f"'{identifier}': the {part} part is on {sorted(map(str, devices))}; this study "
+                         f"needs each part on one accelerator (no offload). Give a device_map or a "
+                         f"max_memory that holds it on one.")
+    return str(next(iter(devices)))
+
+
+def _blocks(model, part):
+    """``(the part's module, the paths of its blocks relative to that module)``."""
+    root, blocks = part
+    count = len(list(model.get_submodule(f'{root}.{blocks}').children()))
+    return model.get_submodule(root), [f'{blocks}.{index}' for index in range(count)]
+
+
+def _whole_images(paths, image_processor, settings):
+    """Each picture as one whole image ``(C, H, W)`` by the image processor with the stated settings;
+    a processor that gives several tiles or crops for one picture is refused."""
+    import numpy as np
+    from PIL import Image
+    rows = []
+    for path in paths:
+        with Image.open(path) as image:
+            pixels = image_processor(images=[image.convert('RGB')], return_tensors='pt', **settings)['pixel_values']
+        shape = tuple(pixels.shape)
+        if len(shape) == 5 and shape[:2] == (1, 1):        # one sample with one image (SmolVLM)
+            pixels = pixels[0]
+        if pixels.ndim != 4 or pixels.shape[0] != 1:
+            raise ValueError(f'{type(image_processor).__name__} gives pixel_values of shape {shape} for one '
+                             f'picture with {settings}, not one whole image; state the setting that turns '
+                             f'tiles and crops off in image_processor_kwargs.')
+        rows.append(pixels.float().numpy())
+    return np.concatenate(rows)
+
+
+def _pixel_extractor():
+    """``PytorchWrapper`` that exports a bfloat16 activation as float32 (NumPy has no bfloat16), through
+    the extractors' own hook helper; the network computes in bfloat16, other dtypes export unchanged."""
+    from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
+    from brainscore.model_helpers._extractors import _hook, as_numpy
+
+    class Float32Export(PytorchWrapper):
+        def register_hook(self, layer, layer_name, target_dict):
+            def keep(output, name=layer_name):
+                target_dict[name] = as_numpy(output)
+            return _hook(layer, layer_name, keep)
+    return Float32Export
+
+
+def _reply_client(reply):
+    """The model's own ``reply`` as an ``api_policy`` client: ``(model, system, messages, settings)`` -> text,
+    so it is asked as an API model is. A picture arrives as base64 data."""
+    import base64
+    import io
+    from brainscore_core.responses import Prompt, Text
+
+    def local_model(model, system, messages, settings):
+        parts, names = ([('text', system)], ['instruction']) if system else ([], [])
+        for part in messages[0]['content']:
+            parts.append(('image', io.BytesIO(base64.b64decode(part['data']))) if part['type'] == 'image'
+                         else ('text', part['text']))
+            names.append(part['type'])
+        return reply(Prompt(parts=tuple(parts), names=tuple(names), response=Text(
+            max_tokens=settings.get('max_tokens'), temperature=settings.get('temperature') or 0)))
+    return local_model
+
+
+def _intervention(model, vision, language):
+    """``pytorch_intervention`` on one module that holds each part's blocks under the first name of its
+    block path, so a change names a layer as the region map does (the modules are shared)."""
+    import torch
+    from brainscore.model_helpers.intervention import pytorch_intervention
+    roots = {}
+    for root, blocks in (vision, language):
+        name = blocks.split('.')[0]
+        if name in roots:
+            raise ValueError(f'The two parts have block paths that start with {name!r}: a change named by a '
+                             f'layer would be ambiguous.')
+        roots[name] = model.get_submodule(f'{root}.{name}')
+    return pytorch_intervention(torch.nn.ModuleDict(roots))
+
+
+def get_model(identifier: str):
+    from brainscore import BrainScoreModel
+    from brainscore.model_helpers.api_behavioral import api_policy
+    from brainscore.model_helpers.replies import chat_parts
+    from brainscore.model_helpers.text_wrapper import TextWrapper
+    from brainscore.selection import LayerSelector
+
+    config = MODEL_CONFIGS[identifier]
+    _refuse(identifier, config)
+    model, processor = _load(identifier, config)
+    vision_module, vision_blocks = _blocks(model, config['vision'])
+    language_module, language_blocks = _blocks(model, config['language'])
+    region_layer_map = depth_layers(vision_blocks, DEPTH_TABLE['vision'])
+    language_layer = depth_layers(language_blocks, DEPTH_TABLE['language'])['language_system']
+    # The picture tokens reach the language layer in an answering pass; v2's recording reads that pass
+    # unless the language model gets inputs it cannot read (README: needs a general change).
+    region_layer_map['language_system'] = LayerSelector(
+        name=language_layer, modality='text' if config['extra_forward_inputs'] else ('text', 'vision'))
+    pixels = config['image_processor_kwargs']
+    if pixels is None:          # the processor's flattened patches (Qwen-VL layout)
+        from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
+        image = VLMVisionWrapper(model=vision_module, processor=processor, identifier=f'{identifier}-vision',
+                                 device=_one_device(identifier, vision_module, 'vision'))
+    else:                       # whole pictures as (B, C, H, W); every patch token kept, so PCA to 1000
+        from brainscore_vision.model_helpers.activations.pca import LayerPCA
+        image = _pixel_extractor()(
+            model=vision_module, identifier=f'{identifier}-vision',
+            device=_one_device(identifier, vision_module, 'vision'),
+            preprocessing=partial(_whole_images, image_processor=processor.image_processor, settings=pixels))
+        LayerPCA.hook(image, n_components=1000)
+    extractor = {'vision': image, 'text': TextWrapper(
+        model=language_module, tokenizer=processor.tokenizer, identifier=f'{identifier}-text',
+        device=_one_device(identifier, language_module, 'language'))}
+    if config['video']:
+        from brainscore.model_helpers.vlm_video_wrapper import VLMVideoWrapper
+        extractor['video'] = VLMVideoWrapper(vision_module, processor, identifier=f'{identifier}-video')
+    reply, likelihood = chat_parts(model, processor)
+    # A lesion addresses module units; a layer recorded as PCA components cannot select them.
+    parts = {} if pixels is not None else {'intervention': _intervention(model, config['vision'], config['language'])}
+    subject = BrainScoreModel(
+        identifier, model, region_layer_map, extractor=extractor, reply=reply, likelihood=likelihood,
+        behavioral_readout_layer=region_layer_map['IT'],
+        policy=api_policy(_reply_client(reply), identifier), policy_in_channels=('observation', 'instruction', 'reward'),
+        capability_config={'behavior-sessions': {'behavior:rating': 'generation', 'behavior:probabilities': 'readout'}},
+        **parts)
+    depths = ', '.join(f'{region} {f:.2f}' for table in DEPTH_TABLE.values() for region, f in table.items())
+    return _StudySubject(subject, {
+        'study': 'umi_dev_models', 'checkpoint': config['hf_id'], 'dtype': config['dtype'],
+        'device_map': config['device_map'],
+        'region_layer_map_status': f'{DEPTH_HYPOTHESIS}: {depths}; no layer search',
+        'readout_layer': f"{region_layer_map['IT']} (the IT layer of the vision part)",
+        'intervention': 'on' if parts else 'off: the vision layers are recorded as LayerPCA components'})
