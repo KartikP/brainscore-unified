@@ -6,6 +6,7 @@ import pytest
 from brainscore.capabilities import capability_registry
 from brainscore import BrainScoreModel
 from brainscore_core.contract import TaskContext
+from brainscore_core.responses import Choice
 from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
 
 
@@ -39,8 +40,7 @@ def test_process_after_a_task_still_records():
         extractor={'vision': act_model},
         answer=lambda stimulus_row, instruction, label_set: label_set[0],
     )
-    model.start_task(TaskContext(task_type='probabilities', instruction='Which?',
-                                 label_set=['a', 'b']))
+    model.start_task(TaskContext(instruction='Which?', response=Choice(['a', 'b'])))
     model.start_recording('IT')
     stimuli = StubStimulusSet(columns=['image_file_name', 'stimulus_id'])
 

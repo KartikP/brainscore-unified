@@ -3,11 +3,10 @@
 One chooser (``_choose_path``) picks the part that answers: ``generation``
 (the ``reply`` part, or the ``answer`` part), ``likelihood`` or ``readout``.
 One entry (``respond``) answers the stimuli and records regions during the
-same presentation. A task that states a ``response`` (Choice, Scale, Text)
-and a legacy task (``task_type`` with ``label_set``) differ only in how the
-answer is packaged: a legacy task keeps its one-hot or probability assembly,
-which legacy behavioral benchmarks score. The packaging is in ``answers``;
-the recording during the answering pass is in ``recording``.
+same presentation. A task states its ``response`` (Choice, Scale, Text); the
+bare ``behavior`` channel carries the same answer as the response's first
+format. The packaging is in ``answers``; the recording during the answering
+pass is in ``recording``.
 """
 
 import math
@@ -40,9 +39,9 @@ def _softmax_probabilities(outputs, logp, stimuli, axis):
     """Store the softmax of likelihood scores, with the scores as source evidence;
     return the probabilities a reaction time reads, their validity and the record.
 
-    The link reads the stored float32 probabilities, as it did before the response
-    format standard (finite rows stay bit for bit); a readout's link reads its
-    float64 rows (``_readout_probabilities``).
+    The likelihood stores its probabilities as float32 and the link reads that float32
+    copy, as it did before the response format standard (finite rows stay bit for bit);
+    a readout's link reads its float64 rows (``_readout_probabilities``).
     """
     probabilities, valid = softmax(logp)
     record = _softmax_record()
@@ -53,10 +52,6 @@ def _softmax_probabilities(outputs, logp, stimuli, axis):
 
 class BehavioralReadout:
     """Owns behavioral task state for a BrainScoreModel instance."""
-
-    BEHAVIORAL_TASK_TYPES = frozenset({
-        'probabilities', 'classification', 'label',
-    })
 
     def __init__(self, owner) -> None:
         self.owner = owner
@@ -87,10 +82,6 @@ class BehavioralReadout:
     _STATE = ('task', 'readout_classifier',
               'configured_from', '_configured_as', '_stale', 'history',
               'response_path', 'probability_source')
-
-    @classmethod
-    def requires_behavioral_readout(cls, task_type: str) -> bool:
-        return task_type in cls.BEHAVIORAL_TASK_TYPES
 
     @staticmethod
     def _fitting_content(fitting) -> Any:
@@ -263,16 +254,16 @@ class BehavioralReadout:
         self.fit_for(formats, picks)
 
     def validate_task(self, task) -> None:
-        """Refuse a malformed task: an unknown ``readout_fit`` or legacy ``task_type`` (``ValueError``)."""
+        """Refuse a malformed task: an unknown ``readout_fit``, or a task with no response
+        that is not passive (``ValueError``)."""
         if task.readout_fit not in ('current', 'intact'):
             raise ValueError(f"readout_fit must be 'current' or 'intact', not {task.readout_fit!r}.")
-        if task.response is None and task.task_type != 'passive' \
-                and not self.requires_behavioral_readout(task.task_type):
+        if task.response is None and task.task_type != 'passive':
             raise ValueError(
-                f"Unknown task_type {task.task_type!r}. BrainScoreModel accepts "
-                f"'passive' or one of {sorted(self.BEHAVIORAL_TASK_TYPES)}; "
-                f"answer and readout models both use 'probabilities'."
-            )
+                f"task_type {task.task_type!r} states no response. BrainScoreModel answers a "
+                f"task with a response (Choice, Scale or Text, from brainscore_core.responses), "
+                f"for example TaskContext(response=Choice(labels), fitting_stimuli=...), or "
+                f"task_type='passive'.")
 
     def by_answer(self, task) -> bool:
         """Within generation, whether the ``answer`` part answers ``task`` (else the ``reply`` part).
@@ -305,7 +296,7 @@ class BehavioralReadout:
         from brainscore_core.compatibility import ExecutionNotFeasibleError
         from brainscore_core.responses import response_channels
         picks = []
-        for output in (response_channels(task.response) or ('behavior',)):
+        for output in response_channels(task.response):
             try:
                 picks.append(self._choose_path(task, [output]))
             except ExecutionNotFeasibleError:
@@ -415,47 +406,12 @@ class BehavioralReadout:
             features = features.transpose('presentation', 'neuroid')
         return features
 
-    def predict_probabilities(self, stimuli):
-        """Return a BehavioralAssembly of per-label probabilities."""
-        features = self.extract_behavioral_features(stimuli)
-        parts.note('readout', self.readout_classifier, [self.owner._behavioral_readout_layer])
-        return answers.with_record(self.readout_classifier.predict_proba(features),
-                                   response_record('behavior', 'readout'))
-
-    def _select(self, output, can, task) -> Optional[str]:
-        """The part that answers bare ``behavior`` (a legacy task), from the parts that can serve it.
-
-        The owner stated at registration answers when it can serve the task
-        (``answer_owners``; with one wired part, that part). When the task form
-        excludes the owner, the one other part that can serve it answers: a
-        legacy task without an instruction, as the facade sends, goes to the
-        readout. Only bare
-        ``behavior`` keeps this fallback; a format channel is answered by its
-        owner (``_owner_serving``). When two or more parts that do not own the
-        output can serve it, the task is refused before any compute. ``None``:
-        no part can.
-        """
-        from brainscore_core.compatibility import ExecutionNotFeasibleError
-        formats = _formats_by_part(self.owner)
-        eligible = sorted(p for p, given in formats.items() if can.get(p) and output in given)
-        owner = self.owners.get(output)
-        if owner in eligible:
-            return owner
-        if len(eligible) <= 1:
-            only_part_for_this_task_form = eligible[0] if eligible else None
-            return only_part_for_this_task_form
-        raise ExecutionNotFeasibleError(
-            f"Subject '{self.owner.identifier}': {output!r} is owned by {owner!r}, which cannot "
-            f"serve this task, and the parts {eligible} that can do not own it. State an owner "
-            f"that serves the task, or build one model per part.", task_type=task.task_type)
-
     def _owner_serving(self, output, can, task, settings) -> Optional[str]:
         """The owner of the answer format ``output``, when it can serve ``task`` (rule 4.11).
 
         The owner is the stated part, or the one wired part that gives the format.
         When the owner cannot serve the task form, the task is refused before any
-        compute: no other part answers a format it does not own (only bare
-        ``behavior`` keeps that fallback, ``_select``). ``None``: no part gives it.
+        compute: no other part answers a format it does not own. ``None``: no part gives it.
         """
         from brainscore_core.compatibility import ExecutionNotFeasibleError
         formats = _formats_by_part(self.owner)
@@ -507,10 +463,7 @@ class BehavioralReadout:
         (``can`` below) is refused, no other part stands in. When the choice and the
         probabilities have two owners, a likelihood and a readout, one pass
         cannot give both: formats on one side are answered by that side's
-        owner, formats on both sides are refused. A legacy task
-        (``task_type`` with ``label_set``) answers on ``behavior``, through
-        ``answer=`` (with an instruction and labels) or the readout (with
-        fitting stimuli).
+        owner, formats on both sides are refused.
 
         A task that no part of the model can answer raises
         ``ExecutionNotFeasibleError`` before any compute. Sessions refuse with
@@ -528,23 +481,7 @@ class BehavioralReadout:
         from brainscore_core.responses import Choice, Scale
         owner, response = self.owner, task.response
         readout_wired = (owner._behavioral_readout_layer is not None
-                         and bool(owner._extractors))
-        if response is None:
-            can = {'generation': bool(owner._answer is not None and task.instruction and task.label_set),
-                   'likelihood': False,
-                   'readout': readout_wired and task.fitting_stimuli is not None}
-            needs = {'generation': 'answer=, TaskContext.instruction and TaskContext.label_set',
-                     'likelihood': 'a TaskContext(response=Choice(...)); a legacy task has no likelihood path',
-                     'readout': 'TaskContext.fitting_stimuli (and behavioral_readout_layer=)'}
-            path = self._select('behavior', can, task)
-            if path is None:
-                raise ExecutionNotFeasibleError(
-                    f"Subject '{owner.identifier}' cannot run the behavioral task "
-                    f"task_type={task.task_type!r}. Paths tried: "
-                    + '; '.join(f'{p} needs {need}' for p, need in needs.items()),
-                    task_type=task.task_type)
-            return path, None
-        readout_wired = readout_wired and task.fitting_stimuli is not None
+                         and bool(owner._extractors) and task.fitting_stimuli is not None)
         requested = set(formats)
         log_probabilities = isinstance(response, Choice) and LOG_PROBABILITIES in requested
         if log_probabilities and owner._likelihood is None:
@@ -635,14 +572,9 @@ class BehavioralReadout:
         from brainscore_core.responses import Choice, Scale, Text, labels_of
         owner, task = self.owner, self.task
         response, path, probability_source = task.response, self.response_path, self.probability_source
-        planned = self._planned(task, channels) if response is not None else None
-        if response is not None:
-            path, probability_source = planned or self._choose_path(task, channels, bool(regions))
+        planned = self._planned(task, channels)
+        path, probability_source = planned or self._choose_path(task, channels, bool(regions))
         layers = {region: list(region_selector(owner, region).layer_paths) for region in regions}
-        if response is None:
-            with parts.serving(channels):
-                behavior, neural = self._answer_legacy_task(stimuli, layers)
-            return ({channel: behavior for channel in channels}, neural)
         labels = labels_of(response)
         # Every trial's prompt is built first, so a bad layout fails before any compute
         # (for a session with its table, the plan built them before the readout fit).
@@ -656,7 +588,7 @@ class BehavioralReadout:
         answer_side = [c for c in channels if c not in self._PROBABILITY_SIDE and c != LOG_PROBABILITIES]
         if path == 'readout':
             with parts.serving(channels):
-                values, neural = self._read_out_and_record(stimuli, layers, raw=True)
+                values, neural = self._read_out_and_record(stimuli, layers)
             if isinstance(response, Scale):
                 # The readout answers on the task's scale: the regression value is put on the
                 # nearest step (the raw answer keeps it); a value outside the bounds stays.
@@ -807,8 +739,8 @@ class BehavioralReadout:
 
     @staticmethod
     def _readout_probabilities(outputs, ordered, stimuli):
-        """Store a readout's probabilities (float32); return the float64 rows, their
-        validity as probability rows and the record, for a reaction time."""
+        """Store a readout's probabilities (float64, as the readout gives them); return the
+        rows, their validity as probability rows and the record, for a reaction time."""
         values = np.asarray(ordered.values)
         outputs['behavior:probabilities'] = answers.readout_probabilities(ordered, stimuli)
         return values, argmax(values)[1], outputs['behavior:probabilities'].attrs['response']
@@ -826,30 +758,6 @@ class BehavioralReadout:
             yield
         finally:
             self.task = saved
-
-    def _answer_legacy_task(self, stimuli, layers):
-        """A legacy task's answer and the regions recorded during it.
-
-        Returns ``(BehavioralAssembly, {region: NeuroidAssembly})``. With
-        ``answer``, the recording is the first forward pass of each answer (the
-        prompt, before any generated token). With a readout and regions, the
-        region layers are extracted in the same call as the readout layer;
-        without regions, the readout reads the features it was fitted on.
-        """
-        if self.response_path == 'generation':
-            task = self.task
-            label_set = list(task.label_set)
-            def call(row, _):
-                parts.note('answer', self.owner._answer)
-                return answers.reply_and_meta(self.owner._answer(
-                    stimulus_row=row, instruction=task.instruction, label_set=label_set))[0]
-            replies, neural = per_stimulus(self.owner, stimuli, layers, call, shown=openable_paths(stimuli, self.task))
-            stamp = self._stamp('answer', 'prompt')
-            return (answers.legacy_one_hot(replies, label_set, stimuli),
-                    {region: assembly.assign_attrs(recording=stamp) for region, assembly in neural.items()})
-        if layers:
-            return self._read_out_and_record(stimuli, layers)
-        return self.predict_probabilities(stimuli), {}
 
     def _stamp(self, path, forward_pass):
         """How a recording was made, so task and passive recordings stay distinct."""
@@ -897,7 +805,7 @@ class BehavioralReadout:
         for request in self._readout_requests(layers, passes):
             extractor_or_refuse(self.owner, stimuli, modality, request, in_session=True)
 
-    def _read_out_and_record(self, stimuli, layers, raw: bool = False):
+    def _read_out_and_record(self, stimuli, layers):
         from brainscore_core.responses import Scale
         owner = self.owner
         readout_layer = owner._behavioral_readout_layer
@@ -939,20 +847,16 @@ class BehavioralReadout:
         if 'presentation' in features.dims and 'neuroid' in features.dims:
             features = features.transpose('presentation', 'neuroid')
         parts.note('readout', self.readout_classifier, [readout_layer])
-        if raw and isinstance(self.task.response, Scale):
+        if isinstance(self.task.response, Scale):
             behavior = [(float(v), None) for v in self.readout_classifier.predict(features)]
         else:
-            behavior = answers.with_record(self.readout_classifier.predict_proba(features),
-                                           response_record('behavior', 'readout'))
+            behavior = self.readout_classifier.predict_proba(features)
         neural = {}
         for region, region_layers in layers.items():
             per_layer = [part_of[region](layer) for layer in region_layers]
             selected = gather_region(owner, region, per_layer)
             neural[region] = selected.assign_coords(
                 region=('neuroid', [region] * selected.sizes['neuroid']))
-            if not raw:
-                neural[region] = neural[region].assign_attrs(
-                    recording=self._stamp('readout', 'readout extraction'))
         return behavior, neural
 
 
@@ -985,7 +889,7 @@ def trial_prompts(task, stimuli, compare_options: bool = True):
 # that derives it. ``answer`` and ``reply`` are the two kinds of the part
 # ``generation``. The likelihood gives the log probabilities natively. ``'link'``:
 # ``behavior:rt`` follows the owner of ``behavior:probabilities`` and is
-# never stated. ``behavior`` is the answer to a legacy task.
+# never stated. Bare ``behavior`` carries the answer of a response task (its first format).
 _PART_FORMATS = {
     'answer': {'behavior': None, 'behavior:choice': None},
     'reply': {'behavior:choice': None, 'behavior:rating': None, 'behavior:text': None},

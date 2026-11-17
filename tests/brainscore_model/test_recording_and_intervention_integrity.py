@@ -409,8 +409,9 @@ def test_a_readout_task_honors_regions_per_pass(plan, expected, monkeypatch):
                            'label': ['cat', 'dog', 'cat', 'dog']})
     stimuli.identifier = 'readout-plan'
     subject = BrainScoreModel('m', extractor={'text': extract}, behavioral_readout_layer='r',
-                              region_layer_map={'IT': 'x', 'V4': 'y'})
-    task = TaskContext(task_type='probabilities', label_set=['cat', 'dog'], fitting_stimuli=stimuli)
+                              region_layer_map={'IT': 'x', 'V4': 'y'},
+                              capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
+    task = TaskContext(response=Choice(['cat', 'dog']), fitting_stimuli=stimuli)
     monkeypatch.setenv(PLAN, plan)
     session = stimulus_session(stimuli, ['behavior', 'neural:IT', 'neural:V4'], task=task)
     subject.participate(session)
@@ -643,7 +644,7 @@ def test_a_reset_refused_inside_intact_leaves_every_state_as_it_was():
                               answer=owner.answer)
     handle = _edit(subject, scale=2)
     subject.start_recording('IT')
-    subject.start_task(TaskContext(task_type='probabilities', instruction='i', label_set=['a', 'b']))
+    subject.start_task(TaskContext(instruction='i', response=Choice(['a', 'b'])))
     subject._behavioral.history = ['earlier trial']
 
     def state():
@@ -663,9 +664,7 @@ def test_a_reset_refused_inside_intact_leaves_every_state_as_it_was():
 
 # ── Applicability uses the part choice of the run ──
 
-_LEGACY = dict(task_type='probabilities', instruction='Which?', label_set=['a', 'b'])
 _TASKS = {
-    'legacy': lambda: TaskContext(**_LEGACY),
     'choice': lambda: TaskContext(instruction='Which?', response=Choice(['a', 'b'])),
     'scale': lambda: TaskContext(instruction='How?', response=Scale(1, 7)),
     'text': lambda: TaskContext(instruction='Say.', response=Text()),
@@ -679,7 +678,6 @@ _PARTS = {
 }
 # Each task kind against each combination of parts that cannot answer it.
 _INSUFFICIENT = [
-    ('legacy', 'none'), ('legacy', 'readout without fitting'), ('legacy', 'likelihood'), ('legacy', 'reply'),
     ('choice', 'none'), ('choice', 'readout without fitting'),
     ('scale', 'none'), ('scale', 'answer'), ('scale', 'likelihood'),
     ('scale', 'readout without fitting'),

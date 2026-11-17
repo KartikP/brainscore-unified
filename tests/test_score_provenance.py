@@ -430,14 +430,16 @@ def _entry(score):
     return entry
 
 
-def test_an_old_task_names_the_answer_part_when_answer_and_reply_are_wired():
+def test_a_plain_choice_names_the_answer_part_when_answer_and_reply_are_wired():
+    from brainscore_core.responses import Choice
+
     def answer(stimulus_row, instruction, label_set):
         return pseudo._truth(stimulus_row['stimulus_id'])
 
     def reply(prompt):
-        raise AssertionError('the old task does not call the reply')
+        raise AssertionError('a plain choice does not call the reply')
     model = BrainScoreModel('legacy-both', in_channels={'text'}, answer=answer, reply=reply)
-    task = TaskContext(task_type='label', label_set=pseudo.OPTIONS, instruction='Is this a real word?')
+    task = TaskContext(response=Choice(pseudo.OPTIONS), instruction='Is this a real word?')
     score = _score(model, _Sessions([lambda: stimulus_session(pseudo.text_stimuli(), ['behavior'], task)],
                                     {'behavior'}))
     assert _entry(score) == {'subject': 'legacy-both', 'activation_store': 'off',

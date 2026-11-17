@@ -219,9 +219,12 @@ def test_typed_behavioral_look_at_matches_a_behavior_session():
     facade = _facade(model)
     facade.start_task('probabilities', fitting_stimuli=fitting)
     via_legacy = facade.look_at(_images())
-    from brainscore_core.streaming_helpers import behavioral_response
-    via_session = behavioral_response(
-        model, _images(), TaskContext(task_type='probabilities', fitting_stimuli=fitting))
+    from brainscore_core.responses import Choice
+    from brainscore_core.streaming_helpers import stimulus_session
+    session = stimulus_session(_images(), ['behavior:probabilities'],
+                               TaskContext(response=Choice(['cat', 'dog']), fitting_stimuli=fitting))
+    model.participate(session)
+    via_session = session.collect('behavior:probabilities')
     assert isinstance(via_legacy, BehavioralAssembly)
     np.testing.assert_array_equal(via_legacy.values, via_session.values)
 
@@ -239,6 +242,9 @@ def test_declared_visual_degrees_reads_the_legacy_vision_setting_or_none():
 # --- setup once, measure many times ---------------------------------------
 
 from brainscore_core.contract import TaskContext
+from brainscore_core.responses import Choice
+
+CHOICE = Choice(['cat', 'dog'])
 
 def _labelled_images(n=4, with_text=False):
     frame = {'stimulus_id': [f'f{i}' for i in range(n)],
@@ -255,7 +261,8 @@ def _readout_model():
     extractor = _Extractor()
     model = BrainScoreModel('readout', region_layer_map={'IT': 'layer'},
                             extractor={'vision': extractor},
-                            behavioral_readout_layer='layer')
+                            behavioral_readout_layer='layer',
+                            capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
     return model, extractor
 
 
@@ -283,11 +290,12 @@ def test_repeated_task_refits_after_a_state_change():
     model = BrainScoreModel(
         'lesioned', region_layer_map={'IT': 'layer'}, extractor={'vision': extractor},
         behavioral_readout_layer='layer',
+        capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}},
         intervention=lambda change: (
             PerturbationApplied(handle_id='h', target=change.target,
                                 perturbation=change.perturbation),
             lambda: None))
-    task = TaskContext(task_type='probabilities', fitting_stimuli=_labelled_images())
+    task = TaskContext(response=CHOICE, fitting_stimuli=_labelled_images())
     behavioral_response(model, _images(), task)
     behavioral_response(model, _images(), task)
     assert _fits(extractor) == 1
@@ -300,7 +308,7 @@ def test_repeated_task_refits_after_a_state_change():
 def test_fitting_stimuli_reach_the_readout_with_declared_inputs_only():
     model, extractor = _readout_model()
     fitting = _labelled_images(with_text=True)
-    model.start_task(TaskContext(task_type='probabilities', fitting_stimuli=fitting))
+    model.start_task(TaskContext(response=CHOICE, fitting_stimuli=fitting))
     seen = extractor.seen[-1]
     assert 'sentence' not in seen.columns
     assert list(seen['image_label']) == list(fitting['image_label'])
@@ -321,7 +329,7 @@ def test_typed_behavioral_variance_request_fails_before_compute():
 def test_changed_fitting_data_in_the_same_task_object_refits():
     """TaskContext is mutable: an explicit start_task after a change fits again."""
     model, extractor = _readout_model()
-    task = TaskContext(task_type='probabilities', fitting_stimuli=_labelled_images())
+    task = TaskContext(response=CHOICE, fitting_stimuli=_labelled_images())
     model.start_task(task)
     model.start_task(task)
     assert _fits(extractor) == 1  # unchanged task sent again: no refit

@@ -116,8 +116,8 @@ def test_each_producer_answers_the_same_benchmark(fmt, producer):
     assert (score.attrs['n_invalid'], score.attrs['n_missing']) == (0, 0)
     answer = sessions[0].collect(fmt)
     dims, dtype = SCHEMA[fmt]
-    if (fmt, producer) == ('behavior:probabilities', 'cells'):
-        dtype = np.float64   # its cells are float64 arrays; the format keeps the digits given
+    if (fmt, producer) in (('behavior:probabilities', 'cells'), ('behavior:probabilities', 'readout')):
+        dtype = np.float64   # float64 cells and the readout's rows; the format keeps the digits given
     assert tuple(answer.dims) == dims and answer.values.dtype == np.dtype(dtype)
     assert list(answer['stimulus_id'].values) == pseudo.IDS
     if 'choice' in dims:
@@ -503,7 +503,7 @@ def test_every_rounded_readout_rating_is_on_core_s_grid(scale):
     ('behavior:choice', lambda folder: pseudo.PseudoChoice('vision:image', folder),
      ('derived', 'legacy', 'argmax', 'behavior:probabilities'), 0.75),
     ('behavior:probabilities', lambda folder: pseudo.PseudoProbabilities(channel='vision:image', folder=folder),
-     ('native', 'legacy', None, None), 0.7749999761581421),
+     ('native', 'legacy', None, None), 0.775),
 ], ids=['choice', 'probabilities'])
 def test_the_vision_adapter_answers_the_same_benchmark(tmp_path, fmt, benchmark, record, expected):
     calls = []
@@ -513,6 +513,8 @@ def test_the_vision_adapter_answers_the_same_benchmark(tmp_path, fmt, benchmark,
     assert float(score) == expected
     stored = sessions[0].collect(fmt)
     dims, dtype = SCHEMA[fmt]
+    if fmt == 'behavior:probabilities':
+        dtype = np.float64   # the legacy model's own rows; the format keeps the digits given
     assert stored.dims == dims and stored.values.dtype == dtype
     answer = stored.attrs['response']
     assert (answer['origin'], answer['method'], answer['conversion'], answer['source_format']) == record

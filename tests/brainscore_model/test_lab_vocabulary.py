@@ -78,7 +78,8 @@ def test_answer_gives_one_choice_for_each_stimulus():
     from brainscore_core.streaming_helpers import behavioral_response
     stimuli = StimulusSet({'sentence': ['first', 'second'], 'stimulus_id': ['a', 'b']})
     stimuli.identifier = 'answer-choices'
-    task = TaskContext(task_type='label', instruction='choose', label_set=['yes', 'no'])
+    from brainscore_core.responses import Choice
+    task = TaskContext(instruction='choose', response=Choice(['yes', 'no']))
     subject = BrainScoreModel(identifier='answer', in_channels={'text'}, answer=answer)
     output = behavioral_response(subject, stimuli, task)
     assert output['stimulus_id'].values.tolist() == ['a', 'b']
@@ -114,15 +115,16 @@ def test_non_callable_extractor_names_extractor_signature():
 
 def _text_task(**fields):
     from brainscore_core.contract import TaskContext
-    return TaskContext(task_type='label', **fields)
+    from brainscore_core.responses import Choice
+    return TaskContext(response=Choice(['yes', 'no']), **fields)
 
 
 def test_unviable_behavioral_task_names_answer_parameter():
     subject = BrainScoreModel(identifier='no-path', in_channels={'text'})
     with pytest.raises(ExecutionNotFeasibleError, match='Paths tried') as error:
         subject.start_task(_text_task())
-    assert 'generation needs answer=' in str(error.value)
-    assert 'readout needs TaskContext.fitting_stimuli' in str(error.value)
+    assert 'answer=' in str(error.value)
+    assert 'readout needs' in str(error.value)
 
 
 # -- Core guide teaching example ---------------------------------------------

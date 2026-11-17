@@ -74,69 +74,6 @@ def _run(model, outputs, task):
     return session
 
 
-LEGACY = dict(task_type='probabilities', instruction='Which animal?', label_set=['cat', 'dog'])
-
-
-def test_a_legacy_task_with_an_answer_part_calls_it_once_per_stimulus_and_keeps_its_packaging():
-    calls = []
-    model = _model(calls, answer=True, reply=True, likelihood=True)
-    with pytest.warns(UserWarning, match="answer function returned 'neither'"):
-        session = _run(model, ['behavior'], TaskContext(**LEGACY))
-    assert calls == [('answer', sid, 'Which animal?', ['cat', 'dog']) for sid in 'abc']
-    assert model._behavioral.response_path is None   # the session gave the task back
-    (event,) = session.emitted
-    assert (event.channel, event.t_ms, dict(event.meta)) == (
-        'behavior', None, {'driver': 'interact', 'task_type': 'probabilities'})
-    answer = event.payload
-    np.testing.assert_array_equal(answer.values[:2], [[1, 0], [0, 1]])
-    assert np.isnan(answer.values[2]).all() and answer.dtype == np.float32
-    assert list(answer.indexes['presentation'].names) == [
-        'stimulus_id', 'sentence', 'label', 'raw_answer', 'answer_valid']
-    assert list(answer['raw_answer'].values) == ['cat', 'dog', 'neither']
-    assert answer.attrs['response'] == response_record('behavior', 'generation', parsed_by='model')
-
-
-def test_a_legacy_task_goes_to_the_stated_owner_without_a_warning():
-    calls = []
-    model = _model(calls, answer=True)
-    with pytest.warns(UserWarning) as notices:
-        session = _run(model, ['behavior'], TaskContext(**LEGACY, fitting_stimuli=FITTING))
-    # Only the invalid answer 'neither' is reported; two parts are no warning (rule 4.11).
-    assert all('neither' in str(notice.message) for notice in notices)
-    assert [call[0] for call in calls] == ['answer'] * 3
-    assert session.collect('behavior').attrs['response']['method'] == 'generation'
-
-
-def test_a_legacy_task_on_a_model_built_without_an_answer_part_is_read_out():
-    calls = []
-    model = _model(calls)
-    answer = _run(model, ['behavior'], TaskContext(**LEGACY, fitting_stimuli=FITTING)).collect('behavior')
-    assert calls == []
-    assert answer.attrs['response'] == response_record('behavior', 'readout')
-    assert answer.values.argmax(1).tolist() == [0, 1, 0]
-
-
-def test_a_legacy_task_streamed_gives_one_event_per_trial():
-    calls = []
-    model = _model(calls, answer=True)
-    session = stimulus_session(STIMULI, ['behavior'], TaskContext(**LEGACY), streaming=True)
-    with pytest.warns(UserWarning, match="answer function returned 'neither'"):
-        model.participate(session)
-    assert [dict(e.meta) for e in session.emitted] == [
-        {'driver': 'interact_streaming', 'task_type': 'probabilities', 'trial_index': i, 'streaming': True}
-        for i in range(3)]
-
-
-def test_a_legacy_task_with_a_region_records_the_answer_pass():
-    calls = []
-    model = _model(calls, answer=True)
-    model.region_layer_map = {'IT': 'late'}
-    with pytest.raises(ExecutionNotFeasibleError, match='record'):
-        # The plain extractor has no record(layers) and no model= to hook: N/A.
-        _run(model, ['behavior', 'neural:IT'], TaskContext(**LEGACY))
-    assert calls == []                               # before any answer
-
-
 def test_a_plain_choice_goes_to_the_answer_part_when_one_is_wired():
     """With answer= wired, a plain Choice is answered by it, not by the reply part (point r)."""
     calls = []
@@ -197,8 +134,8 @@ def test_text_settings_reach_the_reply_part_and_extra_data_reaches_the_event():
 
 def test_the_one_chooser_names_every_path_it_tried():
     model = BrainScoreModel('none', in_channels={'text'})
-    with pytest.raises(ExecutionNotFeasibleError, match='Paths tried: generation needs answer=.*readout needs'):
-        model.start_task(TaskContext(**LEGACY))
+    with pytest.raises(ValueError, match='states no response'):
+        model.start_task(TaskContext(task_type='probabilities', label_set=['cat', 'dog']))
     with pytest.raises(ExecutionNotFeasibleError, match='cannot give a Choice answer. Paths tried'):
         model.start_task(TaskContext(response=Choice(['cat', 'dog'])))
 

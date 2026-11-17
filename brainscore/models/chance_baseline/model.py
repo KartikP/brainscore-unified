@@ -7,10 +7,11 @@ if this gets > 0.5 for balanced binary tasks, the benchmark's scoring
 has a leak somewhere.
 
 A ``Subject`` with typed methods. It has no extractor,
-no activations, and no logistic readout. A legacy task on bare ``behavior``
-gets its uniform rows through ``process``; a ``Choice`` task on
-``behavior:choice`` gets the choice derived from those rows by core's
-``argmax`` (ties go to the first label), with a record that says so.
+no activations, and no logistic readout. A ``Choice`` task gets uniform rows on
+``behavior:probabilities`` (an old probabilities benchmark asks there through the
+legacy facade) and, on ``behavior:choice``, the choice derived from those rows by
+core's ``argmax`` (ties go to the first label), with a record that says so. A task
+with a ``label_set`` on bare ``behavior`` gets its uniform rows through ``process``.
 """
 
 from typing import Any, Dict, Set
@@ -56,10 +57,12 @@ class ChanceBaseline(Subject):
     @property
     def out_channels(self) -> Set[str]:
         # It answers behavioral tasks; declared, not inferred (Contract v3 rule 2):
-        # a legacy task on bare behavior, and the choice of a Choice task.
-        return {'behavior', 'behavior:choice'}
+        # a task with a label_set on bare behavior, and the choice and probabilities of a Choice.
+        return {'behavior', 'behavior:choice', 'behavior:probabilities'}
 
     def participate(self, session) -> None:
+        if list(session.outputs or ()) == ['behavior:probabilities']:
+            return self._answer_probabilities(session)
         if list(session.outputs or ()) != ['behavior:choice']:
             from brainscore_core.streaming_helpers import drive_typed_session
             return drive_typed_session(self, session)
@@ -91,30 +94,38 @@ class ChanceBaseline(Subject):
                                                source_format='behavior:probabilities')})
         session.respond(StreamEvent('behavior:choice', answer, None, {}))
 
-    def _label_set(self) -> list:
-        """The labels of the task: its ``label_set``, else the labels of its fitting stimuli.
+    def _answer_probabilities(self, session) -> None:
+        """Uniform rows over the Choice's labels, one per presented stimulus, with the
+        stimulus columns (float32, as this model gives its rows)."""
+        from brainscore_core.response_formats import response_record
+        from brainscore_core.streaming import StreamEvent
+        from brainscore_core.streaming_helpers import drain_session_inputs, session_stimuli
+        labels = session.task.response.labels
+        if isinstance(labels, str):
+            raise ValueError("chance-baseline answers a Choice with shared options; options per "
+                             f"row (Choice({labels!r})) are not supported.")
+        events = drain_session_inputs(session)
+        stimuli = session_stimuli(session, events)
+        rows = np.full((len(stimuli), len(labels)), 1.0 / len(labels), dtype=np.float32)
+        coords = {'stimulus_id': ('presentation', list(stimuli['stimulus_id'].values))}
+        coords.update({column: ('presentation', list(stimuli[column].values))
+                       for column in stimuli.columns if column != 'stimulus_id'})
+        answer = BehavioralAssembly(rows, coords={**coords, 'choice': list(labels)},
+                                    dims=['presentation', 'choice'],
+                                    attrs={'response': response_record('behavior:probabilities', 'uniform')})
+        session.respond(StreamEvent('behavior:probabilities', answer, None, {}))
 
-        An old probabilities benchmark gives fitting stimuli with their labels and no label
-        set. The label column and the order are those of the readout of ``BrainScoreModel``
-        (``BehavioralReadout.extract_labels``; first occurrence), so a readout and this model
-        give probabilities columns in the same order for one benchmark. Other tasks (odd one
-        out, reading times) have no chance answer here: refused, not invented.
-        """
+    def _label_set(self) -> list:
+        """The labels of the task's ``label_set``. Other tasks (odd one out, reading times)
+        have no chance answer here: refused, not invented."""
         from brainscore_core.compatibility import ExecutionNotFeasibleError
         task = self._task
         task_type = getattr(task, 'task_type', None)
         if task is not None and task.label_set:
             return list(task.label_set)
-        fitting = getattr(task, 'fitting_stimuli', None)
-        if task_type == 'probabilities' and getattr(fitting, 'columns', None) is not None:
-            from brainscore._model.behavior import ProbabilitiesClassifier
-            from brainscore._model.behavioral import BehavioralReadout
-            labels = BehavioralReadout.extract_labels(fitting)
-            return list(ProbabilitiesClassifier._labels_to_indices(labels)[1].values())
         raise ExecutionNotFeasibleError(
-            f"chance-baseline answers a probabilities task with a label_set or with fitting "
-            f"stimuli that carry the labels; it has no chance answer for task_type={task_type!r}.",
-            channels={'behavior'}, task_type=task_type)
+            f"chance-baseline answers a task with a label_set on bare behavior; it has no chance "
+            f"answer for task_type={task_type!r}.", channels={'behavior'}, task_type=task_type)
 
     def start_task(self, task_or_type, fitting_stimuli=None, **kwargs) -> None:
         if isinstance(task_or_type, TaskContext):

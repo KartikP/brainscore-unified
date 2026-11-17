@@ -35,7 +35,6 @@ CLASS = {
     'R1': RuntimeError, 'R2': ValueError, 'R3': ValueError, 'R4': ENFE, 'R5': ValueError,
     'R6': ENFE, 'R7': ENFE, 'R8': ENFE, 'R9 table': ENFE, 'R9 stream': ENFE,
     'R10 owner cannot serve': ENFE, 'R10 settings': ENFE, 'R10 no part': ENFE, 'R10 log probabilities need verbatim': ENFE, 'R10 crossed parts': ENFE,
-    'R10 legacy no part': ENFE,
     'R11 readout_fit': ValueError, 'R11 task_type': ValueError,
     'R12': ENFE, 'R13': ValueError,
     'R14 plan': ENFE, 'R14 direct call': ValueError,
@@ -213,13 +212,6 @@ def _r10_crossed(log, monkeypatch, tmp_path):
     model.participate(stimulus_session(STIMULI, ['behavior:choice', 'behavior:probabilities'], CHOICE))
 
 
-@row('R10 legacy no part', r"Subject 'logged' cannot run the behavioral task task_type='probabilities'\. "
-                           r"Paths tried")
-def _r10_legacy(log, monkeypatch, tmp_path):
-    task = TaskContext(task_type='probabilities', label_set=['cat', 'dog'])         # no instruction, no fitting
-    _subject(log, parts=('answer',)).participate(stimulus_session(STIMULI, ['behavior'], task))
-
-
 @row('R11 readout_fit', r"readout_fit must be 'current' or 'intact', not 'bad'")
 def _r11_fit(log, monkeypatch, tmp_path):
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING,
@@ -227,7 +219,7 @@ def _r11_fit(log, monkeypatch, tmp_path):
     _subject(log, parts=('reply',)).participate(stimulus_session(STIMULI, ['behavior:choice'], task))
 
 
-@row('R11 task_type', r"Unknown task_type 'foo'")
+@row('R11 task_type', r"task_type 'foo' states no response")
 def _r11_type(log, monkeypatch, tmp_path):
     task = TaskContext(task_type='foo', label_set=['cat', 'dog'], fitting_stimuli=FITTING)
     _subject(log, parts=('behavioral_readout_layer',)).participate(stimulus_session(STIMULI, ['behavior'], task))

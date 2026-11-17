@@ -1,8 +1,8 @@
 """The reaction-time link keeps the values of 7bc821e on each path, with explicit validity.
 
-Through ``participate``: a readout's link reads the readout's float64 rows (only
-the stored ``behavior:probabilities`` copy is float32); a likelihood link reads
-the stored float32 probabilities, as before. Both match the functions of
+Through ``participate``: a readout's link reads the readout's float64 rows, which
+``behavior:probabilities`` also stores; a likelihood link reads its stored float32
+probabilities, as before. Both match the functions of
 ``7bc821e`` bit for bit on finite rows. A reaction time from an invalid
 probability row is invalid, and the link keeps its source rows as evidence.
 """
@@ -42,10 +42,10 @@ def test_an_invalid_probability_row_gives_an_invalid_reaction_time(monkeypatch):
     assert list(rt['response_state'].values) == ['invalid', 'valid', 'valid', 'valid']
 
 
-def test_the_link_reads_the_float64_rows_not_the_stored_float32_copy(monkeypatch):
+def test_the_readout_link_reads_the_float64_rows_that_are_stored(monkeypatch):
     session = _session(monkeypatch)
     assert session.collect('behavior:rt').values[1] == 0.24691357800000002
-    assert session.collect('behavior:probabilities').values.dtype == np.float32
+    assert session.collect('behavior:probabilities').values.tolist() == ROWS.tolist()
     assert session.collect('behavior:rt')['raw_answer'].values[1] == '[0.123456789, 0.876543211]'
 
 

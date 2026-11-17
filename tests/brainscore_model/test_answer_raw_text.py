@@ -146,19 +146,3 @@ def test_an_answer_may_return_a_stream_event_with_extra_data(stimuli):
     assert list(session.collect('behavior:choice')['raw_answer'].values) == [VALID]
 
 
-def test_a_legacy_task_reads_the_answer_text_with_the_same_parse(stimuli):
-    """A legacy task_type task (bare behavior) parses the text with Choice.parse too."""
-    answers = iter([VALID, INVALID])
-    model = BrainScoreModel('answer-legacy', in_channels={'vision:image'},
-                            answer=lambda stimulus_row, instruction, label_set: next(answers))
-    table = StimulusSet({'stimulus_id': ['w1', 'w2'],
-                         'image_file_name': list(stimuli['image_file_name']) * 2})
-    table.identifier = 'answer-raw-legacy'
-    table.stimulus_paths = dict(zip(table['stimulus_id'], table['image_file_name']))
-    with pytest.warns(UserWarning, match='names no single label'):
-        answered = behavioral_response(model, table, TaskContext(
-            task_type='probabilities', label_set=LABELS, instruction='Real or pseudo?'))
-    assert list(answered['raw_answer'].values) == [VALID, INVALID]
-    assert list(answered['answer_valid'].values) == [True, False]
-    np.testing.assert_array_equal(answered.values[0], [1.0, 0.0])
-    assert np.isnan(answered.values[1]).all()

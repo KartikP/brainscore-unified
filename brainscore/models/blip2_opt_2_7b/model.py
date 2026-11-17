@@ -175,6 +175,6 @@ def get_model(identifier: str) -> BrainScoreModel:
         answer=answer,
         # Readout path also available — PCA-1000 features from 'IT' layer.
         behavioral_readout_layer='encoder.layers.34',
-        # The answer function and the readout can both answer a legacy task; the answer function owns it.
+        # The answer function and the readout both give bare behavior natively; the answer function owns it.
         capability_config={'behavior-sessions': {'behavior': 'generation'}},
     )

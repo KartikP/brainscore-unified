@@ -49,9 +49,9 @@ _CACHE_ROOT = '~/.brainscore/api_behavioral_cache'
 
 
 def get_model(identifier: str) -> BrainScoreModel:
-    """An API model with two parts from one client: ``answer`` for legacy
-    ``task_type``/``label_set`` tasks, and ``reply`` for response tasks (choices,
-    ratings, written answers such as CogGym's), which obeys the task's settings."""
+    """An API model with two parts from one client: ``answer`` for a plain Choice, and
+    ``reply`` for every other response task (choices with settings, ratings, written
+    answers such as CogGym's), which obeys the task's settings."""
     if identifier not in REGISTRY:
         raise ValueError(f"unknown closed-API model '{identifier}'; "
                          f"known: {sorted(REGISTRY)}")

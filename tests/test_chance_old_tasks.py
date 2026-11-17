@@ -61,6 +61,5 @@ def test_a_task_without_a_chance_answer_is_refused_by_name(task):
 
 def test_a_probabilities_task_with_no_labels_anywhere_is_refused():
     facade = LegacyBenchmarkFacade(ChanceBaseline(), visual_degrees=8)
-    facade.start_task('probabilities', fitting_stimuli=_stimuli(['f1', 'f2'], identifier='chance-nolabels'))
     with pytest.raises(ValueError, match='labels'):
-        facade.look_at(_stimuli(['t1'], identifier='chance-nolabels-t'))
+        facade.start_task('probabilities', fitting_stimuli=_stimuli(['f1', 'f2'], identifier='chance-nolabels'))

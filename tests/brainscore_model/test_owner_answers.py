@@ -20,7 +20,7 @@ from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from tests.brainscore_model.test_answer_ownership import (
-    BLIP2, CAUSAL_LM, LEGACY_NO_INSTRUCTION, QWEN, REGISTERED_STATEMENTS, _model, _run)
+    BLIP2, CAUSAL_LM, QWEN, REGISTERED_STATEMENTS, _model, _run)
 from tests.brainscore_model.stage2_answers_baseline import RATINGS, SESSIONS, task_from
 from tests.brainscore_model.test_behavior_paths import FITTING, STIMULI
 
@@ -69,16 +69,6 @@ def test_a_readout_alone_gives_probabilities_natively():
     assert (record['method'], record['origin']) == ('readout', 'native')
 
 
-@pytest.mark.parametrize('parts', [QWEN, BLIP2], ids=['qwen', 'blip2'])
-def test_a_legacy_task_without_an_instruction_still_reaches_the_readout(parts):
-    """The facade sends a legacy task with no instruction; bare behavior keeps the fallback."""
-    calls = []
-    model = _model(*parts, owners=REGISTERED_STATEMENTS[parts], calls=calls)
-    behavior = _run(model, ['behavior'], LEGACY_NO_INSTRUCTION).collect('behavior')
-    assert behavior.attrs['response']['method'] == 'readout'
-    assert 'answer' not in calls and 'reply' not in calls
-
-
 def test_two_owners_for_choice_and_probabilities_are_refused_before_compute():
     calls = []
     owners = {'behavior': 'generation', 'behavior:rating': 'generation',
@@ -114,16 +104,13 @@ STATEMENTS = {
 
 
 # The sessions of SESSIONS each part set refuses (ExecutionNotFeasibleError); every
-# other session with a declared output must succeed. A legacy task without an
-# instruction needs a readout; a verbatim Choice needs a reply, or a likelihood that
-# owns the choice when log probabilities are requested.
+# other session with a declared output must succeed. A verbatim Choice needs a reply, or
+# a likelihood that owns the choice when log probabilities are requested.
 REFUSED_SESSIONS = {
-    ('answer',): {'legacy readout', 'log probabilities'},
-    ('answer', 'likelihood'): {'legacy readout', 'log probabilities'},
+    ('answer',): {'log probabilities'},
+    ('answer', 'likelihood'): {'log probabilities'},
     ('answer', 'behavioral_readout_layer'): {'log probabilities'},
     ('answer', 'likelihood', 'behavioral_readout_layer'): {'log probabilities'},
-    ('answer', 'reply'): {'legacy readout'},
-    ('answer', 'reply', 'likelihood'): {'legacy readout'},
 }
 
 
@@ -147,7 +134,7 @@ def test_each_answered_format_comes_from_its_owner(parts):
         session = _run(model, requested, task)
         for channel in requested:
             if channel == 'behavior':
-                continue                  # bare behavior: the legacy fallback stays
+                continue                  # bare behavior: the copy of the first format
             record = session.collect(channel).attrs['response']
             owner = (owners['behavior:log_probabilities'] if 'behavior:log_probabilities' in requested
                      else owners[channel])

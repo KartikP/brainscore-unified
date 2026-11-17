@@ -125,20 +125,6 @@ def test_readout_without_a_response_refuses_addressed_channels_before_fitting():
     assert model._behavioral.readout_classifier is None
 
 
-def test_plain_behavior_without_a_response_is_unchanged():
-    calls = []
-
-    def answer(stimulus_row, instruction, label_set):
-        calls.append(stimulus_row['stimulus_id'])
-        return label_set[0]
-
-    model = BrainScoreModel(identifier='toy-answer', answer=answer)
-    task = TaskContext(task_type='probabilities', instruction='Pick.', label_set=['cat', 'dog'])
-    session = _ask(model, task, ['behavior'])
-    assert session.collect('behavior').sizes['presentation'] == 4
-    assert len(calls) == 4
-
-
 class _RecordingExtractor(_CountingExtractor):
     """An extractor with record(layers, stimuli): it can record while a reply runs."""
 

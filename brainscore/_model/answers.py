@@ -2,8 +2,7 @@
 
 ``BehavioralReadout.respond`` gets the answers (replies, likelihood scores,
 readout values); the functions here package them: one-hot choices, ratings,
-texts, implied probabilities and reaction times, and a legacy task's one-hot
-rows over ``label_set``. An answer that cannot be read is kept with
+texts, implied probabilities and reaction times. An answer that cannot be read is kept with
 ``answer_valid=False`` (a NaN row for a choice or a number, rule 6.2); a trial
 with no reply keeps ``raw_answer`` None. Every answer carries its response
 record in ``attrs['response']`` (``brainscore_core.response_formats``); the
@@ -19,48 +18,6 @@ from brainscore_core.streaming import StreamEvent
 def _raw(values):
     """Raw responses as text; None stays None (no reply: a missing trial)."""
     return [None if value is None else str(value) for value in values]
-
-
-def legacy_one_hot(answers, label_set, stimuli):
-    """A legacy task's answers as one-hot rows over ``label_set``.
-
-    Each answer is the text an ``answer`` part generated; core's ``Choice.parse``
-    reads the label, as for a response task. A text it cannot read is recorded as
-    invalid (NaN row, ``answer_valid=False``) with a warning, as legacy behavioral
-    benchmarks expect. The raw answer is the text itself. The coordinates keep their
-    order: ``stimulus_id``, the other stimulus columns, ``raw_answer``, ``answer_valid``.
-    """
-    from brainscore_core.responses import Choice
-    from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
-    import warnings
-    label_to_idx = {label: i for i, label in enumerate(label_set)}
-    choice = Choice(list(label_set))
-    proba = np.zeros((len(stimuli), len(label_set)), dtype=np.float32)
-    raw_answers, valid = [], []
-    for i, reply in enumerate(answers):
-        raw_answers.append(str(reply))
-        label, _ = choice.parse(str(reply))
-        valid.append(label is not None)
-        if valid[-1]:
-            proba[i, label_to_idx[label]] = 1.0
-        else:
-            # No label is credited: a substituted label would bias accuracy toward it.
-            proba[i, :] = np.nan
-            warnings.warn(
-                f"answer function returned {reply!r}, which names no single label of "
-                f"label_set={list(label_set)}. The response is recorded as invalid "
-                f"(NaN probabilities, answer_valid=False)."
-            )
-    coords = {'stimulus_id': ('presentation', list(stimuli['stimulus_id'].values))}
-    for column in stimuli.columns:
-        if column != 'stimulus_id':
-            coords[column] = ('presentation', list(stimuli[column].values))
-    coords['raw_answer'] = ('presentation', raw_answers)
-    coords['answer_valid'] = ('presentation', valid)
-    return BehavioralAssembly(proba, coords={**coords, 'choice': list(label_set)},
-                              dims=['presentation', 'choice'],
-                              attrs={'response': response_record('behavior', 'generation',
-                                                                 parsed_by='model')})
 
 
 def _presentation(stimuli):
@@ -176,9 +133,9 @@ def score_rows(scores, row_labels):
 
 
 def implied_array(values, valid, stimuli, axis, record, raw=None):
-    """Probabilities per option (float32). ``valid`` is the validity of each row a
-    conversion returned (None for a readout's own rows); an invalid row is marked
-    so. ``raw`` is the source evidence of a derived answer (each source row as text).
+    """A likelihood's implied probabilities per option, float32 (the copy its reaction-time
+    link reads; the format keeps float64 when a subject gives it). ``valid`` is the validity
+    of each row the conversion returned (or None); an invalid row is marked so. ``raw`` is the source evidence of a derived answer (each source row as text).
     """
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
     coords = {**_presentation(stimuli), 'choice': list(axis)}
@@ -210,11 +167,21 @@ def conversion_errors(valid):
 
 
 def readout_probabilities(assembly, stimuli):
-    """A readout's probabilities, one row per stimulus, for ``behavior:probabilities``:
-    float32 (the readout's output type; the format keeps float64 when a subject gives
-    it), the stimulus coordinates and the readout's record."""
-    return implied_array(np.asarray(assembly.values), None, stimuli, list(assembly['choice'].values),
-                         response_record('behavior:probabilities', 'readout'))
+    """A readout's probabilities, one row per stimulus, for ``behavior:probabilities``: the
+    readout's own values and float type (float64), its presentation coordinates in their
+    order, then the stimulus columns it lacks, and the readout's record. The coordinates are
+    those of the readout's answer to an old probabilities task, which the legacy facade
+    hands to an old benchmark."""
+    from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
+    index = assembly.indexes.get('presentation')
+    names = [name for name in (getattr(index, 'names', None) or ()) if name and name != 'presentation']
+    names += [name for name, coord in assembly.coords.items()
+              if coord.dims == ('presentation',) and name != 'presentation' and name not in names]
+    coords = {name: ('presentation', list(assembly[name].values)) for name in names}
+    coords.update({name: column for name, column in _presentation(stimuli).items() if name not in coords})
+    coords['choice'] = list(assembly['choice'].values)
+    return BehavioralAssembly(np.asarray(assembly.values), coords=coords, dims=['presentation', 'choice'],
+                              attrs={'response': response_record('behavior:probabilities', 'readout')})
 
 
 def in_order(assembly, labels):

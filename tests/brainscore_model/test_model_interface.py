@@ -4,6 +4,7 @@ import warnings
 from brainscore import BrainScoreModel, UnitSelector, LayerSelector
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
+from brainscore_core.responses import Choice
 
 
 # -- Helpers ------------------------------------------------------------------
@@ -438,13 +439,9 @@ class TestBehavioralPathDispatch:
     def test_readout_only_model_without_fitting_stimuli_raises(self):
         """A model built without answer= reads out; without fitting_stimuli it errors clearly."""
         m = self._make_dual_path_model(has_generation=False)
-        ctx = TaskContext(
-            task_type='probabilities',
-            label_set=['real', 'pseudo'],
-            instruction="Is this real?",
-            fitting_stimuli=None,           # missing
-        )
-        with pytest.raises(ExecutionNotFeasibleError, match="readout needs TaskContext.fitting_stimuli"):
+        ctx = TaskContext(response=Choice(['real', 'pseudo']), instruction="Is this real?",
+                          fitting_stimuli=None)           # missing
+        with pytest.raises(ExecutionNotFeasibleError, match="readout needs .*fitting_stimuli"):
             m.start_task(ctx)
 
     def test_unknown_task_type_raises(self):
@@ -452,7 +449,7 @@ class TestBehavioralPathDispatch:
         m = self._make_dual_path_model()
         ctx = TaskContext(task_type='choice', label_set=['real', 'pseudo'],
                           instruction="Is this real?")
-        with pytest.raises(ValueError, match="Unknown task_type 'choice'"):
+        with pytest.raises(ValueError, match="task_type 'choice' states no response"):
             m.start_task(ctx)
 
     def test_passive_task_type_still_accepted(self):
@@ -462,8 +459,7 @@ class TestBehavioralPathDispatch:
     def test_no_dual_path_warning_without_readout_layer(self):
         """An answer-only model given fitting stimuli has one path, not two."""
         m = self._make_dual_path_model(has_readout=False)
-        ctx = TaskContext(task_type='probabilities', label_set=['real', 'pseudo'],
-                          instruction="Is this real?",
+        ctx = TaskContext(response=Choice(['real', 'pseudo']), instruction="Is this real?",
                           fitting_stimuli=self._fitting_stub())
         with warnings.catch_warnings():
             warnings.simplefilter('error', UserWarning)

@@ -44,13 +44,14 @@ NEURAL_ONLY = ('benchmarks/grid_game/benchmark.py', 'models/multimodal_av_blip2_
                'tools/auto_register.py', 'validation/benchmark_parity.py')
 # Declared behavior formats per library call, before the owner statements and now (a
 # likelihood part now also gives behavior:log_probabilities natively).
+# The Qwen2.5-VL builder states the probabilities part of each registration (not a literal
+# the scan reads; tests/test_qwen_probability_statements.py checks it); qwen3.6-27b has its parts.
 DECLARED = {
     'model_helpers/causal_lm.py': ({B, CH, P, RA, RT, TE}, {CH, P, LP, RA, RT, TE}),
     'models/api_closed/model.py': ({B, CH, RA, TE}, {B, CH, RA, TE}),
     'models/blip2_opt_2_7b/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
     'models/clip_vit_b_32/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
     'models/gpt2_small/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
-    'models/qwen25_vl_3b/model.py': ({B, CH, P, RA, RT, TE}, {B, CH, P, LP, RA, RT, TE}),
     'models/qwen36_27b/model.py': ({B, CH, P, RA, RT, TE}, {B, CH, P, LP, RA, RT, TE}),
     'models/random_vit_b_32/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
     'tools/rajalingham2018_2afc/score_2afc.py': ({B, CH}, {B, CH}),
@@ -76,7 +77,6 @@ COMPATIBLE = {
     'models/blip2_opt_2_7b/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
     'models/clip_vit_b_32/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
     'models/gpt2_small/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
-    'models/qwen25_vl_3b/model.py': (ALL, ALL),
     'models/qwen36_27b/model.py': (ALL, ALL),
     'models/random_vit_b_32/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
     'tools/rajalingham2018_2afc/score_2afc.py': (ALL - {'EWoK logprobs', 'CogGym'},
@@ -166,12 +166,7 @@ def test_the_matrix_changes_only_where_the_declarations_change():
 
 def test_no_pair_that_answers_today_becomes_not_applicable():
     """Each newly N/A pair was an error of the run before: no part could answer its task.
-    A readout without a choice statement (no registration) could not answer EWoK choice either."""
-    legacy = TaskContext(task_type='probabilities', instruction='Which?', label_set=['cat', 'dog'],
-                         fitting_stimuli=FITTING)
-    causal = _stand_in(['reply', 'likelihood'], {P: ('likelihood', 'softmax')})
-    with pytest.raises(ExecutionNotFeasibleError, match='Paths tried'):
-        causal._behavioral._choose_path(legacy)            # ROAR, dyslexia, facade: bare behavior
+    A readout without a choice statement (no registration) could not answer EWoK choice."""
     ewok_choice = TaskContext(response=Choice(labels=('1', '2'), verbatim=True), trial_memory='none')
     with pytest.raises(ExecutionNotFeasibleError, match='Paths tried'):
         _stand_in(['behavioral_readout_layer'], {})._behavioral._choose_path(ewok_choice)
@@ -242,8 +237,7 @@ def test_session_support_uses_the_declared_set():
 
 # One session per format that requests that format alone.
 SESSIONS = {
-    B: TaskContext(task_type='probabilities', instruction='Which?', label_set=['cat', 'dog'],
-                   fitting_stimuli=FITTING),
+    B: TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING),
     CH: TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING),
     P: TaskContext(instruction='Which?', response=Choice(['cat', 'dog']),
                    fitting_stimuli=FITTING),

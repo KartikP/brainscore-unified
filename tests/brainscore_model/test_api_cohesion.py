@@ -195,9 +195,9 @@ def test_generation_inputs_need_no_placeholder_extractors():
     from brainscore_core.streaming_helpers import behavioral_response
     stimuli = StimulusSet({'stimulus_id': ['s0'], 'sentence': ['hello']})
     stimuli.identifier = 'output-only'
-    result = behavioral_response(model, stimuli, TaskContext(
-        task_type='probabilities', instruction='Choose yes.', label_set=['yes', 'no'],
-    ))
+    from brainscore_core.responses import Choice
+    result = behavioral_response(model, stimuli, TaskContext(instruction='Choose yes.',
+                                                             response=Choice(['yes', 'no'])))
     assert result.values.tolist() == [[1.0, 0.0]]
     # Without a session, process() has no extractor to answer with.
     with pytest.raises(NotImplementedError, match='no activation extractor'):
@@ -209,39 +209,38 @@ def test_the_model_parts_choose_the_behavioral_path(monkeypatch, parts):
     """The path is a property of the model: a model built without answer= uses its readout."""
     import warnings
     from brainscore_core.contract import TaskContext
+    from brainscore_core.responses import Choice
     answer = {'answer': lambda **kwargs: 'yes'} if parts == 'answer and readout' else {}
     model = BrainScoreModel(
         identifier='dual-path', in_channels={'text'}, behavioral_readout_layer='layer',
         extractor={'text': Extractor()}, **answer,
-        **({'capability_config': {'behavior-sessions': {'behavior': 'generation'}}} if answer else {}),
+        capability_config={'behavior-sessions': {'behavior': 'generation'} if answer
+                           else {'behavior:choice': ('readout', 'argmax')}},
     )
     fitted = []
     monkeypatch.setattr(model._behavioral, 'fit_behavioral_readout', lambda stimuli: fitted.append(stimuli))
     stimuli = StimulusSet({'sentence': ['hello']})
     with warnings.catch_warnings(record=True) as notices:
         warnings.simplefilter('always')
-        model.start_task(TaskContext(
-            task_type='probabilities', instruction='Choose yes.', label_set=['yes'],
-            fitting_stimuli=stimuli,
-        ))
+        model.start_task(TaskContext(instruction='Choose yes.', response=Choice(['yes', 'no']),
+                                     fitting_stimuli=stimuli))
     assert not notices   # the stated owner answers; no warning (rule 4.11)
-    assert bool(fitted) == (not answer)
+    assert fitted        # a direct start_task fits the readout, which gives the probabilities in both
     assert model._behavioral.response_path == ('generation' if answer else 'readout')
 
 
 def test_named_readout_layer_without_extractor_is_not_a_second_path():
     import warnings
     from brainscore_core.contract import TaskContext
+    from brainscore_core.responses import Choice
     model = BrainScoreModel(
         identifier='answer-only', in_channels={'text'},
         answer=lambda **kwargs: 'yes', behavioral_readout_layer='features',
     )
     with warnings.catch_warnings():
         warnings.simplefilter('error', UserWarning)
-        model.start_task(TaskContext(
-            task_type='probabilities', instruction='Choose yes.', label_set=['yes'],
-            fitting_stimuli=StimulusSet({'sentence': ['hello']}),
-        ))
+        model.start_task(TaskContext(instruction='Choose yes.', response=Choice(['yes', 'no']),
+                                     fitting_stimuli=StimulusSet({'sentence': ['hello']})))
     assert model._behavioral.response_path == 'generation'
 
 

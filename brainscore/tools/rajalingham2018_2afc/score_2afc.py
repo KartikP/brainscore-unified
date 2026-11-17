@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 
 from brainscore_core.contract import TaskContext
+from brainscore_core.responses import Choice
 from brainscore_core.streaming_helpers import behavioral_response
 from brainscore.presentation import response_stimulus_ids
 
@@ -108,12 +109,12 @@ def _answering_subject(identifier, choose: Callable[[Any], str]):
 def run_trials(subject, stimuli, instruction):
     """Run the trials through ``participate`` and return one row per trial.
 
-    The subject answers each trial with LEFT or RIGHT (a legacy task's one-hot
-    answer over the two labels). The answers are joined to the benchmark's own
+    The subject answers each trial with LEFT or RIGHT (a Choice between the two labels,
+    one-hot over them). The answers are joined to the benchmark's own
     trial table by ``stimulus_id``; the chosen object and the trial metadata
     are read from that table, not from the subject's response.
     """
-    task = TaskContext(task_type='probabilities', label_set=LABELS, instruction=instruction)
+    task = TaskContext(response=Choice(LABELS), instruction=instruction)
     assembly = behavioral_response(subject, stimuli, task)
     answered = response_stimulus_ids(assembly, stimuli['stimulus_id'])
     table = stimuli.set_index('stimulus_id').loc[[str(s) for s in answered]]

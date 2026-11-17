@@ -30,7 +30,8 @@ from PIL import Image
 from brainscore_core.contract import TaskContext
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-from brainscore_core.streaming_helpers import behavioral_response, neural_response
+from brainscore_core.responses import Choice
+from brainscore_core.streaming_helpers import behavioral_response, neural_response, stimulus_session
 
 pytestmark = pytest.mark.unit
 
@@ -340,13 +341,16 @@ def test_readout_reads_the_readout_layer(registration, tmp_path):
     identifier, module, model = registration
     fitting = _images(tmp_path, 'fit', [4, 5, 6, 4, 5, 6], labels=['dog', 'cat'] * 3)
     scoring = _images(tmp_path, 'score', [5, 4, 6])
-    task = TaskContext(task_type='probabilities', fitting_stimuli=fitting)
-    via_session = behavioral_response(model, scoring, task)
+    task = TaskContext(response=Choice(['dog', 'cat']), fitting_stimuli=fitting)
+    session = stimulus_session(scoring, ['behavior:probabilities'], task)
+    model.participate(session)
+    via_session = session.collect('behavior:probabilities')
     _call_logs()
     model.start_task(task)
-    direct = model._behavioral.predict_probabilities(scoring)
+    behavioral = model._behavioral
+    direct = behavioral.readout_classifier.predict_proba(behavioral.extract_behavioral_features(scoring))
     log = _call_logs()
-    _assert_same(via_session, direct)
+    np.testing.assert_array_equal(via_session.values, direct.values)
     readout = {'clip-vit-b-32': 'encoder.layers.10', 'qwen2.5-vl-3b': 'blocks.28'}[identifier]
     assert all(layers == (readout,) for calls in log for _, layers in calls)
 
@@ -356,12 +360,8 @@ def test_qwen_answer_path(build, tmp_path):
     qwen = model._model
     processor = next(made for kind, _, _, made in module.loads if kind == 'AutoProcessor')
     stimuli = _images(tmp_path, 'word', [4, 5, 6])
-    task = TaskContext(task_type='label', instruction='Is this a real word?',
-                       label_set=['real', 'pseudo'])
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter('always')
-        output = behavioral_response(model, stimuli, task)
-    assert any('unsure' in str(w.message) for w in caught)
+    task = TaskContext(instruction='Is this a real word?', response=Choice(['real', 'pseudo']))
+    output = behavioral_response(model, stimuli, task)
     assert qwen.generate_calls == [{'device': 'fake-device', 'max_new_tokens': 8, 'do_sample': False}] * 3
     assert processor.prompts == ['Is this a real word? Answer with exactly one of: real, pseudo.'] * 3
     # exact match -> 'real', word match -> 'pseudo', unparseable -> invalid

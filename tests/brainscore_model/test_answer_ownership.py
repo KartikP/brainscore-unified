@@ -193,31 +193,9 @@ def test_several_parts_that_do_not_own_the_output_are_refused_before_compute():
     assert calls == []
 
 
-LEGACY_NO_INSTRUCTION = TaskContext(task_type='probabilities', label_set=['cat', 'dog'],
-                                    fitting_stimuli=FITTING)
 QWEN = ('answer', 'reply', 'likelihood', 'behavioral_readout_layer')
 BLIP2 = ('answer', 'behavioral_readout_layer')
 CAUSAL_LM = ('reply', 'likelihood')
-
-# The cases where a registered model answers bare behavior through a part that does
-# not own it, because the task form excludes the owner and exactly one other part
-# can serve it: a legacy task without an instruction (as the facade sends) goes to
-# the readout. Only bare behavior keeps this fallback; a format channel is
-# answered by its owner or refused.
-TASK_FORM_CASES = {
-    'qwen legacy without instruction': (QWEN, LEGACY_NO_INSTRUCTION, ['behavior'], 'readout'),
-    'blip2 legacy without instruction': (BLIP2, LEGACY_NO_INSTRUCTION, ['behavior'], 'readout'),
-}
-
-
-@pytest.mark.parametrize('case', sorted(TASK_FORM_CASES))
-def test_the_one_part_that_serves_a_task_form_answers_for_a_registered_model(case):
-    parts, task, outputs, source = TASK_FORM_CASES[case]
-    owners = REGISTERED_STATEMENTS[parts]
-    assert owners[outputs[0]] != source                  # not the owner of the output
-    session = _run(_model(*parts, owners=owners), outputs, task)
-    assert session.collect(outputs[0]).attrs['response']['method'] == source
-
 
 # --- the registered part sets ------------------------------------------------
 
@@ -232,6 +210,10 @@ REGISTERED_STATEMENTS = {
     CAUSAL_LM: {'behavior:probabilities': ('likelihood', 'softmax')},
     ('answer', 'reply'): {},
 }
+# The Qwen family states one of two parts for the probabilities (rule 4.11): the readout
+# (qwen2.5-vl-3b, -7b, -3b-bf16, qwen3.6-27b) or the likelihood (the -vwfa variants), the
+# statement above.
+QWEN_READOUT_STATEMENT = {**REGISTERED_STATEMENTS[QWEN], 'behavior:probabilities': 'readout'}
 API = ('answer', 'reply')
 READOUT = ('behavioral_readout_layer',)
 
@@ -324,11 +306,13 @@ def test_every_registration_states_the_owners_of_the_table():
     set is checked by the constructor only. Not covered: keywords that arrive through
     ``**`` expansion (``EXPANDED``), a ``capability_config`` that is not a literal, and
     models built outside the library; the constructor checks those."""
-    registrations, expanded, _ = _registrations()
+    registrations, expanded, not_literal = _registrations()
     assert set(EXPANDED) <= expanded, 'a call listed in EXPANDED no longer expands keywords: remove its line'
+    # The Qwen2.5-VL builder states the probabilities part its registration passes (not a literal).
     assert {'models/qwen25_vl_3b/model.py', 'models/qwen36_27b/model.py', 'models/blip2_opt_2_7b/model.py',
-            'model_helpers/causal_lm.py'} <= {r[0] for r in registrations}
+            'model_helpers/causal_lm.py'} <= {r[0] for r in registrations} | not_literal
     for where, wired, stated in registrations:
         if tuple(wired) in LIBRARY_STATEMENTS:
-            assert stated == LIBRARY_STATEMENTS[tuple(wired)], where
+            allowed = [LIBRARY_STATEMENTS[tuple(wired)]] + ([QWEN_READOUT_STATEMENT] if tuple(wired) == QWEN else [])
+            assert stated in allowed, where
         _model(*wired, owners=stated)                       # construction accepts it

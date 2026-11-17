@@ -4,7 +4,6 @@ import pytest
 
 from brainscore.brainscore_model import BrainScoreModel
 from brainscore_core.legacy_facade import LegacyBenchmarkFacade
-from brainscore_core.contract import TaskContext
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
@@ -14,10 +13,9 @@ def _look_at(replies):
     model = BrainScoreModel(identifier='answers', in_channels={'text'},
                             answer=lambda stimulus_row, instruction, label_set:
                             lookup[stimulus_row.stimulus_id])
-    # A legacy behavioral benchmark reaches the model through the facade.
+    # A legacy label benchmark reaches the model through the facade (a choice among the labels).
     facade = LegacyBenchmarkFacade(model)
-    facade.start_task(TaskContext(task_type='probabilities', instruction='choose',
-                                  label_set=['cat', 'dog']))
+    facade.start_task('label', ['cat', 'dog'])
     return facade.look_at(StimulusSet({'sentence': ['x'] * len(ids), 'stimulus_id': ids}))
 
 
@@ -26,16 +24,14 @@ def test_invalid_answers_become_seeded_valid_labels():
     with pytest.warns(UserWarning, match='random valid labels'):
         first = _look_at(replies)
     second = _look_at(replies)
-    assert not np.isnan(first.values).any()
-    np.testing.assert_array_equal(first.values.sum(axis=1), 1)  # every row is one label
-    np.testing.assert_array_equal(first.values, second.values)  # seeded, so repeatable
+    assert set(first.values[0]) <= {'cat', 'dog'}                 # every row is one label
+    assert list(first.values[0]) == list(second.values[0])        # seeded, so repeatable
     assert first.attrs['n_invalid_answers'] == 1
-    assert list(first['answer_valid'].values) == [True] * 19 + [False]
 
 
 def test_valid_answers_pass_through_unchanged():
     result = _look_at(['cat', 'dog'])
-    np.testing.assert_array_equal(result.values, [[1, 0], [0, 1]])
+    assert list(result.values[0]) == ['cat', 'dog']
     assert 'n_invalid_answers' not in result.attrs
 
 

@@ -13,6 +13,7 @@ from brainscore.brainscore_model import BrainScoreModel
 from brainscore_core.compatibility import CompatibilityError, ExecutionNotFeasibleError
 from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
 from brainscore_core.contract import TaskContext
+from brainscore_core.responses import Choice
 from brainscore.selection import LayerSelector
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
@@ -24,8 +25,7 @@ pytestmark = pytest.mark.unit
 
 STIMULI = StimulusSet({'stimulus_id': ['a', 'b', 'c'], 'sentence': ['x', 'yy', 'zzz']})
 STIMULI.identifier = 'task-protocol-toy'
-TASK = TaskContext(task_type='label', label_set=['short', 'long'],
-                   instruction='Is it long?')
+TASK = TaskContext(response=Choice(['short', 'long']), instruction='Is it long?')
 
 
 class Net:
@@ -156,7 +156,7 @@ def test_recording_is_labelled_with_how_it_was_made(tmp_path):
     result = Experiment(subject=_subject(Net()), protocol=TaskProtocol(STIMULI, TASK),
                         tools=[RecordNeural(['A'])], output_dir=tmp_path / 'run').run()
     recording = result.neural('A').attrs['recording']
-    assert recording['task_type'] == 'label' and recording['forward_pass'] == 'prompt'
+    assert recording['task_type'] == 'choice' and recording['forward_pass'] == 'prompt'
     with pytest.raises(FileNotFoundError, match='attach RecordBehavior'):
         result.behavior()                                  # not recorded, not requested
 
@@ -584,13 +584,13 @@ def test_channel_errors_explain_declarations_before_resets(tmp_path, mistake, ex
                              if mistake == 'required' else {'text'},
                              required_channels={'vision:image'} if mistake == 'required' else set(),
                              reply=lambda prompt: calls.append('inference') or 'yes',
-                             # answer= answers the legacy task, so bare behavior is declared.
+                             # answer= gives the choice, so bare behavior is declared.
                              answer=lambda stimulus_row, instruction, label_set:
                              calls.append('inference') or 'yes')
     subject.reset = lambda: calls.append('reset')
     stimuli = (StimulusSet({'stimulus_id': ['x'], 'image_path': ['unused.png']})
                if mistake == 'input' else STIMULI)
-    task = TaskContext(task_type='label', label_set=['yes', 'no'])
+    task = TaskContext(response=Choice(['yes', 'no']))
     experiment = Experiment(subject=subject, protocol=TaskProtocol(stimuli, task),
                             tools=[RecordNeural(['IT'])] if mistake == 'output' else [RecordBehavior()],
                             output_dir=tmp_path / 'bad')

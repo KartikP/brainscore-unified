@@ -29,10 +29,6 @@ RATINGS.identifier = 'behavior-paths-ratings'
 CHOICE_FORM = {'kind': 'choice', 'labels': 'shared', 'reaction_time': None,
                'verbatim': False, 'fitting': True}
 SESSIONS = {   # task descriptions and the outputs the session requests
-    'legacy answer': ({'kind': 'legacy', 'instruction': True, 'label_set': ['cat', 'dog'], 'fitting': True},
-                      ['behavior']),
-    'legacy readout': ({'kind': 'legacy', 'instruction': False, 'label_set': ['cat', 'dog'], 'fitting': True},
-                       ['behavior']),
     'choice': (dict(CHOICE_FORM), ['behavior:choice', 'behavior:probabilities']),
     'log probabilities': (dict(CHOICE_FORM, verbatim=True, fitting=False),
                           ['behavior:choice', 'behavior:log_probabilities']),
@@ -46,10 +42,6 @@ def task_from(description, fitting_stimuli):
     from brainscore_core.responses import Choice, Scale
     fitting = fitting_stimuli if description['fitting'] else None
     kind = description['kind']
-    if kind == 'legacy':
-        return TaskContext(task_type='probabilities', label_set=description['label_set'],
-                           instruction='Which?' if description['instruction'] else None,
-                           fitting_stimuli=fitting)
     if kind == 'scale':
         return TaskContext(instruction='How much?', response=Scale(1, 7), fitting_stimuli=fitting)
     choice = Choice(['cat', 'dog'] if description['labels'] == 'shared' else 'options',

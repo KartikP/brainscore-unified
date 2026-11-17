@@ -94,7 +94,7 @@
        "presentation",
        "choice"
       ],
-      "dtype": "float32",
+      "dtype": "float64",
       "presentation": {
        "label": [
         "cat",
@@ -102,9 +102,9 @@
         "cat"
        ],
        "raw_answer": [
-        "[0.5019920468330383, 0.49800798296928406]",
-        "[0.49800798296928406, 0.5019920468330383]",
-        "[0.5019920468330383, 0.49800798296928406]"
+        "[0.501992021332893, 0.498007978667107]",
+        "[0.498007978667107, 0.501992021332893]",
+        "[0.501992021332893, 0.498007978667107]"
        ],
        "response_reason": [
         "",
@@ -142,12 +142,12 @@
        2
       ],
       "values": [
-       "f64:000000a05110e03f",
-       "f64:000000e05cdfdf3f",
-       "f64:000000e05cdfdf3f",
-       "f64:000000a05110e03f",
-       "f64:000000a05110e03f",
-       "f64:000000e05cdfdf3f"
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f",
+       "f64:346d61db5cdfdf3f",
+       "f64:66494f925110e03f",
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f"
       ]
      }
     }
@@ -238,7 +238,7 @@
        "presentation",
        "choice"
       ],
-      "dtype": "float32",
+      "dtype": "float64",
       "presentation": {
        "label": [
         "cat",
@@ -246,9 +246,9 @@
         "cat"
        ],
        "raw_answer": [
-        "[0.5019920468330383, 0.49800798296928406]",
-        "[0.49800798296928406, 0.5019920468330383]",
-        "[0.5019920468330383, 0.49800798296928406]"
+        "[0.501992021332893, 0.498007978667107]",
+        "[0.498007978667107, 0.501992021332893]",
+        "[0.501992021332893, 0.498007978667107]"
        ],
        "response_reason": [
         "",
@@ -286,12 +286,12 @@
        2
       ],
       "values": [
-       "f64:000000a05110e03f",
-       "f64:000000e05cdfdf3f",
-       "f64:000000e05cdfdf3f",
-       "f64:000000a05110e03f",
-       "f64:000000a05110e03f",
-       "f64:000000e05cdfdf3f"
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f",
+       "f64:346d61db5cdfdf3f",
+       "f64:66494f925110e03f",
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f"
       ]
      },
      "behavior:rt": {
@@ -452,7 +452,7 @@
        "presentation",
        "choice"
       ],
-      "dtype": "float32",
+      "dtype": "float64",
       "presentation": {
        "label": [
         "cat",
@@ -460,9 +460,9 @@
         "cat"
        ],
        "raw_answer": [
-        "[0.5019920468330383, 0.49800798296928406]",
-        "[0.49800798296928406, 0.5019920468330383]",
-        "[0.5019920468330383, 0.49800798296928406]"
+        "[0.501992021332893, 0.498007978667107]",
+        "[0.498007978667107, 0.501992021332893]",
+        "[0.501992021332893, 0.498007978667107]"
        ],
        "response_reason": [
         "",
@@ -500,12 +500,12 @@
        2
       ],
       "values": [
-       "f64:000000a05110e03f",
-       "f64:000000e05cdfdf3f",
-       "f64:000000e05cdfdf3f",
-       "f64:000000a05110e03f",
-       "f64:000000a05110e03f",
-       "f64:000000e05cdfdf3f"
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f",
+       "f64:346d61db5cdfdf3f",
+       "f64:66494f925110e03f",
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f"
       ]
      },
      "behavior:rt": {
@@ -592,119 +592,6 @@
      "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:log_probabilities'] in one session: it does not produce ['behavior:log_probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:probabilities', 'behavior:rating', 'behavior:rt']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
     ]
    },
-   "legacy answer": {
-    "outputs": {
-     "behavior": {
-      "choice": [
-       "cat",
-       "dog"
-      ],
-      "dims": [
-       "presentation",
-       "choice"
-      ],
-      "dtype": "float32",
-      "presentation": {
-       "answer_valid": [
-        true,
-        true,
-        true
-       ],
-       "label": [
-        "cat",
-        "dog",
-        "cat"
-       ],
-       "raw_answer": [
-        "cat",
-        "cat",
-        "cat"
-       ],
-       "sentence": [
-        "real x",
-        "fake y",
-        "real z"
-       ],
-       "stimulus_id": [
-        "a",
-        "b",
-        "c"
-       ]
-      },
-      "response": {
-       "category": "behavioral",
-       "conversion": null,
-       "format": "behavior",
-       "method": "generation",
-       "origin": "native",
-       "parameters": {},
-       "parsed_by": "model",
-       "source_format": null
-      },
-      "shape": [
-       3,
-       2
-      ],
-      "values": [
-       "f64:000000000000f03f",
-       "f64:0000000000000000",
-       "f64:000000000000f03f",
-       "f64:0000000000000000",
-       "f64:000000000000f03f",
-       "f64:0000000000000000"
-      ]
-     }
-    }
-   },
-   "legacy readout": {
-    "outputs": {
-     "behavior": {
-      "choice": [
-       "cat",
-       "dog"
-      ],
-      "dims": [
-       "presentation",
-       "choice"
-      ],
-      "dtype": "float64",
-      "presentation": {
-       "sentence": [
-        "real x",
-        "fake y",
-        "real z"
-       ],
-       "stimulus_id": [
-        "a",
-        "b",
-        "c"
-       ]
-      },
-      "response": {
-       "category": "behavioral",
-       "conversion": null,
-       "format": "behavior",
-       "method": "readout",
-       "origin": "native",
-       "parameters": {},
-       "parsed_by": null,
-       "source_format": null
-      },
-      "shape": [
-       3,
-       2
-      ],
-      "values": [
-       "f64:66494f925110e03f",
-       "f64:346d61db5cdfdf3f",
-       "f64:346d61db5cdfdf3f",
-       "f64:66494f925110e03f",
-       "f64:66494f925110e03f",
-       "f64:346d61db5cdfdf3f"
-      ]
-     }
-    }
-   },
    "log probabilities": {
     "error": [
      "ExecutionNotFeasibleError",
@@ -722,7 +609,7 @@
        "presentation",
        "choice"
       ],
-      "dtype": "float32",
+      "dtype": "float64",
       "presentation": {
        "label": [
         "cat",
@@ -730,9 +617,9 @@
         "cat"
        ],
        "raw_answer": [
-        "[0.5019920468330383, 0.49800798296928406]",
-        "[0.49800798296928406, 0.5019920468330383]",
-        "[0.5019920468330383, 0.49800798296928406]"
+        "[0.501992021332893, 0.498007978667107]",
+        "[0.498007978667107, 0.501992021332893]",
+        "[0.501992021332893, 0.498007978667107]"
        ],
        "response_reason": [
         "",
@@ -770,12 +657,12 @@
        2
       ],
       "values": [
-       "f64:000000a05110e03f",
-       "f64:000000e05cdfdf3f",
-       "f64:000000e05cdfdf3f",
-       "f64:000000a05110e03f",
-       "f64:000000a05110e03f",
-       "f64:000000e05cdfdf3f"
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f",
+       "f64:346d61db5cdfdf3f",
+       "f64:66494f925110e03f",
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f"
       ]
      }
     }
@@ -1042,76 +929,6 @@
     "error": [
      "ExecutionNotFeasibleError",
      "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:log_probabilities'] in one session: it does not produce ['behavior:log_probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
-    ]
-   },
-   "legacy answer": {
-    "outputs": {
-     "behavior": {
-      "choice": [
-       "cat",
-       "dog"
-      ],
-      "dims": [
-       "presentation",
-       "choice"
-      ],
-      "dtype": "float32",
-      "presentation": {
-       "answer_valid": [
-        true,
-        true,
-        true
-       ],
-       "label": [
-        "cat",
-        "dog",
-        "cat"
-       ],
-       "raw_answer": [
-        "cat",
-        "cat",
-        "cat"
-       ],
-       "sentence": [
-        "real x",
-        "fake y",
-        "real z"
-       ],
-       "stimulus_id": [
-        "a",
-        "b",
-        "c"
-       ]
-      },
-      "response": {
-       "category": "behavioral",
-       "conversion": null,
-       "format": "behavior",
-       "method": "generation",
-       "origin": "native",
-       "parameters": {},
-       "parsed_by": "model",
-       "source_format": null
-      },
-      "shape": [
-       3,
-       2
-      ],
-      "values": [
-       "f64:000000000000f03f",
-       "f64:0000000000000000",
-       "f64:000000000000f03f",
-       "f64:0000000000000000",
-       "f64:000000000000f03f",
-       "f64:0000000000000000"
-      ]
-     }
-    }
-   },
-   "legacy readout": {
-    "error": [
-     "ExecutionNotFeasibleError",
-     "Subject 'owned' cannot run the behavioral task task_type='probabilities'. Paths tried: generation needs answer=, TaskContext.instruction and TaskContext.label_set; likelihood needs a TaskContext(response=Choice(...)); a legacy task has no likelihood path; readout needs TaskContext.fitting_stimuli (and behavioral_readout_layer=)"
     ]
    },
    "log probabilities": {
@@ -2063,119 +1880,6 @@
      }
     }
    },
-   "legacy answer": {
-    "outputs": {
-     "behavior": {
-      "choice": [
-       "cat",
-       "dog"
-      ],
-      "dims": [
-       "presentation",
-       "choice"
-      ],
-      "dtype": "float32",
-      "presentation": {
-       "answer_valid": [
-        true,
-        true,
-        true
-       ],
-       "label": [
-        "cat",
-        "dog",
-        "cat"
-       ],
-       "raw_answer": [
-        "cat",
-        "cat",
-        "cat"
-       ],
-       "sentence": [
-        "real x",
-        "fake y",
-        "real z"
-       ],
-       "stimulus_id": [
-        "a",
-        "b",
-        "c"
-       ]
-      },
-      "response": {
-       "category": "behavioral",
-       "conversion": null,
-       "format": "behavior",
-       "method": "generation",
-       "origin": "native",
-       "parameters": {},
-       "parsed_by": "model",
-       "source_format": null
-      },
-      "shape": [
-       3,
-       2
-      ],
-      "values": [
-       "f64:000000000000f03f",
-       "f64:0000000000000000",
-       "f64:000000000000f03f",
-       "f64:0000000000000000",
-       "f64:000000000000f03f",
-       "f64:0000000000000000"
-      ]
-     }
-    }
-   },
-   "legacy readout": {
-    "outputs": {
-     "behavior": {
-      "choice": [
-       "cat",
-       "dog"
-      ],
-      "dims": [
-       "presentation",
-       "choice"
-      ],
-      "dtype": "float64",
-      "presentation": {
-       "sentence": [
-        "real x",
-        "fake y",
-        "real z"
-       ],
-       "stimulus_id": [
-        "a",
-        "b",
-        "c"
-       ]
-      },
-      "response": {
-       "category": "behavioral",
-       "conversion": null,
-       "format": "behavior",
-       "method": "readout",
-       "origin": "native",
-       "parameters": {},
-       "parsed_by": null,
-       "source_format": null
-      },
-      "shape": [
-       3,
-       2
-      ],
-      "values": [
-       "f64:66494f925110e03f",
-       "f64:346d61db5cdfdf3f",
-       "f64:346d61db5cdfdf3f",
-       "f64:66494f925110e03f",
-       "f64:66494f925110e03f",
-       "f64:346d61db5cdfdf3f"
-      ]
-     }
-    }
-   },
    "log probabilities": {
     "outputs": {
      "behavior:choice": {
@@ -2668,7 +2372,7 @@
        "presentation",
        "choice"
       ],
-      "dtype": "float32",
+      "dtype": "float64",
       "presentation": {
        "label": [
         "cat",
@@ -2676,9 +2380,9 @@
         "cat"
        ],
        "raw_answer": [
-        "[0.5019920468330383, 0.49800798296928406]",
-        "[0.49800798296928406, 0.5019920468330383]",
-        "[0.5019920468330383, 0.49800798296928406]"
+        "[0.501992021332893, 0.498007978667107]",
+        "[0.498007978667107, 0.501992021332893]",
+        "[0.501992021332893, 0.498007978667107]"
        ],
        "response_reason": [
         "",
@@ -2716,12 +2420,12 @@
        2
       ],
       "values": [
-       "f64:000000a05110e03f",
-       "f64:000000e05cdfdf3f",
-       "f64:000000e05cdfdf3f",
-       "f64:000000a05110e03f",
-       "f64:000000a05110e03f",
-       "f64:000000e05cdfdf3f"
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f",
+       "f64:346d61db5cdfdf3f",
+       "f64:66494f925110e03f",
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f"
       ]
      }
     }
@@ -2815,7 +2519,7 @@
        "presentation",
        "choice"
       ],
-      "dtype": "float32",
+      "dtype": "float64",
       "presentation": {
        "label": [
         "cat",
@@ -2823,9 +2527,9 @@
         "cat"
        ],
        "raw_answer": [
-        "[0.5019920468330383, 0.49800798296928406]",
-        "[0.49800798296928406, 0.5019920468330383]",
-        "[0.5019920468330383, 0.49800798296928406]"
+        "[0.501992021332893, 0.498007978667107]",
+        "[0.498007978667107, 0.501992021332893]",
+        "[0.501992021332893, 0.498007978667107]"
        ],
        "response_reason": [
         "",
@@ -2863,12 +2567,12 @@
        2
       ],
       "values": [
-       "f64:000000a05110e03f",
-       "f64:000000e05cdfdf3f",
-       "f64:000000e05cdfdf3f",
-       "f64:000000a05110e03f",
-       "f64:000000a05110e03f",
-       "f64:000000e05cdfdf3f"
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f",
+       "f64:346d61db5cdfdf3f",
+       "f64:66494f925110e03f",
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f"
       ]
      },
      "behavior:rt": {
@@ -3032,7 +2736,7 @@
        "presentation",
        "choice"
       ],
-      "dtype": "float32",
+      "dtype": "float64",
       "presentation": {
        "label": [
         "cat",
@@ -3040,9 +2744,9 @@
         "cat"
        ],
        "raw_answer": [
-        "[0.5019920468330383, 0.49800798296928406]",
-        "[0.49800798296928406, 0.5019920468330383]",
-        "[0.5019920468330383, 0.49800798296928406]"
+        "[0.501992021332893, 0.498007978667107]",
+        "[0.498007978667107, 0.501992021332893]",
+        "[0.501992021332893, 0.498007978667107]"
        ],
        "response_reason": [
         "",
@@ -3080,12 +2784,12 @@
        2
       ],
       "values": [
-       "f64:000000a05110e03f",
-       "f64:000000e05cdfdf3f",
-       "f64:000000e05cdfdf3f",
-       "f64:000000a05110e03f",
-       "f64:000000a05110e03f",
-       "f64:000000e05cdfdf3f"
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f",
+       "f64:346d61db5cdfdf3f",
+       "f64:66494f925110e03f",
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f"
       ]
      },
      "behavior:rt": {
@@ -3172,104 +2876,6 @@
      "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:log_probabilities'] in one session: it does not produce ['behavior:log_probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:probabilities', 'behavior:rating', 'behavior:rt']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
     ]
    },
-   "legacy answer": {
-    "outputs": {
-     "behavior": {
-      "choice": [
-       "cat",
-       "dog"
-      ],
-      "dims": [
-       "presentation",
-       "choice"
-      ],
-      "dtype": "float64",
-      "presentation": {
-       "sentence": [
-        "real x",
-        "fake y",
-        "real z"
-       ],
-       "stimulus_id": [
-        "a",
-        "b",
-        "c"
-       ]
-      },
-      "response": {
-       "category": "behavioral",
-       "conversion": null,
-       "format": "behavior",
-       "method": "readout",
-       "origin": "native",
-       "parameters": {},
-       "parsed_by": null,
-       "source_format": null
-      },
-      "shape": [
-       3,
-       2
-      ],
-      "values": [
-       "f64:66494f925110e03f",
-       "f64:346d61db5cdfdf3f",
-       "f64:346d61db5cdfdf3f",
-       "f64:66494f925110e03f",
-       "f64:66494f925110e03f",
-       "f64:346d61db5cdfdf3f"
-      ]
-     }
-    }
-   },
-   "legacy readout": {
-    "outputs": {
-     "behavior": {
-      "choice": [
-       "cat",
-       "dog"
-      ],
-      "dims": [
-       "presentation",
-       "choice"
-      ],
-      "dtype": "float64",
-      "presentation": {
-       "sentence": [
-        "real x",
-        "fake y",
-        "real z"
-       ],
-       "stimulus_id": [
-        "a",
-        "b",
-        "c"
-       ]
-      },
-      "response": {
-       "category": "behavioral",
-       "conversion": null,
-       "format": "behavior",
-       "method": "readout",
-       "origin": "native",
-       "parameters": {},
-       "parsed_by": null,
-       "source_format": null
-      },
-      "shape": [
-       3,
-       2
-      ],
-      "values": [
-       "f64:66494f925110e03f",
-       "f64:346d61db5cdfdf3f",
-       "f64:346d61db5cdfdf3f",
-       "f64:66494f925110e03f",
-       "f64:66494f925110e03f",
-       "f64:346d61db5cdfdf3f"
-      ]
-     }
-    }
-   },
    "log probabilities": {
     "error": [
      "ExecutionNotFeasibleError",
@@ -3287,7 +2893,7 @@
        "presentation",
        "choice"
       ],
-      "dtype": "float32",
+      "dtype": "float64",
       "presentation": {
        "label": [
         "cat",
@@ -3295,9 +2901,9 @@
         "cat"
        ],
        "raw_answer": [
-        "[0.5019920468330383, 0.49800798296928406]",
-        "[0.49800798296928406, 0.5019920468330383]",
-        "[0.5019920468330383, 0.49800798296928406]"
+        "[0.501992021332893, 0.498007978667107]",
+        "[0.498007978667107, 0.501992021332893]",
+        "[0.501992021332893, 0.498007978667107]"
        ],
        "response_reason": [
         "",
@@ -3335,12 +2941,12 @@
        2
       ],
       "values": [
-       "f64:000000a05110e03f",
-       "f64:000000e05cdfdf3f",
-       "f64:000000e05cdfdf3f",
-       "f64:000000a05110e03f",
-       "f64:000000a05110e03f",
-       "f64:000000e05cdfdf3f"
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f",
+       "f64:346d61db5cdfdf3f",
+       "f64:66494f925110e03f",
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f"
       ]
      }
     }
@@ -4283,18 +3889,6 @@
       ]
      }
     }
-   },
-   "legacy answer": {
-    "error": [
-     "ExecutionNotFeasibleError",
-     "Session refused (task type 'probabilities'): Subject 'owned' cannot answer ['behavior'] in one session: it does not produce ['behavior']; out_channels: ['behavior:choice', 'behavior:log_probabilities', 'behavior:probabilities', 'behavior:rating', 'behavior:rt', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
-    ]
-   },
-   "legacy readout": {
-    "error": [
-     "ExecutionNotFeasibleError",
-     "Session refused (task type 'probabilities'): Subject 'owned' cannot answer ['behavior'] in one session: it does not produce ['behavior']; out_channels: ['behavior:choice', 'behavior:log_probabilities', 'behavior:probabilities', 'behavior:rating', 'behavior:rt', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
-    ]
    },
    "log probabilities": {
     "outputs": {

@@ -155,7 +155,8 @@ class _Requests:
     """A participate-only subject that keeps the channel each session requests and answers it."""
     identifier = 'format-check'
     in_channels = {'vision:image', 'text'}
-    out_channels = {'behavior', 'behavior:choice', 'neural:IT', 'neural:V4', 'neural:language_system'}
+    out_channels = {'behavior', 'behavior:choice', 'behavior:probabilities', 'neural:IT', 'neural:V4',
+                    'neural:language_system'}
     required_channels = set()
 
     def __init__(self):
@@ -171,6 +172,14 @@ class _Requests:
         self.requested += list(session.outputs)
         ids = list(session.stimuli['stimulus_id'])
         for channel in session.outputs:
+            if channel == 'behavior:probabilities':
+                from brainscore_core.response_formats import response_record
+                labels = list(session.task.response.labels)
+                session.respond(StreamEvent(channel, BehavioralAssembly(
+                    np.full((len(ids), len(labels)), 1 / len(labels)), dims=['presentation', 'choice'],
+                    coords={'stimulus_id': ('presentation', ids), 'choice': labels},
+                    attrs={'response': response_record(channel, 'external')}), None))
+                continue
             cls = NeuroidAssembly if channel.startswith('neural:') else BehavioralAssembly
             session.respond(StreamEvent(channel, cls(
                 np.zeros((len(ids), 2)), coords={'stimulus_id': ('presentation', ids)},
@@ -183,7 +192,7 @@ class _Requests:
 @pytest.mark.unit
 def test_every_production_row_names_the_format_the_facade_requests():
     """T5: each production row names the channel its benchmark's old call is asked on
-    (the probabilities task stays on bare behavior; a label list is behavior:choice)."""
+    (the probabilities task is behavior:probabilities; a label list is behavior:choice)."""
     import pandas as pd
     from brainscore_core.legacy_facade import LegacyBenchmarkFacade
     from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
