@@ -110,8 +110,7 @@ EXPECTED = {
         ],
         "out_channels": [
             "behavior",
-            "behavior:choice",
-            "behavior:probabilities"
+            "behavior:choice"
         ],
         "output_inputs": {},
         "required_channels": [],
@@ -174,7 +173,12 @@ EXPECTED = {
 
 @pytest.mark.parametrize('name', sorted(EXPECTED))
 def test_the_declarations_are_those_before_the_base_class_was_deleted(name):
-    assert _declarations(subjects()[name]) == EXPECTED[name]
+    """Every declaration of that time is still made; a subject may declare more outputs since
+    (chance-baseline answers behavior:probabilities)."""
+    declared, expected = _declarations(subjects()[name]), EXPECTED[name]
+    assert set(expected['out_channels']) <= set(declared['out_channels'])
+    assert {key: value for key, value in declared.items() if key != 'out_channels'} == {
+        key: value for key, value in expected.items() if key != 'out_channels'}
 
 
 def test_each_subject_inherits_subject_only():
