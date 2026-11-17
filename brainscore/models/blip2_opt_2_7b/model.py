@@ -18,11 +18,12 @@ Layer counts:
   language_model.model.decoder.layers.{0-31}     — 32 OPT decoder layers
 
 Ways to answer. Writing: the ``answer`` part writes a plain choice (ROAR, the old
-label tasks) as before; the ``reply`` part writes every other task (a choice with
-task settings, a rating, a written answer) under the task's generation settings.
-Likelihood: the ``likelihood`` part gives the log probability of each option.
-Readout: a readout fitted on the IT layer gives the probabilities, the reaction
-time and the rating. BLIP-2 OPT is not instruction-tuned: its written answers on
+label tasks) as before; the ``reply`` part writes a choice with task settings
+(``verbatim``, ``present``, options per row) and a written answer, under the
+task's generation settings. Likelihood: the ``likelihood`` part gives the log
+probability of each option. Readout: a readout fitted on the IT layer gives the
+probabilities, the reaction time and the rating; the registration keeps ratings
+with the readout. BLIP-2 OPT is not instruction-tuned: its written answers on
 ROAR are at the floor (the chance level), so its writing columns are honest
 columns, not a claim that it follows instructions.
 
@@ -65,18 +66,18 @@ REGION_LAYER_MAP = {
 
 
 def _make_answer(blip_model, blip_processor, max_new_tokens: int = 8):
-    """Generation callable for BLIP-2 instruction-following.
+    """The ``answer`` part: BLIP-2 completes a plain choice.
 
-    BLIP-2 OPT-2.7B isn't as instruction-tuned as Qwen-VL (no RLHF), so we
-    prompt it in a captioning-style template that it handles better:
-    "Question: {instruction} Answer:" → model completes with label.
+    BLIP-2 OPT-2.7B is not instruction-tuned. The prompt is its own
+    question-and-answer form, "Question: {instruction} Choose from: {labels}. Answer:",
+    and the model's completion is returned for ``BrainScoreModel`` to parse.
     """
     from brainscore.model_helpers.api_behavioral import _row_parts
 
     def generate(stimulus_row, instruction: str, label_set: List[str]) -> str:
         image_column, text_column = _row_parts(stimulus_row, 'BLIP-2 answer')
-        # BLIP-2 OPT responds best to "Question: ... Answer:" template; with no
-        # instruction there is no question. The row's text comes first.
+        # BLIP-2's own "Question: ... Answer:" form; with no instruction there is
+        # no question. The row's text comes first.
         prompt = ((f"Question: {instruction} " if instruction else '')
                   + f"Choose from: {', '.join(label_set)}. Answer:")
         if text_column:
@@ -253,9 +254,10 @@ def get_model(identifier: str) -> BrainScoreModel:
     from brainscore.model_helpers._device import select_device
     blip_model = blip_model.to(select_device())
 
-    # Generation path (BLIP-2's OPT decoder does instruction-style completion).
+    # The answer part: BLIP-2's OPT decoder completes a plain choice.
     answer = _make_answer(blip_model, blip_processor)
-    # Writing for every other task and the likelihood of the options, in BLIP-2's own prompt form.
+    # Writing for choices with task settings and for written answers, and the likelihood of
+    # the options, in BLIP-2's own prompt form.
     reply, likelihood = _make_parts(blip_model, blip_processor)
 
     return BrainScoreModel(
@@ -271,7 +273,8 @@ def get_model(identifier: str) -> BrainScoreModel:
         likelihood=likelihood,
         # Readout path also available — PCA-1000 features from 'IT' layer.
         behavioral_readout_layer='encoder.layers.34',
-        # The reply and the readout both give the rating; the readout keeps it, as before the reply.
+        # The reply and the readout both give the rating natively; the registration keeps ratings
+        # with the readout, the part that gave them before the reply.
         # Bare behavior is declared because an answer part is wired; it carries the requested
         # format's answer (the answer part's choice, the readout's probabilities).
         capability_config={'behavior-sessions': {'behavior:rating': 'readout'}},
