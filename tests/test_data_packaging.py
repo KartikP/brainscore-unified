@@ -69,15 +69,73 @@ def test_every_declaration_is_in_a_readme_and_answers_package_data():
             assert importlib.util.find_spec(module) is not None, f'{name}: {module} does not exist'
 
 
+class _S3:
+    """A stand-in S3 client: lists and downloads the objects a test gives; any upload fails."""
+
+    def __init__(self, objects):
+        self.objects = objects
+
+    def get_paginator(self, operation):
+        objects = self.objects
+        return types.SimpleNamespace(paginate=lambda Bucket, Prefix: [
+            {'Contents': [{'Key': key} for key in sorted(objects) if key.startswith(Prefix)]}])
+
+    def download_file(self, bucket, key, path):
+        pathlib.Path(path).write_bytes(self.objects[key])
+
+    def __getattr__(self, name):           # upload_file, put_object, head_object, ...
+        raise AssertionError(f'package_data called S3 {name}: nothing may be uploaded')
+
+
+class _Offline:
+    """Stand-ins a test fills: S3 objects, and programs other than ffmpeg (git, aws)."""
+
+    def __init__(self):
+        self.objects, self.programs = {}, {}
+
+
 @pytest.fixture
-def no_network(monkeypatch):
+def offline(monkeypatch, tmp_path):
+    """No network: sockets fail, S3 is a stand-in whose uploads fail, and only ffmpeg,
+    ffprobe and the programs a test gives may run. The default source and output root
+    is a temporary folder."""
+    import subprocess
+    stand_ins = _Offline()
+
     def refuse(*args, **kwargs):
         raise AssertionError('package_data used the network')
     monkeypatch.setattr(socket.socket, 'connect', refuse)
     monkeypatch.setattr(socket, 'create_connection', refuse)
+    real_run = subprocess.run
+
+    def run(argv, *args, **kwargs):
+        program = pathlib.Path(str(argv[0])).name
+        if program in ('ffmpeg', 'ffprobe'):
+            return real_run(argv, *args, **kwargs)
+        if program in stand_ins.programs:
+            return stand_ins.programs[program](list(map(str, argv)))
+        raise AssertionError(f'package_data ran {argv}')
+    monkeypatch.setattr(subprocess, 'run', run)
+    client = lambda *args, **kwargs: _S3(stand_ins.objects)
+    boto3 = types.ModuleType('boto3')
+    boto3.client = client
+    boto3.session = types.SimpleNamespace(Config=lambda **kwargs: None, UNSIGNED=None)
+    botocore = types.ModuleType('botocore')
+    botocore.UNSIGNED = None
+    botocore_config = types.ModuleType('botocore.config')
+    botocore_config.Config = lambda **kwargs: None
+    for name, module in (('boto3', boto3), ('botocore', botocore), ('botocore.config', botocore_config)):
+        monkeypatch.setitem(sys.modules, name, module)
+    monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path / 'home'))
+    return stand_ins
 
 
-def test_a_missing_source_says_what_to_get_and_where_to_put_it(tmp_path, monkeypatch, no_network):
+def _tree(folder):
+    """Every file under ``folder`` with its sha1: a source must not change."""
+    return {str(p.relative_to(folder)): _sha1(p) for p in sorted(folder.rglob('*')) if p.is_file()}
+
+
+def test_a_missing_source_says_what_to_get_and_where_to_put_it(tmp_path, monkeypatch, offline):
     monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path / 'home'))
     needs_source = [name for name, factory in data_builder_registry.items()
                     if factory().build and not factory().fetches]
@@ -109,7 +167,7 @@ def _sha1(path):
     return hashlib.sha1(path.read_bytes()).hexdigest()
 
 
-def test_ewok_packages_from_the_source_folder_of_the_one_rule(tmp_path, monkeypatch, capsys, no_network):
+def test_ewok_packages_from_the_source_folder_of_the_one_rule(tmp_path, monkeypatch, capsys, offline):
     # Synthetic text only; no EWoK sentence is committed to the tests.
     monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path))
     source = tmp_path / 'sources' / 'ewok'
@@ -145,7 +203,7 @@ def _made_up_rajalingham():
 
 
 def test_rajalingham_prints_sha1_and_counts_and_names_the_cache_path_when_equal(
-        tmp_path, monkeypatch, capsys, no_network):
+        tmp_path, monkeypatch, capsys, offline):
     monkeypatch.setitem(sys.modules, 'brainscore_vision', _made_up_rajalingham())
     first = package_data('rajalingham2018-2afc', output=tmp_path / 'first')
     printed = capsys.readouterr().out
@@ -160,3 +218,50 @@ def test_rajalingham_prints_sha1_and_counts_and_names_the_cache_path_when_equal(
                         lambda: dataclasses.replace(original, sha1={'trials.csv': registered}))
     package_data('rajalingham-fixture', output=tmp_path / 'second')
     assert f'$BRAINIO_HOME/{registered}/trials.csv' in capsys.readouterr().out
+
+
+def _gifti(path, n_tr):
+    """A synthetic surface time series: ``n_tr`` arrays over a full fsaverage hemisphere."""
+    import nibabel as nib
+    arrays = [nib.gifti.GiftiDataArray(np.full(10242 + 5, t, dtype=np.float32)) for t in range(n_tr)]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    nib.save(nib.gifti.GiftiImage(darrays=arrays), str(path))
+
+
+def _lahner_source(source):
+    """One run of ds005165 laid out as the bucket, with a file of the user beside it."""
+    func = source / 'derivatives/versionB/fmriprep/sub-01/ses-02/func'
+    stem = 'sub-01_ses-02_task-test_run-1'
+    for hemi in 'LR':
+        _gifti(func / f'{stem}_hemi-{hemi}_space-fsaverage_bold.func.gii', n_tr=4)
+    events = source / 'sub-01/ses-02/func' / f'{stem}_events.tsv'
+    events.parent.mkdir(parents=True)
+    pd.DataFrame({'onset': [0.0, 4.0], 'duration': [3.0, 3.0], 'trial_type': ['test', 'oddball'],
+                  'stim_file': ['test/0001.mp4', 'n/a']}).to_csv(events, sep='\t', index=False)
+    (source / 'derivatives/versionB/fmriprep/sub-01/my-notes.txt').write_text('mine')
+    (source / 'run_records.pkl').write_bytes(b'an older checkpoint of mine')
+    return f'ds005165/derivatives/versionB/fmriprep/sub-01/ses-02/func/{stem}_hemi-L_space-fsaverage_bold.func.gii'
+
+
+@pytest.mark.parametrize('listed', [True, False], ids=['builds', 'fails'])
+def test_lahner_time_series_reads_the_source_and_never_changes_it(tmp_path, offline, listed):
+    source = tmp_path / 'ds005165'
+    key = _lahner_source(source)
+    before = _tree(source)
+    # The bucket listing names the run (or nothing); a download of a file the source holds fails.
+    def aws(argv):
+        if argv[1:3] != ['s3', 'ls']:
+            pytest.fail(f'downloaded a file the source holds: {argv}')
+        named = listed and argv[-1].endswith('/sub-01/') and 'task-test' in key
+        return types.SimpleNamespace(stdout=f'2026-01-01 00:00:00 1 {key}\n' if named else '', returncode=0)
+    offline.programs['aws'] = aws
+    built = [tmp_path / 'out']
+    if listed:
+        output = package_data('lahner2024-timeresolved', source=source, output=built[0])
+        assert (output / 'assy_Lahner2024-fMRI-timeresolved.nc').exists()
+    else:
+        with pytest.raises(RuntimeError):
+            package_data('lahner2024-timeresolved', source=source, output=built[0])
+        assert not built[0].exists()
+    assert _tree(source) == before
+    assert not list(tmp_path.glob('.brainscore-*'))

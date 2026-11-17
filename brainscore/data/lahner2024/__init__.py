@@ -120,8 +120,10 @@ data_builder_registry['lahner2024-sound'] = lambda: DataBuilder(
 data_builder_registry['lahner2024-timeresolved'] = lambda: DataBuilder(
     source=_TIMESERIES_SOURCE,
     access='public, no account.',
-    layout='none: the script lists and downloads the files itself, into the source folder as its '
-           'cache, and deletes each participant\'s files after use.',
+    layout='none needed: the script lists and downloads the files itself into a private work folder '
+           '(deleted after the build). A local copy of ds005165 in the source folder, laid out as '
+           'the bucket (`derivatives/versionB/fmriprep/sub-XX/...`, `sub-XX/ses-XX/func/*_events.tsv`), '
+           'is read where it is and never changed.',
     needs='the `aws` command, nibabel and nilearn; about 20 GB of disk at a time (about 200 GB pass '
           'through); hours.',
     writes=f'`assy_{TIMERESOLVED_ASSEMBLY_ID}.nc` and `{TIMERESOLVED_EVENTS_ID}.csv`. Use them: put each '
@@ -129,7 +131,7 @@ data_builder_registry['lahner2024-timeresolved'] = lambda: DataBuilder(
     build=f'python -m brainscore.data.lahner2024.data_packaging.prepare_timeresolved_assembly '
           f'--output-path {{output}}/assy_{TIMERESOLVED_ASSEMBLY_ID}.nc '
           f'--events-path {{output}}/{TIMERESOLVED_EVENTS_ID}.csv '
-          '--data-cache {source} --checkpoint-path {source}/run_records.pkl',
+          '--data-cache {work} --checkpoint-path {work}/run_records.pkl --source-dir {source}',
     sha1={f'assy_{TIMERESOLVED_ASSEMBLY_ID}.nc': TIMERESOLVED_ASSEMBLY_SHA1,
           f'{TIMERESOLVED_EVENTS_ID}.csv': TIMERESOLVED_EVENTS_SHA1},
     fetches=True,
@@ -138,12 +140,12 @@ data_builder_registry['lahner2024-timeresolved'] = lambda: DataBuilder(
 data_builder_registry['lahner2024-motion'] = lambda: DataBuilder(
     source=_TIMESERIES_SOURCE,
     access='public, no account.',
-    layout='none: the script lists and downloads the fMRIPrep confounds files itself, into the source '
-           'folder as its cache.',
+    layout='none needed: the script lists and downloads the fMRIPrep confounds files itself into a '
+           'private work folder (deleted after the build).',
     needs='boto3; a small download; minutes.',
     writes=f'`{TIMERESOLVED_MOTION_ID}.csv`. Use it: put it at `$BRAINIO_HOME/<sha1>/<file name>`.',
     build=f'python -m brainscore.data.lahner2024.data_packaging.prepare_motion_sidecar '
-          f'--output-path {{output}}/{TIMERESOLVED_MOTION_ID}.csv --cache-dir {{source}}',
+          f'--output-path {{output}}/{TIMERESOLVED_MOTION_ID}.csv --cache-dir {{work}}',
     sha1={f'{TIMERESOLVED_MOTION_ID}.csv': TIMERESOLVED_MOTION_SHA1},
     fetches=True,
 )

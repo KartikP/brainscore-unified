@@ -47,10 +47,13 @@ class DataBuilder:
     :param writes: the files written, and how they are used in place of a download
     :param build: the plugin's ``data_packaging`` script as a command line
         (``python -m <module> <arguments>``, optionally led by ``NAME=value`` words);
-        ``{source}`` and ``{output}`` are filled in. Empty when there is no builder.
+        ``{source}``, ``{output}`` and ``{work}`` (a private folder for downloads and
+        intermediate files, deleted after the build) are filled in. A script reads the
+        source and never changes or deletes a file in it. Empty when there is no builder.
     :param sha1: file name to the sha1 the plugin registers for it
     :param cannot: when no builder exists yet: what is known and what a maintainer needs
-    :param fetches: the script fetches its public source itself; no source folder is needed
+    :param fetches: the script fetches its public source itself; no source folder is needed,
+        and one that exists is only read
     """
 
     source: str
@@ -67,7 +70,9 @@ class DataBuilder:
         """The ``### <name>`` block of the plugin README's ``## Rebuild`` section."""
         if self.build:
             command = f'`python -m brainscore.data package {name}`'
-            if not self.fetches:
+            if self.fetches:
+                command += f'. Source folder: {self.layout}'
+            else:
                 command += (f' with the source in `~/brainscore-data/sources/{name}` '
                             f'(or `--source <folder>`): {self.layout}')
         elif self.cannot:
@@ -119,9 +124,10 @@ def _missing(name: str, builder: DataBuilder, source: Path) -> str:
     ])
 
 
-def _run(command: str, source: Path, output: Path) -> None:
+def _run(command: str, source: Path, output: Path, work: Path) -> None:
     """Run a ``python -m`` command line in this process, as the plugin's script."""
-    words = shlex.split(command.format(source=shlex.quote(str(source)), output=shlex.quote(str(output))))
+    words = shlex.split(command.format(**{key: shlex.quote(str(value)) for key, value in
+                                          (('source', source), ('output', output), ('work', work))}))
     environment = {}
     while words and '=' in words[0]:
         key, value = words.pop(0).split('=', 1)
@@ -189,9 +195,7 @@ def package_data(name: str, source: str | Path | None = None,
         print(f'{name}: nothing to package. {builder.writes}')
         return None
     native = Path(source).expanduser() if source is not None else source_folder(name)
-    if builder.fetches:
-        native.mkdir(parents=True, exist_ok=True)
-    elif not native.exists():
+    if not builder.fetches and not native.exists():
         raise LocalDataMissing(_missing(name, builder, native))
     destination = (Path(output).expanduser() if output is not None
                    else data_home() / 'packaged' / name).absolute()
@@ -201,8 +205,9 @@ def package_data(name: str, source: str | Path | None = None,
     # Build beside the destination and rename only after success: an interrupted
     # build must not look like a ready dataset.
     staging = Path(tempfile.mkdtemp(prefix='.brainscore-build-', dir=destination.parent))
+    work = Path(tempfile.mkdtemp(prefix='.brainscore-work-', dir=destination.parent))
     try:
-        _run(builder.build, native, staging)
+        _run(builder.build, native, staging, work)
         files = {}
         for path in sorted(p for p in staging.rglob('*') if p.is_file()):
             if path.is_symlink():
@@ -219,6 +224,7 @@ def package_data(name: str, source: str | Path | None = None,
             raise FileExistsError('the output appeared during the build; nothing replaced')
         os.rename(staging, destination)
     finally:
+        shutil.rmtree(work, ignore_errors=True)
         if staging.exists():
             shutil.rmtree(staging)
     _report(name, builder, destination, files)
