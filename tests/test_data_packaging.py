@@ -418,10 +418,11 @@ def test_a_cache_name_occupied_during_the_build_is_not_replaced(tmp_path, monkey
 
 
 @pytest.mark.parametrize('failure', ['none', 'second publication', 'record folder'])
-def test_a_failed_hosted_publication_leaves_no_file_of_this_call(failure, tmp_path, monkeypatch, offline):
+def test_a_failure_after_a_publication_deletes_or_replaces_nothing_under_brainio_home(
+        failure, tmp_path, monkeypatch, offline):
     source, sha1 = _hosted(tmp_path, monkeypatch, {'a.bin': b'registered a', 'b.bin': b'registered b'})
     places = {file: tmp_path / 'brainio' / value / file for file, value in sha1.items()}
-    if failure == 'second publication':
+    if failure == 'second publication':           # a user puts a file at the second name during the build
         _occupy_during_the_build(monkeypatch, [places['b.bin']])
     if failure == 'record folder':
         def refuse(*args):
@@ -431,28 +432,13 @@ def test_a_failed_hosted_publication_leaves_no_file_of_this_call(failure, tmp_pa
         package_data('made-up', source=source)
         assert all(stat.S_IMODE(place.stat().st_mode) == 0o600 for place in places.values())   # private
         return
-    with pytest.raises(OSError):
+    with pytest.raises(RuntimeError, match='already published') as failed:
         package_data('made-up', source=source)
-    assert not places['a.bin'].exists()
-    assert failure != 'second publication' or places['b.bin'].read_bytes() == b'mine'
+    assert str(places['a.bin']) in str(failed.value)
+    assert places['a.bin'].read_bytes() == b'registered a'                 # the registered file stays
+    if failure == 'second publication':
+        assert places['b.bin'].read_bytes() == b'mine'                     # the user's file is untouched
     assert not (tmp_path / 'brainio' / 'packaged' / 'made-up').exists()
-
-
-@pytest.mark.parametrize('change', ['replaced by a user file', 'removed'])
-def test_the_rollback_removes_only_files_this_call_published(change, tmp_path, monkeypatch, offline):
-    source, sha1 = _hosted(tmp_path, monkeypatch, {'a.bin': b'registered a', 'b.bin': b'registered b'})
-    places = {file: tmp_path / 'brainio' / value / file for file, value in sha1.items()}
-
-    def refuse(*args):        # before the record folder moves, the first published file changes
-        places['a.bin'].unlink()
-        if change == 'replaced by a user file':
-            places['a.bin'].write_bytes(b'mine')
-        raise OSError('the record folder cannot be renamed')
-    monkeypatch.setattr(os, 'rename', refuse)
-    with pytest.raises(OSError, match='the record folder cannot be renamed'):
-        package_data('made-up', source=source)
-    assert not places['b.bin'].exists()
-    assert (places['a.bin'].read_bytes() == b'mine') if change != 'removed' else not places['a.bin'].exists()
 
 
 def test_a_relative_brainio_home_is_printed_as_an_absolute_place(tmp_path, monkeypatch, capsys, offline):

@@ -403,7 +403,7 @@ def package_data(name: str, source: str | Path | None = None,
     # build must not look like a ready dataset.
     staging = Path(tempfile.mkdtemp(prefix='.brainscore-build-', dir=destination.parent))
     work = Path(tempfile.mkdtemp(prefix='.brainscore-work-', dir=destination.parent))
-    placed = _Placed()
+    placed = {}
     try:
         try:
             _run(builder.build, native, staging, work)
@@ -435,13 +435,17 @@ def package_data(name: str, source: str | Path | None = None,
             entry.chmod(0o700 if entry.is_dir() else 0o600)
         if destination.exists() or destination.is_symlink():
             raise FileExistsError('the output appeared during the build; nothing replaced')
-        # Publish last, after the record and the permissions; on a failure, undo only this call's files.
+        # Publish last, after the record and the permissions, so that little can fail after it. A hosted
+        # file is published only when it is the registered file, so it stays when a later step fails.
         if builder.reads == 'brainio' and destination == read_place:
             _place_hosted(builder, staging, files, placed)
         os.rename(staging, destination)
-    except BaseException:
-        _undo(placed)
-        raise
+    except Exception as failure:
+        if not placed:
+            raise
+        raise RuntimeError(f'{failure}\nThese hosted files were already published; they are the registered '
+                           'files, so they stay:\n' + '\n'.join(f'    {place}' for place in placed.values())
+                           ) from failure
     finally:
         shutil.rmtree(work, ignore_errors=True)
         if staging.exists():
@@ -457,30 +461,6 @@ def _read_place(name: str, builder: DataBuilder) -> Path:
     if builder.reads:
         return local.REGISTRY[builder.reads].resolved()
     return data_home() / 'packaged' / name
-
-
-class _Placed(dict):
-    """``{file path: place}`` of the hosted files this call published, with the identity of each."""
-
-    def __init__(self):
-        super().__init__()
-        self.identity = {}
-
-
-def _identity(place: Path) -> tuple:
-    """What tells this call's file from another at the same path: device, inode and change time."""
-    status = os.lstat(place)
-    return status.st_dev, status.st_ino, status.st_ctime_ns
-
-
-def _undo(placed: '_Placed') -> None:
-    """Remove each file this call published that is still that file; keep any other entry there."""
-    for place in placed.values():
-        try:
-            if _identity(place) == placed.identity[place]:
-                place.unlink()
-        except FileNotFoundError:
-            continue
 
 
 def _place_hosted(builder: DataBuilder, staging: Path, files: dict, placed: dict) -> None:
@@ -504,7 +484,6 @@ def _place_hosted(builder: DataBuilder, staging: Path, files: dict, placed: dict
                                   'it is kept: move it away, then run again.') from None
         os.unlink(staging / relative)
         placed[relative] = place
-        placed.identity[place] = _identity(place)
 
 
 def _report(name: str, builder: DataBuilder, destination: Path, read_place: Path,
