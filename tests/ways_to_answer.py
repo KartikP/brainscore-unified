@@ -213,6 +213,9 @@ def markdown(rows):
               '"own code": the subject is not a `BrainScoreModel`; its own `participate` gives the '
               'answer (`chance-baseline` gives uniform probabilities).',
               '',
+              "A model that answers through a provider's API builds without a key and without a "
+              "network; it needs the provider's key only to answer.",
+              '',
               'The table is generated from the registrations with stand-in parts (no weights, no '
               'network). Regenerate it from the folder `unified`:',
               '',
