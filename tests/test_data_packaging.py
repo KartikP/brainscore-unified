@@ -2,8 +2,9 @@
 
 The first two tests are an intended gate: a new data plugin fails them until it
 registers a ``DataBuilder`` and its README carries the ``## Rebuild`` block of that
-declaration. The others run two builders end to end on tiny made-up sources, with
-the network replaced by a function that fails.
+declaration, and every builder has a tiny made-up source below (also a gate). The
+others run each builder through the public command on that source, with sockets,
+network programs (git, aws) and S3 replaced by stand-ins whose uploads fail.
 """
 import dataclasses
 import hashlib
@@ -378,3 +379,134 @@ def test_the_lahner_sound_manifest_names_files_that_exist_after_the_build(tmp_pa
     assert len(manifest['entries']) == 2
     for entry in manifest['entries']:
         assert (output / entry['audio_path']).is_file()
+
+
+# --- every builder through the public command --------------------------------------
+# A tiny made-up source for each builder: (source folder or None when the script fetches it).
+
+def _ewok_source(tmp_path, monkeypatch, offline):
+    source = tmp_path / 'ewok'
+    source.mkdir()
+    pd.DataFrame([dict(Domain='synthetic', MetaTemplateID='1', TemplateID='0', Version='0',
+                       Context1='context A', Context2='context B', Target1='target A', Target2='target B')]
+                 ).to_csv(source / 'native.csv', index=False)
+    return source
+
+
+def _lebel_source(tmp_path, monkeypatch, offline):
+    import pickle
+    n_tr = 6
+    story = types.SimpleNamespace(brain_data=np.arange(n_tr * 4, dtype=np.float32).reshape(n_tr, 4),
+                                  tr_times=np.arange(n_tr + 15) * 2.0, words=['one', 'two', 'three'],
+                                  data_times=[21.0, 23.0, 25.0])
+    source = tmp_path / 'lebel'
+    source.mkdir()
+    (source / 'assembly_lebel_uts03.pkl').write_bytes(
+        pickle.dumps(types.SimpleNamespace(stories=['story'], story_data={'story': story})))
+    return source
+
+
+def _algonauts_film_source(tmp_path, monkeypatch, offline):
+    import subprocess
+    film = tmp_path / 'film.mkv'
+    subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc=duration=5:size=64x48:rate=25',
+                    '-f', 'lavfi', '-i', 'sine=duration=5:sample_rate=16000', '-shortest',
+                    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', str(film)], check=True)
+    _algonauts_source(tmp_path / 'native', film=film.read_bytes())
+    return tmp_path / 'native'
+
+
+def _coggym_source(tmp_path, monkeypatch, offline):
+    def git(argv):
+        if argv[1] == 'clone':                 # a local stand-in of the repository
+            (pathlib.Path(argv[-1]) / 'evaluation').mkdir(parents=True, exist_ok=True)
+            (pathlib.Path(argv[-1]) / 'evaluation' / 'public_manifest.json').write_text('[]')
+        elif argv[3] != 'checkout':
+            raise AssertionError(f'package_data ran {argv}')
+        return types.SimpleNamespace(returncode=0, stdout='', stderr='')
+    offline.programs['git'] = git
+
+
+def _lahner_clips_source(tmp_path, monkeypatch, offline):
+    _clips(tmp_path / 'clips', monkeypatch)
+
+
+def _lahner_series_source(tmp_path, monkeypatch, offline):
+    key = _lahner_source(tmp_path / 'ds005165')
+
+    def aws(argv):
+        assert argv[1:3] == ['s3', 'ls'], argv
+        named = argv[-1].endswith('/sub-01/')
+        return types.SimpleNamespace(stdout=f'2026-01-01 00:00:00 1 {key}\n' if named else '', returncode=0)
+    offline.programs['aws'] = aws
+    return tmp_path / 'ds005165'
+
+
+def _lahner_motion_source(tmp_path, monkeypatch, offline):
+    tsv = pd.DataFrame({column: [0.0, 0.1] for column in (
+        'trans_x', 'trans_y', 'trans_z', 'rot_x', 'rot_y', 'rot_z', 'csf', 'white_matter')})
+    tsv['framewise_displacement'] = ['n/a', 0.2]
+    offline.objects['ds005165/derivatives/versionB/fmriprep/sub-01/ses-02/func/'
+                    'sub-01_ses-02_task-test_run-1_desc-confounds_timeseries.tsv'] = \
+        tsv.to_csv(sep='\t', index=False).encode()
+
+
+def _rajalingham_source(tmp_path, monkeypatch, offline):
+    monkeypatch.setitem(sys.modules, 'brainscore_vision', _made_up_rajalingham())
+
+
+SOURCES = {'ewok': _ewok_source, 'lebel2023': _lebel_source, 'algonauts2025': _algonauts_film_source,
+           'coggym': _coggym_source, 'lahner2024-frames': _lahner_clips_source,
+           'lahner2024-sound': _lahner_clips_source, 'lahner2024-timeresolved': _lahner_series_source,
+           'lahner2024-motion': _lahner_motion_source, 'rajalingham2018-2afc': _rajalingham_source}
+UPLOAD_FLAGS = {'lebel2023': '--upload', 'lahner2024-timeresolved': '--upload-to-s3',
+                'lahner2024-motion': '--upload-to-s3'}
+
+
+def test_every_builder_has_a_made_up_source_here():
+    # Intended gate: a new builder gets a tiny made-up source in SOURCES, so the test below runs it.
+    builders = {name for name, factory in data_builder_registry.items() if factory().build}
+    assert builders <= set(SOURCES), f'add a tiny made-up source to SOURCES for {sorted(builders - set(SOURCES))}'
+
+
+def _package(name, tmp_path, monkeypatch, offline):
+    from brainscore.data.__main__ import main
+    source = SOURCES[name](tmp_path, monkeypatch, offline)
+    arguments = ['package', name, '--output', str(tmp_path / 'out')]
+    return main(arguments + (['--source', str(source)] if source else []))
+
+
+@pytest.mark.skipif(__import__('shutil').which('ffmpeg') is None, reason='ffmpeg is needed')
+@pytest.mark.parametrize('name', sorted(SOURCES))
+def test_every_builder_runs_through_the_public_command_and_uploads_nothing(name, tmp_path, monkeypatch, offline):
+    assert _package(name, tmp_path, monkeypatch, offline) == 0
+    written = [p for p in (tmp_path / 'out').rglob('*') if p.is_file() and p.name != 'build.json']
+    assert written, f'{name} wrote nothing'
+
+
+@pytest.mark.parametrize('name', sorted(UPLOAD_FLAGS))
+def test_a_planted_upload_fails(name, tmp_path, monkeypatch, offline):
+    builder = data_builder_registry[name]()
+    monkeypatch.delitem(data_builder_registry, name)
+    monkeypatch.setitem(data_builder_registry, name,
+                        lambda: dataclasses.replace(builder, build=f'{builder.build} {UPLOAD_FLAGS[name]}'))
+    with pytest.raises(AssertionError, match='nothing may be uploaded'):
+        _package(name, tmp_path, monkeypatch, offline)
+    assert not (tmp_path / 'out').exists()
+
+
+def test_a_rebuilt_hosted_file_is_read_where_its_instruction_puts_it(tmp_path, monkeypatch, offline):
+    from brainscore.data.lebel2023 import hosted
+    from brainscore_core.supported_data_standards.brainio.s3 import get_path
+    assert _package('lebel2023', tmp_path, monkeypatch, offline) == 0
+    built = tmp_path / 'out' / f'stimulus_{hosted.TR_STIMULI_ID}.csv'
+    # Follow the declared instruction: $BRAINIO_HOME/<sha1>/<file name>, then load with no download.
+    from brainscore_core.supported_data_standards.brainio import fetch
+    monkeypatch.setattr(fetch, 'get_local_data_path', lambda: str(tmp_path / 'brainio'))   # BRAINIO_HOME
+    sha1 = _sha1(built)
+    (tmp_path / 'brainio' / sha1).mkdir(parents=True)
+    (tmp_path / 'brainio' / sha1 / built.name).write_bytes(built.read_bytes())
+    assert '$BRAINIO_HOME/<sha1>/<file name>' in data_builder_registry['lebel2023']().writes
+    path = get_path(hosted.TR_STIMULI_ID, 'csv', hosted.BUCKET, hosted.VERSION_ID['TR stimuli'], sha1,
+                    filename_prefix='stimulus_', folder_name=hosted.FOLDER)
+    assert _sha1(pathlib.Path(path)) == sha1
