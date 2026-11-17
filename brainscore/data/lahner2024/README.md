@@ -21,10 +21,10 @@ human responses, or vice versa. Confirm the applicable terms before sharing.
 The benchmarks read two folders that you prepare once from the hosted clips.
 `python -m brainscore.data` shows whether they are found.
 
-| Asset | Folder (variable, default) | Prepare with |
+| Asset | Folder (under `$BRAINSCORE_DATA_HOME`, default `~/brainscore-data`) | Prepare with |
 | --- | --- | --- |
-| `lahner2024-frames` | `BRAINSCORE_LAHNER_FRAMES_DIR`, `~/brainscore-data/lahner2024/frames` | `python -m brainscore.data.lahner2024.data_packaging.prepare_frames` |
-| `lahner2024-sound` | `BRAINSCORE_LAHNER_SOUND_DIR`, `~/.brainio/lahner2024_audio_16k` | `python -m brainscore.data.lahner2024.data_packaging.prepare_audio_tracks` (needs ffmpeg) |
+| `lahner2024-frames` | `lahner2024-frames` | `python -m brainscore.data.lahner2024.data_packaging.prepare_frames` |
+| `lahner2024-sound` | `lahner2024-sound` | `python -m brainscore.data.lahner2024.data_packaging.prepare_audio_tracks` (needs ffmpeg) |
 
 These scripts fill the folder in place and keep the files that exist;
 `python -m brainscore.data package lahner2024-frames` (or `-sound`) builds a new
@@ -34,9 +34,9 @@ A subject that takes only still images reads the frames; a subject that takes
 sound reads the sound tracks. A missing file stops the run with the command
 that prepares it.
 
-A Lahner2024 benchmark takes no folder argument: for every variant, the frames
-folder is set by `BRAINSCORE_LAHNER_FRAMES_DIR` and the sound folder by
-`BRAINSCORE_LAHNER_SOUND_DIR`.
+A Lahner2024 benchmark takes no folder argument: for every variant, it reads the
+frames at `$BRAINSCORE_DATA_HOME/lahner2024-frames` and the sound at
+`$BRAINSCORE_DATA_HOME/lahner2024-sound`.
 
 The GLM-beta assembly and the time-resolved assembly are different targets,
 not interchangeable.
@@ -66,7 +66,7 @@ not interchangeable.
 - Source: https://openneuro.org/datasets/ds005165 (BOLD Moments; the clips are the hosted stimulus set BOLDMoments, which brainscore.load_stimulus_set fetches); licence as OpenNeuro states it for ds005165 (not recorded in this plugin).
 - Access: public, no account: the hosted clips download with no account.
 - Needs: opencv-python and Pillow; the hosted clips (fetched once into the brainio cache; size not measured); disk for the frames and time not measured.
-- Command: `python -m brainscore.data package lahner2024-frames`. Source folder: none: the script reads the hosted clips through brainscore.load_stimulus_set. Output (or `--output <new folder>`): the folder the benchmarks read, `~/brainscore-data/lahner2024/frames` (or `$BRAINSCORE_LAHNER_FRAMES_DIR`).
+- Command: `python -m brainscore.data package lahner2024-frames`. Source folder: none: the script reads the hosted clips through brainscore.load_stimulus_set. Output (or `--output <new folder>`): the folder the benchmarks read, `$BRAINSCORE_DATA_HOME/lahner2024-frames` (`~/brainscore-data/lahner2024-frames` by default).
 - Writes: one PNG per clip and time (500, 1500, 2500 ms): `<clip>_t<ms>.png`.
 - Check: the printed counts; no sha1 is recorded for these files
 
@@ -84,7 +84,7 @@ not interchangeable.
 - Source: https://openneuro.org/datasets/ds005165 (BOLD Moments; the clips are the hosted stimulus set BOLDMoments, which brainscore.load_stimulus_set fetches); licence as OpenNeuro states it for ds005165 (not recorded in this plugin).
 - Access: public, no account: the hosted clips download with no account.
 - Needs: ffmpeg and ffprobe on the PATH; the hosted clips (fetched once into the brainio cache; size not measured); about 100 MB of sound (3 s at 16 kHz, 16 bit, for each of 1,026 clips, computed); time not measured.
-- Command: `python -m brainscore.data package lahner2024-sound`. Source folder: none: the script reads the hosted clips through brainscore.load_stimulus_set. Output (or `--output <new folder>`): the folder the benchmarks read, `~/.brainio/lahner2024_audio_16k` (or `$BRAINSCORE_LAHNER_SOUND_DIR`).
+- Command: `python -m brainscore.data package lahner2024-sound`. Source folder: none: the script reads the hosted clips through brainscore.load_stimulus_set. Output (or `--output <new folder>`): the folder the benchmarks read, `$BRAINSCORE_DATA_HOME/lahner2024-sound` (`~/brainscore-data/lahner2024-sound` by default).
 - Writes: one 16 kHz mono WAV per clip (`<clip>.wav`; a silent file for a clip with no sound) and `manifest.json`.
 - Check: the printed counts; no sha1 is recorded for these files
 

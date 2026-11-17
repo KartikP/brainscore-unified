@@ -46,7 +46,7 @@ def _require_reset(reset):
 class CogGymBenchmark(BenchmarkBase):
     """One public experiment, returning upstream raw R² without a human ceiling.
 
-    Supply a pinned checkout or set BRAINSCORE_COGGYM_CHECKOUT. ``reset`` is the
+    Supply a pinned checkout, or put it at $BRAINSCORE_DATA_HOME/coggym-checkout. ``reset`` is the
     adapter's reset(repetition) callback; it must preserve instrumentation.
     Scoring needs it: give it here or to ``protocol``.
     One repetition is a preliminary evaluation, not a leaderboard replication.

@@ -7,8 +7,6 @@ IDENTIFIER = 'EWoK-core-1.0'
 
 EWOK_ROOT = local.register(local.LocalAsset(
     name='ewok-core-1.0',
-    env_var='BRAINSCORE_EWOK_ROOT',
-    default_path='.brainio/ewok-core-1.0',
     kind='stimuli',
     why_local='The authors require protected or gated distribution of EWoK text.',
     source='https://huggingface.co/datasets/ewok-core/ewok-core-1.0',

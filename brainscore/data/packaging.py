@@ -32,9 +32,8 @@ import warnings
 
 from brainscore import data_builder_registry
 from brainscore.data import local
-from brainscore.data.local import LocalDataMissing
+from brainscore.data.local import HOME_VARIABLE, LocalDataMissing, data_home
 
-HOME_VARIABLE = 'BRAINSCORE_DATA_HOME'
 _LISTED_FILES = 20      # files printed one by one; the rest are only in build.json
 
 
@@ -112,14 +111,8 @@ class DataBuilder:
             return ('each identical file at `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), '
                     f'where the loader reads it; the build record in `$BRAINIO_HOME/packaged/{name}`')
         if self.reads:
-            asset = local.REGISTRY[self.reads]
-            return f'the folder the benchmarks read, `~/{asset.default_path}` (or `${asset.env_var}`)'
+            return f'the folder the benchmarks read, `$BRAINSCORE_DATA_HOME/{self.reads}` (`~/brainscore-data/{self.reads}` by default)'
         return f'`~/brainscore-data/packaged/{name}`'
-
-
-def data_home() -> Path:
-    """The root of the source and packaged folders."""
-    return Path(os.environ.get(HOME_VARIABLE) or '~/brainscore-data').expanduser()
 
 
 def source_folder(name: str) -> Path:
@@ -515,8 +508,8 @@ def _report(name: str, builder: DataBuilder, destination: Path, read_place: Path
                 step += (f' The loader accepts only the registered bytes, so no packaging run makes {", ".join(other)} '
                          'readable; the benchmarks read the hosted file.')
         elif builder.reads:
-            step = (f'The benchmarks read {read_place}; one step remains: set '
-                    f'{local.REGISTRY[builder.reads].env_var}={destination}.')
+            step = (f'The benchmarks read {read_place}; one step remains: move the folder there, '
+                    'or put a link there to it.')
         else:
             step = builder.writes
     elif builder.reads == 'brainio':

@@ -24,8 +24,8 @@ and peak near 8 GB.
 
 With the default settings the loaders fetch hosted files and check their sha1. For other context settings, build the data from the source pickle: place it
 at `~/brainscore-data/sources/lebel2023/assembly_lebel_uts03.pkl` (or under `$BRAINSCORE_DATA_HOME/sources/lebel2023`). The first load converts it to a
-`NeuroidAssembly` and caches the result under `~/.brainscore-umi-cache/lebel2023`
-(override with `BRAINSCORE_LEBEL_CACHE`); later loads take under a second. See the [data README](../../data/lebel2023/README.md).
+`NeuroidAssembly` and caches the result under `$BRAINSCORE_DATA_HOME/lebel2023-converted`
+(`~/brainscore-data/lebel2023-converted` by default); later loads take under a second. See the [data README](../../data/lebel2023/README.md).
 
 Two properties of the source drive `data.py`:
 
@@ -161,8 +161,8 @@ The ordering `last < sum ~ average < Lanczos` reproduces the reference pipeline'
 `language_mask.py` builds the LanA language-network mask on this surface, so the
 reference pipeline's statistic (a mean within the mask) can be reported next to this
 benchmark's median over all cortex. The atlas is an external Fedorenko-lab resource
-([osf.io/kzwbh](https://osf.io/kzwbh/)); download its *FS Atlas* archive and point
-`BRAINSCORE_LANA_ATLAS` at the directory. Without it the mask tests skip and nothing else
+([osf.io/kzwbh](https://osf.io/kzwbh/)); download its *FS Atlas* archive and put
+the directory at `$BRAINSCORE_DATA_HOME/lana-atlas`. Without it the mask tests skip and nothing else
 changes.
 
 The mask is applied to the existing whole-cortex fit rather than refitting on the masked

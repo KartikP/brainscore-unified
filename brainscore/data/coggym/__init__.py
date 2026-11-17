@@ -11,8 +11,6 @@ REVISION = 'a1cd9df1118fec80eba7463de237d1497d77e041'
 
 COGGYM_CHECKOUT = local.register(local.LocalAsset(
     name='coggym-checkout',
-    env_var='BRAINSCORE_COGGYM_CHECKOUT',
-    default_path='coggym',
     kind='stimuli',
     why_local="CogGym's runner reads its experiments, human results and scoring code "
               "from an unmodified Git checkout at a pinned revision.",

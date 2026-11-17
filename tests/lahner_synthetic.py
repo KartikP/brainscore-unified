@@ -143,13 +143,13 @@ def install(monkeypatch, tmp_path, runs=None, bold=None, events=None, glm=None):
     package.datasets = datasets
     monkeypatch.setitem(sys.modules, 'nilearn', package)
     monkeypatch.setitem(sys.modules, 'nilearn.datasets', datasets)
-    frames = tmp_path / 'frames'
+    frames = tmp_path / 'lahner2024-frames'          # $BRAINSCORE_DATA_HOME/<asset name>
     frames.mkdir()
     for clip in GLM_CLIPS:
         for t in SAMPLE_TIMES:
             (frames / f'{clip}_t{t}.png').write_bytes(b'png')
-    monkeypatch.setenv('BRAINSCORE_LAHNER_FRAMES_DIR', str(frames))
-    audio = tmp_path / '.brainio' / 'lahner2024_audio_16k'
+    monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path))
+    audio = tmp_path / 'lahner2024-sound'
     audio.mkdir(parents=True)
     for clip in GLM_CLIPS:
         (audio / f'{clip}.wav').write_bytes(b'wav')

@@ -19,9 +19,7 @@ assets (``python -m brainscore.data``) stays light. Declaring an asset::
     from brainscore.data import local
 
     LANA_ATLAS = local.register(local.LocalAsset(
-        name='lana-atlas',
-        env_var='BRAINSCORE_LANA_ATLAS',
-        default_path='Downloads/20425209/FS',
+        name='lana-atlas',                     # read at $BRAINSCORE_DATA_HOME/lana-atlas
         kind='atlas',
         why_local='Fedorenko-lab resource distributed under its own terms.',
         source='https://osf.io/kzwbh/',
@@ -47,28 +45,34 @@ class LocalDataMissing(FileNotFoundError):
     """A required local asset is absent. The message says how to get it."""
 
 
+HOME_VARIABLE = 'BRAINSCORE_DATA_HOME'
+
+
+def data_home() -> pathlib.Path:
+    """The one folder of local unified data: ``$BRAINSCORE_DATA_HOME``, else ``~/brainscore-data``.
+
+    It holds ``sources/<name>`` (the original source of ``package_data(name)``) and one folder
+    for each local asset, ``<asset name>``. A data set on another drive: put a link at its place.
+    """
+    return pathlib.Path(os.environ.get(HOME_VARIABLE) or '~/brainscore-data').expanduser().absolute()
+
+
 @dataclass(frozen=True)
 class LocalAsset:
-    """One file or directory the user supplies.
+    """One file or directory the user supplies, at ``$BRAINSCORE_DATA_HOME/<name>``.
 
-    :param name: stable identifier, referenced by :func:`path`
-    :param env_var: environment variable overriding the location
-    :param default_path: looked for under the home directory when unset
+    :param name: stable identifier, referenced by :func:`path`, and the folder name of its place
     :param kind: ``stimuli``, ``neural data`` or ``atlas`` — what is withheld
     :param why_local: why Brain-Score cannot ship it; shown to the user
     :param source: where to get it
     :param obtain: what to download, in a sentence
     :param prepare: shell command converting it into the benchmark's format,
-        if conversion is needed. Downloads that are read directly leave this
-        empty. ``{<asset name>}`` stands for the folder of that asset, so the
-        command names the folders the benchmark reads.
+        if conversion is needed. Downloads that are read directly leave this empty.
     :param used_by: registered benchmark identifiers that need it; empty when
         only settings that no registered benchmark uses need it
     """
 
     name: str
-    env_var: str
-    default_path: str
     kind: str
     why_local: str
     source: str
@@ -77,28 +81,8 @@ class LocalAsset:
     used_by: List[str] = field(default_factory=list)
 
     def resolved(self) -> pathlib.Path:
-        """Where it is expected, honouring the environment override.
-
-        A leading ``~`` in the variable means the home folder. When a folder with
-        that literal name (for example ``./~/frames``) also exists under the current
-        folder, the value is ambiguous and is refused. A variable set to an empty
-        value is refused too: it names no folder.
-        """
-        override = os.environ.get(self.env_var)
-        if override is not None and not override.strip():
-            raise ValueError(
-                f'{self.env_var} is set but empty. Set it to a folder, or unset it to use '
-                f'the default {pathlib.Path.home() / self.default_path}.')
-        if override:
-            expanded = pathlib.Path(override).expanduser()
-            literal = pathlib.Path.cwd() / override
-            if override.startswith('~') and literal.exists() and literal != expanded:
-                raise ValueError(
-                    f'{self.env_var}={override!r} is ambiguous: it means {expanded} (the '
-                    f'home folder), but {literal} also exists. Set {self.env_var} to the '
-                    f'absolute path of the folder you mean.')
-            return expanded
-        return pathlib.Path.home() / self.default_path
+        """Where it is expected: ``$BRAINSCORE_DATA_HOME/<name>``."""
+        return data_home() / self.name
 
     def present(self) -> bool:
         return self.resolved().exists()
@@ -112,17 +96,11 @@ class LocalAsset:
             f'Get it from: {self.source}',
             f'What to download: {self.obtain}',
             '',
-            f'Then either put it at the path above, or set {self.env_var} to '
-            f'where it already is.',
+            f'Then put it at the path above ({HOME_VARIABLE}/{self.name}), or put a link there '
+            f'to where it already is.',
         ]
         if self.prepare:
-            import shlex
-            command = self.prepare
-            for name, asset in REGISTRY.items():      # {<asset name>}: that asset's folder
-                placeholder = '{' + name + '}'
-                if placeholder in command:            # resolve only the assets the command names
-                    command = command.replace(placeholder, shlex.quote(str(asset.resolved())))
-            lines += ['', 'Then convert it:', f'    {command}']
+            lines += ['', 'Then convert it:', f'    {self.prepare}']
         if self.used_by:
             lines += ['', f'Needed by: {", ".join(self.used_by)}']
         return '\n'.join(lines)
@@ -158,12 +136,8 @@ def status(name: Optional[str] = None) -> List[dict]:
     assets = [REGISTRY[name]] if name else list(REGISTRY.values())
     rows = []
     for asset in sorted(assets, key=lambda a: a.name):
-        try:
-            where, present = str(asset.resolved()), asset.present()
-        except ValueError as refused:            # a variable that names no single folder
-            where, present = f'refused: {refused}', False
-        rows.append({'name': asset.name, 'kind': asset.kind, 'present': present,
-                     'path': where, 'used_by': asset.used_by})
+        rows.append({'name': asset.name, 'kind': asset.kind, 'present': asset.present(),
+                     'path': str(asset.resolved()), 'used_by': asset.used_by})
     return rows
 
 

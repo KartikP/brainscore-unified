@@ -33,7 +33,9 @@ CogGym's experiments, human results and scoring code come from the authors' repo
 
 ## Package a dataset from its source
 
-`package_data` builds a plugin's files from the original source, the way Brain-Score reads them. It looks for the source in one place, by the same rule for every plugin: the `source` argument, else `$BRAINSCORE_DATA_HOME/sources/<name>`, else `~/brainscore-data/sources/<name>`. It writes where the plugin's benchmarks read the data, so the benchmark runs next; the success message names any step that remains (CogGym: install the checkout's requirements; `rajalingham2018-2afc`: its tool reads the files shipped in the plugin folder, so the build is a check of them). The place is a local folder (for example the EWoK folder, `~/.brainio/ewok-core-1.0`, or the folder that its variable `BRAINSCORE_EWOK_ROOT` names when it is set), or, for a hosted file, `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), where the loader reads it in place of the download. The `output` argument (`--output`) writes elsewhere. An existing output is refused; the build goes to a private folder beside the output and moves into place only when it is complete and checked.
+One variable places all local unified data: `BRAINSCORE_DATA_HOME` (default `~/brainscore-data`). It holds `sources/<name>`, the original source of a data plugin, and one folder for each local data set, named as the asset: `algonauts2025-prepared`, `ewok-core-1.0`, `coggym-checkout`, `lahner2024-frames`, `lahner2024-sound`, `lana-atlas` (`python -m brainscore.data` lists them with their places). To keep one data set on another drive, put a link at its place. Hosted files stay in the brainio cache (`$BRAINIO_HOME`, default `~/.brainio`).
+
+`package_data` builds a plugin's files from the original source, the way Brain-Score reads them. It looks for the source in one place, by the same rule for every plugin: the `source` argument, else `$BRAINSCORE_DATA_HOME/sources/<name>`, else `~/brainscore-data/sources/<name>`. It writes where the plugin's benchmarks read the data, so the benchmark runs next; the success message names any step that remains (CogGym: install the checkout's requirements; `rajalingham2018-2afc`: its tool reads the files shipped in the plugin folder, so the build is a check of them). The place is a local folder, `$BRAINSCORE_DATA_HOME/<asset name>` (for example `~/brainscore-data/ewok-core-1.0`), or, for a hosted file, `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), where the loader reads it in place of the download. The `output` argument (`--output`) writes elsewhere. An existing output is refused; the build goes to a private folder beside the output and moves into place only when it is complete and checked.
 
 ```python
 from brainscore.data import package_data
@@ -127,16 +129,14 @@ print(data_builder_registry['mystudy2026']().readme('mystudy2026'))
 
 `requires` names what the source folder must hold; a source that lacks it gets the error with the facts above. A script reads the source and never changes it: it writes into `{output}`, and downloads or intermediate files go into `{work}`, a private folder removed after the build. A dataset that cannot be rebuilt yet states `cannot=` (what is known, what a maintainer needs); one that is read as published leaves out `build`. `tests/test_data_packaging.py` fails a data plugin without a declaration or with a README that differs from it, and prints the block to paste.
 
-Hosted files are fetched once, checked against a sha1 and cached (see `brainscore/data/lebel2023/hosted.py`). Data you may not redistribute stays local: declare it as a `LocalAsset` in your plugin's `__init__.py`, so users get instructions instead of a missing-file error, and `python -m brainscore.data` lists it. Name the command that prepares it in `prepare`. Read the location with `local.path(...)` when the data is needed, not at import. A second asset with the same name is refused.
+Hosted files are fetched once, checked against a sha1 and cached (see `brainscore/data/lebel2023/hosted.py`). Data you may not redistribute stays local: declare it as a `LocalAsset` in your plugin's `__init__.py`, so users get instructions instead of a missing-file error, and `python -m brainscore.data` lists it. Name the command that prepares it in `prepare`. Its place follows from its name: `$BRAINSCORE_DATA_HOME/<asset name>`. Read the location with `local.path(...)` when the data is needed, not at import. A second asset with the same name is refused.
 
 ```python
 from brainscore.data import local
 
 # In brainscore/data/mystudy2026/__init__.py, beside the registry lines.
 MY_FILMS = local.register(local.LocalAsset(
-    name='mystudy2026-films',
-    env_var='BRAINSCORE_MYSTUDY2026_FILMS',
-    default_path='mystudy2026/films',           # under the home folder when env_var is unset
+    name='mystudy2026-films',                  # read at $BRAINSCORE_DATA_HOME/mystudy2026-films
     kind='stimuli',
     why_local='The films are licensed to each lab; Brain-Score may not share them.',
     source='https://example.org/mystudy2026',
@@ -147,7 +147,7 @@ MY_FILMS = local.register(local.LocalAsset(
 try:
     films = local.path(MY_FILMS.name)          # the folder, when it is there
 except local.LocalDataMissing as missing:
-    print(missing)                             # where to get it, the variable, the command
+    print(missing)                             # where to get it, where to put it, the command
 ```
 
 A benchmark reaches its data only through `load_dataset` / `load_stimulus_set`, or the identifiers and constants a plugin's package exports. It never imports a plugin's modules; `tests/test_data_boundaries.py` checks this.

@@ -23,37 +23,18 @@ _ALGONAUTS_IDENTIFIERS = (
     + ['Algonauts2025-friends-sub01-video',
        'Algonauts2025-friends-sub01-video-audio'])
 
-# Packages from the folder of the competition files into the folder the benchmarks read (the default output).
-_PACKAGE = 'python -m brainscore.data package algonauts2025 --source {algonauts2025-root}'
-
-ALGONAUTS_ROOT = local.register(local.LocalAsset(
-    name='algonauts2025-root',
-    env_var='BRAINSCORE_ALGONAUTS_ROOT',
-    default_path='algonauts_2025',
-    kind='stimuli',
-    why_local='The stimuli are the Friends and Movie10 films; the fMRI is '
-              'released under a data-use agreement the downloader signs.',
-    source='https://github.com/courtois-neuromod/algonauts_2025.competitors',
-    obtain='The competition dataset via DataLad (~130 GB: 129 GB stimuli, ~1 GB '
-           'fMRI per subject). Ubuntu 22.04 ships a git-annex too old for '
-           'current DataLad; install it from conda-forge instead.',
-    prepare=_PACKAGE,
-    used_by=[],      # the benchmarks read only the prepared files; the packaging reads these
-))
+# Packages from $BRAINSCORE_DATA_HOME/sources/algonauts2025 into the folder the benchmarks read.
+_PACKAGE = 'python -m brainscore.data package algonauts2025'
 
 ALGONAUTS_PREPARED = local.register(local.LocalAsset(
     name='algonauts2025-prepared',
-    env_var='BRAINSCORE_ALGONAUTS_PREPARED',
-    default_path='.brainio/algonauts2025',
     kind='neural data',
-    why_local='The converter builds these files from the provider files above; '
-              'Brain-Score does not host them.',
+    why_local='The packaging builds these files from the competition files (the Friends and Movie10 '
+              'films and the fMRI, under a data-use agreement); Brain-Score does not host them.',
     source='https://github.com/courtois-neuromod/algonauts_2025.competitors',
-    obtain='Nothing to download. Run the converter on the dataset above; it '
-           'writes the per-TR assemblies and stimulus tables that the '
-           'benchmarks read. Then cut the films into one file per scan with '
-           'brainscore.data.algonauts2025.data_packaging.prepare_stimuli '
-           '(see brainscore/data/algonauts2025/README.md).',
+    obtain='The competition dataset via DataLad (~130 GB), put at $BRAINSCORE_DATA_HOME/sources/algonauts2025; '
+           'the command below then writes the assemblies, stimulus tables and per-scan media that the '
+           'benchmarks read (see brainscore/data/algonauts2025/README.md).',
     prepare=_PACKAGE,
     used_by=_ALGONAUTS_IDENTIFIERS,
 ))

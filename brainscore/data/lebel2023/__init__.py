@@ -19,8 +19,6 @@ from brainscore.data.packaging import DataBuilder
 
 LANA_ATLAS = local.register(local.LocalAsset(
     name='lana-atlas',
-    env_var='BRAINSCORE_LANA_ATLAS',
-    default_path='Downloads/20425209/FS',
     kind='atlas',
     why_local='Fedorenko-lab resource distributed under its own terms.',
     source='https://osf.io/kzwbh/  (doi:10.17605/OSF.IO/KZWBH)',
@@ -59,8 +57,8 @@ data_builder_registry['lana-atlas'] = lambda: DataBuilder(
     access='public, no account.',
     layout=LANA_ATLAS.obtain,
     needs='a download, size not measured; no tools.',
-    writes=f'The atlas is read as published. Put the folder at ~/{LANA_ATLAS.default_path} '
-           f'or set {LANA_ATLAS.env_var} to it.',
+    writes='The atlas is read as published. Put the folder at `$BRAINSCORE_DATA_HOME/lana-atlas` '
+           '(`~/brainscore-data/lana-atlas` by default), or put a link there to it.',
 )
 
 

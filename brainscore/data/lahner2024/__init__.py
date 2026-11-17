@@ -48,8 +48,6 @@ _CLIPS_SOURCE = ('https://openneuro.org/datasets/ds005165 (BOLD Moments; the cli
 # so no benchmark identifier is listed: the benchmark checks them when it reads them.
 LAHNER_FRAMES = local.register(local.LocalAsset(
     name='lahner2024-frames',
-    env_var='BRAINSCORE_LAHNER_FRAMES_DIR',
-    default_path='brainscore-data/lahner2024/frames',
     kind='stimuli',
     why_local='The frames are cut on this machine from the hosted clips; '
               'Brain-Score hosts the clips, not the frames.',
@@ -60,8 +58,6 @@ LAHNER_FRAMES = local.register(local.LocalAsset(
 
 LAHNER_SOUND = local.register(local.LocalAsset(
     name='lahner2024-sound',
-    env_var='BRAINSCORE_LAHNER_SOUND_DIR',
-    default_path='.brainio/lahner2024_audio_16k',
     kind='stimuli',
     why_local='The sound tracks (16 kHz mono WAV, one per clip) are demuxed on this '
               'machine from the hosted clips; Brain-Score does not host them.',

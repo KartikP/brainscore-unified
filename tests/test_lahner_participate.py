@@ -169,7 +169,7 @@ def test_a_region_no_shown_stream_answers_is_refused_before_any_compute(monkeypa
                                    lambda: _tr(channels=AUDIOVISUAL)], ids=['glm', 'tr'])
 def test_a_missing_sound_track_is_refused_before_the_visual_stream_is_recorded(monkeypatch, tmp_path, build):
     install(monkeypatch, tmp_path)
-    (tmp_path / '.brainio' / 'lahner2024_audio_16k' / f'{CLIPS[0]}.wav').unlink()
+    (tmp_path / 'lahner2024-sound' / f'{CLIPS[0]}.wav').unlink()
     subject = Recorder({'vision:video', 'audio'}, regions=('IT', 'A1'))
     with pytest.raises(FileNotFoundError, match='prepare_audio_tracks'):
         build()(subject)

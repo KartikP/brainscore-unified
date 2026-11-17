@@ -84,15 +84,17 @@ def test_all_public_experiments_registered_lazily():
 
 
 def test_loading_requires_explicit_checkout_before_model_use(monkeypatch, tmp_path):
-    # A folder that does not exist: the user's own checkout at ~/coggym is never read.
-    monkeypatch.setenv('BRAINSCORE_COGGYM_CHECKOUT', str(tmp_path / 'no-checkout'))
-    with pytest.raises(FileNotFoundError, match='BRAINSCORE_COGGYM_CHECKOUT'):
+    # A data home with no checkout: the user's own checkout is never read.
+    monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path / 'data'))
+    with pytest.raises(FileNotFoundError, match=str(tmp_path / 'data' / 'coggym-checkout')):
         brainscore.load_benchmark('CogGym.Hu2023Fine.exp1')
 
 
 def test_environment_checkout_and_explicit_provider_reset(scored_reference, monkeypatch):
     root, _ = scored_reference
-    monkeypatch.setenv('BRAINSCORE_COGGYM_CHECKOUT', str(root))
+    monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(root.parent / 'data'))
+    (root.parent / 'data').mkdir(exist_ok=True)
+    (root.parent / 'data' / 'coggym-checkout').symlink_to(root)     # a link at the expected place
     benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1')
     with pytest.raises(ValueError, match='reset=adapter.reset'):
         benchmark(make_subject(reply_with_trial))

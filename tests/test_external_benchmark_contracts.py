@@ -310,7 +310,9 @@ def test_ewok_implicit_records_deleted_on_success_and_failure(prepared, tmp_path
 
 
 def test_ewok_explicit_records_private_and_score_uses_resolved_id(prepared, tmp_path, monkeypatch):
-    monkeypatch.setenv('BRAINSCORE_EWOK_ROOT', str(prepared))
+    monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path / 'data'))
+    (tmp_path / 'data').mkdir()
+    (tmp_path / 'data' / 'ewok-core-1.0').symlink_to(prepared)      # a link at the expected place
     monkeypatch.setenv('RESULTCACHING_HOME', str(tmp_path / 'cache'))
     model = likelihood_subject(EWoKProvider(NativeModel()))
     score = brainscore.score(model, 'EWoK-core-1.0-logprobs', check_mem=False)

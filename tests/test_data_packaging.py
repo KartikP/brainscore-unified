@@ -141,8 +141,6 @@ def offline(monkeypatch, tmp_path):
         monkeypatch.setitem(sys.modules, name, module)
     monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path / 'home'))
     monkeypatch.setenv('BRAINIO_HOME', str(tmp_path / 'brainio'))
-    for asset in local.REGISTRY.values():          # every local asset folder is a temporary one
-        monkeypatch.setenv(asset.env_var, str(tmp_path / 'assets' / asset.name))
     return stand_ins
 
 
@@ -204,7 +202,7 @@ def test_ewok_packages_from_the_source_folder_of_the_one_rule(tmp_path, monkeypa
                  ).to_csv(source / 'native.csv', index=False)
     output = package_data('ewok')
     # Where the benchmarks read it (here the folder its variable names), with nothing else to do.
-    assert output == local.path('ewok-core-1.0') == tmp_path / 'assets' / 'ewok-core-1.0'
+    assert output == local.path('ewok-core-1.0') == tmp_path / 'ewok-core-1.0'
     assert len(brainscore.load_dataset('EWoK-core-1.0')) == 3
     printed = capsys.readouterr().out
     assert re.search(rf"items\.json .*sha1 {_sha1(output / 'items.json')} .*items 3", printed)
@@ -563,8 +561,8 @@ def test_the_algonauts_recovery_command_reads_the_folder_the_benchmark_names(tmp
     subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc=duration=5:size=64x48:rate=25',
                     '-f', 'lavfi', '-i', 'sine=duration=5:sample_rate=16000', '-shortest',
                     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', str(film)], check=True)
-    # The competition files are where the benchmark's pre-check looks for them.
-    _algonauts_source(local.REGISTRY['algonauts2025-root'].resolved(), film=film.read_bytes())
+    # The competition files are in the one source folder.
+    _algonauts_source(tmp_path / 'home' / 'sources' / 'algonauts2025', film=film.read_bytes())
     prepared = local.REGISTRY['algonauts2025-prepared'].resolved()
     with pytest.raises(LocalDataMissing) as missing:
         local.check_benchmark_assets('Algonauts2025-friends-sub01')
@@ -583,7 +581,7 @@ def test_algonauts_packaged_from_the_common_source_folder_passes_the_benchmark_c
     (tmp_path / 'home' / 'sources').mkdir(parents=True)
     source.rename(tmp_path / 'home' / 'sources' / 'algonauts2025')
     package_data('algonauts2025')
-    assert not local.REGISTRY['algonauts2025-root'].resolved().exists()
+    assert (tmp_path / 'home' / 'algonauts2025-prepared').is_dir()
     local.check_benchmark_assets('Algonauts2025-friends-sub01')
 
 
@@ -787,12 +785,12 @@ def test_algonauts_fails_as_a_whole_when_an_assembly_names_an_absent_film(tmp_pa
     assert _tree(source) == before
 
 
-def test_an_unrelated_asset_variable_does_not_hide_the_algonauts_recovery_command(tmp_path, offline, monkeypatch):
-    # The competition files exist, the prepared folder does not, and an unrelated variable is empty.
-    local.REGISTRY['algonauts2025-root'].resolved().mkdir(parents=True)
-    monkeypatch.setenv(local.REGISTRY['lana-atlas'].env_var, '')
+def test_prepared_data_in_an_old_place_is_missing_and_the_message_names_the_new_place(
+        tmp_path, offline, monkeypatch):
+    monkeypatch.setenv('HOME', str(tmp_path / 'user'))
+    (tmp_path / 'user' / '.brainio' / 'algonauts2025').mkdir(parents=True)     # an old default place
     with pytest.raises(LocalDataMissing) as missing:
         local.check_benchmark_assets('Algonauts2025-friends-sub01')
+    assert str(tmp_path / 'home' / 'algonauts2025-prepared') in str(missing.value)
     command = str(missing.value).split('Then convert it:')[1].split('\n')[1].strip()
-    assert 'algonauts2025-prepared' in str(missing.value)
-    assert shlex.split(command)[5:] == ['--source', str(local.REGISTRY['algonauts2025-root'].resolved())]
+    assert command == 'python -m brainscore.data package algonauts2025'

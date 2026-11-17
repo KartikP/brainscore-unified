@@ -20,8 +20,7 @@ It does not accept arbitrary LeBel files or raw scans.
 # The source pickle in its one place (or under $BRAINSCORE_DATA_HOME/sources/lebel2023)
 mkdir -p ~/brainscore-data/sources/lebel2023
 mv /path/to/UTS03-assembly.pkl ~/brainscore-data/sources/lebel2023/assembly_lebel_uts03.pkl
-# Optional: a new folder for the converted files of other settings
-export BRAINSCORE_LEBEL_CACHE=/path/to/new-cache
+# The converted files of other settings go to ~/brainscore-data/lebel2023-converted
 ```
 
 With the unified package installed, convert and load without a model:
@@ -57,7 +56,7 @@ has not yet been compared with the registered sha1.
 - Access: public, no account.
 - Needs: a download, size not measured; no tools.
 - Command: none: nothing to package.
-- Writes: The atlas is read as published. Put the folder at ~/Downloads/20425209/FS or set BRAINSCORE_LANA_ATLAS to it.
+- Writes: The atlas is read as published. Put the folder at `$BRAINSCORE_DATA_HOME/lana-atlas` (`~/brainscore-data/lana-atlas` by default), or put a link there to it.
 - Check: nothing to compare.
 
 ### lebel2023

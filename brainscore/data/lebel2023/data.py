@@ -18,11 +18,11 @@ The conversion emits one stimulus row per TR. Each row carries the words spoken
 in the seconds leading up to that TR, which is what a text model reads.
 """
 
-import os
 import pickle
 from pathlib import Path
 
 from .. import local
+from ..local import data_home
 from ..packaging import source_folder
 
 import numpy as np
@@ -62,9 +62,8 @@ def _pickle_path(pickle_path=None) -> Path:
 
 
 def _cache_dir() -> Path:
-    return Path(os.environ.get(
-        'BRAINSCORE_LEBEL_CACHE',
-        Path.home() / '.brainscore-umi-cache' / 'lebel2023')).expanduser()
+    """The converted files of other settings: ``$BRAINSCORE_DATA_HOME/lebel2023-converted``."""
+    return data_home() / 'lebel2023-converted'
 
 
 class _Stub:

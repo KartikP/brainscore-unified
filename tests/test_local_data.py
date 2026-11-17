@@ -17,70 +17,50 @@ pytestmark = pytest.mark.unit
 @pytest.fixture
 def asset(tmp_path, monkeypatch):
     declared = local.LocalAsset(
-        name='test-asset', env_var='BRAINSCORE_TEST_ASSET',
-        default_path='nowhere/at/all.pkl', kind='stimuli',
+        name='test-asset', kind='stimuli',
         why_local='Licensed film, not ours to hand out.',
         source='https://example.invalid/data',
         obtain='The whole thing, about 2 GB.',
         prepare='python -m brainscore.data.example.prepare --root <root>',
         used_by=['Example-benchmark'])
     monkeypatch.setitem(local.REGISTRY, declared.name, declared)
-    monkeypatch.delenv(declared.env_var, raising=False)
-    monkeypatch.setenv('HOME', str(tmp_path))  # the default folder is never the user's own
+    monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path / 'data'))  # never the user's own folder
     return declared
 
 
 class TestResolution:
-    def test_environment_overrides_the_default(self, asset, tmp_path, monkeypatch):
-        monkeypatch.setenv(asset.env_var, str(tmp_path / 'elsewhere.pkl'))
-        assert asset.resolved() == tmp_path / 'elsewhere.pkl'
+    def test_an_asset_is_under_the_data_home_by_its_name(self, asset, tmp_path):
+        assert asset.resolved() == tmp_path / 'data' / 'test-asset'
 
-    def test_default_is_under_home(self, asset):
-        assert asset.resolved() == pathlib.Path.home() / asset.default_path
+    def test_the_default_data_home_is_in_the_home_folder(self, asset, monkeypatch):
+        monkeypatch.delenv('BRAINSCORE_DATA_HOME')
+        assert asset.resolved() == pathlib.Path.home() / 'brainscore-data' / 'test-asset'
 
-    def test_present_file_resolves(self, asset, tmp_path, monkeypatch):
-        target = tmp_path / 'here.pkl'
-        target.write_bytes(b'x')
-        monkeypatch.setenv(asset.env_var, str(target))
-        assert local.path(asset.name) == target
-
-    def test_a_tilde_means_the_home_folder(self, asset, tmp_path, monkeypatch):
+    def test_a_relative_data_home_is_made_absolute(self, asset, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv(asset.env_var, '~/frames')
-        assert asset.resolved() == pathlib.Path.home() / 'frames'
+        monkeypatch.setenv('BRAINSCORE_DATA_HOME', 'relative')
+        assert asset.resolved() == pathlib.Path.cwd() / 'relative' / 'test-asset'
 
-    def test_a_tilde_with_a_literal_folder_here_is_refused(self, asset, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        (tmp_path / '~' / 'frames').mkdir(parents=True)
-        monkeypatch.setenv(asset.env_var, '~/frames')
-        with pytest.raises(ValueError, match='ambiguous') as caught:
-            asset.resolved()
-        assert str(pathlib.Path.home() / 'frames') in str(caught.value)
-        assert str(tmp_path / '~' / 'frames') in str(caught.value)
-        row, = [row for row in local.status() if row['name'] == asset.name]
-        assert row['present'] is False and row['path'].startswith('refused:')
+    def test_present_file_resolves(self, asset):
+        asset.resolved().parent.mkdir(parents=True)
+        asset.resolved().write_bytes(b'x')
+        assert local.path(asset.name) == asset.resolved()
 
-    @pytest.mark.parametrize('value', ['', '  '])
-    def test_an_empty_variable_is_refused(self, asset, monkeypatch, value):
-        monkeypatch.setenv(asset.env_var, value)
-        with pytest.raises(ValueError, match=f'{asset.env_var} is set but empty.*unset it'):
-            asset.resolved()
-
-    def test_an_empty_ewok_variable_is_refused_not_read_as_this_folder(self, monkeypatch):
-        from brainscore.data.ewok.data import load_prepared
-        monkeypatch.setenv('BRAINSCORE_EWOK_ROOT', '')
-        with pytest.raises(ValueError, match='BRAINSCORE_EWOK_ROOT is set but empty'):
-            load_prepared()
-
-    def test_an_empty_friends_variable_is_refused_not_read_as_the_default(self, monkeypatch):
-        from brainscore.data.algonauts2025 import default_data_root
-        monkeypatch.setenv('BRAINSCORE_ALGONAUTS_PREPARED', '')
-        with pytest.raises(ValueError, match='BRAINSCORE_ALGONAUTS_PREPARED is set but empty'):
-            default_data_root()
+    def test_a_link_at_the_place_is_read(self, asset, tmp_path):
+        (tmp_path / 'other-drive').mkdir()
+        asset.resolved().parent.mkdir(parents=True)
+        asset.resolved().symlink_to(tmp_path / 'other-drive')
+        assert local.path(asset.name) == asset.resolved()
 
     def test_unknown_asset_names_the_known_ones(self):
         with pytest.raises(KeyError, match='known:'):
             local.path('no-such-asset')
+
+
+def test_every_registered_asset_resolves_under_the_data_home(tmp_path, monkeypatch):
+    monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path))
+    for name, asset in local.REGISTRY.items():
+        assert asset.resolved() == tmp_path / name
 
 
 class TestTheMessage:
@@ -90,7 +70,7 @@ class TestTheMessage:
         with pytest.raises(local.LocalDataMissing) as caught:
             local.path(asset.name)
         message = str(caught.value)
-        for expected in (asset.source, asset.env_var, asset.obtain,
+        for expected in (asset.source, str(asset.resolved()), 'BRAINSCORE_DATA_HOME', asset.obtain,
                          asset.why_local, asset.prepare, 'Example-benchmark'):
             assert expected in message, f'message omits {expected!r}'
 
@@ -130,25 +110,12 @@ class TestManifest:
 
 
 class TestFriendsLocation:
-    """The Friends benchmarks read two folders; each has one BRAINSCORE_ variable."""
-
-    def test_two_assets_with_prefixed_variables(self):
-        from brainscore.data.algonauts2025 import ALGONAUTS_PREPARED, ALGONAUTS_ROOT
-        assert ALGONAUTS_ROOT.env_var == 'BRAINSCORE_ALGONAUTS_ROOT'
-        assert ALGONAUTS_PREPARED.env_var == 'BRAINSCORE_ALGONAUTS_PREPARED'
+    """The Friends benchmarks read one folder: the prepared files."""
 
     def test_data_code_reads_the_prepared_asset(self, tmp_path, monkeypatch):
         from brainscore.data.algonauts2025 import default_data_root
-        monkeypatch.delenv('BRAINSCORE_ALGONAUTS_PREPARED', raising=False)
-        assert default_data_root() == pathlib.Path.home() / '.brainio/algonauts2025'
-        monkeypatch.setenv('BRAINSCORE_ALGONAUTS_PREPARED', str(tmp_path))
-        assert default_data_root() == tmp_path
-
-    def test_unprefixed_variable_is_ignored(self, tmp_path, monkeypatch):
-        from brainscore.data.algonauts2025 import default_data_root
-        monkeypatch.delenv('BRAINSCORE_ALGONAUTS_PREPARED', raising=False)
-        monkeypatch.setenv('ALGONAUTS_DATA_ROOT', str(tmp_path))
-        assert default_data_root() != tmp_path
+        monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path))
+        assert default_data_root() == tmp_path / 'algonauts2025-prepared'
 
     @pytest.mark.parametrize('identifier', [
         'Algonauts2025-friends-sub01', 'Algonauts2025-friends-sub05',
@@ -156,13 +123,11 @@ class TestFriendsLocation:
         'Algonauts2025-friends-sub01-video',
         'Algonauts2025-friends-sub01-video-audio'])
     def test_precheck_covers_friends_identifiers(self, identifier, tmp_path, monkeypatch):
-        monkeypatch.setenv('BRAINSCORE_ALGONAUTS_ROOT', str(tmp_path / 'native'))
-        monkeypatch.setenv('BRAINSCORE_ALGONAUTS_PREPARED', str(tmp_path / 'prepared'))
+        monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path))
         with pytest.raises(local.LocalDataMissing, match='algonauts2025-prepared'):
             local.check_benchmark_assets(identifier)
-        (tmp_path / 'prepared').mkdir()
+        (tmp_path / 'algonauts2025-prepared').mkdir()
         local.check_benchmark_assets(identifier)
-
 
 
 def test_records_name_only_registered_benchmarks_and_every_known_reader():
@@ -183,7 +148,6 @@ def test_records_name_only_registered_benchmarks_and_every_known_reader():
         return {identifier for identifier in registered if identifier.startswith(prefix)}
 
     known = {
-        'algonauts2025-root': set(),     # read by the packaging, not by a benchmark
         'algonauts2025-prepared': family('Algonauts2025-'),
         'coggym-checkout': family('CogGym.'),
         'ewok-core-1.0': family('EWoK-core-1.0-'),
@@ -192,7 +156,7 @@ def test_records_name_only_registered_benchmarks_and_every_known_reader():
         'lahner2024-frames': set(),
         'lahner2024-sound': set(),
     }
-    none = {'algonauts2025-root', 'lahner2024-frames', 'lahner2024-sound'}
+    none = {'lahner2024-frames', 'lahner2024-sound'}
     assert all(identifiers for name, identifiers in known.items() if name not in none)
     for name, readers in known.items():
         assert name in local.REGISTRY, f'the local asset {name!r} is no longer declared'
