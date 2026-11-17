@@ -365,10 +365,12 @@ def _check(builder: DataBuilder, recorded: dict, relative: str, entry: dict, con
 
 
 def package_data(name: str, source: str | Path | None = None,
-                 output: str | Path | None = None) -> Path | None:
+                 output: str | Path | None = None, built: str | Path | None = None) -> Path | None:
     """Package the files of data plugin ``name`` from its original source.
 
-    Returns the output folder, or ``None`` when there is nothing to package.
+    ``built``: the folder of an earlier build whose check failed (the error names it); its files
+    are checked again, with no new build. Returns the output folder, or ``None`` when there is
+    nothing to package.
     Raises ``LocalDataMissing`` with what to get and where to put it when the source
     is missing, and ``NotImplementedError`` when no builder exists yet.
     """
@@ -382,7 +384,7 @@ def package_data(name: str, source: str | Path | None = None,
         print(f'{name}: nothing to package. {builder.writes}')
         return None
     native = Path(source).expanduser() if source is not None else source_folder(name)
-    if not builder.fetches:
+    if built is None and not builder.fetches:
         if not native.exists():
             raise LocalDataMissing(_missing(name, builder, native))
         lacks = _lacks(native, builder.requires)
@@ -401,12 +403,16 @@ def package_data(name: str, source: str | Path | None = None,
     destination.parent.mkdir(parents=True, exist_ok=True)
     # Build beside the destination and rename only after success: an interrupted
     # build must not look like a ready dataset.
-    staging = Path(tempfile.mkdtemp(prefix='.brainscore-build-', dir=destination.parent))
+    staging = Path(built).expanduser().absolute() if built is not None else \
+        Path(tempfile.mkdtemp(prefix='.brainscore-build-', dir=destination.parent))
+    if not staging.is_dir():
+        raise FileNotFoundError(f'{staging} holds no earlier build')
     work = Path(tempfile.mkdtemp(prefix='.brainscore-work-', dir=destination.parent))
-    placed = {}
+    placed, keep = {}, False
     try:
         try:
-            _run(builder.build, native, staging, work)
+            if built is None:
+                _run(builder.build, native, staging, work)
         except FileNotFoundError as missing:
             if builder.fetches:
                 raise
@@ -425,8 +431,13 @@ def package_data(name: str, source: str | Path | None = None,
             if problem:
                 problems.append(f'  {relative}: {problem}')
         if problems:
-            raise ValueError('\n'.join([f'The check of the built {name} files failed; nothing was moved '
-                                         f'to {destination}.', *problems]))
+            keep = True             # a long build is not lost: the check can run again on these files
+            output_option = f' --output {destination}' if destination != read_place else ''
+            raise ValueError('\n'.join([
+                f'The check of the built {name} files failed; nothing was moved to {destination}.', *problems,
+                f'The built files are kept in {staging}. When the registered copy is on this machine, check '
+                f'them again with no new build:  python -m brainscore.data package {name}{output_option} '
+                f'--built {staging}', f'Or remove them:  rm -r {staging}']))
         (staging / 'build.json').write_text(json.dumps(
             {'schema_version': 4, 'name': name, 'source': builder.source, 'files': files},
             indent=2, allow_nan=False) + '\n')
@@ -451,7 +462,7 @@ def package_data(name: str, source: str | Path | None = None,
         raise RuntimeError(f'{failure}\n{retained}') from failure
     finally:
         shutil.rmtree(work, ignore_errors=True)
-        if staging.exists():
+        if staging.exists() and not keep and built is None:     # a given earlier build is never deleted
             shutil.rmtree(staging)
     _report(name, builder, destination, read_place, files, placed)
     return destination

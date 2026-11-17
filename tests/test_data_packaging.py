@@ -498,6 +498,23 @@ def test_the_ewok_error_gives_the_command_that_writes_where_it_reads(offline):
     assert 'package ewok' in str(missing.value) and '--output' not in str(missing.value)
 
 
+def test_a_failed_check_keeps_the_build_and_names_how_to_check_it_again(tmp_path, monkeypatch, offline):
+    registered = b'x,y\n1.0,a\n'
+    sha1 = hashlib.sha1(registered).hexdigest()
+    source = _made_up_plugin(tmp_path, monkeypatch, {'table.csv': b'x,y\n1.00,a\n'}, sha1={'table.csv': sha1})
+    with pytest.raises(ValueError) as failed:          # no registered copy here yet: the check fails
+        package_data('made-up', source=source, output=tmp_path / 'out')
+    kept = pathlib.Path(re.search(r'The built files are kept in (\S+)\.', str(failed.value)).group(1))
+    assert (kept / 'table.csv').read_bytes() == b'x,y\n1.00,a\n'
+    assert f'--built {kept}' in str(failed.value) and f'rm -r {kept}' in str(failed.value)
+    assert not (tmp_path / 'out').exists()                                    # nothing reached the output
+    (tmp_path / 'brainio' / sha1).mkdir(parents=True)                         # the registered copy arrives
+    (tmp_path / 'brainio' / sha1 / 'table.csv').write_bytes(registered)
+    shutil.rmtree(source)                                                     # no second build
+    output = package_data('made-up', output=tmp_path / 'out', built=kept)
+    assert (output / 'table.csv').read_bytes() == b'x,y\n1.00,a\n' and not kept.exists()
+
+
 def test_a_file_with_no_expected_record_states_its_counts(tmp_path, monkeypatch, capsys, offline):
     source = _made_up_plugin(tmp_path, monkeypatch, {'table.csv': b'x\n1\n2\n'})
     output = package_data('made-up', source=source, output=tmp_path / 'out')
