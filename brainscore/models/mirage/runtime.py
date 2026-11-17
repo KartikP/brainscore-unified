@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import math
 import os
-import signal
 from pathlib import Path
 import subprocess
 import tempfile
 
 import numpy as np
+
+from brainscore.harnesses._child_process import ChildProcess
 
 from .model import Clip, Prediction, PARTICIPANTS
 
@@ -84,22 +85,9 @@ class MirageRuntime:
             command = [self.python_executable, str(Path(__file__).with_name('worker.py')),
                        str(request_path)]
             try:
-                with (root / 'stdout.log').open('wb') as stdout, (root / 'stderr.log').open('wb') as stderr:
-                    with subprocess.Popen(
-                        command, env=environment, stdout=stdout, stderr=stderr,
-                        start_new_session=True,
-                    ) as process:
-                        try:
-                            returncode = process.wait(timeout=self.timeout_s)
-                        except BaseException:
-                            try:
-                                os.killpg(process.pid, signal.SIGKILL)
-                            except ProcessLookupError:
-                                pass
-                            process.wait()
-                            raise
-                        if returncode:
-                            raise subprocess.CalledProcessError(returncode, command)
+                # The shared process control: own process group, logs, killed and reaped on any exit.
+                with ChildProcess(command, env=environment, log_directory=root) as child:
+                    child.wait(self.timeout_s)
             except subprocess.TimeoutExpired as error:
                 raise MirageTimeout(f'MIRAGE worker timed out after {self.timeout_s:g}s') from error
             except (subprocess.CalledProcessError, OSError) as error:

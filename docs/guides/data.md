@@ -29,7 +29,7 @@ A wrapper reads a stimulus file path only from the column names that the core ca
 | `EWoK-core-1.0` | `EWoK-core-1.0` | world-knowledge contrasts and their answer keys | local: gated text | `EWoK-core-1.0-logprobs`, `-choice` |
 | `Yeatman2021` | `Yeatman2021` | word and pseudoword images with human lexical decisions (ROAR) | hosted | `Yeatman2021-lexical_decision-*` |
 
-CogGym's experiments, human results and scoring code come from the authors' repository at a pinned revision; point `BRAINSCORE_COGGYM_CHECKOUT` at that checkout. `python -m brainscore.data` lists the files you supply yourself that a plugin declares as a local asset (the Algonauts 2025 files, the CogGym checkout, the EWoK data, the Lahner2024 frames and sound tracks, the language atlas and the LeBel source pickle), where to get each and whether it is found; `python -m brainscore.data <name>` prints how to obtain one.
+CogGym's experiments, human results and scoring code come from the authors' repository at a pinned commit, in a folder Brain-Score makes at the first load, with CogGym's own environment ([the CogGym page](../../brainscore/data/coggym/README.md)). `python -m brainscore.data` lists the files you supply yourself that a plugin declares as a local asset (the Algonauts 2025 files, the EWoK data, the Lahner2024 frames and sound tracks, the language atlas and the LeBel source pickle), where to get each and whether it is found; `python -m brainscore.data <name>` prints how to obtain one.
 
 ## Add a data plugin
 
