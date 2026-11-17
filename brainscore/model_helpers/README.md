@@ -15,7 +15,6 @@ The reader is a person who registers a model.
 | Record with a plain PyTorch vision module | `PytorchWrapper`, in `brainscore_vision.model_helpers.activations.pytorch` | An extractor for still images; it lives in the vision package, not here. |
 | Record one pass over a picture, a clip and a sentence together (the fused form) | `fused.py`: `fused_chat_extractor` | One forward pass of a chat model over image, video and text; one step per kind plus `final`. |
 | Let a chat model write an answer and give likelihoods | `replies.py`: `chat_parts` | A `reply` part and a `likelihood` part for a Hugging Face chat model. |
-| Score each part of a text given the parts before it | `replies.py`: `segment_log_probabilities` | The `segment` entry of a likelihood part: the log probability, in bits, of each part of a `Segments` row. |
 | Build a text-only causal language model in one call | `causal_lm.py`: `build_causal_lm_subject` | A `BrainScoreModel` that records, takes interventions, replies and scores options. |
 | Use a model behind a web service | `api_behavioral.py`: `api_answer`, `build_api_reply`, `api_policy` | An `answer` part, a `reply` part or a `policy` that calls a provider API, with a response cache. |
 | Lesion or stimulate units | `intervention.py`: `pytorch_intervention` | An `intervention` part that installs and removes forward hooks on a torch model. |

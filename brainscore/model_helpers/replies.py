@@ -21,10 +21,11 @@ Without them the reply is greedy and at most ``max_new_tokens`` tokens long.
 ``likelihood(prompt, candidates)`` returns the log probability of
 each candidate as the whole reply (teacher-forced, summed over its tokens). It
 runs the prompt on its own before any candidate, so a recording made during
-scoring is the prompt pass, as it is for a reply. ``chat_parts`` returns the likelihood
-as ``{'continuation': ..., 'segment': ...}``: its ``segment`` entry answers a
-``Segments`` task with ``segment_log_probabilities``.
+scoring is the prompt pass, as it is for a reply. The likelihood that ``chat_parts``
+returns is also a mapping by layout: ``likelihood['segment']`` answers a ``Segments``
+task (the log probability of each part of a text given the parts before it).
 """
+from collections.abc import Mapping as _AbcMapping
 from typing import Mapping, Optional, Sequence
 
 from brainscore_core.compatibility import ExecutionNotFeasibleError
@@ -51,7 +52,7 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
                                 skip_special_tokens=True).strip()
 
     def segments(prompt):
-        return segment_log_probabilities(model, tokenizer, prompt.response.segments)
+        return _segment_log_probabilities(model, tokenizer, prompt.response.segments)
 
     def likelihood(prompt, candidates: Sequence[str]) -> dict:
         import torch
@@ -83,7 +84,7 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
                                       .gather(-1, ids[0, :, None]).sum())
         return scores
 
-    return reply, {'continuation': likelihood, 'segment': segments}
+    return reply, _Layouts(likelihood, segments)
 
 
 def _plain_text_scores(model, tokenizer, prompt, candidates: Sequence[str]) -> dict:
@@ -145,25 +146,51 @@ def _scores_alone(model, sequences, start: int) -> list:
     return totals
 
 
+class _Layouts(_AbcMapping):
+    """A likelihood part by layout that is also its continuation callable.
+
+    ``part(prompt, candidates)`` scores options as before; ``part['segment']`` answers a
+    ``Segments`` task. ``BrainScoreModel(likelihood=part)`` reads both layouts.
+    """
+
+    def __init__(self, continuation, segment):
+        self._parts = {'continuation': continuation, 'segment': segment}
+
+    def __call__(self, prompt, candidates: Sequence[str]) -> dict:
+        return self._parts['continuation'](prompt, candidates)
+
+    def __getitem__(self, layout):
+        return self._parts[layout]
+
+    def __iter__(self):
+        return iter(self._parts)
+
+    def __len__(self) -> int:
+        return len(self._parts)
+
+
 # The join of the parts of a Segments row: brainscore_core.text.prepare_context.
-SEGMENT_JOIN = 'one space; parts of white space only dropped; no space before . , ! ? ; :'
+_SEGMENT_JOIN = 'one space; parts of white space only dropped; no space before . , ! ? ; :'
 
 
-def segment_log_probabilities(model, tokenizer, segments: Sequence[str]):
+def _segment_log_probabilities(model, tokenizer, segments: Sequence[str]):
     """The log probability, in bits, of each part of one text given the parts before it.
 
-    ``(values, parameters)``: one value for each part and the response record's
-    parameters (segment layout, Response Format Standard 2.3). The schedule is the one of
-    the legacy language helper's reading times: the context of part i is
-    ``prepare_context(parts[:i+1])``; its new tokens are the tokenizer's ids of that
-    context (the tokenizer's default special tokens) after the count of the context
-    before, and every per-token input the tokenizer gives reaches the model. The first context runs in full; each later part runs only its new tokens
-    with the key-value cache and the last logit of the run before. When the cache and
-    the new tokens pass the model's window (``max_position_embeddings``), the cache keeps
-    its newest ``window - new`` positions (``slice_kv_cache`` of the language helper). A
-    value is minus the summed cross entropy of the new tokens divided by ln 2; the first
-    token of the text has no prediction and is not scored, so a first part of one token is
-    NaN. The model runs where it is.
+    ``(values, parameters)``: one value for each part (``None`` for a part with no scored
+    token: the first part of one token) and the response record's parameters (segment
+    layout, Response Format Standard 2.3). The schedule is the one of the legacy language
+    helper's reading times: the context of part i is ``prepare_context(parts[:i+1])``; its
+    new tokens are the tokenizer's ids of that context (the tokenizer's default special
+    tokens) after the count of the context before, and every per-token input the
+    tokenizer gives reaches the model. The whole schedule is checked against the model's
+    window (``max_position_embeddings``) before any forward pass: the first context fits
+    the window, and each later part has fewer new tokens than the window. The first
+    context runs in full; each later part runs only its new tokens with the key-value cache,
+    their positions after the cached ones, and the last logit of the run before. When the
+    cache and the new tokens pass the window, the cache keeps its newest ``window - new``
+    positions (``slice_kv_cache`` of the language helper). A value is minus the summed cross
+    entropy of the new tokens, in the dtype of the model's logits, divided by ln 2; the first
+    token of the text has no prediction and is not scored. The model runs where it is.
     """
     import numpy as np
     import torch
@@ -172,40 +199,47 @@ def segment_log_probabilities(model, tokenizer, segments: Sequence[str]):
     from brainscore_language.model_helpers.huggingface import slice_kv_cache
     window = model.config.get_text_config().max_position_embeddings
     device = next(model.parameters()).device
-    values, count, past, last = [], 0, None, None
+    steps, count = [], 0
     for i in range(len(segments)):
+        encoded = tokenizer(prepare_context(segments[:i + 1]), return_tensors='pt')
+        total = encoded['input_ids'].shape[-1]
+        if not steps and total > window:
+            raise ValueError(f'part 1 has {total} tokens, more than the window of {window}')
+        if steps and total - count >= window:
+            raise ValueError(f'part {i + 1} has {total - count} new tokens, as many as the window '
+                             f'of {window} or more; it cannot be scored with its context')
         # Every per-token input the tokenizer gives (ids, mask, token types) reaches the model.
-        encoded = {key: value.to(device) for key, value in
-                   tokenizer(prepare_context(segments[:i + 1]), return_tensors='pt').items()}
-        ids = encoded['input_ids'][0].tolist()
-        new, start, count = ids[count:], count, len(ids)
-        if len(new) >= window:
-            raise ValueError(f'part {i + 1} has {len(new)} tokens, as many as the window of '
-                             f'{window} or more; it cannot be scored with its context')
+        steps.append({key: value[..., count:] for key, value in encoded.items()})
+        count = total
+    values, past, last = [], None, None
+    for inputs in steps:
+        inputs = {key: value.to(device) for key, value in inputs.items()}
+        new = inputs['input_ids'][0]
         with torch.no_grad():
             if past is None:
-                output = model(**encoded, use_cache=True)
+                output = model(**inputs, use_cache=True)
                 logits = output.logits
             else:
                 if past.get_seq_length() + len(new) > window:
                     past = slice_kv_cache(past, window - len(new))
-                inputs = {key: value[..., start:] for key, value in encoded.items()}
-                inputs['attention_mask'] = torch.ones(1, past.get_seq_length() + len(new),
-                                                      dtype=torch.long, device=device)
-                output = model(**inputs, past_key_values=past, use_cache=True)
+                start = past.get_seq_length()
+                inputs['attention_mask'] = torch.ones(1, start + len(new), dtype=torch.long, device=device)
+                # The positions of the new tokens follow the cached ones.
+                output = model(**inputs, past_key_values=past, use_cache=True,
+                               cache_position=torch.arange(start, start + len(new), device=device))
                 logits = torch.cat([last.to(output.logits.device), output.logits], dim=1)
         past, last = output.past_key_values, logits[:, -1:, :]
         logits = logits[0]
         if logits.shape[0] <= 1:
-            values.append(float('nan'))
+            values.append(None)
             continue
-        predicted = logits[-len(new) - 1:-1, :].float().contiguous()
-        actual = torch.tensor(new, device=predicted.device)
+        predicted = logits[-len(new) - 1:-1, :].contiguous()
+        actual = new.to(predicted.device)
         if actual.shape[0] == predicted.shape[0] + 1:
             actual = actual[1:]   # the first token of the text has no prediction
         values.append(-float(F.cross_entropy(predicted, actual, reduction='sum') / np.log(2)))
     parameters = {'layout': 'segment', 'context': 'prefix', 'aggregation': 'sum', 'units': 'bits',
-                  'tokenization': {'join': SEGMENT_JOIN, 'special_tokens': 'tokenizer_default',
+                  'tokenization': {'join': _SEGMENT_JOIN, 'special_tokens': 'tokenizer_default',
                                    'template': 'none', 'truncation': int(window)}}
     return values, parameters
 

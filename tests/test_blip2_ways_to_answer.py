@@ -326,7 +326,7 @@ def test_a_coggym_experiment_becomes_applicable_and_runs(registered, scored_refe
 def test_a_segments_task_is_answered_by_the_language_model_with_the_shared_scorer(registered, monkeypatch):
     from brainscore.models.blip2_opt_2_7b import model as blip2
     from brainscore_core.responses import Segments
-    from brainscore.model_helpers.replies import SEGMENT_JOIN
+    from brainscore.model_helpers.replies import _SEGMENT_JOIN as SEGMENT_JOIN
     model, _, _ = registered()
     scored = []
     parameters = {'layout': 'segment', 'context': 'prefix', 'aggregation': 'sum', 'units': 'bits',
@@ -337,7 +337,7 @@ def test_a_segments_task_is_answered_by_the_language_model_with_the_shared_score
         scored.append((network, tokenizer, segments))
         return [float('nan'), -1.5, -2.5], parameters
 
-    monkeypatch.setattr(blip2, 'segment_log_probabilities', scorer)
+    monkeypatch.setattr(blip2, "_segment_log_probabilities", scorer)
     stimuli = _texts('seg', ['the dog ran'], segments=[('the', 'dog', 'ran')])
     answer = _run(model, stimuli, ['behavior:log_probabilities'],
                   TaskContext(response=Segments('segments')))['behavior:log_probabilities']

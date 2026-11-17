@@ -100,7 +100,9 @@ def test_the_stored_answer_keeps_the_raw_first_value_with_its_reason(tiny):
     assert np.isnan(answer.values[0, 0]) and np.isfinite(answer.values[0, 1:]).all()
     assert (answer.values[0, 1:] <= 0).all()
     assert list(answer['response_state'].values) == ['invalid']
-    assert list(answer['response_reason'].values) == ['position 1: no conditioning context']
+    reason, = answer['response_reason'].values
+    assert 'position 1' in reason and 'no conditioning context' in reason
+    assert 'position 2' not in reason
     parameters = answer.attrs['response']['parameters']
     assert parameters['layout'] == 'segment' and parameters['units'] == 'bits'
     assert parameters['tokenization']['truncation'] == 16
@@ -125,6 +127,8 @@ def test_a_likelihood_mapping_names_known_layouts_only():
         _subject({'segment': lambda prompt: ([], {})})
     with pytest.raises(ValueError, match='got'):
         _subject({'continuation': lambda p, c: {}, 'segments': lambda prompt: ([], {})})
+    with pytest.raises(ValueError, match='callable'):
+        _subject({'continuation': lambda p, c: {}, 'segment': 'not a part'})
 
 
 def test_an_empty_part_is_refused_before_a_forward_pass(tiny):
@@ -149,3 +153,138 @@ def test_a_model_with_no_likelihood_part_is_refused_before_compute():
     with pytest.raises((ValueError, ExecutionNotFeasibleError), match='states no response'):
         facade.digest_text(['the', 'dog'])
     assert answered == []
+
+
+def _full_prefix(network, tokenizer, parts):
+    """The reference: one full forward pass over the whole text, the log probability in bits
+    of each part's new tokens given everything before them (NaN for a part with none)."""
+    import math
+    from brainscore_core.text import prepare_context
+    encoded = tokenizer(prepare_context(parts), return_tensors='pt')
+    tokens = encoded['input_ids'][0]
+    with torch.no_grad():
+        logp = network(**encoded).logits[0].log_softmax(-1)
+    values, start = [], 0
+    for i in range(len(parts)):
+        end = len(tokenizer(prepare_context(parts[:i + 1]))['input_ids'])
+        span = range(max(start, 1), end)
+        values.append(float(sum(logp[k - 1, tokens[k]] for k in span)) / math.log(2) if span else np.nan)
+        start = end
+    return np.array(values)
+
+
+@pytest.fixture
+def tiny_qwen_vl(tiny):
+    from transformers import Qwen2_5_VLConfig, Qwen2_5_VLForConditionalGeneration
+    import copy
+    tokenizer = copy.deepcopy(tiny[1])
+    tokenizer.model_input_names = ['input_ids', 'attention_mask']   # as a Qwen tokenizer gives
+    config = Qwen2_5_VLConfig(
+        text_config=dict(vocab_size=len(WORDS), hidden_size=16, intermediate_size=24, num_hidden_layers=2,
+                         num_attention_heads=2, num_key_value_heads=1, max_position_embeddings=64,
+                         rope_scaling={'type': 'mrope', 'mrope_section': [2, 1, 1]}),
+        vision_config=dict(depth=1, hidden_size=16, intermediate_size=24, num_heads=2, out_hidden_size=16,
+                           fullatt_block_indexes=[0]))
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(7)
+        network = Qwen2_5_VLForConditionalGeneration(config).eval().double()
+    return network, tokenizer
+
+
+@pytest.mark.parametrize('kind', ['gpt2', 'qwen2.5-vl'])
+def test_the_cached_values_equal_one_full_prefix_pass(tiny, tiny_qwen_vl, kind):
+    """The new tokens of each part get the positions after the cached ones (in float64, so a
+    wrong position shows far above rounding)."""
+    from brainscore.model_helpers.replies import chat_parts
+    from transformers import GPT2Config, GPT2LMHeadModel
+    if kind == 'gpt2':
+        _, tokenizer = tiny
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(3)
+            network = GPT2LMHeadModel(GPT2Config(vocab_size=len(WORDS), n_positions=64, n_embd=16,
+                                                 n_layer=2, n_head=2)).eval().double()
+    else:
+        network, tokenizer = tiny_qwen_vl
+    parts = PASSAGE[:12]
+    _, new = _facade_reading_times(_subject(chat_parts(network, tokenizer)[1]), parts)
+    np.testing.assert_allclose(new.values, -_full_prefix(network, tokenizer, parts), rtol=1e-10)
+
+
+def test_a_float64_model_reduces_and_returns_float64_as_the_old_helper(tiny):
+    from brainscore.model_helpers.causal_lm import _CausalLMParts
+    network, tokenizer = tiny
+    network = network.double()
+    old = _old_reading_times(network, tokenizer, PASSAGE)
+    _, new = _facade_reading_times(_subject(_CausalLMParts(network, tokenizer).likelihood), PASSAGE)
+    assert new.values.dtype == old.values.dtype == np.float64
+    np.testing.assert_array_equal(new.values, old.values)
+
+
+def test_a_first_part_that_fills_the_window_is_scored_as_the_old_helper(tiny):
+    from brainscore.model_helpers.causal_lm import _CausalLMParts
+    network, tokenizer = tiny
+    parts = [' '.join(PASSAGE[:16]), 'the', 'dog']        # 16 tokens: the whole window
+    old = _old_reading_times(network, tokenizer, parts)
+    _, new = _facade_reading_times(_subject(_CausalLMParts(network, tokenizer).likelihood), parts)
+    assert np.isfinite(new.values).all()
+    np.testing.assert_array_equal(new.values, old.values)
+
+
+def test_a_schedule_that_cannot_fit_the_window_is_refused_before_a_forward_pass(tiny):
+    from brainscore.model_helpers.causal_lm import _CausalLMParts
+    network, tokenizer = tiny
+    calls = []
+    network.register_forward_hook(lambda *args: calls.append(1))
+    with pytest.raises(ValueError, match='part 3 has 16 new tokens'):
+        _facade_reading_times(_subject(_CausalLMParts(network, tokenizer).likelihood),
+                              ['the', 'dog', ' '.join(PASSAGE[:16])])
+    assert calls == []
+
+
+def test_the_chat_likelihood_keeps_its_two_argument_call(tiny):
+    from brainscore.model_helpers.replies import chat_parts
+    from brainscore.model_helpers.causal_lm import _CausalLMParts
+    from brainscore_core.responses import Choice, Prompt
+    network, tokenizer = tiny
+    prompt = Prompt((('text', 'the dog'),), response=Choice(['ran', 'sat'], verbatim=True))
+    for likelihood in (chat_parts(network, tokenizer)[1], _CausalLMParts(network, tokenizer).likelihood):
+        assert set(likelihood(prompt, ['ran', 'sat'])) == {'ran', 'sat'}
+        assert callable(likelihood['segment'])
+
+
+def _segments_row(texts, parts):
+    stimuli = StimulusSet(pd.DataFrame({'sentence': texts, 'segments': parts,
+                                        'stimulus_id': [f's{i}' for i in range(len(texts))]}))
+    stimuli.identifier = f'segments-{len(texts)}'
+    return stimuli
+
+
+@pytest.mark.parametrize('settings', [dict(instruction='Read this.'), dict(present=('text',))])
+def test_a_segments_trial_that_shows_more_than_its_text_is_refused_before_any_call(tiny, settings):
+    calls = []
+
+    def segment(prompt):
+        calls.append(prompt)
+        return [None], {}
+
+    subject = _subject({'continuation': lambda p, c: {}, 'segment': segment})
+    session = stimulus_session(_segments_row(['the dog'], [('the', 'dog')]), [F6],
+                               TaskContext(response=Segments('segments'), **settings))
+    with pytest.raises(ExecutionNotFeasibleError, match='scores the parts of a Segments row only'):
+        subject.participate(session)
+    assert calls == []
+
+
+def test_rows_of_different_widths_are_refused_before_any_call():
+    calls = []
+
+    def segment(prompt):
+        calls.append(prompt)
+        return [None] * len(prompt.response.segments), {}
+
+    subject = _subject({'continuation': lambda p, c: {}, 'segment': segment})
+    session = stimulus_session(_segments_row(['the', 'the dog'], [('the',), ('the', 'dog')]), [F6],
+                               TaskContext(response=Segments('segments')))
+    with pytest.raises(ExecutionNotFeasibleError, match='widths'):
+        subject.participate(session)
+    assert calls == []

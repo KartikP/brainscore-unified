@@ -43,7 +43,7 @@ import torch
 from PIL import Image
 from transformers import AutoProcessor, Blip2ForConditionalGeneration
 
-from brainscore.model_helpers.replies import _generation_settings, _plain_text_scores, segment_log_probabilities
+from brainscore.model_helpers.replies import _generation_settings, _plain_text_scores, _segment_log_probabilities
 from brainscore.model_helpers.text_wrapper import TextWrapper
 from brainscore import BrainScoreModel
 from brainscore_core.compatibility import ExecutionNotFeasibleError
@@ -190,7 +190,7 @@ def _make_parts(blip_model, blip_processor, max_new_tokens: int = 64):
 
     def segments(prompt):
         # A Segments task: BLIP-2's own language model scores the text alone.
-        return segment_log_probabilities(blip_model.language_model, tokenizer, prompt.response.segments)
+        return _segment_log_probabilities(blip_model.language_model, tokenizer, prompt.response.segments)
 
     return reply, {'continuation': likelihood, 'segment': segments}
 

@@ -16,7 +16,7 @@ One registration declares, and answers through ``participate`` (or ``process``):
   chat template and no beginning-of-sequence token, as EWoK's ``score`` does;
   otherwise the text is a user turn of the chat template and each option is
   scored as the assistant's reply. Under a ``Segments`` task it gives the log
-  probability of each part given the earlier parts (``segment_log_probabilities``).
+  probability of each part given the earlier parts.
 """
 from copy import deepcopy
 from typing import Any, Mapping, Optional, Sequence
@@ -24,8 +24,8 @@ from typing import Any, Mapping, Optional, Sequence
 from brainscore import BrainScoreModel
 from brainscore_core.responses import Choice, Text
 
-from brainscore.model_helpers.replies import (_generation_settings, _plain_text_scores, _scores_alone,
-                                             segment_log_probabilities)
+from brainscore.model_helpers.replies import (_Layouts, _generation_settings, _plain_text_scores,
+                                             _scores_alone, _segment_log_probabilities)
 from brainscore.model_helpers.text_wrapper import TextWrapper
 from brainscore.model_helpers.intervention import pytorch_intervention
 
@@ -71,13 +71,13 @@ class _CausalLMParts:
         return self.tokenizer.decode(out[0], skip_special_tokens=True).strip()
 
     @property
-    def likelihood(self) -> dict:
-        """The likelihood part by layout: options after the trial's text, and the parts of a
-        Segments row (``segment_log_probabilities``)."""
-        return {'continuation': self._continuation, 'segment': self._segments}
+    def likelihood(self) -> _Layouts:
+        """The likelihood part: ``likelihood(prompt, candidates)`` scores options after the
+        trial's text; ``likelihood['segment']`` scores the parts of a Segments row."""
+        return _Layouts(self._continuation, self._segments)
 
     def _segments(self, prompt):
-        return segment_log_probabilities(self.model, self.tokenizer, prompt.response.segments)
+        return _segment_log_probabilities(self.model, self.tokenizer, prompt.response.segments)
 
     def _continuation(self, prompt, candidates: Sequence[str]) -> dict:
         """The summed log probability of each candidate after the trial's text."""
