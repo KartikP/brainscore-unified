@@ -119,13 +119,20 @@ def replay_calls(directory, *, methods, reset):
                   'reset_policy': 'caller supplied; before and after sequence'})
 
 
+def _without_attrs(array):
+    bare = array.copy(deep=False)
+    bare.attrs = {}
+    return bare
+
+
 def _equal(left, right):
     if isinstance(left, StreamEvent) and isinstance(right, StreamEvent):
         return (left.channel == right.channel and left.t_ms == right.t_ms
                 and _equal(left.meta, right.meta) and _equal(left.payload, right.payload))
     if isinstance(left, xr.DataArray) or isinstance(right, xr.DataArray):
+        # Values and coordinates by xarray; the attributes, which can hold arrays, by this function.
         return (type(left) is type(right) and left.dtype == right.dtype
-                and left.identical(right))
+                and _without_attrs(left).identical(_without_attrs(right)) and _equal(left.attrs, right.attrs))
     if isinstance(left, np.ndarray) or isinstance(right, np.ndarray):
         return (isinstance(left, np.ndarray) and isinstance(right, np.ndarray)
                 and left.dtype == right.dtype and np.array_equal(

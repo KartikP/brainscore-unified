@@ -323,3 +323,49 @@ def test_answers_saved_and_read_back_collect_as_the_live_answers(tmp_path, stimu
     read = session()
     read.emitted.extend(codec.decode(json.loads(json.dumps(codec.encode(list(live.emitted))))))
     assert read.collect('behavior:text').identical(live.collect('behavior:text'))
+
+
+
+class _CarryingSubject(Subject):
+    """Answers probabilities and carries one assembly with an array attribute in the meta."""
+    identifier = 'carrying'
+    in_channels = {'text'}
+    out_channels = {'behavior:probabilities'}
+
+    def __init__(self, nested):
+        self.nested = nested
+
+    def participate(self, session):
+        from brainscore_core.response_formats import response_record
+        from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
+        session.declare_inputs(self.in_channels)
+        while session.next_input() is not None:
+            pass
+        ids = list(session.stimuli['stimulus_id'])
+        answer = BehavioralAssembly([[0.25, 0.75]] * len(ids), dims=['presentation', 'choice'],
+                                    coords={'stimulus_id': ('presentation', ids), 'choice': ['cat', 'dog']},
+                                    attrs={'response': response_record('behavior:probabilities', 'external')})
+        carried = answer.copy()
+        carried.attrs = {'nested': {'values': np.array(self.nested)}}
+        session.respond(StreamEvent('behavior:probabilities', answer, None, meta={'carried': carried}))
+
+    def reset(self):
+        pass
+
+
+def _record_answer(directory, nested):
+    @contextmanager
+    def factory(repetition):
+        yield stimulus_session(stimuli(), ['behavior:probabilities'], TaskContext(response=Choice(['cat', 'dog'])))
+    protocol = SessionProtocol('carrying', factory, required_input_channels=['text'],
+                               requested_output_channels=['behavior:probabilities'])
+    return Experiment(subject=_CarryingSubject(nested), protocol=protocol, tools=[RecordInputsOutputs()],
+                      output_dir=directory).run().directory
+
+
+def test_outputs_whose_meta_holds_an_assembly_with_array_attributes_compare(tmp_path):
+    """An assembly in event meta whose attributes hold arrays compares; a changed array differs."""
+    a, b, c = (_record_answer(tmp_path / name, nested)
+               for name, nested in (('a', [1., np.nan]), ('b', [1., np.nan]), ('c', [1., 2.])))
+    assert compare_outputs(a, b)['equal']
+    assert not compare_outputs(a, c)['equal']
