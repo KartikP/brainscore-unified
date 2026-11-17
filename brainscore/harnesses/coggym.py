@@ -34,6 +34,7 @@ import pandas as pd
 from brainscore.experiments import CallableProtocol
 from brainscore.harnesses.adapter import run_request
 from brainscore.harnesses.coggym_validation import SLIDER_VALIDATION_POLICY, validate_slider_responses
+from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Text
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
@@ -190,6 +191,10 @@ class _SubjectAdapter:
     CogGym stores ``reasoning`` and ``token_usage`` with each trial and never
     scores them. They come from the extra data (``meta``) of the answer event
     when the subject gives them; otherwise they are ``None``.
+
+    A trial the subject cannot serve (``ExecutionNotFeasibleError``, for example a
+    trial with more pictures than the subject takes) is kept in ``refusal``; no
+    later trial reaches the subject, and the run ends with that error.
     """
 
     def __init__(self, subject, context, repetition, prompt_trials, stored=None):
@@ -201,17 +206,35 @@ class _SubjectAdapter:
         self.call_index = 0
         self.prompt_trials = prompt_trials
         self.media_directory = context.directory / 'coggym-media'
+        self.refusal = None
+        # How many calls of each prompt this repetition has made: several trials can share one
+        # prompt, and CogGym calls them in trial order, so the k-th call is the k-th such trial.
+        self.prompt_calls = {}
 
     def complete_with_metadata(self, system, messages, model, temperature, max_tokens):
-        trial_ids = self.prompt_trials[_prompt_key(system, messages)]
+        if self.refusal is not None:
+            raise self.refusal      # an earlier trial was refused: no further trial runs
+        key = _prompt_key(system, messages)
+        trial_ids = self.prompt_trials[key]
+        occurrence = self.prompt_calls.get(key, 0)
+        self.prompt_calls[key] = occurrence + 1
+        # A call beyond the trials of its prompt (a repeated call) keeps the last of them.
+        trial_id = trial_ids[min(occurrence, len(trial_ids) - 1)]
         row, present = _trial_row(messages, self.media_directory)
-        stimuli = StimulusSet(pd.DataFrame([{'stimulus_id': trial_ids[0], **row}]))
+        stimuli = StimulusSet(pd.DataFrame([{'stimulus_id': trial_id, **row}]))
         task = TaskContext(instruction=system, present=present, trial_memory='none',
                            response=Text(max_tokens=max_tokens, temperature=float(temperature)))
         record_repetition = f'{self.repetition}.{self.call_index}'
         self.call_index += 1
-        session = run_request(self.subject, self.context, record_repetition,
-                              stimuli, ['behavior:text'], task)
+        try:
+            session = run_request(self.subject, self.context, record_repetition,
+                                  stimuli, ['behavior:text'], task)
+        except ExecutionNotFeasibleError as error:
+            # CogGym keeps a failed trial and goes on; the run stops with this error instead.
+            self.refusal = ExecutionNotFeasibleError(
+                f'CogGym trial {trial_id}: the subject cannot serve it: {error}',
+                channels=error.channels, task_type=error.task_type)
+            raise self.refusal from error
         answers = [event for event in session.emitted if event.channel == 'behavior:text']
         collected = session.collect('behavior:text')
         self.stored.append(collected)
@@ -408,10 +431,15 @@ class CogGymRunner:
         validations = []
         for repetition in range(1, self.repetitions + 1):
             reset(repetition)
+            adapter = adapter_factory(repetition)
             results = self._cli._run_experiment(
-                self._experiment, self._trials, adapter_factory(repetition),
+                self._experiment, self._trials, adapter,
                 self.model, self.temperature, self.max_tokens,
             )
+            # A trial the subject could not serve ends the run with the subject's own reason.
+            refusal = getattr(adapter, 'refusal', None)
+            if refusal is not None:
+                raise refusal
             # Keep reference parsing and scoring intact. Check separately whether
             # slider ratings really occur in the response, rather than in prose.
             validation = validate_slider_responses(self._trials, results)

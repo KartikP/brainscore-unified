@@ -16,18 +16,38 @@ interface scales across VLM families with very different vision input layouts:
 Layer counts:
   vision_model.encoder.layers.{0-38}             — 39 ViT-G blocks
   language_model.model.decoder.layers.{0-31}     — 32 OPT decoder layers
+
+Ways to answer. Writing: the ``answer`` part writes a plain choice (ROAR, the old
+label tasks) as before; the ``reply`` part writes a choice with task settings
+(``verbatim``, ``present``, options per row) and a written answer, under the
+task's generation settings. Likelihood: the ``likelihood`` part gives the log
+probability of each option. Readout: a readout fitted on the IT layer gives the
+probabilities, the reaction time and the rating; the registration keeps ratings
+with the readout. BLIP-2 OPT is not instruction-tuned: its written answers on
+ROAR are at the floor (the chance level), so its writing columns are honest
+columns, not a claim that it follows instructions.
+
+BLIP-2 OPT has no chat template. Both new parts show a trial in BLIP-2's own
+prompt form: the picture first (at most one), then the stimulus text, then
+"Question: <instruction> <the task's directive> Answer:". Under a ``verbatim``
+choice the text is shown exactly as given, with no question and no answer cue;
+the likelihood then scores ``f"{text} {option}"`` with no start token (after the
+picture's query tokens when the trial has a picture), as EWoK's ``score`` does.
 """
 
 import functools
 import re
-from typing import List
+from typing import List, Optional, Tuple
 
 import torch
 from PIL import Image
 from transformers import AutoProcessor, Blip2ForConditionalGeneration
 
+from brainscore.model_helpers.replies import _generation_settings, _plain_text_scores
 from brainscore.model_helpers.text_wrapper import TextWrapper
 from brainscore import BrainScoreModel
+from brainscore_core.compatibility import ExecutionNotFeasibleError
+from brainscore_core.responses import Choice, Prompt, Text
 from brainscore_vision.model_helpers.activations.pca import LayerPCA
 from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
 from brainscore_core.hf_compat import pin_image_processor
@@ -46,56 +66,129 @@ REGION_LAYER_MAP = {
 
 
 def _make_answer(blip_model, blip_processor, max_new_tokens: int = 8):
-    """Generation callable for BLIP-2 instruction-following.
+    """The ``answer`` part: BLIP-2 completes a plain choice.
 
-    BLIP-2 OPT-2.7B isn't as instruction-tuned as Qwen-VL (no RLHF), so we
-    prompt it in a captioning-style template that it handles better:
-    "Question: {instruction} Answer:" → model completes with label.
+    BLIP-2 OPT-2.7B is not instruction-tuned. The prompt is its own
+    question-and-answer form, "Question: {instruction} Choose from: {labels}. Answer:",
+    and the model's completion is returned for ``BrainScoreModel`` to parse.
     """
     from brainscore.model_helpers.api_behavioral import _row_parts
-    device = next(blip_model.parameters()).device
 
     def generate(stimulus_row, instruction: str, label_set: List[str]) -> str:
         image_column, text_column = _row_parts(stimulus_row, 'BLIP-2 answer')
-        # BLIP-2 OPT responds best to "Question: ... Answer:" template; with no
-        # instruction there is no question. The row's text comes first.
+        # BLIP-2's own "Question: ... Answer:" form; with no instruction there is
+        # no question. The row's text comes first.
         prompt = ((f"Question: {instruction} " if instruction else '')
                   + f"Choose from: {', '.join(label_set)}. Answer:")
         if text_column:
             prompt = f"{stimulus_row[text_column]}\n\n{prompt}"
-        if image_column:
-            image = Image.open(stimulus_row[image_column]).convert('RGB')
-            inputs = blip_processor(text=prompt, images=image, return_tensors='pt')
-            run = blip_model.generate
-        else:
-            # No picture: BLIP-2's own language model reads the text alone.
-            inputs = blip_processor.tokenizer(prompt, return_tensors='pt')
-            run = blip_model.language_model.generate
-        # Explicit per-tensor device move. BatchFeature.to(device) does not
-        # reliably move all tensors on MPS; BLIP-2's generate() accesses
-        # input_ids inside get_input_embeddings() and needs it on the same
-        # device as the embedding weights.
-        model_dtype = next(blip_model.parameters()).dtype
-        inputs = {
-            k: (v.to(device, dtype=model_dtype) if torch.is_tensor(v) and v.is_floating_point()
-                else (v.to(device) if torch.is_tensor(v) else v))
-            for k, v in inputs.items()
-        }
-
-        with torch.no_grad():
-            generated = run(
-                **inputs,
-                max_new_tokens=max_new_tokens,
-                do_sample=False,
-            )
-
-        decoded = blip_processor.tokenizer.decode(generated[0], skip_special_tokens=True)
-        # The generation can return the prompt before the reply: only that echo is
-        # removed. The rest is the generated text, exactly; BrainScoreModel parses it.
-        echoed = decoded.lstrip()
-        return echoed[len(prompt):] if echoed.startswith(prompt) else decoded
+        image = stimulus_row[image_column] if image_column else None
+        return _write(blip_model, blip_processor, prompt, image,
+                      dict(max_new_tokens=max_new_tokens, do_sample=False))
 
     return generate
+
+
+def _on_device(blip_model, inputs) -> dict:
+    """The processor's tensors on the model's device; floating tensors in the model's dtype."""
+    # Explicit per-tensor device move. BatchFeature.to(device) does not
+    # reliably move all tensors on MPS; BLIP-2's generate() accesses
+    # input_ids inside get_input_embeddings() and needs it on the same
+    # device as the embedding weights.
+    device = next(blip_model.parameters()).device
+    model_dtype = next(blip_model.parameters()).dtype
+    return {
+        k: (v.to(device, dtype=model_dtype) if torch.is_tensor(v) and v.is_floating_point()
+            else (v.to(device) if torch.is_tensor(v) else v))
+        for k, v in inputs.items()
+    }
+
+
+def _write(blip_model, blip_processor, prompt: str, image_path, settings: dict) -> str:
+    """BLIP-2's generated text for ``prompt`` and at most one picture, under ``settings``."""
+    if image_path is not None:
+        image = Image.open(image_path).convert('RGB')
+        inputs = blip_processor(text=prompt, images=image, return_tensors='pt')
+        run = blip_model.generate
+    else:
+        # No picture: BLIP-2's own language model reads the text alone.
+        inputs = blip_processor.tokenizer(prompt, return_tensors='pt')
+        run = blip_model.language_model.generate
+    inputs = _on_device(blip_model, inputs)
+    with torch.no_grad():
+        generated = run(**inputs, **settings)
+
+    decoded = blip_processor.tokenizer.decode(generated[0], skip_special_tokens=True)
+    # The generation can return the prompt before the reply: only that echo is
+    # removed. The rest is the generated text, exactly; BrainScoreModel parses it.
+    echoed = decoded.lstrip()
+    return echoed[len(prompt):] if echoed.startswith(prompt) else decoded
+
+
+def _shown(prompt) -> Tuple[Optional[str], str]:
+    """One trial in BLIP-2's own prompt form: (the picture's path or None, the text).
+
+    Under a ``verbatim`` choice the text parts are shown exactly as given. Otherwise the
+    stimulus text comes first and the instruction and the task's directive (the options
+    or the scale) form the question: "Question: ... Answer:".
+    """
+    kinds = [kind for kind, _ in prompt.parts]
+    if set(kinds) - {'text', 'image'} or kinds.count('image') > 1:
+        raise ExecutionNotFeasibleError(f'BLIP-2 is shown text and at most one picture; got {kinds}')
+    if prompt.history:
+        raise ExecutionNotFeasibleError('BLIP-2 keeps no earlier trials; it cannot be shown them')
+    image = next((value for kind, value in prompt.parts if kind == 'image'), None)
+    names = prompt.names or (None,) * len(prompt.parts)
+    texts = [(name, value) for (kind, value), name in zip(prompt.parts, names) if kind == 'text']
+    if isinstance(prompt.response, Choice) and prompt.response.verbatim:
+        return image, '\n\n'.join(value for _, value in texts)
+    question = ' '.join(value for name, value in texts if name in ('instruction', 'directive'))
+    shown = [value for name, value in texts if name not in ('instruction', 'directive')]
+    return image, '\n\n'.join(shown + [f'Question: {question} Answer:' if question else 'Answer:'])
+
+
+def _make_parts(blip_model, blip_processor, max_new_tokens: int = 64):
+    """The ``reply`` and ``likelihood`` parts of BLIP-2, in its own prompt form (``_shown``)."""
+    tokenizer = blip_processor.tokenizer
+
+    def reply(prompt) -> str:
+        """Greedy and at most ``max_new_tokens`` long unless the task's Text response says otherwise."""
+        image, text = _shown(prompt)
+        if isinstance(prompt.response, Text) and prompt.response.seed is not None:
+            torch.manual_seed(prompt.response.seed)
+        return _write(blip_model, blip_processor, text, image,
+                      _generation_settings(prompt, max_new_tokens)).strip()
+
+    def likelihood(prompt, candidates) -> dict:
+        """The summed log probability of the tokens of each option in ``f"{text} {option}"``."""
+        image, text = _shown(prompt)
+        if image is None:
+            # No picture: BLIP-2's own language model scores the text alone, as plain text.
+            return _plain_text_scores(blip_model.language_model, tokenizer,
+                                      Prompt(parts=(('text', text),)), candidates)
+        # The picture's query tokens, then the text with no start token.
+        inputs = _on_device(blip_model, blip_processor(
+            text=text, images=Image.open(image).convert('RGB'), return_tensors='pt',
+            add_special_tokens=False))
+        prompt_ids, length = inputs['input_ids'], inputs['input_ids'].shape[1]
+        context = tokenizer(text, add_special_tokens=False)['input_ids']
+        with torch.no_grad():
+            blip_model(**inputs)     # the prompt alone first: the pass a recording keeps
+        scores = {}
+        for candidate in candidates:
+            # The option's tokens are those after the text's own tokens in f"{text} {option}".
+            ids = tokenizer(f'{text} {candidate}', add_special_tokens=False)['input_ids'][len(context):]
+            if not ids:
+                raise ValueError(f'option {candidate!r} has no tokens to score')
+            ids = torch.tensor([ids], device=prompt_ids.device)
+            extended = dict(inputs, input_ids=torch.cat([prompt_ids, ids], dim=1),
+                            attention_mask=torch.cat([inputs['attention_mask'], torch.ones_like(ids)], dim=1))
+            with torch.no_grad():
+                logits = blip_model(**extended).logits[0, length - 1:length - 1 + ids.shape[1]]
+            scores[candidate] = float(logits.float().log_softmax(-1).gather(-1, ids[0, :, None]).sum())
+        return scores
+
+    return reply, likelihood
 
 
 def load_blip2(identifier: str):
@@ -161,8 +254,11 @@ def get_model(identifier: str) -> BrainScoreModel:
     from brainscore.model_helpers._device import select_device
     blip_model = blip_model.to(select_device())
 
-    # Generation path (BLIP-2's OPT decoder does instruction-style completion).
+    # The answer part: BLIP-2's OPT decoder completes a plain choice.
     answer = _make_answer(blip_model, blip_processor)
+    # Writing for choices with task settings and for written answers, and the likelihood of
+    # the options, in BLIP-2's own prompt form.
+    reply, likelihood = _make_parts(blip_model, blip_processor)
 
     return BrainScoreModel(
         identifier=identifier,
@@ -173,8 +269,13 @@ def get_model(identifier: str) -> BrainScoreModel:
             'text': text_wrapper,
         },
         answer=answer,
+        reply=reply,
+        likelihood=likelihood,
         # Readout path also available — PCA-1000 features from 'IT' layer.
         behavioral_readout_layer='encoder.layers.34',
+        # The reply and the readout both give the rating natively; the registration keeps ratings
+        # with the readout, the part that gave them before the reply.
         # Bare behavior is declared because an answer part is wired; it carries the requested
         # format's answer (the answer part's choice, the readout's probabilities).
+        capability_config={'behavior-sessions': {'behavior:rating': 'readout'}},
     )
