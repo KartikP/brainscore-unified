@@ -51,9 +51,11 @@ WORDS_IDENTIFIER = f'{IDENTIFIER}-words'
 data_builder_registry['lebel2023'] = lambda: DataBuilder(
     source='LeBel et al. 2023, OpenNeuro ds003020 (https://openneuro.org/datasets/ds003020), CC0, '
            'as the UTS03 assembly pickle of the LITCoder release (https://github.com/GT-LIT-Lab/litcoder_release).',
-    access='as the LITCoder release page states; the recordings themselves are public (CC0).',
+    access='not recorded here: the LITCoder release page states how to obtain the pickle; the '
+           'recordings themselves are public (CC0).',
     layout='`assembly_lebel_uts03.pkl` (the UTS03 assembly pickle of the LITCoder release).',
-    needs='about 3 GB of disk for the pickle and more than 3 GB of memory; time not measured.',
+    needs='the unified install (numpy, pandas, xarray); about 3 GB of disk for the pickle and more '
+          'than 3 GB of memory; time not measured.',
     writes=f'`assy_{hosted.ASSEMBLY_ID}.nc`, `stimulus_{hosted.TR_STIMULI_ID}.csv`, '
            f'`stimulus_{hosted.WORD_STIMULI_ID}.csv`, with the registered default settings. '
            'Use them: only a file whose sha1 equals the registered one: put it at `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), where the loader reads it in place of the download.',
@@ -69,7 +71,7 @@ data_builder_registry['lana-atlas'] = lambda: DataBuilder(
     source=f'the LanA language atlas (Lipkin et al. 2022), {LANA_ATLAS.source}; its own terms.',
     access='public, no account.',
     layout=LANA_ATLAS.obtain,
-    needs='a download; no tools.',
+    needs='a download, size not measured; no tools.',
     writes=f'The atlas is read as published. Put the folder at ~/{LANA_ATLAS.default_path} '
            f'or set {LANA_ATLAS.env_var} to it.',
 )

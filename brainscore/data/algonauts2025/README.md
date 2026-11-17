@@ -31,6 +31,7 @@ Check loading without a model:
 ```python
 import brainscore
 
+# The film table and the fMRI of participant 1, from the prepared folder
 stimuli = brainscore.load_stimulus_set("Algonauts2025-friends")
 responses = brainscore.load_dataset("Algonauts2025-friends-sub01")
 print(len(stimuli), responses.sizes)
@@ -47,7 +48,9 @@ registered benchmarks (frames for every participant, clips and sound for
 participant 1). To cut other media or films, run the script it calls:
 
 ```bash
+# Say where the prepared files are
 export BRAINSCORE_ALGONAUTS_PREPARED=/path/to/new-build
+# Cut the frames of the films that participant 1 saw
 python -m brainscore.data.algonauts2025.data_packaging.prepare_stimuli \
   --split friends --participant 1 --media frames
 ```

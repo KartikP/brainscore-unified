@@ -9,6 +9,7 @@ dataset used by both EWoK benchmarks.
 After installing the four UMI packages, run from the unified repository root:
 
 ```bash
+# Install the file readers and the hf command, within the pinned versions
 python -m pip install -c install/v2-constraints.txt -e '.[ewok-data]'
 ```
 
@@ -18,6 +19,7 @@ Put the native files in the source folder (`~/brainscore-data/sources/ewok`, or
 give another with `--source`) and package them:
 
 ```bash
+# Build from the files in ~/brainscore-data/sources/ewok into a new folder
 python -m brainscore.data package ewok --output /path/to/ewok-build
 ```
 
@@ -41,6 +43,7 @@ authenticate with `hf auth login` or `HF_TOKEN`, and download the pinned revisio
 into the source folder:
 
 ```bash
+# Download the pinned native table into the source folder (needs approved access)
 hf download ewok-core/ewok-core-1.0 data/test/ewok-core-1.0.parquet \
   --repo-type dataset --revision 34d912a608066c92e2990a0328ffc3bd9a716042 \
   --local-dir ~/brainscore-data/sources/ewok
@@ -49,6 +52,7 @@ hf download ewok-core/ewok-core-1.0 data/test/ewok-core-1.0.parquet \
 ## 3. Point UMI at the build
 
 ```bash
+# Tell the benchmarks where the build is
 export BRAINSCORE_EWOK_ROOT=/path/to/ewok-build
 ```
 
@@ -65,6 +69,7 @@ Check that the dataset loads without loading a model:
 ```python
 import brainscore
 
+# Load the build; the loader checks its checksum and item count
 dataset = brainscore.load_dataset("EWoK-core-1.0")
 print(dataset.sizes)
 ```
@@ -101,6 +106,7 @@ sentence added, and asks for `behavior:choice` between 1 and 2. A model with a
 `reply`, `likelihood` or `answer` part runs it.
 
 ```python
+# Load the benchmark, then score your model on it
 benchmark = brainscore.load_benchmark("EWoK-core-1.0-logprobs")
 score = benchmark(model)
 ```

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import brainscore
 
+# Download the hosted images and decisions once, checked by sha1
 stimuli = brainscore.load_stimulus_set("Yeatman2021")
 responses = brainscore.load_dataset("Yeatman2021")
 print(len(stimuli), responses.sizes)

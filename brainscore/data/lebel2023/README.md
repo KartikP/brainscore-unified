@@ -17,6 +17,7 @@ including story words, their onset times, TR times and cortical responses.
 It does not accept arbitrary LeBel files or raw scans.
 
 ```bash
+# The source pickle, and a new folder for the converted files
 export BRAINSCORE_LEBEL_PICKLE=/path/to/UTS03-assembly.pkl
 export BRAINSCORE_LEBEL_CACHE=/path/to/new-cache
 ```
@@ -26,6 +27,7 @@ With the unified package installed, convert and load without a model:
 ```python
 import brainscore
 
+# Convert and load: one stimulus row per response row
 stimuli = brainscore.load_stimulus_set("LeBel2023-UTS03")
 responses = brainscore.load_dataset("LeBel2023-UTS03")
 print(len(stimuli), responses.sizes)
@@ -51,7 +53,7 @@ has not yet been compared with the registered sha1.
 
 - Source: the LanA language atlas (Lipkin et al. 2022), https://osf.io/kzwbh/  (doi:10.17605/OSF.IO/KZWBH); its own terms.
 - Access: public, no account.
-- Needs: a download; no tools.
+- Needs: a download, size not measured; no tools.
 - Command: none: nothing to package.
 - Writes: The atlas is read as published. Put the folder at ~/Downloads/20425209/FS or set BRAINSCORE_LANA_ATLAS to it.
 - Check: nothing to compare.
@@ -59,8 +61,8 @@ has not yet been compared with the registered sha1.
 ### lebel2023
 
 - Source: LeBel et al. 2023, OpenNeuro ds003020 (https://openneuro.org/datasets/ds003020), CC0, as the UTS03 assembly pickle of the LITCoder release (https://github.com/GT-LIT-Lab/litcoder_release).
-- Access: as the LITCoder release page states; the recordings themselves are public (CC0).
-- Needs: about 3 GB of disk for the pickle and more than 3 GB of memory; time not measured.
+- Access: not recorded here: the LITCoder release page states how to obtain the pickle; the recordings themselves are public (CC0).
+- Needs: the unified install (numpy, pandas, xarray); about 3 GB of disk for the pickle and more than 3 GB of memory; time not measured.
 - Command: `python -m brainscore.data package lebel2023` with the source in `~/brainscore-data/sources/lebel2023` (or `--source <folder>`): `assembly_lebel_uts03.pkl` (the UTS03 assembly pickle of the LITCoder release).
 - Writes: `assy_LeBel2023-UTS03.nc`, `stimulus_LeBel2023-UTS03.csv`, `stimulus_LeBel2023-UTS03-words.csv`, with the registered default settings. Use them: only a file whose sha1 equals the registered one: put it at `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), where the loader reads it in place of the download.
 - Check: sha1 of `assy_LeBel2023-UTS03.nc` is `e03fd25503004d82ea932e272dbbdcb867d99a92`; sha1 of `stimulus_LeBel2023-UTS03.csv` is `9ddf67c7f3f9702473248eb15a877377d11732e6`; sha1 of `stimulus_LeBel2023-UTS03-words.csv` is `ce3d1ba0dc7457d189547ca8cda2c87ebcc8d5c8`

@@ -7,6 +7,7 @@ in `__init__.py`.
 ```python
 import brainscore
 
+# Download the hosted clips and GLM responses once, checked by sha1
 stimuli = brainscore.load_stimulus_set("BOLDMoments")
 responses = brainscore.load_dataset("Lahner2024-fMRI")
 print(len(stimuli), responses.sizes)
@@ -46,7 +47,7 @@ not interchangeable.
 
 - Source: the Destrieux 2009 surface atlas on fsaverage5, as nilearn publishes it (`nilearn.datasets.fetch_atlas_surf_destrieux`); its own terms.
 - Access: public, no account.
-- Needs: nilearn.
+- Needs: nilearn; a download made by nilearn, size not measured.
 - Command: none: nothing to package.
 - Writes: Nilearn fetches the atlas on first use and the auditory-ROI benchmark reads it as published.
 - Check: nothing to compare.
@@ -62,9 +63,9 @@ not interchangeable.
 
 ### lahner2024-frames
 
-- Source: https://openneuro.org/datasets/ds005165 (BOLD Moments; the clips are the hosted stimulus set BOLDMoments, which brainscore.load_stimulus_set fetches)
+- Source: https://openneuro.org/datasets/ds005165 (BOLD Moments; the clips are the hosted stimulus set BOLDMoments, which brainscore.load_stimulus_set fetches); licence as OpenNeuro states it for ds005165 (not recorded in this plugin).
 - Access: public, no account: the hosted clips download with no account.
-- Needs: opencv-python and Pillow; the hosted clips (fetched once); minutes.
+- Needs: opencv-python and Pillow; the hosted clips (fetched once into the brainio cache; size not measured); disk for the frames and time not measured.
 - Command: `python -m brainscore.data package lahner2024-frames`. Source folder: none: the script reads the hosted clips through brainscore.load_stimulus_set.
 - Writes: one PNG per clip and time (500, 1500, 2500 ms): `<clip>_t<ms>.png`. Use them: set BRAINSCORE_LAHNER_FRAMES_DIR to the output folder.
 - Check: the printed counts; no sha1 is recorded for these files
@@ -73,16 +74,16 @@ not interchangeable.
 
 - Source: BOLD Moments (Lahner et al. 2024), OpenNeuro ds005165 v1.0.4, https://openneuro.org/datasets/ds005165; licence as OpenNeuro states it for ds005165 (not recorded in this plugin). The fMRIPrep derivatives `derivatives/versionB/fmriprep` and the raw `events.tsv` files, read from s3://openneuro.org/ds005165 with no account.
 - Access: public, no account.
-- Needs: boto3; a small download; minutes.
+- Needs: boto3; the confounds files of the 520 runs (size and time not measured).
 - Command: `python -m brainscore.data package lahner2024-motion`. Source folder: none needed: the script lists and downloads the fMRIPrep confounds files itself into a private work folder (deleted after the build).
 - Writes: `Lahner2024-fMRI-timeresolved-motion.csv`. Use it: only a file whose sha1 equals the registered one: put it at `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), where the loader reads it in place of the download.
 - Check: sha1 of `Lahner2024-fMRI-timeresolved-motion.csv` is `827130c78f6b706b52f6d0d28962eb2301bee00b`
 
 ### lahner2024-sound
 
-- Source: https://openneuro.org/datasets/ds005165 (BOLD Moments; the clips are the hosted stimulus set BOLDMoments, which brainscore.load_stimulus_set fetches)
+- Source: https://openneuro.org/datasets/ds005165 (BOLD Moments; the clips are the hosted stimulus set BOLDMoments, which brainscore.load_stimulus_set fetches); licence as OpenNeuro states it for ds005165 (not recorded in this plugin).
 - Access: public, no account: the hosted clips download with no account.
-- Needs: ffmpeg and ffprobe on the PATH; the hosted clips (fetched once); minutes.
+- Needs: ffmpeg and ffprobe on the PATH; the hosted clips (fetched once into the brainio cache; size not measured); about 100 MB of sound (3 s at 16 kHz, 16 bit, for each of 1,026 clips, computed); time not measured.
 - Command: `python -m brainscore.data package lahner2024-sound`. Source folder: none: the script reads the hosted clips through brainscore.load_stimulus_set.
 - Writes: one 16 kHz mono WAV per clip (`<clip>.wav`; a silent file for a clip with no sound) and `manifest.json`. Use them: set BRAINSCORE_LAHNER_SOUND_DIR to the output folder.
 - Check: the printed counts; no sha1 is recorded for these files

@@ -31,9 +31,10 @@ Then, typically from inside a benchmark (here from the `templates/` folder, wher
 importing the template registers it):
 
 ```python
-import new_data
+import new_data                    # importing the folder registers it
 from brainscore import load_stimulus_set, load_dataset
 
+# What was shown, what was recorded, and what participants answered
 stimuli  = load_stimulus_set('your-stimuli')
 measured = load_dataset('your-measurements')
 choices  = load_dataset('your-choices')

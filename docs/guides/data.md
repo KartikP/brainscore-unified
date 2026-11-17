@@ -52,7 +52,7 @@ python -m brainscore.data                        # each plugin, where its source
 python -m brainscore.data package ewok           # package one
 ```
 
-When the source is missing, the error says what data is needed and from where, the access it needs, the folder and the files to put in it, and the tools and disk space. After a build, `package_data` prints each file's size, sha1 and counts (rows, dimension sizes, items). For a file that the plugin hosts, it says whether the sha1 equals the registered one; a file with the registered sha1, put at `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), is used in place of the download. Nothing is uploaded. Each plugin README's `## Rebuild` section states the same facts.
+When the source is missing, the error says what data is needed and from where, the access it needs, the folder and the files to put in it, and the tools and disk space. After a build, `package_data` prints the size, sha1 and counts (rows, dimension sizes, items) of the first 20 files; `build.json` in the output lists them for every file. For a file with a recorded sha1, it says whether the rebuilt sha1 is equal, then prints how the plugin's loader takes the files: for a hosted file, a copy with the registered sha1 at `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default) is read in place of the download; for a local folder, a variable names it. A script reads the source and never changes it, and nothing is uploaded. Each plugin README's `## Rebuild` section states the same facts.
 
 ## Add a data plugin
 
@@ -107,22 +107,23 @@ Say how your files are built from the source: register a factory of a `DataBuild
 from brainscore import data_builder_registry
 from brainscore.data import DataBuilder
 
-# In brainscore/data/mystudy2026/__init__.py, beside the registry lines.
+# In brainscore/data/mystudy2026/__init__.py, beside the registry lines: a factory of the facts
 data_builder_registry['mystudy2026'] = lambda: DataBuilder(
-    source='https://example.org/mystudy2026; licence CC-BY 4.0',     # what is needed, from where
-    access='public, no account',                                     # or an account, an agreement, private
-    layout='responses.mat and the stimuli/ folder, as the download unpacks',   # the source folder
+    source='https://example.org/mystudy2026; licence CC-BY 4.0',
+    access='public, no account',
+    layout='responses.mat and the stimuli/ folder, as the download unpacks',
     needs='scipy; 2 GB of disk; minutes',
-    writes='assy_MyStudy2026.nc, stimulus_MyStudy2026.csv',
+    writes='assy_MyStudy2026.nc, stimulus_MyStudy2026.csv. Use them: set BRAINSCORE_MYSTUDY2026 to the output folder.',
     build='python -m brainscore.data.mystudy2026.data_packaging.package --source {source} --out {output}',
-    sha1={'assy_MyStudy2026.nc': '<the sha1 your loader pins>'},     # lets a user check a rebuild
+    requires=('responses.mat', 'stimuli'),
+    sha1={'assy_MyStudy2026.nc': '<the sha1 your loader pins>'},
 )
 
 # The README section is generated from the same facts; paste it under "## Rebuild"
 print(data_builder_registry['mystudy2026']().readme('mystudy2026'))
 ```
 
-A dataset that cannot be rebuilt yet states `cannot=` (what is known, what a maintainer needs); one that is read as published leaves out `build`. `tests/test_data_packaging.py` fails a data plugin without a declaration or with a README that differs from it, and prints the block to paste.
+`requires` names what the source folder must hold; a source that lacks it gets the error with the facts above. A script reads the source and never changes it: it writes into `{output}`, and downloads or intermediate files go into `{work}`, a private folder removed after the build. When a benchmark already reads the source from a local asset, `source_asset=` names that asset, so the source has one place. A dataset that cannot be rebuilt yet states `cannot=` (what is known, what a maintainer needs); one that is read as published leaves out `build`. `tests/test_data_packaging.py` fails a data plugin without a declaration or with a README that differs from it, and prints the block to paste.
 
 Hosted files are fetched once, checked against a sha1 and cached (see `brainscore/data/lebel2023/hosted.py`). Data you may not redistribute stays local: declare it as a `LocalAsset` in your plugin's `__init__.py`, so users get instructions instead of a missing-file error, and `python -m brainscore.data` lists it. Name the command that prepares it in `prepare`. Read the location with `local.path(...)` when the data is needed, not at import. A second asset with the same name is refused.
 

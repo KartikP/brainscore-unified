@@ -96,10 +96,11 @@ data_builder_registry['lahner2024'] = lambda: DataBuilder(
 )
 
 data_builder_registry['lahner2024-frames'] = lambda: DataBuilder(
-    source=_CLIPS_SOURCE,
+    source=f'{_CLIPS_SOURCE}; licence as OpenNeuro states it for ds005165 (not recorded in this plugin).',
     access='public, no account: the hosted clips download with no account.',
     layout='none: the script reads the hosted clips through brainscore.load_stimulus_set.',
-    needs='opencv-python and Pillow; the hosted clips (fetched once); minutes.',
+    needs='opencv-python and Pillow; the hosted clips (fetched once into the brainio cache; size not '
+          'measured); disk for the frames and time not measured.',
     writes=f'one PNG per clip and time ({", ".join(map(str, DEFAULT_SAMPLE_TIMES_MS))} ms): '
            f'`<clip>_t<ms>.png`. Use them: set {LAHNER_FRAMES.env_var} to the output folder.',
     build='python -m brainscore.data.lahner2024.data_packaging.prepare_frames --frames-dir {output}',
@@ -107,10 +108,12 @@ data_builder_registry['lahner2024-frames'] = lambda: DataBuilder(
 )
 
 data_builder_registry['lahner2024-sound'] = lambda: DataBuilder(
-    source=_CLIPS_SOURCE,
+    source=f'{_CLIPS_SOURCE}; licence as OpenNeuro states it for ds005165 (not recorded in this plugin).',
     access='public, no account: the hosted clips download with no account.',
     layout='none: the script reads the hosted clips through brainscore.load_stimulus_set.',
-    needs='ffmpeg and ffprobe on the PATH; the hosted clips (fetched once); minutes.',
+    needs='ffmpeg and ffprobe on the PATH; the hosted clips (fetched once into the brainio cache; size '
+          'not measured); about 100 MB of sound (3 s at 16 kHz, 16 bit, for each of 1,026 clips, '
+          'computed); time not measured.',
     writes=f'one 16 kHz mono WAV per clip (`<clip>.wav`; a silent file for a clip with no sound) and '
            f'`manifest.json`. Use them: set {LAHNER_SOUND.env_var} to the output folder.',
     build='python -m brainscore.data.lahner2024.data_packaging.prepare_audio_tracks --audio-dir {output}',
@@ -142,7 +145,7 @@ data_builder_registry['lahner2024-motion'] = lambda: DataBuilder(
     access='public, no account.',
     layout='none needed: the script lists and downloads the fMRIPrep confounds files itself into a '
            'private work folder (deleted after the build).',
-    needs='boto3; a small download; minutes.',
+    needs='boto3; the confounds files of the 520 runs (size and time not measured).',
     writes=f'`{TIMERESOLVED_MOTION_ID}.csv`. Use it: '
            'only a file whose sha1 equals the registered one: put it at `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), where the loader reads it in place of the download.',
     build=f'python -m brainscore.data.lahner2024.data_packaging.prepare_motion_sidecar '
@@ -156,7 +159,7 @@ data_builder_registry['destrieux-atlas'] = lambda: DataBuilder(
            '(`nilearn.datasets.fetch_atlas_surf_destrieux`); its own terms.',
     access='public, no account.',
     layout='none.',
-    needs='nilearn.',
+    needs='nilearn; a download made by nilearn, size not measured.',
     writes='Nilearn fetches the atlas on first use and the auditory-ROI benchmark reads it as published.',
 )
 

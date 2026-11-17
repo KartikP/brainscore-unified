@@ -12,8 +12,10 @@ After installing the four UMI packages in your experiment environment, clone
 CogGym into a new directory:
 
 ```bash
+# Clone the authors' repository and check out the pinned revision
 git clone https://github.com/lance-ying/coggym.git /path/to/coggym
 git -C /path/to/coggym checkout a1cd9df1118fec80eba7463de237d1497d77e041
+# Install CogGym's own requirements, then tell the benchmarks where the checkout is
 python -m pip install -r /path/to/coggym/evaluation/requirements.txt
 export BRAINSCORE_COGGYM_CHECKOUT=/path/to/coggym
 ```
@@ -66,6 +68,7 @@ takes none of the experiment's inputs, or cannot answer on `behavior:text`, is
 N/A before any compute.
 
 ```python
+# Load one experiment with the reset of your model, then score the model
 benchmark = brainscore.load_benchmark("CogGym.Hu2023Fine.exp1", reset=lambda repetition: None)
 score = benchmark(model)
 ```

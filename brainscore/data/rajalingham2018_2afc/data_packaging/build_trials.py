@@ -19,9 +19,9 @@ response screen. This script:
 
 Run locally (no GPU):
 
-    python -m brainscore.data.rajalingham2018_2afc.data_packaging.build_trials [--out <folder>]
+    python -m brainscore.data.rajalingham2018_2afc.data_packaging.build_trials --out <folder>
 
-The outputs land in ``--out``, by default the plugin folder (the registered files).
+The outputs land in ``--out``; to replace the plugin's own files, name the plugin folder.
 ``python -m brainscore.data package rajalingham2018-2afc`` runs it into a new folder.
 """
 import argparse
@@ -34,14 +34,13 @@ import pandas as pd
 
 from brainscore_vision import load_dataset, load_stimulus_set
 
-HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # the plugin folder
 N_PER_OBJECT = 10          # test images per object -> ~240 image i2 subset
 MIN_HUMAN_TRIALS = 4       # per (image, distractor) condition, for a stable human estimate
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument('--out', default=HERE, help='the folder of trials.csv and tokens.csv')
+    parser.add_argument('--out', required=True, help='the folder of trials.csv and tokens.csv')
     out = parser.parse_args().out
     asm = load_dataset('Rajalingham2018.public')
     ss = load_stimulus_set('objectome.public')
