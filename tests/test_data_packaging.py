@@ -422,6 +422,35 @@ def test_a_failed_hosted_publication_leaves_no_file_of_this_call(failure, tmp_pa
     assert not (tmp_path / 'brainio' / 'packaged' / 'made-up').exists()
 
 
+def test_a_relative_brainio_home_is_printed_as_an_absolute_place(tmp_path, monkeypatch, capsys, offline):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv('BRAINIO_HOME', 'relative-cache')
+    source, sha1 = _hosted(tmp_path, monkeypatch, {'a.bin': b'registered'})
+    package_data('made-up', source=source)
+    assert f"    {pathlib.Path.cwd() / 'relative-cache' / sha1['a.bin'] / 'a.bin'}\n" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('same_bytes', [True, False])
+def test_an_explicit_hosted_output_states_the_step_its_outcome_allows(same_bytes, tmp_path, monkeypatch, capsys, offline):
+    registered, built = b'x\n1.0\n', b'x\n1.0\n' if same_bytes else b'x\n1.00\n'
+    sha1 = hashlib.sha1(registered).hexdigest()
+    (tmp_path / 'brainio' / sha1).mkdir(parents=True)
+    (tmp_path / 'brainio' / sha1 / 'a.csv').write_bytes(registered)
+    source = _made_up_plugin(tmp_path, monkeypatch, {'a.csv': built}, sha1={'a.csv': sha1}, reads='brainio')
+    package_data('made-up', source=source, output=tmp_path / 'out')
+    printed = capsys.readouterr().out
+    assert ('run again without --output' in printed) == same_bytes
+    assert ('no packaging run makes a.csv readable' in printed) != same_bytes
+
+
+def test_the_ewok_error_gives_the_command_that_writes_where_it_reads(offline):
+    from brainscore.data.ewok.data import load_prepared
+    with pytest.raises(FileNotFoundError) as missing:
+        load_prepared()
+    assert str(local.REGISTRY['ewok-core-1.0'].resolved()) in str(missing.value)
+    assert 'package ewok' in str(missing.value) and '--output' not in str(missing.value)
+
+
 def test_a_file_with_no_expected_record_states_its_counts(tmp_path, monkeypatch, capsys, offline):
     source = _made_up_plugin(tmp_path, monkeypatch, {'table.csv': b'x\n1\n2\n'})
     output = package_data('made-up', source=source, output=tmp_path / 'out')

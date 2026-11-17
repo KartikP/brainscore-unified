@@ -33,7 +33,7 @@ CogGym's experiments, human results and scoring code come from the authors' repo
 
 ## Package a dataset from its source
 
-`package_data` builds a plugin's files from the original source, the way Brain-Score reads them. It looks for the source in one place, by the same rule for every plugin: the `source` argument, else `$BRAINSCORE_DATA_HOME/sources/<name>`, else `~/brainscore-data/sources/<name>`. It writes where the plugin's benchmarks read the data, so the benchmark runs next with no more steps: a local folder (for example the EWoK folder, `~/.brainio/ewok-core-1.0`, or the folder that its variable `BRAINSCORE_EWOK_ROOT` names when it is set), or, for a hosted file, `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), where the loader reads it in place of the download. The `output` argument (`--output`) writes elsewhere. An existing output is refused; the build goes to a private folder beside the output and moves into place only when it is complete and checked.
+`package_data` builds a plugin's files from the original source, the way Brain-Score reads them. It looks for the source in one place, by the same rule for every plugin: the `source` argument, else `$BRAINSCORE_DATA_HOME/sources/<name>`, else `~/brainscore-data/sources/<name>`. It writes where the plugin's benchmarks read the data, so the benchmark runs next; the success message names any step that remains (CogGym: install the checkout's requirements; `rajalingham2018-2afc`: its tool reads the files shipped in the plugin folder, so the build is a check of them). The place is a local folder (for example the EWoK folder, `~/.brainio/ewok-core-1.0`, or the folder that its variable `BRAINSCORE_EWOK_ROOT` names when it is set), or, for a hosted file, `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), where the loader reads it in place of the download. The `output` argument (`--output`) writes elsewhere. An existing output is refused; the build goes to a private folder beside the output and moves into place only when it is complete and checked.
 
 ```python
 from brainscore.data import package_data
@@ -114,7 +114,8 @@ data_builder_registry['mystudy2026'] = lambda: DataBuilder(
     access='public, no account',
     layout='responses.mat and the stimuli/ folder, as the download unpacks',
     needs='scipy; 2 GB of disk; minutes',
-    writes='assy_MyStudy2026.nc, stimulus_MyStudy2026.csv. Use them: set BRAINSCORE_MYSTUDY2026 to the output folder.',
+    writes='assy_MyStudy2026.nc, stimulus_MyStudy2026.csv',
+    reads='brainio',      # hosted files; or the name of a local asset; or empty for no local read place
     build='python -m brainscore.data.mystudy2026.data_packaging.package --source {source} --out {output}',
     requires=('responses.mat', 'stimuli'),
     sha1={'assy_MyStudy2026.nc': '<the sha1 your loader pins>'},

@@ -17,9 +17,9 @@ def load_prepared(root: str | Path | None = None) -> tuple[list[dict], dict]:
         raw = (root / 'items.json').read_bytes()
     except FileNotFoundError:
         raise FileNotFoundError(
-            'EWoK is not prepared. Run python -m brainscore.data package ewok '
-            '--source /path/to/native-data --output /path/to/build, '
-            'then set BRAINSCORE_EWOK_ROOT or pass root=...'
+            f'EWoK is not prepared at {root}. Run python -m brainscore.data package ewok '
+            '(--source /path/to/native-data when the source is not in ~/brainscore-data/sources/ewok); '
+            'it writes to this folder. A build elsewhere: set BRAINSCORE_EWOK_ROOT or pass root=...'
         ) from None
     if manifest.get('schema_version') != 1 or manifest.get('dataset') != 'EWoK-core-1.0':
         raise ValueError('Unsupported EWoK build manifest')

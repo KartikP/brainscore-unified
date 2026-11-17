@@ -318,7 +318,7 @@ def _content_digest(content) -> str:
 
 def brainio_home() -> Path:
     """Where brainio keeps hosted files: ``$BRAINIO_HOME/<sha1>/<file name>``."""
-    return Path(os.environ.get('BRAINIO_HOME') or '~/.brainio').expanduser()
+    return Path(os.environ.get('BRAINIO_HOME') or '~/.brainio').expanduser().absolute()
 
 
 def _packaging_folder(builder: DataBuilder) -> Path:
@@ -506,8 +506,14 @@ def _report(name: str, builder: DataBuilder, destination: Path, read_place: Path
         print(f'The data is now in: {destination}')
     if destination != read_place:
         if builder.reads == 'brainio':
-            step = (f'The loader reads a hosted file only at {brainio_home()}/<sha1>/<file name>; one step '
-                    f'remains: run again without --output to place the identical files there.')
+            identical = [relative for relative, entry in files.items() if entry['check'] == 'identical']
+            other = [relative for relative in files if relative not in identical]
+            step = f'The loader reads a hosted file only at {brainio_home()}/<sha1>/<file name>.'
+            if identical:
+                step += f' One step remains for {", ".join(identical)}: run again without --output to place it there.'
+            if other:
+                step += (f' The loader accepts only the registered bytes, so no packaging run makes {", ".join(other)} '
+                         'readable; the benchmarks read the hosted file.')
         elif builder.reads:
             step = (f'The benchmarks read {read_place}; one step remains: set '
                     f'{local.REGISTRY[builder.reads].env_var}={destination}.')
