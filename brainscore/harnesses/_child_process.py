@@ -56,17 +56,19 @@ class ChildProcess:
 
     def __enter__(self) -> 'ChildProcess':
         self.log_directory.mkdir(parents=True, exist_ok=True)
-        to_parent_read, to_parent_write = os.pipe()
-        to_child_read, to_child_write = os.pipe()
-        self.env['BRAINSCORE_CHILD_FDS'] = f'{to_child_read},{to_parent_write}'
+        acquired = []           # every descriptor taken so far: closed if a later step fails
         try:
+            acquired += os.pipe()
+            acquired += os.pipe()
+            to_parent_read, to_parent_write, to_child_read, to_child_write = acquired
+            self.env['BRAINSCORE_CHILD_FDS'] = f'{to_child_read},{to_parent_write}'
             with (self.log_directory / 'stdout.log').open('wb') as stdout, \
                     (self.log_directory / 'stderr.log').open('wb') as stderr:
                 self.process = subprocess.Popen(
                     self.command, env=self.env, stdout=stdout, stderr=stderr, stdin=subprocess.DEVNULL,
                     pass_fds=(to_child_read, to_parent_write), start_new_session=True)
         except BaseException:
-            for fd in (to_parent_read, to_parent_write, to_child_read, to_child_write):
+            for fd in acquired:
                 os.close(fd)
             raise
         os.close(to_child_read)

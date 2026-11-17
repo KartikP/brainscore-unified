@@ -94,3 +94,22 @@ def aggregate_experiment(rows):
     with pytest.raises(ChildFailed):
         runner.run(_Provider(), output_dir=tmp_path / 'run', reset=lambda repetition: None)
     assert _gone(pids)
+
+
+def test_a_failure_to_open_the_pipes_leaves_no_descriptor_open(reference, monkeypatch):
+    """The system refuses the second pipe (too many open files): nothing stays open."""
+    import errno
+    root, _ = reference
+    real, calls = os.pipe, []
+
+    def pipe():
+        calls.append(None)
+        if len(calls) == 2:
+            raise OSError(errno.EMFILE, 'Too many open files')
+        return real()
+    before = len(os.listdir('/dev/fd'))
+    monkeypatch.setattr(os, 'pipe', pipe)
+    with pytest.raises(OSError):
+        coggym.CogGymRunner(root, model='fixture')
+    monkeypatch.setattr(os, 'pipe', real)
+    assert len(os.listdir('/dev/fd')) == before
