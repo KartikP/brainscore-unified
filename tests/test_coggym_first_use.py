@@ -2,7 +2,7 @@
 written to.
 
 git and the Python that makes the environment and runs pip are recording stand-ins
-(``tests/coggym_commands.py``): nothing is cloned or installed.
+(``tests/command_stand_ins.py``): nothing is cloned or installed.
 """
 import os
 
@@ -11,7 +11,7 @@ import pytest
 import brainscore
 from brainscore import LoadError
 
-from .coggym_commands import commands  # noqa: F401  (commands is a fixture)
+from .command_stand_ins import commands  # noqa: F401  (commands is a fixture)
 from .coggym_stand_in import default_place
 
 pytestmark = pytest.mark.unit

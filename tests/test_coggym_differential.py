@@ -16,7 +16,7 @@ import pytest
 from brainscore.harnesses import coggym
 from brainscore.harnesses.coggym_validation import validate_slider_responses
 
-from .coggym_commands import pinned_git  # noqa: F401  (a fixture)
+from .command_stand_ins import pinned_git  # noqa: F401  (a fixture)
 from .coggym_stand_in import ANALYZE_ROW, EXPERIMENT, write_ready_folder
 
 pytestmark = pytest.mark.unit

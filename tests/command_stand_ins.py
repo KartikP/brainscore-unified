@@ -1,5 +1,5 @@
-"""Stand-ins for the external commands that make CogGym's folder: git, and the Python that makes
-the environment and runs pip in it.
+"""Stand-ins for the external commands that make a library's folder (CogGym's by default): git, and
+the Python that makes the environment and runs pip in it.
 
 Each stand-in is an executable script. It records its call (program, arguments, environment,
 process id) as one JSON line, then does the least the folder needs: ``git clone`` copies a
@@ -100,13 +100,16 @@ class Commands:
         self.behavior_file.write_text(json.dumps(behavior))
 
 
-def _stand_ins(root: Path, monkeypatch, python: bool) -> Commands:
+def stand_ins(root: Path, monkeypatch, python: bool = True, template: Path | None = None,
+              commit: str = PINNED_COMMIT) -> Commands:
+    """The stand-ins in ``root``: ``git clone`` copies ``template`` (default: a CogGym checkout)
+    and ``rev-parse`` prints ``commit``."""
     bin_folder = root / 'bin'
     bin_folder.mkdir(parents=True)
-    template = write_checkout(root / 'template')
+    template = template or write_checkout(root / 'template')
     names = dict(real=sys.executable, log=str(root / 'calls.jsonl'), behavior=str(root / 'behavior.json'),
                  template=str(template), env_python=str(bin_folder / 'env-python'))
-    programs = [('git', _GIT.format(commit=PINNED_COMMIT))]
+    programs = [('git', _GIT.format(commit=commit))]
     if python:
         programs += [('python', _PYTHON), ('env-python', _PYTHON)]
     for name, body in programs:
@@ -122,12 +125,12 @@ def _stand_ins(root: Path, monkeypatch, python: bool) -> Commands:
 @pytest.fixture
 def commands(tmp_path, monkeypatch):
     """git on ``PATH`` and this process's Python replaced by recording stand-ins."""
-    return _stand_ins(tmp_path / 'commands', monkeypatch, python=True)
+    return stand_ins(tmp_path / 'commands', monkeypatch)
 
 
 def git_stand_in(root: Path, monkeypatch) -> Commands:
     """git on ``PATH`` replaced by a recording stand-in: a checkout reads as clean, at the pinned commit."""
-    return _stand_ins(root, monkeypatch, python=False)
+    return stand_ins(root, monkeypatch, python=False)
 
 
 @pytest.fixture

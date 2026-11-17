@@ -14,7 +14,7 @@ from brainscore.experiments import (
 from brainscore import BrainScoreModel
 from brainscore.harnesses import coggym
 
-from .coggym_commands import git_stand_in
+from .command_stand_ins import git_stand_in
 from .coggym_stand_in import StandIn, write_ready_folder
 from brainscore_core.contract import Subject
 from brainscore_core.responses import Text

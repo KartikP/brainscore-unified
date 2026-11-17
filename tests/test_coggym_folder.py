@@ -2,7 +2,7 @@
 first load of a CogGym benchmark, completely or not at all.
 
 Every test loads a benchmark through ``brainscore.load_benchmark``. git and the Python that
-makes the environment and runs pip are recording stand-ins (``tests/coggym_commands.py``):
+makes the environment and runs pip are recording stand-ins (``tests/command_stand_ins.py``):
 nothing is cloned, made or installed.
 """
 import json
@@ -21,7 +21,7 @@ import pytest
 import brainscore
 from brainscore import LoadError
 
-from .coggym_commands import PINNED_COMMIT, commands  # noqa: F401  (commands is a fixture)
+from .command_stand_ins import PINNED_COMMIT, commands  # noqa: F401  (commands is a fixture)
 
 pytestmark = pytest.mark.unit
 

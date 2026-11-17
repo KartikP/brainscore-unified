@@ -7,7 +7,7 @@ ever hitting a live API.
 import pandas as pd
 import pytest
 
-from tests.coggym_commands import pinned_git  # noqa: F401  (a fixture: git reads the checkout as clean)
+from tests.command_stand_ins import pinned_git  # noqa: F401  (a fixture: git reads the checkout as clean)
 
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore.model_helpers.api_behavioral import (
