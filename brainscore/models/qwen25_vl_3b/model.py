@@ -198,10 +198,9 @@ def get_model(identifier: str, *, probabilities: Optional[str] = None) -> Subjec
         identifier=f'{identifier}-text',
     )
 
-    # Qwen-VL is instruction-following, so expose its generate() as the
-    # behavioral-task answer path. Benchmarks that pass a TaskContext
-    # with an `instruction` and `label_set` (e.g., ROAR) will use this
-    # path; others fall back to the logistic readout configured below.
+    # Qwen-VL is instruction-following, so its generate() is the answer part: it answers a
+    # plain Choice (e.g., ROAR). The format a session requests selects the part that answers
+    # it (the statement below); there is no fallback to another part.
     answer = _make_answer(qwen_model, qwen_processor)
     # Raw replies and candidate likelihoods for TaskContext(response=...) tasks:
     # ratings, written answers and implied probabilities.
@@ -233,8 +232,10 @@ def get_model(identifier: str, *, probabilities: Optional[str] = None) -> Subjec
         # Also enable the readout path so Qwen can be compared on the same
         # behavioral benchmark both ways. Uses the same vision layer as 'IT'.
         behavioral_readout_layer='blocks.28',
-        # Two parts give a legacy answer and a rating natively; generation owns them. The
-        # probabilities come from the part the registration states.
+        # Generation answers the rating (reply and readout both give it natively). The bare
+        # behavior statement declares that output and selects no part: bare behavior carries
+        # the requested format's answer. The probabilities come from the part the
+        # registration states.
         capability_config={'behavior-sessions': {
             'behavior': 'generation', 'behavior:rating': 'generation',
             'behavior:probabilities': PROBABILITY_PARTS[probabilities]}},
