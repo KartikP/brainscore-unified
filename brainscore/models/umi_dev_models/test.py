@@ -308,6 +308,34 @@ def test_the_language_layer_during_a_task_is_refused_before_compute(stand_in, id
     assert [getattr(part, 'passes', 0) for part in parts] == [0, 0, 0]
 
 
+@pytest.mark.parametrize('identifier', IDENTIFIERS)
+def test_the_readout_answers_from_pictures_only(stand_in, identifier):
+    """Probabilities and response times come from a readout of the IT layer of the vision part, fitted on
+    pictures: a task on text or on clips is N/A in pre-flight, and refused before any compute when a
+    session asks for it directly."""
+    from brainscore_core.compatibility import CompatibilityError, ExecutionNotFeasibleError, check_compatibility
+    config, subject = study.MODEL_CONFIGS[identifier], model_registry[identifier]()
+    fitting = _pictures(stand_in, 4, labels=['cat', 'dog', 'cat', 'dog'])
+    sentences = StimulusSet({'stimulus_id': ['t0', 't1'], 'sentence': ['the cat', 'the dog']})
+    sentences.identifier = 'umi-dev-readout-text'
+    shown = {'text': sentences}
+    if config['video']:
+        shown['vision:video'] = _clip(stand_in)
+    network = subject._subject._model
+    parts = [network, network.get_submodule(config['vision'][0]), network.get_submodule(config['language'][0])]
+    for output in ('behavior:probabilities', 'behavior:rt'):
+        assert subject.output_inputs[output] == {'vision:image'}
+        for channel, stimuli in shown.items():
+            with pytest.raises(CompatibilityError):
+                check_compatibility(subject, SimpleNamespace(
+                    identifier='readout', trial_memory='none', required_input_channels=frozenset({channel}),
+                    requested_output_channels=frozenset({output})))
+            task = TaskContext(response=Choice(['cat', 'dog'], reaction_time='surprisal'), fitting_stimuli=fitting)
+            with pytest.raises(ExecutionNotFeasibleError, match='pictures'):
+                _collect(subject, stimuli, [output], task)
+    assert [getattr(part, 'passes', 0) for part in parts] == [0, 0, 0]
+
+
 @pytest.mark.parametrize('processor, whole, tiled', [
     ('SmolVLMImageProcessor', {'do_image_splitting': False}, {'do_image_splitting': True}),
     ('Gemma3ImageProcessor', {'do_pan_and_scan': False}, {'do_pan_and_scan': True, 'pan_and_scan_min_crop_size': 8,

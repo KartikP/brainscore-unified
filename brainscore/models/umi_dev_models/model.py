@@ -40,17 +40,29 @@ class _StudySubject(ProvenanceSubject):
     the task even when only neural outputs are requested) or together with an answer is refused before
     any compute."""
 
+    # The readout reads the IT layer of the vision part, fitted on pictures: these formats come from pictures.
+    READOUT = ('behavior:probabilities', 'behavior:rt')
+
     @property
     def output_inputs(self):
         inputs = dict(self._subject.output_inputs)
         if 'motor' in self._subject.out_channels:
             inputs['motor'] = frozenset({'observation'})
+        inputs.update({output: frozenset({'vision:image'}) for output in self.READOUT if output in self._subject.out_channels})
         return inputs
 
     def participate(self, session):
         outputs, task = set(session.outputs or ()), session.task
         answering = (task is not None and task.task_type != 'passive') or any(
             o.startswith('behavior') or o == 'motor' for o in outputs)
+        from brainscore_core.io_catalog import column_channel
+        columns = getattr(session.stimuli, 'columns', None)
+        shown = None if columns is None else {column_channel(column) for column in columns} - {None}
+        if outputs & set(self.READOUT) and shown != {'vision:image'}:
+            from brainscore_core.compatibility import ExecutionNotFeasibleError
+            raise ExecutionNotFeasibleError(
+                f"'{self.identifier}' answers {sorted(outputs & set(self.READOUT))} from a readout of its vision "
+                f"part, fitted on pictures; these trials show {sorted(shown or ['no table'])}. Give pictures only.")
         if 'neural:language_system' in outputs and answering:
             from brainscore_core.compatibility import ExecutionNotFeasibleError
             raise ExecutionNotFeasibleError(
