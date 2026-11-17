@@ -19,6 +19,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
+import brainscore
 import brainscore.data
 from brainscore import data_builder_registry
 from brainscore.data import DataBuilder, package_data
@@ -301,3 +302,22 @@ def test_algonauts_fails_as_a_whole_when_a_participant_lacks_its_input(tmp_path,
     assert 'algonauts2025_friends_sub02.nc' in str(missing.value)
     assert data_builder_registry['algonauts2025']().access in str(missing.value)
     assert not (tmp_path / 'out').exists()
+
+
+@pytest.mark.skipif(__import__('shutil').which('ffmpeg') is None, reason='ffmpeg is needed')
+def test_algonauts_builds_every_file_the_registered_benchmarks_read(tmp_path, offline):
+    import subprocess
+    from brainscore.data.algonauts2025 import per_scan_stimuli, scans_per_stimulus
+    film = tmp_path / 'film.mkv'
+    subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc=duration=5:size=64x48:rate=25',
+                    '-f', 'lavfi', '-i', 'sine=duration=5:sample_rate=16000', '-shortest',
+                    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', str(film)], check=True)
+    _algonauts_source(tmp_path / 'native', film=film.read_bytes())
+    output = package_data('algonauts2025', source=tmp_path / 'native', output=tmp_path / 'out')
+    # Read the result as the benchmarks do: the registered loaders, then the media table of each variant.
+    for participant, media in ((1, ['frames']), (1, ['clips']), (1, ['clips', 'sound']), (2, ['frames']),
+                               (3, ['frames']), (5, ['frames'])):
+        assembly = brainscore.load_dataset(f'Algonauts2025-friends-sub{participant:02d}', root=output)
+        films = brainscore.load_stimulus_set('Algonauts2025-friends', root=output)
+        table = per_scan_stimuli(films, scans_per_stimulus(assembly), media, 'friends', participant, output)
+        assert len(table) == assembly.sizes['presentation'] == 3
