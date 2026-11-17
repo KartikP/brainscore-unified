@@ -103,6 +103,19 @@ def _reply_client(reply):
     return local_model
 
 
+def _refuse_offload(identifier, model):
+    """Refuse weights a device map left on the CPU or the disk next to accelerators (offloaded):
+    their parameters are on meta between calls, so the extractors could not tell where an input
+    must go. A model split over several accelerators (or wholly on the CPU) is kept as placed."""
+    places = {str(place) for place in (getattr(model, 'hf_device_map', None) or {}).values()}
+    meta = any(parameter.device.type == 'meta' for parameter in model.parameters())
+    if meta or 'disk' in places or ('cpu' in places and places - {'cpu'}):
+        raise ValueError(f'{identifier!r}: the device map offloads weights to the CPU or the disk '
+                         f'({sorted(places) or "parameters on meta"}); the extractors take inputs on the '
+                         f'device of the loaded weights. Hold every weight on an accelerator: more '
+                         f'accelerators, or a max_memory that fits.')
+
+
 def _placed(module) -> Optional[str]:
     """The one device where the loaded part's parameters are, so that its extractor keeps it there;
     None when they are spread over devices or not loaded (the extractor then leaves them as placed)."""
@@ -210,6 +223,7 @@ def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
     from brainscore.selection import LayerSelector
 
     model, processor = _load(identifier, hf_id, model_class, dtype, download_gb, revision, device_map)
+    _refuse_offload(identifier, model)
     vision_module, vision_blocks = _blocks(model, vision)
     language_module, language_blocks = _blocks(model, language)
     region_layer_map = depth_layers(vision_blocks, DEPTH_TABLE['vision'])

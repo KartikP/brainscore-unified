@@ -66,7 +66,7 @@ def _network_class():
             try:
                 return super().__getattr__(name)
             except AttributeError:
-                if name.startswith('_'):
+                if name.startswith('_') or name == 'hf_device_map':   # a network loaded without a device map has none
                     raise
                 child = Network()
                 self._modules[name] = child

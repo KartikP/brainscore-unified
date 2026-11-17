@@ -251,25 +251,40 @@ def test_every_extractor_keeps_the_loaded_placement(monkeypatch):
             assert {p.device.type for p in module.parameters()} == {'cpu'}, (settings, key)
 
 
-class _MetaVLM(TinyVLM):
-    """A checkpoint whose parts a device map left on meta (offloaded)."""
+class _PlacedVLM(TinyVLM):
+    """A checkpoint loaded with a device map: ``PLACES`` is its map; ``'meta'`` leaves its weights
+    on meta (offloaded between calls)."""
+    PLACES = {}
 
     @classmethod
     def from_pretrained(cls, hf_id, **settings):
-        return cls().to('meta')
+        network = cls()
+        if cls.PLACES == 'meta':
+            return network.to('meta')
+        network.hf_device_map = dict(cls.PLACES)
+        return network
 
 
-def test_a_part_left_on_meta_by_a_device_map_stays_there(monkeypatch):
-    monkeypatch.setattr(sys.modules['transformers'], 'MetaVLMForConditionalGeneration', _MetaVLM, raising=False)
+@pytest.mark.parametrize('places, refused', [
+    ('meta', True),
+    ({'model.visual': 0, 'model.language_model': 'cpu', 'lm_head': 'cpu'}, True),
+    ({'model.visual': 0, 'model.language_model': 'disk', 'lm_head': 0}, True),
+    ({'model.visual': 0, 'model.language_model': 1, 'lm_head': 1}, False),      # several accelerators
+    ({'': 'cpu'}, False),                                                        # the CPU alone
+])
+def test_a_device_map_that_offloads_is_refused_before_any_session(monkeypatch, places, refused):
+    monkeypatch.setattr(_PlacedVLM, 'PLACES', places)
+    monkeypatch.setattr(sys.modules['transformers'], 'PlacedVLMForConditionalGeneration', _PlacedVLM, raising=False)
 
-    def build(**settings):
-        return vlm.build_vlm_subject('meta-vlm', 'Org/Meta-VLM', 'MetaVLMForConditionalGeneration',
+    def build():
+        return vlm.build_vlm_subject('placed-vlm', 'Org/Placed-VLM', 'PlacedVLMForConditionalGeneration',
                                      vision=('model.visual', 'blocks'), language=('model.language_model', 'layers'),
-                                     dtype='float32', download_gb=0.1, device_map='auto', **settings)
-    inner = build()._subject
-    assert {p.device.type for p in inner.extractor['vision']._model.parameters()} == {'meta'}
-    with pytest.raises(ValueError, match='one device'):
-        build(image_processor_kwargs={})
+                                     dtype='float32', download_gb=0.1, device_map='auto')
+    if refused:
+        with pytest.raises(ValueError, match='offloads'):
+            build()
+    else:
+        assert 'neural:IT' in build().out_channels
 
 
 def test_a_bfloat16_pixel_part_records_float32_activity(tmp_path, monkeypatch):
