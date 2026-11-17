@@ -86,8 +86,9 @@ def _plain_text_scores(model, tokenizer, prompt, candidates: Sequence[str]) -> d
 
     For a ``verbatim`` task: the text is ``f"{text} {candidate}"`` with no chat
     template and no beginning-of-sequence token. The value is the summed log
-    probability of the tokens after the text's own tokens. The text runs alone
-    first, so a recording made during scoring is the text pass. An empty text
+    probability of the tokens after the text's own tokens; each option runs in its
+    own forward pass, so its value does not depend on the other options. The text
+    runs alone first, so a recording made during scoring is the text pass. An empty text
     is refused: its first token would have no prediction, and EWoK's own score
     is then undefined (NaN).
     """
@@ -115,18 +116,25 @@ def _plain_text_scores(model, tokenizer, prompt, candidates: Sequence[str]) -> d
         # The text alone first: the pass a recording keeps.
         model(input_ids=torch.tensor([context], device=device),
               attention_mask=torch.ones(1, len(context), dtype=torch.long, device=device))
-    # Right padding with any token: a real token never attends to it, and it is never scored.
-    pad = next((value for value in (getattr(tokenizer, 'pad_token_id', None),
-                                    getattr(tokenizer, 'eos_token_id', None)) if value is not None), 0)
-    width = max(len(ids) for ids in encoded)
-    ids = torch.tensor([row + [pad] * (width - len(row)) for row in encoded], device=device)
-    mask = torch.tensor([[1] * len(row) + [0] * (width - len(row)) for row in encoded], device=device)
-    scored = torch.tensor([[0] * len(context) + [1] * (len(row) - len(context)) + [0] * (width - len(row))
-                           for row in encoded], device=device)[:, 1:].float()
-    with torch.no_grad():  # right padding: real tokens never attend to padding
-        logp = model(input_ids=ids, attention_mask=mask).logits[:, :-1].float().log_softmax(-1)
-    totals = (logp.gather(-1, ids[:, 1:, None])[..., 0] * scored).sum(1).tolist()
-    return dict(zip(candidates, totals))
+    return dict(zip(candidates, _scores_alone(model, encoded, len(context))))
+
+
+def _scores_alone(model, sequences, start: int) -> list:
+    """The summed log probability of the tokens of each sequence from position ``start`` on.
+
+    Each sequence runs in its own forward pass (a batch of one, no padding): the log
+    probability of an option is a property of the model and its context, and the shape of
+    a batch of several options changes it in half precision.
+    """
+    import torch
+    device = next(model.parameters()).device
+    totals = []
+    for sequence in sequences:
+        ids = torch.tensor([sequence], device=device)
+        with torch.no_grad():
+            logits = model(input_ids=ids, attention_mask=torch.ones_like(ids)).logits[0, start - 1:-1]
+        totals.append(float(logits.float().log_softmax(-1).gather(-1, ids[0, start:, None]).sum()))
+    return totals
 
 
 def _generation_settings(prompt, max_new_tokens: int) -> dict:

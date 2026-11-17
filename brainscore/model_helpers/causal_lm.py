@@ -23,7 +23,7 @@ from typing import Any, Mapping, Optional, Sequence
 from brainscore import BrainScoreModel
 from brainscore_core.responses import Choice, Text
 
-from brainscore.model_helpers.replies import _generation_settings, _plain_text_scores
+from brainscore.model_helpers.replies import _generation_settings, _plain_text_scores, _scores_alone
 from brainscore.model_helpers.text_wrapper import TextWrapper
 from brainscore.model_helpers.intervention import pytorch_intervention
 
@@ -32,10 +32,10 @@ class _CausalLMParts:
     """The ``reply`` and ``likelihood`` parts of a text-only causal LM."""
 
     def __init__(self, model: Any, tokenizer: Any, chat_template_kwargs: Optional[dict] = None,
-                 batch_size: int = 8, max_new_tokens: int = 256) -> None:
+                 max_new_tokens: int = 256) -> None:
         self.model, self.tokenizer = model, tokenizer
         self.chat_template_kwargs = dict(chat_template_kwargs or {})
-        self.batch_size, self.max_new_tokens = batch_size, max_new_tokens
+        self.max_new_tokens = max_new_tokens
         if tokenizer.pad_token_id is None:
             tokenizer.pad_token = tokenizer.eos_token
 
@@ -84,20 +84,7 @@ class _CausalLMParts:
             # The prompt alone first: the pass a recording keeps.
             self.model(input_ids=torch.tensor([context], device=self.device),
                        attention_mask=torch.ones(1, len(context), dtype=torch.long, device=self.device))
-        values = []
-        pad = self.tokenizer.pad_token_id
-        for start in range(0, len(encoded), self.batch_size):
-            batch = encoded[start:start + self.batch_size]
-            width = max(len(context) + len(t) for t in batch)
-            ids = torch.tensor([context + t + [pad] * (width - len(context) - len(t)) for t in batch],
-                               device=self.device)
-            mask = torch.tensor([[1] * (len(context) + len(t)) + [0] * (width - len(context) - len(t))
-                                 for t in batch], device=self.device)
-            scored = torch.tensor([[0] * len(context) + [1] * len(t) + [0] * (width - len(context) - len(t))
-                                   for t in batch], device=self.device)[:, 1:].float()
-            with torch.no_grad():  # right padding: real tokens never attend to padding
-                logp = self.model(input_ids=ids, attention_mask=mask).logits[:, :-1].float().log_softmax(-1)
-            values += (logp.gather(-1, ids[:, 1:, None])[..., 0] * scored).sum(1).tolist()
+        values = _scores_alone(self.model, [context + ids for ids in encoded], len(context))
         return dict(zip(candidates, values))
 
 
@@ -138,7 +125,7 @@ def build_causal_lm_subject(identifier: str, model: Any, tokenizer: Any, *,
     every recorded ``NeuroidAssembly`` (``attrs['provenance']``).
     ``region_layer_map`` names the regions that can be recorded.
     """
-    parts = _CausalLMParts(model, tokenizer, chat_template_kwargs, batch_size)
+    parts = _CausalLMParts(model, tokenizer, chat_template_kwargs)
     # A deep copy: later edits to the caller's dict do not change recorded provenance.
     provenance = {'identifier': identifier, **deepcopy(dict(provenance or {}))}
     return BrainScoreModel(
