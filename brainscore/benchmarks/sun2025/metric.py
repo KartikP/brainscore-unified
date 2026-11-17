@@ -54,13 +54,23 @@ def unflip_vector(direction: float, speed: float, flip: int) -> tuple[float, flo
     return (-x if flip in (2, 4) else x), (-y if flip in (3, 4) else y)
 
 
-def endpoint_errors(vectors: dict, groups: dict, reference) -> np.ndarray:
-    """Endpoint error of each group mean against each participant (groups x participants).
+def endpoint_errors(vectors: dict, groups: dict, reference) -> list[tuple[str, int, float]]:
+    """Endpoint error of each group mean against each participant, as (group, participant, error).
 
     ``vectors`` maps a stimulus id to its unflipped (x, y); ``groups`` maps a reference
-    stimulus id (a scene and modulation) to its four flip stimulus ids.
+    stimulus id (a scene and modulation) to its four flip stimulus ids, in trial order.
+    The rows are in sorted group order, then participant order. Each group mean and each
+    norm is computed as in the original implementation (pull request #63), so the values
+    are equal to the last digit.
     """
+    import pandas as pd
     ids = [str(i) for i in reference['stimulus_id'].values]
-    human = reference.transpose('presentation', 'participant', 'axis').values
-    model = np.array([np.mean([vectors[s] for s in groups[i]], axis=0) for i in ids])
-    return np.linalg.norm(model[:, None, :] - human, axis=-1)
+    human = reference.transpose('presentation', 'participant', 'axis')
+    participants = [int(p) for p in human['participant'].values]
+    rows = []
+    for group in sorted(groups):
+        model = pd.DataFrame([vectors[s] for s in groups[group]], columns=['x', 'y']).mean().to_numpy()
+        for index, participant in enumerate(participants):
+            rows.append((group, participant,
+                         float(np.linalg.norm(model - human.values[ids.index(group), index]))))
+    return rows

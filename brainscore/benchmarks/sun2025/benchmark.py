@@ -14,6 +14,7 @@ import hashlib
 import json
 
 import numpy as np
+import pandas as pd
 
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.contract import Subject, TaskContext
@@ -119,10 +120,11 @@ class Sun2025MotionBenchmark(BenchmarkBase):
                 report = parse_report(text)[0]
                 vectors[str(sid)] = unflip_vector(report['direction_deg'], report['speed_px_per_frame'], int(flip))
             groups = self.stimulus_set.groupby('base_id').stimulus_id.apply(list).to_dict()
-            errors = endpoint_errors(vectors, groups, self.reference)
-            raw = float(errors.mean())
-            by_participant = dict(zip(map(int, self.reference['participant'].values),
-                                      map(float, errors.mean(axis=0))))
+            errors = pd.DataFrame(endpoint_errors(vectors, groups, self.reference),
+                                  columns=['group', 'participant', 'error'])
+            # The mean over groups and participants, in the order of the original implementation.
+            raw = float(errors.error.mean())
+            by_participant = {int(p): float(e) for p, e in errors.groupby('participant').error.mean().items()}
         return benchmark_score(
             self, raw=raw, metric='mean_vector_endpoint_error', answers=reports,
             answer_policy=ANSWER_POLICY, invalid_limit=0.0,

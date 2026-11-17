@@ -158,3 +158,40 @@ def test_unflip_reverses_each_flip():
     assert unflip_vector(90, 1, 1) == pytest.approx((0, -1))
     assert unflip_vector(90, 1, 3) == pytest.approx((0, 1))
     assert unflip_vector(0, 1, 2) == pytest.approx((-1, 0))
+
+
+def _design(human):
+    """An in-memory design: group g has scene 1, modulation g + 1 and four flips; human is groups x 3 x 2."""
+    from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    from brainscore.benchmarks.sun2025.benchmark import Sun2025MotionBenchmark
+    groups = range(len(human))
+    stimuli = StimulusSet([dict(stimulus_id=f'g{g}-f{f}', base_id=f'g{g}', scene=1, modulation=g + 1,
+                                flip=f, video_path=f'g{g}-f{f}.avi') for g in groups for f in (1, 2, 3, 4)])
+    stimuli.identifier = 'made-up-sun'
+    reference = BehavioralAssembly(
+        np.array(human, dtype=float), dims=['presentation', 'participant', 'axis'],
+        coords={'stimulus_id': ('presentation', [f'g{g}' for g in groups]),
+                'scene': ('presentation', [1] * len(human)),
+                'modulation': ('presentation', [g + 1 for g in groups]),
+                'participant': [1, 2, 3], 'axis': ['x', 'y']})
+    return Sun2025MotionBenchmark(stimuli, reference)
+
+
+def test_the_score_equals_the_old_implementation_to_the_last_digit():
+    # Case 15 of np.random.default_rng(2025) (uniform(0, 360, 8), uniform(0, 10, 8), normal(0, 3, (2, 3, 2)))
+    # in the review of this port. 4.255378301966291 is the value of the old implementation
+    # (pull request #63, head 1ae58a1a, experiments/sun2025/analysis.py::analyze) on these answers.
+    directions = [147.55655232248634, 10.054686038515715, 131.89316696603308, 14.840835607808206,
+                  317.75805914843266, 290.6338338446624, 162.41275523165345, 266.2633233415828]
+    speeds = [9.945997580525798, 2.2990268592918985, 8.697693238582275, 3.2021590327784,
+              4.59102398750537, 8.86262504666291, 3.7265614455438656, 9.705307474917234]
+    human = [[[2.1094195984569146, -1.5147653974728494], [0.12047963306372184, -4.029855323217056],
+              [-1.243139986837792, 1.3765951199568947]],
+             [[-3.964102084273672, -0.8564605166536496], [-0.5824091662970251, 1.891242993019418],
+              [0.1751960004616196, -2.1516355477717526]]]
+    answers = {f'g{g}-f{f}': json.dumps({'direction_deg': directions[4 * g + f - 1],
+                                         'speed_px_per_frame': speeds[4 * g + f - 1]})
+               for g in (0, 1) for f in (1, 2, 3, 4)}
+    score = brainscore.score(Reporter(answers.__getitem__), _design(human))
+    assert float(score) == 4.255378301966291
