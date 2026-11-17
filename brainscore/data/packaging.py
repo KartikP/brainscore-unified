@@ -96,7 +96,7 @@ class DataBuilder:
         recorded = _expected(name, self) if self.build else {}
         check = ('; '.join(f'sha1 of `{file}` is `{value}`' for file, value in self.sha1.items())
                  or (f'the sha1 and exact content digest of {len(recorded)} files in `data_packaging/expected.json`; '
-                     'the other files: the printed counts' if recorded else '')
+                     'each other file: its counts or byte size in `build.json`' if recorded else '')
                  or ('the printed counts; no sha1 is recorded for these files' if self.build
                      else 'nothing to compare.'))
         return '\n'.join([
