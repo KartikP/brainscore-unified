@@ -40,9 +40,9 @@ def _softmax_probabilities(outputs, logp, stimuli, axis):
     """Store the softmax of likelihood scores, with the scores as source evidence;
     return the probabilities a reaction time reads, their validity and the record.
 
-    The link reads the stored float32 probabilities, as it did before the response
-    format standard (finite rows stay bit for bit); a readout's link reads its
-    float64 rows (``_readout_probabilities``).
+    The likelihood stores its probabilities as float32 and the link reads that float32
+    copy, as it did before the response format standard (finite rows stay bit for bit);
+    a readout's link reads its float64 rows (``_readout_probabilities``).
     """
     probabilities, valid = softmax(logp)
     record = _softmax_record()
@@ -807,8 +807,8 @@ class BehavioralReadout:
 
     @staticmethod
     def _readout_probabilities(outputs, ordered, stimuli):
-        """Store a readout's probabilities (float32); return the float64 rows, their
-        validity as probability rows and the record, for a reaction time."""
+        """Store a readout's probabilities (float64, as the readout gives them); return the
+        rows, their validity as probability rows and the record, for a reaction time."""
         values = np.asarray(ordered.values)
         outputs['behavior:probabilities'] = answers.readout_probabilities(ordered, stimuli)
         return values, argmax(values)[1], outputs['behavior:probabilities'].attrs['response']

@@ -44,9 +44,7 @@ def test_readout_legacy_rows_are_the_source_rows_of_the_choice_and_the_choice_is
     assert legacy_calls == choice_calls == ['extract', 'extract']       # one fit and one read-out each
     source = [json.loads(text) for text in choice.indexes['presentation'].get_level_values('raw_answer')]
     assert _bits(legacy.values) == _bits(source)                          # float64, bit for bit
-    # the stored probabilities answer is float32: the same rows, rounded once
-    assert probabilities.values.dtype == np.float32
-    assert probabilities.values.tolist() == np.asarray(legacy.values, dtype=np.float32).tolist()
+    assert _bits(probabilities.values) == _bits(legacy.values)               # the stored rows: float64 too
     argmax = np.eye(len(LABELS))[np.asarray(legacy.values).argmax(axis=1)]    # readout order, first wins a tie
     assert _bits(argmax) == _bits(choice.values)
     record = choice.attrs['response']
