@@ -510,3 +510,20 @@ def test_a_rebuilt_hosted_file_is_read_where_its_instruction_puts_it(tmp_path, m
     path = get_path(hosted.TR_STIMULI_ID, 'csv', hosted.BUCKET, hosted.VERSION_ID['TR stimuli'], sha1,
                     filename_prefix='stimulus_', folder_name=hosted.FOLDER)
     assert _sha1(pathlib.Path(path)) == sha1
+
+
+@pytest.mark.skipif(__import__('shutil').which('ffmpeg') is None, reason='ffmpeg is needed')
+def test_algonauts_fails_as_a_whole_when_an_assembly_names_an_absent_film(tmp_path, offline):
+    import h5py
+    source = _algonauts_film_source(tmp_path, None, offline)
+    # The fMRI of every participant also holds a second film, whose file the source lacks.
+    for h5_path in source.glob('fmri/sub-0*/func/*.h5'):
+        with h5py.File(h5_path, 'a') as h5:
+            h5['ses-001_task-s01e02a'] = np.zeros((3, 1000), dtype=np.float32)
+    before = _tree(source)
+    with pytest.raises(LocalDataMissing) as missing:
+        package_data('algonauts2025', source=source, output=tmp_path / 'out')
+    assert 'friends_s01e02a' in str(missing.value)
+    assert not (tmp_path / 'out').exists()
+    assert not list(tmp_path.glob('.brainscore-*'))
+    assert _tree(source) == before
