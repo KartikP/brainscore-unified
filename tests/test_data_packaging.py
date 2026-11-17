@@ -546,6 +546,18 @@ def test_the_algonauts_recovery_command_reads_the_folder_the_benchmark_names(tmp
     assert brainscore.load_dataset('Algonauts2025-friends-sub01', root=prepared).sizes['presentation'] == 3
 
 
+@pytest.mark.skipif(__import__('shutil').which('ffmpeg') is None, reason='ffmpeg is needed')
+def test_algonauts_packaged_from_the_common_source_folder_passes_the_benchmark_check(
+        tmp_path, monkeypatch, offline):
+    # Two steps: the source in the one source folder, package_data, then the benchmark's pre-check.
+    source = _algonauts_film_source(tmp_path, monkeypatch, offline)
+    (tmp_path / 'home' / 'sources').mkdir(parents=True)
+    source.rename(tmp_path / 'home' / 'sources' / 'algonauts2025')
+    package_data('algonauts2025')
+    assert not local.REGISTRY['algonauts2025-root'].resolved().exists()
+    local.check_benchmark_assets('Algonauts2025-friends-sub01')
+
+
 def _clips(folder, monkeypatch):
     """Two tiny hosted clips, one with sound and one without, as ``load_stimulus_set`` gives them."""
     import subprocess

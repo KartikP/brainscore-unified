@@ -158,9 +158,6 @@ class TestFriendsLocation:
     def test_precheck_covers_friends_identifiers(self, identifier, tmp_path, monkeypatch):
         monkeypatch.setenv('BRAINSCORE_ALGONAUTS_ROOT', str(tmp_path / 'native'))
         monkeypatch.setenv('BRAINSCORE_ALGONAUTS_PREPARED', str(tmp_path / 'prepared'))
-        with pytest.raises(local.LocalDataMissing):
-            local.check_benchmark_assets(identifier)
-        (tmp_path / 'native').mkdir()
         with pytest.raises(local.LocalDataMissing, match='algonauts2025-prepared'):
             local.check_benchmark_assets(identifier)
         (tmp_path / 'prepared').mkdir()
@@ -186,7 +183,7 @@ def test_records_name_only_registered_benchmarks_and_every_known_reader():
         return {identifier for identifier in registered if identifier.startswith(prefix)}
 
     known = {
-        'algonauts2025-root': family('Algonauts2025-'),
+        'algonauts2025-root': set(),     # read by the packaging, not by a benchmark
         'algonauts2025-prepared': family('Algonauts2025-'),
         'coggym-checkout': family('CogGym.'),
         'ewok-core-1.0': family('EWoK-core-1.0-'),
@@ -195,7 +192,7 @@ def test_records_name_only_registered_benchmarks_and_every_known_reader():
         'lahner2024-frames': set(),
         'lahner2024-sound': set(),
     }
-    none = {'lahner2024-frames', 'lahner2024-sound'}
+    none = {'algonauts2025-root', 'lahner2024-frames', 'lahner2024-sound'}
     assert all(identifiers for name, identifiers in known.items() if name not in none)
     for name, readers in known.items():
         assert name in local.REGISTRY, f'the local asset {name!r} is no longer declared'

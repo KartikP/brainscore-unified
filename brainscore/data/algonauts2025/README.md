@@ -1,8 +1,8 @@
 # Prepare Algonauts2025 data locally
 
 Two folders are involved. `BRAINSCORE_ALGONAUTS_ROOT` names the native competition
-files (default `~/algonauts_2025`): the benchmarks check it, and the packaging
-command below reads it with `--source`, so nothing is copied. `BRAINSCORE_ALGONAUTS_PREPARED` names the converted files that the
+files (default `~/algonauts_2025`): the packaging command below reads it with
+`--source`, so nothing is copied (without `--source` it reads `~/brainscore-data/sources/algonauts2025`). `BRAINSCORE_ALGONAUTS_PREPARED` names the converted files that the
 benchmarks read (default `~/.brainio/algonauts2025`).
 
 Obtain the competition files through the

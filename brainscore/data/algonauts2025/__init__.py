@@ -38,7 +38,7 @@ ALGONAUTS_ROOT = local.register(local.LocalAsset(
            'fMRI per subject). Ubuntu 22.04 ships a git-annex too old for '
            'current DataLad; install it from conda-forge instead.',
     prepare=_PACKAGE,
-    used_by=_ALGONAUTS_IDENTIFIERS,
+    used_by=[],      # the benchmarks read only the prepared files; the packaging reads these
 ))
 
 ALGONAUTS_PREPARED = local.register(local.LocalAsset(
