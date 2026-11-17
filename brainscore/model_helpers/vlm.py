@@ -14,6 +14,7 @@ provenance says so (``region_layer_map_status``).
 from functools import partial
 from typing import Any, Mapping, Optional, Tuple, Union
 
+from brainscore.model_helpers.provenance import ProvenanceSubject
 from brainscore.tools.auto_register import (
     DEPTH_HYPOTHESIS, DEPTH_TABLE, depth_layers)
 
@@ -57,6 +58,19 @@ def _load(identifier: str, hf_id: str, model_class: str, dtype: str, download_gb
         model = model.to(select_device())
     processor = transformers.AutoProcessor.from_pretrained(hf_id, **download)
     return model.eval(), pin_image_processor(processor, hf_id, **download)
+
+
+class _VLMSubject(ProvenanceSubject):
+    """The builder's subject: the registration's provenance on every response, and the input the
+    policy acts on. The policy reads the observation's frame, so ``motor`` is answered from an
+    observation only (instruction and reward are context in its row)."""
+
+    @property
+    def output_inputs(self):
+        inputs = dict(self._subject.output_inputs)
+        if 'motor' in self._subject.out_channels:
+            inputs['motor'] = frozenset({'observation'})
+        return inputs
 
 
 def _pixel_extractor():
@@ -213,7 +227,6 @@ def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
         raise ValueError('video=True records clips through the flattened-patch video processor '
                          '(VLMVideoWrapper); no clip extractor fits a vision part given image_processor_kwargs=.')
     from brainscore import BrainScoreModel
-    from brainscore.model_helpers.provenance import ProvenanceSubject
     from brainscore.model_helpers.replies import chat_parts
     from brainscore.model_helpers.text_wrapper import TextWrapper
     from brainscore.selection import LayerSelector
@@ -281,7 +294,7 @@ def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
         capability_config={'behavior-sessions': {'behavior:rating': 'generation',
                                                  'behavior:probabilities': probabilities}})
     status = ', '.join(f'{region} {depth:.2f}' for region, depth in depths.items())
-    return ProvenanceSubject(subject, {
+    return _VLMSubject(subject, {
         'checkpoint': hf_id, 'revision': revision or 'not pinned', 'dtype': dtype, 'device_map': device_map,
         'region_layer_map_status': f'{DEPTH_HYPOTHESIS}: {status}; no layer search',
         'intervention': intervention_status,

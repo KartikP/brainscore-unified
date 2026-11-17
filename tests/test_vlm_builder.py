@@ -468,6 +468,22 @@ def test_the_grid_game_is_compatible_and_scores_through_participate(replies):
     assert 0 <= float(score.attrs['success_rate']) <= 1
 
 
+def test_a_motor_benchmark_without_an_observation_is_not_applicable():
+    """The policy acts on the observation's frame: motor is answered from an observation only, so
+    a motor task from text alone is N/A before any compute; images and text keep their outputs."""
+    from brainscore_core.compatibility import CompatibilityError, check_compatibility
+    subject = _build()
+    assert subject.output_inputs['motor'] == {'observation'}
+
+    def benchmark(inputs, outputs):
+        return SimpleNamespace(required_input_channels=frozenset(inputs), identifier='declarations',
+                               requested_output_channels=frozenset(outputs), trial_memory='none')
+    with pytest.raises(CompatibilityError, match='motor'):
+        check_compatibility(subject, benchmark({'text'}, {'motor'}))
+    assert check_compatibility(subject, benchmark({'vision:image'}, {'neural:IT'})).kind == 'full'
+    assert 'motor' not in _build(policy=False).output_inputs
+
+
 def test_the_induced_dyslexia_benchmarks_are_compatible():
     from brainscore.benchmarks.induced_dyslexia.benchmark import InducedDyslexia
     from brainscore_core.compatibility import check_compatibility
