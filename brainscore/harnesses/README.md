@@ -8,6 +8,7 @@ process. This page shows how, with a made-up library called Lanternfield.
 ## When you need this
 
 - The library pins packages that conflict with Brain-Score's packages.
+- The library needs another Python version than the scoring environment.
 - The library's own code must run unchanged, at one commit, for its scores to count.
 - You do not want an install into the environment that scores models.
 
@@ -40,8 +41,9 @@ the parent's side (`ChildProcess`).
 
 At the first use, `_environment_folder.py` makes one folder for the library:
 `checkout/` (the repository at the pinned commit), `env/` (a virtual environment with
-the pinned packages only) and `ready.json` (the commit, the requirements' hash, the
-Python version and the package list).
+the pinned packages only) and `ready.json`. `ready.json` records the folder's identity
+(the library's name, the repository, the commit, the requirements' hash and the Python
+version) and the package list.
 
 ## What you write
 
@@ -163,7 +165,18 @@ def protocol(questions, folder=None):
 - A git repository and one full commit that holds every file the worker reads.
 - A complete, exact list of its packages (every dependency pinned).
 - A function the worker can call with a way to reach the subject (here, `ask_subject`),
-  so each model call goes to the parent.
+  so each model call goes to the parent. If the library calls its model at a point that
+  must be patched before it can be replaced, this method does not fit as it is.
+- Trials that map onto the common channels: each call becomes a stimulus row and a
+  `TaskContext`, and the subject answers on a channel such as `behavior:text`.
+- Human data and a stated reference for its scores (a ceiling, a floor or reference
+  models), so a score can be read against them.
+- The settings of each model call (for example the temperature and the length), stated
+  by the library, not chosen by the adapter.
+- A licence that permits the use: follow the library's terms for its code and data.
+
+The worker script must not import Brain-Score: the library's environment has no
+Brain-Score package.
 
 ## What the machine must give
 
@@ -172,11 +185,15 @@ def protocol(questions, folder=None):
   first use.
 - A Python 3 program for the environment. Brain-Score installs no Python: name one with
   `python=` when the library needs another version, or the scoring Python is used.
+- Consent to make the folder: `BS_INSTALL_DEPENDENCIES` unset (or `yes`, the default)
+  allows it; `no` forbids it.
 - Disk space for the folder. All folders are under `~/.brain-score/environments/<name>/`;
   `BRAINSCORE_ENVIRONMENTS_HOME` moves this root (an absolute path), and `folder=` of
   `ready_folder` names one exact folder.
 
 ## What Brain-Score guarantees
+
+Installation:
 
 - Nothing is installed into the scoring environment. pip runs only inside the folder's
   environment (`--require-virtualenv`), with no pip configuration file and an allowlisted
@@ -184,25 +201,48 @@ def protocol(questions, folder=None):
 - A folder is made completely or not at all: in a temporary folder next to it, checked,
   then published by one rename that never replaces. A folder that exists, or appears
   meanwhile, is never changed.
-- One creation at a time (a lock file next to the folder). A killed creation stops its
-  git or pip command; the next creation removes its temporary folder. Only a temporary
-  folder with Brain-Score's creation record and no `ready.json` is ever removed.
-- A changed commit, requirements file or Python version gives a new folder; an old folder
-  is left as it is.
 - `BS_INSTALL_DEPENDENCIES=no` forbids making a folder: a load with no ready folder stops
   with one error that names the folder and the next step.
-- The child has its own process group. It is killed with its group when the parent stops
-  waiting (a deadline, an error, the end of the `with` block). No child outlives the block.
-- A message longer than 256 MiB, a line that is not JSON, or silence past `idle_timeout_s`
-  stops the child with an error that quotes the end of its error output.
+
+Identity:
+
+- Every load checks the folder's identity in `ready.json`, also for `folder=`. A folder
+  made for another library, repository, commit, requirements file or Python version is
+  refused, with both identities in the message, and is not changed.
+- At the default place, the folder's name covers the whole identity: a change of any part
+  gives a new folder, and the old folder is left as it is.
+- The environment must report the Python version that was asked for before anything is
+  installed into it.
+
+Clean-up:
+
+- One creation at a time (a lock file next to the folder). A killed creation stops its
+  git or pip command. The next creation removes only an unfinished temporary folder: one
+  with Brain-Score's creation record and no `ready.json`. A temporary folder that already
+  has `ready.json` (the creator stopped just before the rename) is left in place.
+- Each git, pip and Python version command, and the child, runs in its own process
+  group. The group is killed when the parent stops waiting (a deadline, an error, the end
+  of the `with` block). A descendant that leaves the group (`setsid`) is not stopped.
+
+Transport:
+
+- A line from the child that is longer than 256 MiB or is not JSON, a child that exits,
+  and silence past `idle_timeout_s` stop the child with an error that quotes the end of
+  its error output.
+- A command longer than 256 MiB, or a command with NaN or infinity, is refused in the
+  parent with `ValueError` before it is sent; that error has no log of the child.
 
 ## Limits
 
 - Only JSON crosses the pipe: strings, numbers, lists, objects, `true`, `false`, `null`.
-  A tuple arrives as a list; bytes and NaN do not cross. Send files as paths.
+  A tuple arrives as a list; bytes do not cross. Send files as paths.
+- The parent sends strict JSON (no NaN or infinity). The child may send NaN and infinity
+  as Python's `json` writes them, and the parent reads them as floats.
 - An exception crosses as its type name, message and traceback, not as the same class.
 - The library's module state lives as long as one child process.
 - `ready_folder` does not update a folder. To rebuild one, remove it yourself.
+- The library must run in Python. A library in another language, or one that needs a
+  simulator that runs as a separate service, is not covered by this method.
 
 ## Test the integration offline
 
