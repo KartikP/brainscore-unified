@@ -163,9 +163,9 @@ def get_model(identifier: str) -> BrainScoreModel:
         likelihood=likelihood,
         behavioral_readout_layer=REGION_LAYER_MAP['IT'],
         # Two parts give a legacy answer and a rating natively; generation owns them. The
-        # likelihood derives the probabilities by softmax (the readout gives them natively).
+        # readout gives the probabilities natively (fitted on the task's fitting stimuli).
         capability_config={'behavior-sessions': {
             'behavior': 'generation', 'behavior:rating': 'generation',
-            'behavior:probabilities': ('likelihood', 'softmax')}},
+            'behavior:probabilities': 'readout'}},
         intervention=pytorch_intervention(_tower_root(visual, language_model)),
     )

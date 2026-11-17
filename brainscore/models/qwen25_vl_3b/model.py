@@ -54,6 +54,9 @@ SIZES = {
 }
 VARIANTS = {f'{size}-vwfa': size for size in SIZES}
 BF16_IDENTIFIER = 'qwen2.5-vl-3b-bf16'
+# The statement of behavior:probabilities for each choice of the builder: the readout gives
+# them natively; the likelihood derives them by softmax.
+PROBABILITY_PARTS = {'readout': 'readout', 'likelihood': ('likelihood', 'softmax')}
 BF16_REVISION = '66285546d2b821cf421d4f5eb2576359d3770cd3'
 
 
@@ -170,7 +173,10 @@ def picture_extractor(qwen_model, qwen_processor, identifier: str):
                             identifier=f'{identifier}-vision')
 
 
-def get_model(identifier: str) -> Subject:
+def get_model(identifier: str, *, probabilities: str) -> Subject:
+    """The registration ``identifier``. ``probabilities`` is the part that gives
+    ``behavior:probabilities`` (and, by the link, ``behavior:rt``): ``'readout'`` (fitted on
+    the task's fitting stimuli) or ``'likelihood'`` (the softmax of the option likelihoods)."""
     bf16 = identifier == BF16_IDENTIFIER
     size = 'qwen2.5-vl-3b' if bf16 else VARIANTS.get(identifier, identifier)
     assert size in SIZES, identifier
@@ -224,10 +230,10 @@ def get_model(identifier: str) -> Subject:
         # behavioral benchmark both ways. Uses the same vision layer as 'IT'.
         behavioral_readout_layer='blocks.28',
         # Two parts give a legacy answer and a rating natively; generation owns them. The
-        # likelihood derives the probabilities by softmax (the readout gives them natively).
+        # probabilities come from the part the registration states.
         capability_config={'behavior-sessions': {
             'behavior': 'generation', 'behavior:rating': 'generation',
-            'behavior:probabilities': ('likelihood', 'softmax')}},
+            'behavior:probabilities': PROBABILITY_PARTS[probabilities]}},
         **variant_kwargs,
     )
     if not bf16:
