@@ -49,10 +49,11 @@ def test_every_data_plugin_states_how_its_data_is_packaged(plugin):
     # Intended gate: a data plugin without these fails, and the message says what to add.
     blocks = _rebuild_blocks(plugin / 'README.md')
     assert blocks, (
-        f'{plugin.name} does not say how its data is packaged. Register a DataBuilder in '
-        f'brainscore/data/{plugin.name}/__init__.py (data_builder_registry[<name>] = DataBuilder(...): '
-        f'the builder command, or cannot=..., or nothing to package), then add a section '
-        f"'## Rebuild' to its README.md with DataBuilder.readme(<name>). See docs/guides/data.md.")
+        f'{plugin.name} does not say how its data is packaged. Register a factory in '
+        f'brainscore/data/{plugin.name}/__init__.py: data_builder_registry[<name>] = lambda: DataBuilder(...) '
+        f'(the builder command, or cannot=..., or nothing to package). Then add a section '
+        f"'## Rebuild' to its README.md with the text of data_builder_registry[<name>]().readme(<name>). "
+        f'See docs/guides/data.md.')
     for name, block in blocks.items():
         assert name in data_builder_registry, f'{plugin.name}/README.md names {name!r}, which no plugin registers'
         expected = data_builder_registry[name]().readme(name)
