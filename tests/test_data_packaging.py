@@ -528,7 +528,8 @@ def test_a_file_with_no_expected_record_states_its_counts(tmp_path, monkeypatch,
 
 def _gifti(path, n_tr):
     """A synthetic surface time series: ``n_tr`` arrays over a full fsaverage hemisphere."""
-    import nibabel as nib
+    # nibabel writes the made-up run and the builder reads it; an environment without it skips.
+    nib = pytest.importorskip('nibabel', reason='the Lahner time-series builder reads GIfTI with nibabel')
     arrays = [nib.gifti.GiftiDataArray(np.full(10242 + 5, t, dtype=np.float32)) for t in range(n_tr)]
     path.parent.mkdir(parents=True, exist_ok=True)
     nib.save(nib.gifti.GiftiImage(darrays=arrays), str(path))
