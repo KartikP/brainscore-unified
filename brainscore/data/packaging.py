@@ -399,7 +399,7 @@ def package_data(name: str, source: str | Path | None = None,
     # build must not look like a ready dataset.
     staging = Path(tempfile.mkdtemp(prefix='.brainscore-build-', dir=destination.parent))
     work = Path(tempfile.mkdtemp(prefix='.brainscore-work-', dir=destination.parent))
-    placed = {}
+    placed = _Placed()
     try:
         try:
             _run(builder.build, native, staging, work)
@@ -436,8 +436,7 @@ def package_data(name: str, source: str | Path | None = None,
             _place_hosted(builder, staging, files, placed)
         os.rename(staging, destination)
     except BaseException:
-        for place in placed.values():
-            place.unlink()
+        _undo(placed)
         raise
     finally:
         shutil.rmtree(work, ignore_errors=True)
@@ -454,6 +453,30 @@ def _read_place(name: str, builder: DataBuilder) -> Path:
     if builder.reads:
         return local.REGISTRY[builder.reads].resolved()
     return data_home() / 'packaged' / name
+
+
+class _Placed(dict):
+    """``{file path: place}`` of the hosted files this call published, with the identity of each."""
+
+    def __init__(self):
+        super().__init__()
+        self.identity = {}
+
+
+def _identity(place: Path) -> tuple:
+    """What tells this call's file from another at the same path: device, inode and change time."""
+    status = os.lstat(place)
+    return status.st_dev, status.st_ino, status.st_ctime_ns
+
+
+def _undo(placed: '_Placed') -> None:
+    """Remove each file this call published that is still that file; keep any other entry there."""
+    for place in placed.values():
+        try:
+            if _identity(place) == placed.identity[place]:
+                place.unlink()
+        except FileNotFoundError:
+            continue
 
 
 def _place_hosted(builder: DataBuilder, staging: Path, files: dict, placed: dict) -> None:
@@ -475,8 +498,9 @@ def _place_hosted(builder: DataBuilder, staging: Path, files: dict, placed: dict
                 continue
             raise FileExistsError(f'{place} appeared during the build and is not the registered file; '
                                   'it is kept: move it away, then run again.') from None
-        placed[relative] = place
         os.unlink(staging / relative)
+        placed[relative] = place
+        placed.identity[place] = _identity(place)
 
 
 def _report(name: str, builder: DataBuilder, destination: Path, read_place: Path,

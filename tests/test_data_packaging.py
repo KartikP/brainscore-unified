@@ -420,6 +420,23 @@ def test_a_failed_hosted_publication_leaves_no_file_of_this_call(failure, tmp_pa
     assert not (tmp_path / 'brainio' / 'packaged' / 'made-up').exists()
 
 
+@pytest.mark.parametrize('change', ['replaced by a user file', 'removed'])
+def test_the_rollback_removes_only_files_this_call_published(change, tmp_path, monkeypatch, offline):
+    source, sha1 = _hosted(tmp_path, monkeypatch, {'a.bin': b'registered a', 'b.bin': b'registered b'})
+    places = {file: tmp_path / 'brainio' / value / file for file, value in sha1.items()}
+
+    def refuse(*args):        # before the record folder moves, the first published file changes
+        places['a.bin'].unlink()
+        if change == 'replaced by a user file':
+            places['a.bin'].write_bytes(b'mine')
+        raise OSError('the record folder cannot be renamed')
+    monkeypatch.setattr(os, 'rename', refuse)
+    with pytest.raises(OSError, match='the record folder cannot be renamed'):
+        package_data('made-up', source=source)
+    assert not places['b.bin'].exists()
+    assert (places['a.bin'].read_bytes() == b'mine') if change != 'removed' else not places['a.bin'].exists()
+
+
 def test_a_relative_brainio_home_is_printed_as_an_absolute_place(tmp_path, monkeypatch, capsys, offline):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv('BRAINIO_HOME', 'relative-cache')
