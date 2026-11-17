@@ -57,9 +57,11 @@ class ChanceBaseline(Subject):
     def out_channels(self) -> Set[str]:
         # It answers behavioral tasks; declared, not inferred (Contract v3 rule 2):
         # a legacy task on bare behavior, and the choice of a Choice task.
-        return {'behavior', 'behavior:choice'}
+        return {'behavior', 'behavior:choice', 'behavior:probabilities'}
 
     def participate(self, session) -> None:
+        if list(session.outputs or ()) == ['behavior:probabilities']:
+            return self._answer_probabilities(session)
         if list(session.outputs or ()) != ['behavior:choice']:
             from brainscore_core.streaming_helpers import drive_typed_session
             return drive_typed_session(self, session)
@@ -90,6 +92,27 @@ class ChanceBaseline(Subject):
             attrs={'response': response_record('behavior:choice', 'uniform', conversion='argmax',
                                                source_format='behavior:probabilities')})
         session.respond(StreamEvent('behavior:choice', answer, None, {}))
+
+    def _answer_probabilities(self, session) -> None:
+        """Uniform rows over the Choice's labels, one per presented stimulus, with the
+        stimulus columns (float32, as this model gives its rows)."""
+        from brainscore_core.response_formats import response_record
+        from brainscore_core.streaming import StreamEvent
+        from brainscore_core.streaming_helpers import drain_session_inputs, session_stimuli
+        labels = session.task.response.labels
+        if isinstance(labels, str):
+            raise ValueError("chance-baseline answers a Choice with shared options; options per "
+                             f"row (Choice({labels!r})) are not supported.")
+        events = drain_session_inputs(session)
+        stimuli = session_stimuli(session, events)
+        rows = np.full((len(stimuli), len(labels)), 1.0 / len(labels), dtype=np.float32)
+        coords = {'stimulus_id': ('presentation', list(stimuli['stimulus_id'].values))}
+        coords.update({column: ('presentation', list(stimuli[column].values))
+                       for column in stimuli.columns if column != 'stimulus_id'})
+        answer = BehavioralAssembly(rows, coords={**coords, 'choice': list(labels)},
+                                    dims=['presentation', 'choice'],
+                                    attrs={'response': response_record('behavior:probabilities', 'uniform')})
+        session.respond(StreamEvent('behavior:probabilities', answer, None, {}))
 
     def _label_set(self) -> list:
         """The labels of the task: its ``label_set``, else the labels of its fitting stimuli.

@@ -16,9 +16,9 @@ class _ChoiceBenchmark(_BehavioralBenchmark):
     requested_output_channels = {'behavior:choice'}
 
 
-def test_chance_baseline_declares_bare_behavior_and_the_choice():
+def test_chance_baseline_declares_bare_behavior_the_choice_and_the_probabilities():
     model = ChanceBaseline()
-    assert model.out_channels == {'behavior', 'behavior:choice'}
+    assert {'behavior', 'behavior:choice', 'behavior:probabilities'} <= model.out_channels
     assert check_compatibility(model, _BehavioralBenchmark()).kind == 'full'
     assert check_compatibility(model, _ChoiceBenchmark()).kind == 'full'
 

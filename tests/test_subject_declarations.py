@@ -110,7 +110,8 @@ EXPECTED = {
         ],
         "out_channels": [
             "behavior",
-            "behavior:choice"
+            "behavior:choice",
+            "behavior:probabilities"
         ],
         "output_inputs": {},
         "required_channels": [],
