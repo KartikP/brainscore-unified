@@ -16,14 +16,16 @@ and preparing all subject/split outputs was estimated at another 25 GB. Runtime
 depends on storage and scope; it has not been qualified for this release.
 
 ```bash
-python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly \
-  --algonauts-root /path/to/native-data \
-  --output-root /path/to/new-build \
-  --subjects 1 \
-  --splits friends
+python -m brainscore.data package algonauts2025 \
+  --source /path/to/native-data \
+  --output /path/to/new-build
 
 export BRAINSCORE_ALGONAUTS_PREPARED=/path/to/new-build
 ```
+
+To convert fewer participants or splits, run the script it wraps,
+`brainscore.data.algonauts2025.data_packaging.prepare_assembly`, with `--subjects`
+and `--splits`.
 
 Movie paths in the CSV point to your native files; keep those files available.
 Check loading without a model:
@@ -79,6 +81,15 @@ Other participants are 2, 3 and 5. Splits `friends_s7` and `ood` contain held-ou
 response placeholders, not measured responses available for local scoring.
 Do not treat those NaNs as an acquired human dataset.
 
-This converter is not registered with `brainscore.data prepare`. The full
-fresh-build validation, content manifest and shared-builder migration are
-not done.
+A fresh build has not been compared with a recorded count or checksum.
+
+## Rebuild
+
+### algonauts2025
+
+- Source: the Algonauts 2025 competition data (Courtois NeuroMod): https://github.com/courtois-neuromod/algonauts_2025.competitors. The fMRI is under the data-use agreement of that page; the films (Friends, Movie10) are copyrighted.
+- Access: a data-use agreement: follow the DataLad instructions of the page above and sign its terms.
+- Needs: DataLad and git-annex (from conda-forge on Ubuntu 22.04), h5py; about 130 GB in and 25 GB out; hours (not measured).
+- Command: `python -m brainscore.data package algonauts2025` with the source in `~/brainscore-data/sources/algonauts2025` (or `--source <folder>`): the DataLad dataset as it installs: `fmri/sub-0X/...` (HDF5 responses and `target_sample_number/`) and `stimuli/` (`movies/`, `transcripts/`), kept together.
+- Writes: per participant 1, 2, 3, 5 and split: `algonauts2025_<split>_sub0X.nc` (friends: the fMRI; friends_s7 and ood: placeholders with no fMRI), and `algonauts2025_stim_<split>.csv`. Use them: set BRAINSCORE_ALGONAUTS_PREPARED to the output folder, then cut the films into one file per scan with `python -m brainscore.data.algonauts2025.data_packaging.prepare_stimuli --participant 1 --media frames --prepared-root <output>` (see the README).
+- Check: the printed counts; no sha1 is recorded for these files

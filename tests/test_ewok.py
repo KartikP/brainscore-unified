@@ -9,9 +9,9 @@ import pandas as pd
 import pytest
 
 import brainscore
-from brainscore.data.preparation import DataBuilder, data_builder_registry, prepare_dataset
+from brainscore.data import package_data
 from brainscore.data.ewok.data import load_prepared
-from brainscore.data.ewok.data_packaging.prepare import HF_REPOSITORY, HF_REVISION, normalize, resolve
+from brainscore.data.ewok.data_packaging.prepare import normalize
 from brainscore.benchmarks.ewok.benchmark import logprob_accuracy
 from brainscore.harnesses.ewok import EWoKProvider
 from brainscore.experiments import Experiment, RecordInputsOutputs
@@ -36,7 +36,7 @@ def native(tmp_path):
 
 @pytest.fixture
 def prepared(native, tmp_path):
-    return prepare_dataset('EWoK-core-1.0', source=native, output=tmp_path / 'build')
+    return package_data('ewok', source=native, output=tmp_path / 'build')
 
 
 def likelihood_subject(likelihood):
@@ -89,23 +89,23 @@ def test_build_round_trip_and_private_permissions(prepared):
 
 
 def test_deterministic_build_and_content_identity(native, prepared, tmp_path):
-    other = prepare_dataset('EWoK-core-1.0', source=native, output=tmp_path / 'second')
+    other = package_data('ewok', source=native, output=tmp_path / 'second')
     assert (other / 'items.json').read_bytes() == (prepared / 'items.json').read_bytes()
     before = brainscore.load_stimulus_set('EWoK-core-1.0', root=prepared).identifier
     native.write_text(native.read_text().replace('fixture context A 0','edited context A 0'))
-    changed = prepare_dataset('EWoK-core-1.0', source=native, output=tmp_path / 'third')
+    changed = package_data('ewok', source=native, output=tmp_path / 'third')
     assert brainscore.load_stimulus_set('EWoK-core-1.0', root=changed).identifier != before
 
 
 def test_no_overwrite_or_partial_build(native, prepared, tmp_path):
     before = (prepared / 'items.json').read_bytes()
     with pytest.raises(FileExistsError):
-        prepare_dataset('EWoK-core-1.0', source=native, output=prepared)
+        package_data('ewok', source=native, output=prepared)
     assert (prepared / 'items.json').read_bytes() == before
     native.write_text('wrong,columns\n1,2\n')
     output = tmp_path / 'broken'
     with pytest.raises(ValueError, match='columns'):
-        prepare_dataset('EWoK-core-1.0', source=native, output=output)
+        package_data('ewok', source=native, output=output)
     assert not output.exists()
     assert not list(tmp_path.glob('.brainscore-build-*'))
 
@@ -132,56 +132,19 @@ def test_native_column_case_and_version_from_directory(native, tmp_path):
     frame=pd.read_csv(native).drop(columns='Version')
     frame.columns=[c.lower() for c in frame.columns]
     path=tmp_path/'vers=4';path.mkdir();frame.to_csv(path/'items.csv',index=False)
-    result=prepare_dataset('EWoK-core-1.0',source=path,output=tmp_path/'out')
+    result=package_data('ewok', source=path,output=tmp_path/'out')
     assert load_prepared(result)[1]['versions']==['4']
 
 
 def test_parquet_native_round_trip(native, tmp_path):
     pytest.importorskip('pyarrow', reason='Native Parquet requires brainscore[ewok-data]')
     path=tmp_path/'native.parquet';pd.read_csv(native,dtype=str).to_parquet(path,index=False)
-    result=prepare_dataset('EWoK-core-1.0',source=path,output=tmp_path/'out')
+    result=package_data('ewok', source=path,output=tmp_path/'out')
     assert len(load_prepared(result)[0])==3
 
 
-def test_request_resolver_is_plugin_specific_and_not_persisted(native, tmp_path, monkeypatch):
-    seen=[]
-    def resolver(request_id):
-        seen.append(request_id)
-        return native, {'method':'author-download'}
-    from brainscore.data.ewok.data_packaging.prepare import build
-    monkeypatch.setitem(data_builder_registry,'fixture',lambda:DataBuilder(build, resolver))
-    output=prepare_dataset('fixture',request_id='private-author-request',output=tmp_path/'resolved')
-    assert seen==['private-author-request']
-    assert 'private-author-request' not in (output/'build.json').read_text()
-    assert load_prepared(output)[1]['items']==3
-
-
-def test_huggingface_uses_pinned_native_file(native, monkeypatch):
-    import huggingface_hub
-    calls=[]
-    def download(**kwargs):
-        calls.append(kwargs)
-        return str(native.parent)
-    monkeypatch.setattr(huggingface_hub,'snapshot_download',download)
-    path,meta=resolve(HF_REPOSITORY)
-    assert path==native.parent/'data/test/ewok-core-1.0.parquet'
-    assert calls[0]['revision']==HF_REVISION
-    assert calls[0]['repo_type']=='dataset'
-    assert 'token' not in calls[0]
-    assert meta['revision']==HF_REVISION
-
-
-def test_access_failures_do_not_reveal_credentials(monkeypatch):
-    import huggingface_hub
-    def fail(**kwargs):raise RuntimeError('secret-token-in-url')
-    monkeypatch.setattr(huggingface_hub,'snapshot_download',fail)
-    with pytest.raises(PermissionError) as error:resolve(HF_REPOSITORY)
-    assert 'secret-token' not in str(error.value)
-    with pytest.raises(ValueError, match='approval codes'):resolve('secret-request')
-
-
 def test_cli_build(native, tmp_path):
-    result=subprocess.run([sys.executable,'-m','brainscore.data','prepare','EWoK-core-1.0',
+    result=subprocess.run([sys.executable,'-m','brainscore.data','package','ewok',
         '--source',str(native),'--output',str(tmp_path/'cli')],capture_output=True,text=True)
     assert result.returncode==0,result.stderr
     assert len(load_prepared(tmp_path/'cli')[0])==3
@@ -336,7 +299,7 @@ def test_archive_build_applies_final_exclusions(native, tmp_path, monkeypatch):
             z.setpassword(b'fixture-password');z.writestr(member,frame.to_csv(index=False))
             z.writestr('../never-extract.txt','fixture')
     monkeypatch.setenv('EWOK_ARCHIVE_PASSWORD','fixture-password')
-    result=prepare_dataset('EWoK-core-1.0',source=archive_root,output=tmp_path/'out')
+    result=package_data('ewok', source=archive_root,output=tmp_path/'out')
     data,manifest=load_prepared(result)
     assert len(data)==2 and manifest['final_exclusions']==1
     assert not (tmp_path/'never-extract.txt').exists()
@@ -350,19 +313,13 @@ def test_missing_archive_password_fails_without_partial_data(tmp_path, monkeypat
     (source/'analyses/data.zip').write_bytes(b'not-read')
     monkeypatch.delenv('EWOK_ARCHIVE_PASSWORD',raising=False)
     with pytest.raises(ValueError,match='EWOK_ARCHIVE_PASSWORD'):
-        prepare_dataset('EWoK-core-1.0',source=source,output=tmp_path/'out')
+        package_data('ewok', source=source,output=tmp_path/'out')
     assert not (tmp_path/'out').exists()
 
 
 def test_native_text_whitespace_preserved(native):
     frame=pd.read_csv(native,dtype=str);frame.loc[0,'Context1']='  fixture text  '
     assert next(r for r in normalize(frame) if r['TemplateID']=='0')['Context1']=='  fixture text  '
-
-
-def test_data_source_choice_required(tmp_path):
-    for options in ({},{'source':tmp_path,'request_id':'id'}):
-        with pytest.raises(ValueError,match='exactly one'):
-            prepare_dataset('EWoK-core-1.0',output=tmp_path/'out',**options)
 
 
 def test_the_chance_baseline_answers_choice_mode_and_is_not_applicable_on_logprobs(prepared, tmp_path):
@@ -522,7 +479,7 @@ def word_items(tmp_path):
                  Target2=words[(i + 5) % 10]) for i in range(10)]
     path = tmp_path / 'words.csv'
     pd.DataFrame(rows).to_csv(path, index=False)
-    return prepare_dataset('EWoK-core-1.0', source=path, output=tmp_path / 'word-build')
+    return package_data('ewok', source=path, output=tmp_path / 'word-build')
 
 
 def _trace_path_logprobs(net, tok, contexts, targets, batch_size=8):

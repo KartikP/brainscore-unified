@@ -90,8 +90,8 @@ benchmark_registry: Dict[str, Callable[[], Benchmark]] = _Registry()
 metric_registry: Dict[str, Callable[[], Metric]] = _Registry()
 data_registry: Dict[str, Callable[..., Any]] = _Registry()
 stimulus_set_registry: Dict[str, Callable[..., Any]] = _Registry()
-# Lazy factories of local data builders (``brainscore.data.preparation.DataBuilder``).
-data_builder_registry: Dict[str, Callable[[], Any]] = _Registry()
+# How each data plugin is packaged from its source (``brainscore.data.packaging.DataBuilder``).
+data_builder_registry: Dict[str, Any] = _Registry()
 
 
 # Plugin packages that failed to import: {qualified name: 'ErrorType: message'}, and the

@@ -12,7 +12,7 @@ import brainscore
 from brainscore_core.compatibility import CompatibilityError, check_channel_compatibility
 from brainscore_core.contract import Subject
 from brainscore_core.streaming import Session, StreamEvent
-from brainscore.data.preparation import prepare_dataset
+from brainscore.data import package_data
 from brainscore.experiments import Experiment, RecordInputsOutputs
 from brainscore.harnesses.coggym import CogGymRunner
 
@@ -267,7 +267,7 @@ def test_ewok_domains_and_source_have_distinct_stable_ids(native, tmp_path):
     frame = pd.read_csv(native)
     frame.loc[0, 'Domain'] = 'another-domain'
     frame.to_csv(native, index=False)
-    root = prepare_dataset('EWoK-core-1.0', source=native, output=tmp_path / 'data')
+    root = package_data('ewok', source=native, output=tmp_path / 'data')
     def load(**kwargs):
         return brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=root, **kwargs)
     full = load()
@@ -280,7 +280,7 @@ def test_ewok_domains_and_source_have_distinct_stable_ids(native, tmp_path):
     ).identifier
     frame.loc[0, 'Context1'] = 'a changed synthetic context'
     frame.to_csv(native, index=False)
-    other = prepare_dataset('EWoK-core-1.0', source=native, output=tmp_path / 'changed')
+    other = package_data('ewok', source=native, output=tmp_path / 'changed')
     assert full.identifier != brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=other).identifier
 
 

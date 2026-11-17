@@ -1,6 +1,7 @@
 """Data plugin for ROAR / Yeatman2021 lexical-decision assets."""
 
-from brainscore import data_registry, stimulus_set_registry
+from brainscore import data_builder_registry, data_registry, stimulus_set_registry
+from brainscore.data.packaging import DataBuilder
 
 
 STIMULUS_SET_ID = 'Yeatman2021'
@@ -12,6 +13,25 @@ STIMULUS_CSV_VERSION_ID = 'R7ZDCbKJAb1..ltN609fBKGN2v6pQzwF'
 STIMULUS_ZIP_VERSION_ID = '0M.L.ZJwaDZ1psldFkspKKcTvX5qS3r4'
 ASSEMBLY_SHA1 = 'fee134858a68ac4bd113f6b6ec79f4f8722db1b8'
 ASSEMBLY_VERSION_ID = 'zAOrOdPgYFoyklSkOXgqg.uW8oDqR7lj'
+
+data_builder_registry['yeatman2021'] = DataBuilder(
+    source='not stated. The benchmark cites the ROAR lexical decision task of Yeatman et al. 2021 '
+           'and the protocol of Honarmand et al. 2026; the files were put on the Brain-Score bucket '
+           'in unified commit e1085ba0 (2026-07-02) with no packaging script. No address and no licence '
+           'are recorded.',
+    access='not known for the source; the hosted files download with no account.',
+    layout='not known.',
+    needs='not known.',
+    writes=f'`stimulus_{STIMULUS_SET_ID}.csv`, `stimulus_{STIMULUS_SET_ID}.zip` (word and pseudoword '
+           f'images), `assy_{ASSEMBLY_ID}.nc` (human lexical decisions). Use the hosted files: '
+           '`brainscore.load_dataset` fetches them.',
+    sha1={f'stimulus_{STIMULUS_SET_ID}.csv': STIMULUS_CSV_SHA1,
+          f'stimulus_{STIMULUS_SET_ID}.zip': STIMULUS_ZIP_SHA1,
+          f'assy_{ASSEMBLY_ID}.nc': ASSEMBLY_SHA1},
+    cannot='No public source is known, so no rebuild exists. A maintainer needs: the source of the '
+           'images and the trials, and its terms, from the ROAR authors (Yeatman lab); then a script in '
+           '`data_packaging/` that writes the three files, and a comparison with the registered sha1.',
+)
 
 
 def load_yeatman2021_stimulus_set():

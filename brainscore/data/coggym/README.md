@@ -1,8 +1,8 @@
 # Prepare CogGym data locally
 
 CogGym's runner reads experiments and reference human results directly from the
-authors' repository. Preparing data means obtaining that pinned checkout; there
-is no separate UMI conversion or `brainscore.data prepare` builder for CogGym.
+authors' repository. Preparing data means obtaining that pinned checkout:
+`python -m brainscore.data package coggym` clones it (see Rebuild below).
 This folder documents that workflow; its `__init__.py` declares the checkout as a local
 asset (`coggym-checkout`) and registers no dataset.
 
@@ -82,3 +82,14 @@ CogGym keeps its trial selection and scoring.
 There is no CogGym request-ID resolver in UMI. Access to additional datasets
 does not automatically register them or extend this pinned public subset.
 Follow the authors' access and distribution terms for any additional files.
+
+## Rebuild
+
+### coggym
+
+- Source: CogGym (Ying et al.), https://github.com/lance-ying/coggym at revision a1cd9df1118fec80eba7463de237d1497d77e041. Licence: not stated by the repository.
+- Access: public, no account.
+- Needs: git; the size of the repository (not measured); minutes.
+- Command: `python -m brainscore.data package coggym`
+- Writes: the checkout at the pinned revision (`EML/`, `evaluation/` and the rest). Use it: set BRAINSCORE_COGGYM_CHECKOUT to the output folder, then install `<output>/evaluation/requirements.txt`.
+- Check: the printed counts; no sha1 is recorded for these files

@@ -13,8 +13,9 @@ build before the files are hosted, convert the source pickle named by
 ``BRAINSCORE_LEBEL_PICKLE`` (``data.py``).
 """
 
-from brainscore import data_registry, stimulus_set_registry
+from brainscore import data_builder_registry, data_registry, stimulus_set_registry
 from brainscore.data import local
+from brainscore.data.packaging import DataBuilder
 
 # Declared before the imports below: ``data.py`` reads LEBEL_PICKLE.
 LEBEL_PICKLE = local.register(local.LocalAsset(
@@ -46,6 +47,31 @@ from . import hosted  # noqa: E402
 from .data import DEFAULT_CONTEXT_TR, DEFAULT_CONTEXT_WORDS, IDENTIFIER, build_word_level, load  # noqa: E402
 
 WORDS_IDENTIFIER = f'{IDENTIFIER}-words'
+
+data_builder_registry['lebel2023'] = DataBuilder(
+    source='LeBel et al. 2023, OpenNeuro ds003020 (https://openneuro.org/datasets/ds003020), CC0, '
+           'as the UTS03 assembly pickle of the LITCoder release (https://github.com/GT-LIT-Lab/litcoder_release).',
+    access='as the LITCoder release page states; the recordings themselves are public (CC0).',
+    layout='`assembly_lebel_uts03.pkl` (the UTS03 assembly pickle of the LITCoder release).',
+    needs='about 3 GB of disk for the pickle and more than 3 GB of memory; time not measured.',
+    writes=f'`assy_{hosted.ASSEMBLY_ID}.nc`, `stimulus_{hosted.TR_STIMULI_ID}.csv`, '
+           f'`stimulus_{hosted.WORD_STIMULI_ID}.csv`, with the registered default settings. '
+           'Use them: put each at `$BRAINIO_HOME/<sha1>/<file name>`.',
+    build='BRAINSCORE_LEBEL_PICKLE={source}/assembly_lebel_uts03.pkl '
+          'python -m brainscore.data.lebel2023.data_packaging.package_hosted --out {output}',
+    sha1={f'assy_{hosted.ASSEMBLY_ID}.nc': hosted.SHA1['assembly'],
+          f'stimulus_{hosted.TR_STIMULI_ID}.csv': hosted.SHA1['TR stimuli'],
+          f'stimulus_{hosted.WORD_STIMULI_ID}.csv': hosted.SHA1['word stimuli']},
+)
+
+data_builder_registry['lana-atlas'] = DataBuilder(
+    source=f'the LanA language atlas (Lipkin et al. 2022), {LANA_ATLAS.source}; its own terms.',
+    access='public, no account.',
+    layout=LANA_ATLAS.obtain,
+    needs='a download; no tools.',
+    writes=f'The atlas is read as published. Put the folder at ~/{LANA_ATLAS.default_path} '
+           f'or set {LANA_ATLAS.env_var} to it.',
+)
 
 
 def _responses():

@@ -13,8 +13,9 @@ from collections import Counter
 from pathlib import Path
 from typing import Dict, Optional, Sequence
 
-from brainscore import data_registry, stimulus_set_registry
+from brainscore import data_builder_registry, data_registry, stimulus_set_registry
 from brainscore.data import local
+from brainscore.data.packaging import DataBuilder
 
 # Friends benchmarks: every registered identifier that reads the prepared files.
 _ALGONAUTS_IDENTIFIERS = (
@@ -33,8 +34,7 @@ ALGONAUTS_ROOT = local.register(local.LocalAsset(
     obtain='The competition dataset via DataLad (~130 GB: 129 GB stimuli, ~1 GB '
            'fMRI per subject). Ubuntu 22.04 ships a git-annex too old for '
            'current DataLad; install it from conda-forge instead.',
-    prepare='python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly '
-            '--algonauts-root <root> --subjects 1',
+    prepare='python -m brainscore.data package algonauts2025',
     used_by=_ALGONAUTS_IDENTIFIERS,
 ))
 
@@ -51,10 +51,27 @@ ALGONAUTS_PREPARED = local.register(local.LocalAsset(
            'benchmarks read. Then cut the films into one file per scan with '
            'brainscore.data.algonauts2025.data_packaging.prepare_stimuli '
            '(see brainscore/data/algonauts2025/README.md).',
-    prepare='python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly '
-            '--algonauts-root <root> --output-root <this folder> --subjects 1',
+    prepare='python -m brainscore.data package algonauts2025 --output <this folder>',
     used_by=_ALGONAUTS_IDENTIFIERS,
 ))
+
+data_builder_registry['algonauts2025'] = DataBuilder(
+    source='the Algonauts 2025 competition data (Courtois NeuroMod): '
+           'https://github.com/courtois-neuromod/algonauts_2025.competitors. The fMRI is under the '
+           'data-use agreement of that page; the films (Friends, Movie10) are copyrighted.',
+    access='a data-use agreement: follow the DataLad instructions of the page above and sign its terms.',
+    layout='the DataLad dataset as it installs: `fmri/sub-0X/...` (HDF5 responses and '
+           '`target_sample_number/`) and `stimuli/` (`movies/`, `transcripts/`), kept together.',
+    needs='DataLad and git-annex (from conda-forge on Ubuntu 22.04), h5py; about 130 GB in and 25 GB out; '
+          'hours (not measured).',
+    writes='per participant 1, 2, 3, 5 and split: `algonauts2025_<split>_sub0X.nc` (friends: the fMRI; '
+           'friends_s7 and ood: placeholders with no fMRI), and `algonauts2025_stim_<split>.csv`. '
+           'Use them: set BRAINSCORE_ALGONAUTS_PREPARED to the output folder, then cut the films into '
+           'one file per scan with `python -m brainscore.data.algonauts2025.data_packaging.prepare_stimuli '
+           '--participant 1 --media frames --prepared-root <output>` (see the README).',
+    build='python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly '
+          '--algonauts-root {source} --output-root {output}',
+)
 
 
 PARTICIPANTS = (1, 2, 3, 5)

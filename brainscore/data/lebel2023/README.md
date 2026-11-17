@@ -41,5 +41,26 @@ context spans five TRs. Response alignment trims ten TRs from the start and five
 from the end of each story; changing that convention changes the benchmark.
 The language-mask benchmark additionally needs the LanA atlas.
 
-Conversion happens in the loader, not through `brainscore.data prepare`.
-A source-content manifest and a fresh-build validation record are not done.
+Other settings convert in the loader. The hosted files are rebuilt from the pickle
+with `python -m brainscore.data package lebel2023` (see Rebuild below); a rebuild
+has not yet been compared with the registered sha1.
+
+## Rebuild
+
+### lana-atlas
+
+- Source: the LanA language atlas (Lipkin et al. 2022), https://osf.io/kzwbh/  (doi:10.17605/OSF.IO/KZWBH); its own terms.
+- Access: public, no account.
+- Needs: a download; no tools.
+- Command: none: nothing to package.
+- Writes: The atlas is read as published. Put the folder at ~/Downloads/20425209/FS or set BRAINSCORE_LANA_ATLAS to it.
+- Check: nothing to compare.
+
+### lebel2023
+
+- Source: LeBel et al. 2023, OpenNeuro ds003020 (https://openneuro.org/datasets/ds003020), CC0, as the UTS03 assembly pickle of the LITCoder release (https://github.com/GT-LIT-Lab/litcoder_release).
+- Access: as the LITCoder release page states; the recordings themselves are public (CC0).
+- Needs: about 3 GB of disk for the pickle and more than 3 GB of memory; time not measured.
+- Command: `python -m brainscore.data package lebel2023` with the source in `~/brainscore-data/sources/lebel2023` (or `--source <folder>`): `assembly_lebel_uts03.pkl` (the UTS03 assembly pickle of the LITCoder release).
+- Writes: `assy_LeBel2023-UTS03.nc`, `stimulus_LeBel2023-UTS03.csv`, `stimulus_LeBel2023-UTS03-words.csv`, with the registered default settings. Use them: put each at `$BRAINIO_HOME/<sha1>/<file name>`.
+- Check: sha1 of `assy_LeBel2023-UTS03.nc` is `e03fd25503004d82ea932e272dbbdcb867d99a92`; sha1 of `stimulus_LeBel2023-UTS03.csv` is `9ddf67c7f3f9702473248eb15a877377d11732e6`; sha1 of `stimulus_LeBel2023-UTS03-words.csv` is `ce3d1ba0dc7457d189547ca8cda2c87ebcc8d5c8`
