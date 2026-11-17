@@ -205,3 +205,27 @@ def test_a_link_at_the_lock_name_is_refused_and_its_target_kept(fresh, tmp_path)
         _load()
     assert BENCHMARK in str(refused.value) and target.read_text() == 'my notes'
     assert not folder.exists()
+
+
+def test_a_record_that_cannot_be_removed_after_publication_does_not_fail_the_load(fresh, tmp_path, monkeypatch):
+    """The complete folder becomes read-only at the moment it is published: the load succeeds, the
+    folder stays, and the next load uses it."""
+    from .coggym_stand_in import default_place
+    folder = default_place(tmp_path / 'folders')
+    fsencode = os.fsencode
+
+    def read_only_at_publication(name):
+        text = os.fspath(name)
+        if os.path.basename(text).startswith(f'.{folder.name}.partial-') and os.path.isdir(text):
+            os.chmod(text, 0o500)
+        return fsencode(name)
+    monkeypatch.setattr(os, 'fsencode', read_only_at_publication)
+    try:
+        _load()
+        monkeypatch.setattr(os, 'fsencode', fsencode)
+        assert (folder / 'ready.json').exists()
+        _load()                                        # the next load finds the folder ready
+        assert (folder / 'ready.json').exists()
+    finally:
+        if folder.exists():
+            folder.chmod(0o700)

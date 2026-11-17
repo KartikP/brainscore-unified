@@ -150,7 +150,6 @@ def _make(identifier, folder):
             'freeze': sorted(line for line in freeze.splitlines() if line.strip())}, indent=2) + '\n')
         # One step that never replaces: a folder that appeared meanwhile belongs to someone else.
         _rename_no_replace(partial, folder)
-        (folder / _CREATION_RECORD).unlink()          # published: the record has done its job
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         shutil.rmtree(partial, ignore_errors=True)
         detail = getattr(error, 'stderr', None) or ''
@@ -162,6 +161,11 @@ def _make(identifier, folder):
             f"{type(error).__name__}: {error}" + (f'\n{detail.strip()[-2000:]}' if detail else '')
             + f"\nNothing was left at {folder}. Next step: check the network, the disk and the "
             f"permissions of {folder.parent}, and load the benchmark again.") from error
+    # The rename above is the success boundary: the folder is complete and published. Removing
+    # the creation record is best effort; a record left inside the published folder is never read
+    # (only temporary siblings named '.<name>.partial-*' are checked for one).
+    with contextlib.suppress(OSError):
+        (folder / _CREATION_RECORD).unlink()
 
 
 def _command_environment() -> dict:
