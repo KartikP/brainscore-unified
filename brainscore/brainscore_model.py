@@ -213,7 +213,8 @@ class BrainScoreModel(Subject):
             readout; ``behavior:rating``: ``reply`` and the readout) needs one.
             ``behavior:rt`` follows the owner of ``behavior:probabilities`` and
             is not stated. Bare ``behavior`` carries the answer of a response
-            task under its first format and takes a part only;
+            task under its first format, given by the owner of that format; its
+            statement takes a part only, declares the output and selects no part;
             ``behavior:choice`` is the choice of a ``Choice`` response. They
             are different channels: neither is shorthand for the other. A
             wrong statement is refused here with a message that says what to
