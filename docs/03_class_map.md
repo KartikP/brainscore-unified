@@ -114,7 +114,7 @@ A callable cannot list its layers, so it counts as having every layer. Next to a
 
 | Part | Signature | Ready-made builders |
 | --- | --- | --- |
-| `answer` | `(stimulus_row, instruction, label_set) -> label` | `api_answer` (hosted APIs) |
+| `answer` | `(stimulus_row, instruction, label_set) -> text`, called with keywords | `api_answer` (hosted APIs) |
 | `reply` | `prompt -> text` (or a `StreamEvent` with extra data) | `build_api_reply` (hosted APIs), `chat_parts` (Hugging Face chat models) |
 | `likelihood` | `(prompt, candidates) -> {candidate: log probability}` | `chat_parts` |
 | `policy` | `row -> {output channel: payload}`; keeps its own history and clears it in `reset()` | `api_policy` (hosted APIs), `DroidPolicy` (`brainscore.harnesses.droid_policy`), `LiberoChunkPolicy` (`brainscore.harnesses.libero_policy`) |

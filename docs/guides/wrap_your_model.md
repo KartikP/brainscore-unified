@@ -202,7 +202,7 @@ print(sorted(both.in_channels), sorted(c for c in both.out_channels if c.startsw
 
 ## Models without accessible layers
 
-A hosted model or any system that only returns answers has no extractor. Declare its input and give it the parts that answer: a `reply` for tasks with a response (choices, ratings, written answers) and an `answer` for a plain choice and for older `task_type`/`label_set` tasks. Both return the text the model generated, exactly; Brain-Score reads the choice from it with core's `Choice.parse` and stores the text as the raw answer. A function that returns a label also works, because a label is a text that reads as itself:
+A hosted model or any system that only returns answers has no extractor. Declare its input and give it the parts that answer: a `reply` for tasks with a response (choices, ratings, written answers) and an `answer` for a plain choice. Both return the text the model generated, exactly; Brain-Score reads the choice from it with core's `Choice.parse` and stores the text as the raw answer. A function that returns a label also works, because a label is a text that reads as itself:
 
 ```python
 def my_reply(prompt):                                      # calls your API in a real model
@@ -272,6 +272,10 @@ FirstOption(outputs=['behavior:choice', 'behavior:rt']).participate(session)
 print(session.collect('behavior:choice').values.tolist())   # [[1.0, 0.0], [1.0, 0.0]]
 print(session.collect('behavior:rt').values.tolist())       # [450.0, 450.0]
 ```
+
+## Which benchmarks fit
+
+`check_compatibility(model, benchmark)` (from `brainscore_core`) compares the declarations only and calls no method of the model. It returns the match (its `kind` is `'full'`, or `'partial'` when the model does not take some of the inputs) or raises `CompatibilityError` with the reason. `brainscore.list_benchmarks()` lists the identifiers; `brainscore.load_benchmark(identifier)` builds one, and building a benchmark can download its data. `brainscore.score` makes the same check first and returns N/A for a pair that does not fit.
 
 ## Register it (optional)
 

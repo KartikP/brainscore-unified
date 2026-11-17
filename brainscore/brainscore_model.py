@@ -144,8 +144,7 @@ class BrainScoreModel(Subject):
             that returns a label still works: a label is a text that parses to
             itself. As a reply may, it can return a ``StreamEvent`` with the text
             as payload and extra data as meta; the meta goes into the answer
-            event of a response task (a legacy ``task_type`` task keeps only
-            the text).
+            event.
         :param reply: ``(prompt) -> str``; the model's raw reply to one trial.
             ``prompt`` is a ``brainscore_core.responses.Prompt``: the trial's parts
             in order (instruction, stimulus parts, the response's directive).
@@ -214,14 +213,14 @@ class BrainScoreModel(Subject):
             readout; ``behavior:rating``: ``reply`` and the readout) needs one.
             ``behavior:rt`` follows the owner of ``behavior:probabilities`` and
             is not stated. Bare ``behavior`` carries the answer of a response
-            task under its first format and takes a part only;
+            task under its first format, given by the owner of that format; its
+            statement takes a part only, declares the output and selects no part;
             ``behavior:choice`` is the choice of a ``Choice`` response. They
             are different channels: neither is shorthand for the other. A
             wrong statement is refused here with a message that says what to
-            write. The owner answers its channel. When a task form excludes it (for
-            example log probabilities, which only a likelihood gives) and exactly one
-            other part can serve that form, that part answers; when two or more
-            can, the session is refused before any compute.
+            write. The owner answers its channel. When the owner cannot serve a
+            task form, the session is refused before any compute: no other part
+            stands in. Log probabilities come only from ``likelihood``.
         """
         if memory not in (None, 'trial_history'):
             raise ValueError("memory must be None or 'trial_history'")

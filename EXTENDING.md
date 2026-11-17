@@ -1,6 +1,6 @@
 # Extending the Unified Model Interface
 
-[Build tools and integrations](docs/guides/extend.md) | [Your own package](docs/guides/your_own_package.md) | [Support matrix](docs/reference/features.md) | [Release qualification](docs/archive/production_release.md)
+[Build tools and integrations](docs/guides/extend.md) | [Your own package](docs/guides/your_own_package.md) | [Support matrix](docs/reference/features.md)
 
 Extend the unified interface through six registries and Capability.
 
@@ -29,8 +29,8 @@ model_registry:        Dict[str, Callable[[], Subject]]
 data_builder_registry: Dict[str, Callable[[], DataBuilder]]   # local builds of protected data
 ```
 
-Each `load_*` checks this package first, then falls back to the `brainscore_vision` and
-`brainscore_language` registries, so legacy domain plugins remain loadable by id. Note
+Each `load_*` checks this package first, then falls back to the legacy domain
+registries (the order is below), so legacy domain plugins remain loadable by id. Note
 that those domain registries populate lazily — see
 [Finding models and benchmarks](docs/guides/score_a_model.md#find-models-and-benchmarks) before concluding something is
 missing because it is not in a registry dict.
@@ -108,13 +108,13 @@ infer the wrapper, layers, and a provisional `region_layer_map`, then refine wit
 layer-mapping explorer.
 
 Factories that fetch multi-gigabyte checkpoints should use the local pre-download
-guard before any loader call; see [model downloads](docs/archive/model_downloads.md) and
+guard before any loader call; see [model downloads](docs/reference/model_downloads.md) and
 `brainscore/models/blip2_opt_2_7b/model.py` for the pattern.
 
 A custom extractor should expose output-affecting state through `cache_config()`.
 Disable result caching if that state cannot be represented. Make `.data` alias or
 NumPy weight edits only between scoring runs, because they bypass within-run change
-tracking. See [activation caching](docs/archive/caching.md) for supported paths and limits.
+tracking. See [activation caching](docs/reference/caching.md) for supported paths and limits.
 
 Give a custom extractor `record(layers, stimuli)` as well (see `brainscore/extractor.py`):
 a region is then recorded during any task, from the forward pass that produces the
@@ -165,9 +165,9 @@ class TurnWhenBlocked:
         return {'motor': action}
 
 
-agent = BrainScoreModel(identifier='turn-when-blocked', policy=TurnWhenBlocked(),
+subject = BrainScoreModel(identifier='turn-when-blocked', policy=TurnWhenBlocked(),
                         policy_in_channels=('observation',))
-score = brainscore.score(agent, 'GridGame-reach-5x5')   # 15 episodes, so 15 resets
+score = brainscore.score(subject, 'GridGame-reach-5x5')   # 15 episodes, so 15 resets
 ```
 
 The grid game's observation is a dict of arrays, so the policy compares observations
@@ -235,9 +235,9 @@ temporal data, reuse `brainscore/temporal.py` (`temporal_bin`, `hrf_convolve`,
 as worked examples. For a clip longer than a video model's native temporal window, set
 `VideoWrapper(..., context_window_ms=...)` to tile it into windows and stitch the per-window
 time-resolved features into one clip-time sequence. Set `max_clip_ms` for a fail-fast.
-Before sharing a new benchmark, complete the
-[benchmark addition checklist](docs/archive/benchmark_addition_checklist.md). Record the data boundary,
-null floor, ceiling, modality ablations, timing assumptions, score attrs, and EC2 evidence.
+Before sharing a new benchmark, go through the
+[checklist of Write a benchmark](docs/guides/write_a_benchmark.md#checklist): the null floor,
+separate fitting and test stimuli, and a score that says whether it is raw or ceiled.
 
 ### Regions per pass: `BRAINSCORE_REGIONS_PER_PASS`
 
@@ -321,7 +321,7 @@ The constructor slots available to model authors are:
 
 | Slot | Fires on | Signature |
 |------|----------|-----------|
-| `answer` | `StimulusSet` + `TaskContext.instruction` | `(*, stimulus_row, instruction, label_set) -> str`, called with keywords |
+| `answer` | a plain `Choice` task | `(*, stimulus_row, instruction, label_set) -> str`, called with keywords |
 | `policy` | a closed-loop row | `(row) -> {output channel: payload}` |
 | `intervention` | `StateChange` | `(state_change) -> (PerturbationApplied, cleanup)` |
 

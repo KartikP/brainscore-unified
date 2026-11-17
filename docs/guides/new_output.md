@@ -73,7 +73,7 @@ def policy(row):
     red, green, blue = row['observation'][48, 48]   # the centre of the button
     return {'motor': action('click', 48, 48) if green > red else action('run')}
 
-agent = BrainScoreModel(identifier='screen-agent', policy=policy,
+subject = BrainScoreModel(identifier='screen-agent', policy=policy,
                         policy_in_channels=('observation',), policy_out_channels=('motor',))
 ```
 
@@ -83,10 +83,10 @@ Run one episode. The actions and the reason the episode ended come back from the
 from brainscore_core.streaming_helpers import environment_session
 
 with environment_session(ScreenTask()) as session:
-    agent.participate(session)
+    subject.participate(session)
 actions = [event.payload for event in session.collect('motor')]
 reason = session.source.end_reason   # 'terminal', 'truncated' or 'failure'; None while it runs
-agent.reset()
+subject.reset()
 print([KINDS[step['kind']] for step in actions], reason)   # ['run', 'run', 'click'] terminal
 ```
 

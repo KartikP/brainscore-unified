@@ -67,5 +67,3 @@ Run this from the Unified repository after installing the package. The tests
 check installed imports, the five examples, invalid input, record/replay,
 intervention recovery, and cleanup after failure. The environment conformance
 tests also show how to check your own observation/action declarations.
-
-These maintainer-built examples do not replace the [independent user trial](../../docs/archive/partner_trial.md).

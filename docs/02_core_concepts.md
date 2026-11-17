@@ -45,7 +45,7 @@ Channel names come from a shared catalog, and they match by exact name: `vision:
 
 ## 3. Event
 
-A **`StreamEvent`** is one item on a channel: `channel`, `payload` (the data), `t_ms` (time in milliseconds, or `None`) and optional `meta`.
+A **`StreamEvent`** is one item on a channel: `channel`, `payload` (the data), `t_ms` (the physical time in milliseconds, or `None` when the event has no single time, such as one answer for a whole table or a response in a session with no input event) and optional `meta`.
 
 ```python
 StreamEvent(channel='text', payload='elephant', t_ms=0)
@@ -53,7 +53,7 @@ StreamEvent(channel='text', payload='elephant', t_ms=0)
 
 ## 4. Session
 
-A **session** is one run of an experiment with one subject. There is one session class, `Session`. You build it from a **source** of inputs, the outputs you request and the task. A source is a list or generator of events, or an environment. A session has two methods: `next_input()` returns the next input event or `None` when there are no more, and `respond(event)` accepts a response. `collect()` returns the responses afterwards. The session gives the subject only the channels it declares.
+A **session** is one run of an experiment with one subject. There is one session class, `Session`. You build it from a **source** of inputs, the outputs you request and the task. A source is a list or generator of events, or an environment. A session has two methods: `next_input()` returns the next input event or `None` when there are no more, and `respond(event)` accepts a response. `collect()` returns the responses afterwards. A subject that calls `session.declare_inputs(self.in_channels)` gets only the channels it declares; `BrainScoreModel` and the adapters do this, and a hand-written subject that does not gets every input event.
 
 ```python
 from brainscore_core.streaming import Session
@@ -122,7 +122,7 @@ Before a benchmark runs, Brain-Score compares declarations only:
 
 `BrainScoreModel` fills `output_inputs` for each `neural:<region>` from the extractors that can record it. With several extractor objects, a region that names none is recorded from the input family whose extractors have its layer (pictures and clips are one family). A region names its extractor (`LayerSelector(name=..., modality=...)`) only when its layer name is found in extractors of two input families (CLIP's image and text parts both have `encoder.layers.10`); an extractor that cannot list its layers counts as having every layer, so it can cause that. The constructor refuses such a region without a name. A tuple names the recording extractor first and then the other inputs that reach the layer during an answer (`modality=('text', 'vision')`); `output_inputs` lists them all. Two extractors of one family with the same layers (Qwen3.6's image and video wrappers) need no name, and neither does a model with one extractor object.
 
-A pair that fails is **not applicable** (N/A). It is not run and never scored as zero: `brainscore.score` returns a score with the value NaN, `attrs['status'] == 'N/A'`, the `reason` and the `missing_channels`. N/A is decided only from the declarations, before any compute. A pair that passes this check and is then refused when a session or the benchmark run starts (for example a `BrainScoreModel` with no one part that answers the requested outputs together, or with no part for the benchmark's task) raises `ExecutionNotFeasibleError`, an error with no result: the declarations do not yet express that limit. It is a separate class from `CompatibilityError`, which only the declaration check raises. A malformed declaration (`ValueError`) is an error too. A subject that reads only some of the provided inputs still runs; the other inputs never reach it.
+A pair that fails is **not applicable** (N/A). It is not run and never scored as zero: `brainscore.score` returns a score with the value NaN, `attrs['status'] == 'N/A'`, the `reason` and the `missing_channels`. N/A is decided only from the declarations, before any compute. A pair that passes this check and is then refused when a session or the benchmark run starts (for example a `BrainScoreModel` with no one part that answers the requested outputs together, or with no part for the benchmark's task) raises `ExecutionNotFeasibleError`, an error with no result: the declarations do not yet express that limit. It is a separate class from `CompatibilityError`, which only the declaration check raises. A malformed declaration (`ValueError`) is an error too. A subject that reads only some of the provided inputs still runs; after `declare_inputs` the other inputs never reach it.
 
 A subject declares what it can take and give; a benchmark, a protocol and a tool declare what they need. A session requests its `outputs`:
 
@@ -150,7 +150,7 @@ Writing `participate` by hand works for anything. For neural networks, `BrainSco
 | `extractor={'vision': ..., 'text': ...}` | Prepares inputs, runs the network, returns the activity of requested layers. One per input type. | input channels |
 | `region_layer_map={'IT': 'layer4'}` | Says which layer stands in for which brain region. | `neural:<region>` outputs |
 | `behavioral_readout_layer` | Fits a classifier on one layer. It gives probabilities; its choice is the most probable option, a conversion that the registration states with `capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}`. | `behavior`, `behavior:probabilities`, `behavior:rating`, `behavior:rt`, and `behavior:choice` with the statement |
-| `answer` | Your function that phrases a prompt for one stimulus and returns a label. Answers an older `task_type`/`label_set` task and a plain choice. | `behavior`, `behavior:choice` |
+| `answer` | Your function that words a prompt for one stimulus and returns the generated text; `BrainScoreModel` parses it. Answers a plain choice. | `behavior`, `behavior:choice` |
 | `reply` | Your function that returns the model's raw reply to one trial's prompt; the task parses it. | `behavior:choice`, `behavior:rating`, `behavior:text` |
 | `likelihood` | Your function that scores each option as the reply, without generating. | `behavior:choice`, `behavior:probabilities` |
 | `policy` | Your function that maps an environment observation to an action. | `observation` in, `motor` out |

@@ -73,29 +73,9 @@ Each corresponds to a failure that is easy to hit and hard to read:
 
 ## Data you may not share
 
-Declare it as a local asset in your `__init__.py`, beside the registry lines. Users
-then get instructions instead of a missing-file error, and `python -m brainscore.data`
-lists it. Put the script that prepares it in `data_packaging/`.
-
-```python
-from brainscore.data import local
-
-MY_FILMS = local.register(local.LocalAsset(
-    name='mystudy2026-films',
-    env_var='BRAINSCORE_MYSTUDY2026_FILMS',
-    default_path='mystudy2026/films',           # under the home folder when the variable is unset
-    kind='stimuli',
-    why_local='The films are licensed to each lab; Brain-Score may not share them.',
-    source='https://example.org/mystudy2026',
-    obtain='The 12 film files, about 4 GB.',
-    prepare='python -m brainscore.data.mystudy2026.data_packaging.cut_frames',
-))
-
-try:
-    films = local.path(MY_FILMS.name)          # the folder, when it is there
-except local.LocalDataMissing as missing:
-    print(missing)                             # where to get it, the variable, the command
-```
+Declare it as a local asset in your `__init__.py`, beside the registry lines, and put the
+script that prepares it in `data_packaging/`. [Data](../../docs/guides/data.md#add-a-data-plugin)
+shows the declaration.
 
 ## Publishing
 

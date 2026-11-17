@@ -1,8 +1,7 @@
 # Template: a new metric
 
-A metric is a new alignment axis. It compares two assemblies and returns a `Score`.
-This is the seam the field is moving along (beyond linear predictivity → representational,
-topographic, behavioral, causal). See `EXTENDING.md` (Seam 3) for the full contract.
+A metric compares two assemblies and returns a `Score`. See `EXTENDING.md` (Seam 3) for the
+full contract.
 
 ## Use it
 

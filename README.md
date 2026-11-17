@@ -4,7 +4,7 @@ A Brain-Score benchmark is an experiment with brain or behavior data from people
 
 **Start here:** [Lesson 1: your first subject](notebooks/lessons/01_your_first_subject.ipynb), then [Lesson 10: a whole study in one notebook](notebooks/lessons/10_run_an_experiment.ipynb) (design a task, record answers and activity, save the run, turn it into a benchmark). [Score a model](docs/guides/score_a_model.md) scores a first pair with no download. Reference: [Manual](docs/README.md) | [What UMI is](docs/01_what_is_umi.md) | [Core concepts](docs/02_core_concepts.md) | [All lessons](notebooks/README.md#lessons) | [Experiments](notebooks/README.md#experiments)
 
-UMI is a v2 source candidate. See the [release policy](docs/archive/production_release.md) for remaining qualification.
+UMI is a source candidate on the `unified-model-interface-v2` branches; its packages are not published on PyPI.
 
 ## Layout
 
@@ -75,16 +75,15 @@ relative `-e ./core` entries from the file's own directory, so it fails with
 
 ## Local datasets and external experiments
 
-Use [local data builders](docs/archive/local_data.md) to prepare author-format files or
-retrieve data with a provider-supported request ID. See [EWoK](docs/archive/ewok.md) for
-world-knowledge scoring and [CogGym](docs/archive/coggym.md) for cognitive experiments
-with UMI recording and intervention tools.
+`python -m brainscore.data` lists the files you supply yourself and where to get each
+([Data](docs/guides/data.md)). [External libraries](docs/guides/external_libraries.md)
+shows how EWoK and CogGym map into benchmarks.
 
 ## Capability Status Matrix
 
 Status labels separate real numeric validation from local structural coverage.
 `EC2-only` means the full score needs large data, model weights, API calls, or
-benchmark compute that must not run on the local Mac. `Demo-only` means the
+benchmark compute that does not run on a laptop. `Demo-only` means the
 interface is exercised, but the result is not a brain-alignment claim.
 
 | Capability | Example | Status | Evidence |

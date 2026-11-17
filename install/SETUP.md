@@ -22,8 +22,7 @@ The supported shared environment is:
 | importlib-metadata | below 5 |
 
 Use the shared constraints in `install/v2-constraints.txt` for the reviewed CPU
-integration profile. Full platform and scientific qualification is tracked in
-[the production policy](../docs/archive/production_release.md).
+integration profile.
 
 ## One-command setup
 
@@ -36,9 +35,10 @@ conda activate brainscore-unified
 
 The script:
 
-1. Clones missing core/, vision/, language/, and unified/ repositories from
-   their unified-model-interface-v2 branches.
-2. Refuses an existing sibling repository on a different branch.
+1. Clones a missing unified/ at the unified-model-interface-v2 branch, and missing
+   core/, vision/ and language/ at the commits named in `install/peer-revisions.json`.
+2. Refuses an existing sibling repository that is neither on that branch nor at its
+   pinned commit.
 3. Creates brainscore-unified from environment-unified.yml.
 4. Installs all four repositories editably, including notebook dependencies.
 5. Runs pip check, imports all four packages, and verifies the Transformers
@@ -169,11 +169,10 @@ Brain-Score Unified/
 |-- environment-unified.yml
 |-- setup.sh
 |-- README.md
-|-- SETUP.md
+|-- install-manifest.txt
 ~~~
 
-All four repositories must remain on unified-model-interface-v2 for this
-distribution.
+`setup.sh` writes `README.md` and `install-manifest.txt` (the commit of each repository).
 
 ## Troubleshooting
 
@@ -211,4 +210,5 @@ python -m pip install -c unified/install/v2-constraints.txt -e core -e vision -e
 
 Brain-Score caches scores and activations. Use an isolated
 RESULTCACHING_HOME for experiments whose model state or hooks change, and
-consult the perturbation caveats in the UMI API cookbook.
+read the cache rules of a custom intervention in
+[Perturb and select units](../docs/guides/perturb_and_select_units.md#interventions).

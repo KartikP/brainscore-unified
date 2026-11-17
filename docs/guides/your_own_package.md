@@ -11,7 +11,7 @@ You can extend Brain-Score from a package of your own, outside its repositories,
 | A model family | Model parts on `BrainScoreModel`, or a subject adapter that implements `participate`: [Wrap your model](wrap_your_model.md) |
 | A new way for `BrainScoreModel` to run a session | A capability: [Extend UMI](extend.md#a-new-capability) |
 | Measure or change an experiment | A tool: [Extend UMI](extend.md#a-new-tool) |
-| A scientific comparison with brain or behavior data | A benchmark and a metric: [Write a benchmark](write_a_benchmark.md) |
+| A scientific comparison with brain or behavior data | A benchmark and a metric: [Write a benchmark](write_a_benchmark.md), [the metric template](../../templates/new_metric/README.md) |
 
 ## The package
 
