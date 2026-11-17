@@ -115,3 +115,35 @@ def test_a_failure_to_open_the_pipes_leaves_no_descriptor_open(reference, monkey
         coggym.CogGymRunner(root, model='fixture')
     monkeypatch.setattr(os, 'pipe', real)
     assert len(os.listdir('/dev/fd')) == before
+
+
+def test_a_process_group_is_never_signalled_after_its_process_is_reaped(reference, tmp_path, monkeypatch):
+    """Once a process is reaped its id can belong to another process, so its group is never
+    signalled again: through a load, a finished run and a run whose evaluator exits."""
+    root, stand_in = reference
+    events = []
+    real_waitpid, real_killpg = os.waitpid, os.killpg
+
+    def waitpid(pid, options):
+        result = real_waitpid(pid, options)
+        if result[0]:
+            events.append(('reaped', result[0]))
+        return result
+
+    def killpg(pgid, number):
+        events.append(('signalled', pgid))
+        return real_killpg(pgid, number)
+    monkeypatch.setattr(os, 'waitpid', waitpid)
+    monkeypatch.setattr(os, 'killpg', killpg)
+    runner = coggym.CogGymRunner(root, model='fixture')
+    runner.run(_Provider(), output_dir=tmp_path / 'finished', reset=lambda repetition: None)
+    stand_in.cli('def aggregate_experiment(rows):\n    import os\n    os._exit(3)\n')
+    with pytest.raises(RuntimeError):
+        runner.run(_Provider(), output_dir=tmp_path / 'exited', reset=lambda repetition: None)
+    reaped = set()
+    for kind, pid in events:
+        if kind == 'reaped':
+            reaped.add(pid)
+        else:
+            assert pid not in reaped, f'the group {pid} was signalled after its process was reaped'
+    assert reaped                    # the processes were reaped

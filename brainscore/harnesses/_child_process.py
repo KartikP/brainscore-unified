@@ -85,57 +85,62 @@ class ChildProcess:
             return
         try:
             # The child stops when its pipe closes; give it the grace time, unless this is an error.
-            self._leader_exited(0 if error is not None else STOP_GRACE_SECONDS)
+            self._exited_unreaped(0 if error is not None else STOP_GRACE_SECONDS)
         finally:
             self.kill()
 
     def kill(self) -> None:
-        """Kill the child's whole process group, also when the child itself has exited, then
-        reap the child.
+        """Kill the child's whole process group, then reap the child; a second call does nothing.
 
-        Where the platform can wait without reaping (``os.waitid``, Linux), the group is killed
-        while the exited child still holds its id, so the id cannot belong to another group. On
-        macOS (Python 3.11 has no ``os.waitid``) a child that exited on its own is reaped first
-        and its group is killed at once after. A descendant that left the group (``setsid``) is
-        not killed.
+        The group's id is the child's process id. It belongs to this child until the child is
+        reaped, also after the child exits (a child that is not reaped keeps its id), so the
+        group is signalled only before the reap, never after. A descendant that left the group
+        (``setsid``) is not killed.
         """
-        if self.process is None:
-            return
+        if self.process is None or self.process.returncode is not None:
+            return                          # reaped: its id is no longer this child's
         try:
             os.killpg(self.process.pid, signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
             pass
         self.process.wait()
 
-    def _leader_exited(self, timeout_s: float) -> bool:
-        """Whether the child exited within ``timeout_s``; it is not reaped where the platform allows."""
-        if not hasattr(os, 'waitid'):
-            try:
-                self.process.wait(timeout=timeout_s)
-                return True
-            except subprocess.TimeoutExpired:
-                return False
-        deadline = time.monotonic() + timeout_s
-        while True:
-            try:
-                if os.waitid(os.P_PID, self.process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None:
+    def _exited_unreaped(self, timeout_s: float) -> bool:
+        """Whether the child exited within ``timeout_s``; the child is not reaped here.
+
+        Linux: ``os.waitid`` with ``WNOWAIT``. macOS (Python 3.11 has no ``os.waitid``): a kqueue
+        exit event, which does not reap either.
+        """
+        if self.process.returncode is not None:
+            return True
+        pid = self.process.pid
+        if hasattr(os, 'waitid'):
+            deadline = time.monotonic() + timeout_s
+            while True:
+                if os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None:
                     return True
-            except ChildProcessError:
-                return True                 # already reaped
-            if time.monotonic() >= deadline:
-                return False
-            time.sleep(0.02)
+                if time.monotonic() >= deadline:
+                    return False
+                time.sleep(0.02)
+        queue = select.kqueue()
+        try:
+            event = select.kevent(pid, filter=select.KQ_FILTER_PROC,
+                                  flags=select.KQ_EV_ADD | select.KQ_EV_ONESHOT, fflags=select.KQ_NOTE_EXIT)
+            try:
+                return bool(queue.control([event], 1, timeout_s))
+            except ProcessLookupError:
+                return True                 # it has exited already (it is not reaped: its id is kept)
+        finally:
+            queue.close()
 
     def wait(self, timeout_s: float) -> int:
         """Wait for the child to exit; ``subprocess.TimeoutExpired`` after ``timeout_s``
         (the child is killed), ``CalledProcessError`` on a nonzero exit. The child's process
-        group is killed in both cases."""
+        group is killed in both cases, before the child is reaped."""
         try:
-            exited = self._leader_exited(timeout_s)
-        except BaseException:
+            exited = self._exited_unreaped(timeout_s)
+        finally:
             self.kill()
-            raise
-        self.kill()
         if not exited:
             raise subprocess.TimeoutExpired(self.command, timeout_s)
         if self.process.returncode:
