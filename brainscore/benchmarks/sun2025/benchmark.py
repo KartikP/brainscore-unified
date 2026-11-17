@@ -47,7 +47,8 @@ ADAPTATION = (
     'display: no monitor calibration, visual angle, feedback, blanks or matching loop',
     'reference: each participant\'s mean of the four unflipped reports; no human reliability ceiling',
 )
-ANSWER_POLICY = ('invalid (the reply is not one JSON object with the two numbers in range: direction in '
+ANSWER_POLICY = ('invalid (the reply is not one JSON object, plain or as the whole reply inside one '
+                 'json code fence, with exactly the two numbers in range: direction in '
                  '[0, 360), speed in [0, 1e6]) or missing: '
                  'the trial is kept with its raw text and counted; any such trial makes the score NaN, '
                  'so a hard group is never dropped from the mean')

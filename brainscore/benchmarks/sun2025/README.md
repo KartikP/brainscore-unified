@@ -19,16 +19,24 @@ Sun et al. 2025 ([doi:10.1038/s42256-025-01068-w](https://doi.org/10.1038/s42256
 
 ## The score
 
-The four flips of a scene and modulation are unflipped and averaged. The score is
-the mean endpoint error between that vector and each participant's mean report,
-over the 280 groups and the three participants: displayed pixels per frame,
-**lower is closer to the participants**. It is raw (`normalized=False`); no ceiling
-is estimated. The reference is the three participants; `floor` is the error of the
-no-motion answer (speed 0 on every trial), computed from the reference.
+The score is the mean distance from the model's motion vector to each participant's
+vector, in displayed pixels per frame. Lower means that the model's reports are closer
+to the participants' reports. The score does not establish human reliability, and a low
+score does not show better perception: a model that reports a central value can score
+below a participant compared with the other two. The no-motion value (`floor`) is a
+control, not a bound.
+
+In detail: the four flips of a scene and modulation are unflipped and averaged, and the
+score is the mean endpoint error between that vector and each participant's mean report,
+over the 280 groups and the three participants. It is raw (`normalized=False`); no
+ceiling is estimated. `floor` is the score of the no-motion answer (speed 0 on every
+trial), computed from the reference.
 
 Supported range: `direction_deg` in [0, 360) and `speed_px_per_frame` in [0, 1e6]; both are
 JSON numbers. A number outside the range, not finite or too large for a float is `invalid`.
-A reply that is not one JSON object with the two numbers in range is `invalid`, kept
+The parser accepts one JSON object with exactly the two fields, either as the whole reply
+or as the whole reply inside one code fence tagged `json`. Any other reply (prose, two
+objects, numbers as strings, other or missing fields) is `invalid`, kept
 with its raw text in `reports` and counted (`n_invalid`). Any invalid or missing
 trial makes the score NaN and `result_validity='invalid'`, so a hard group never
 leaves the mean.

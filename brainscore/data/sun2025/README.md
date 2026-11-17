@@ -49,7 +49,9 @@ differs from the pinned value; archive members are checked against their ZIP CRC
 
 Pass `root=` to read another build. Loaders never download. Without a build, they
 raise with the commands above (`python -m brainscore.data sun2025-prepared` prints
-them). Each load checks the SHA-256 of every file the build manifest lists.
+them). `load_stimulus_set` checks the SHA-256 of every file the build manifest lists,
+the clips included; `load_dataset` checks every listed file except the clips.
+A listed file that is missing raises with its path and the prepare command.
 The human assembly has presentation, participant and axis dimensions: three
 participants and two image axes (x right, y down). A presentation is a scene and
 modulation pair after the four human reports are unflipped and averaged. Stimulus
