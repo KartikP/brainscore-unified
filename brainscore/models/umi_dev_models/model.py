@@ -55,20 +55,38 @@ class _StudySubject(ProvenanceSubject):
         outputs, task = set(session.outputs or ()), session.task
         answering = (task is not None and task.task_type != 'passive') or any(
             o.startswith('behavior') or o == 'motor' for o in outputs)
-        from brainscore_core.io_catalog import column_channel
-        columns = getattr(session.stimuli, 'columns', None)
-        shown = None if columns is None else {column_channel(column) for column in columns} - {None}
-        if outputs & set(self.READOUT) and shown != {'vision:image'}:
+        shown = self._shown(session) if outputs & set(self.READOUT) else None
+        if shown is not None and 'vision:image' not in shown:
             from brainscore_core.compatibility import ExecutionNotFeasibleError
             raise ExecutionNotFeasibleError(
                 f"'{self.identifier}' answers {sorted(outputs & set(self.READOUT))} from a readout of its vision "
-                f"part, fitted on pictures; these trials show {sorted(shown or ['no table'])}. Give pictures only.")
+                f"part, fitted on pictures; these trials show {sorted(shown)}, no picture. Give pictures.")
         if 'neural:language_system' in outputs and answering:
             from brainscore_core.compatibility import ExecutionNotFeasibleError
             raise ExecutionNotFeasibleError(
                 f"'{self.identifier}' records neural:language_system in a passive session only (the study's "
                 f"rule: one session for regions, one for an answer). Ask for it in its own passive session.")
         super().participate(session)
+
+    def _shown(self, session):
+        """The inputs this session delivers to the model, as its task presents them: the table's, or the
+        events of a listed source with no table (read here and given back as the same list). None for a
+        stream with no table: its inputs are known only when they arrive."""
+        from brainscore_core.responses import PART_CHANNELS
+        from brainscore_core.streaming import FixedSource
+        from brainscore_core.streaming_helpers import task_input_channels
+        task = session.task
+        if session.stimuli is not None:
+            shown = task_input_channels(session.stimuli, task)
+        elif session.source.listed:
+            events = list(iter(session.source.next_input, None))
+            session.source = FixedSource(events)
+            shown = {event.channel for event in events}
+            if getattr(task, 'present', None) is not None:
+                shown &= {PART_CHANNELS.get(entry.split(':', 1)[0]) for entry in task.present}
+        else:
+            return None
+        return set(shown) & set(self.in_channels)
 
 
 def _refuse(identifier, config):

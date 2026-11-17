@@ -337,6 +337,44 @@ def test_the_readout_answers_from_pictures_only(stand_in, identifier):
     assert [getattr(part, 'passes', 0) for part in parts] == [0, 0, 0]
 
 
+@pytest.mark.parametrize('output', ['behavior:probabilities', 'behavior:rt'])
+@pytest.mark.parametrize('identifier', IDENTIFIERS)
+def test_the_readout_answers_a_picture_with_other_inputs_or_without_a_table(stand_in, identifier, output):
+    """A picture that reaches the readout is answered: next to inputs the task does not present or the
+    model does not take in, and in a session that holds its events and no table. Pre-flight agrees; a
+    session of text events and no table is refused before compute."""
+    from brainscore_core.compatibility import ExecutionNotFeasibleError, check_compatibility
+    from brainscore_core.streaming import Session
+    subject = model_registry[identifier]()
+    fitting = _pictures(stand_in, 4, labels=['cat', 'dog', 'cat', 'dog'])
+    pictures = _pictures(stand_in, 2)
+    with_text = StimulusSet({**{c: list(pictures[c]) for c in pictures.columns}, 'sentence': ['the cat', 'the dog']})
+    with_sound = StimulusSet({**{c: list(pictures[c]) for c in pictures.columns},
+                              'audio_path': [str(stand_in / 'none.wav')] * 2})
+    for stimuli, name in ((with_text, 'text'), (with_sound, 'sound')):
+        stimuli.identifier, stimuli.stimulus_paths = f'umi-dev-pictures-and-{name}', pictures.stimulus_paths
+    task = lambda present=None: TaskContext(response=Choice(['cat', 'dog'], reaction_time='surprisal'),
+                                            fitting_stimuli=fitting, present=present)
+    for stimuli, present, inputs in ((pictures, None, {'vision:image'}),
+                                     (with_text, ('image',), {'vision:image', 'text'}),
+                                     (with_sound, ('image',), {'vision:image', 'audio'})):
+        assert check_compatibility(subject, SimpleNamespace(
+            identifier='readout', trial_memory='none', required_input_channels=frozenset(inputs),
+            requested_output_channels=frozenset({output}))).kind in ('full', 'partial')
+        assert len(_collect(subject, stimuli, [output], task(present))[output]) == 2
+    files = StimulusSet({'stimulus_id': list(pictures['stimulus_id']), 'image_path': list(pictures['image_file_name'])})
+    files.identifier = 'umi-dev-picture-events'
+    events = list(iter(stimulus_session(files, [output], task()).source.next_input, None))
+    session = Session(events, [output], task())
+    subject.participate(session)
+    assert len(session.collect(output)) == 2
+    sentences = StimulusSet({'stimulus_id': ['t0'], 'sentence': ['the cat']})
+    sentences.identifier = 'umi-dev-text-events'
+    text = list(iter(stimulus_session(sentences, [output], task()).source.next_input, None))
+    with pytest.raises(ExecutionNotFeasibleError, match='no picture'):
+        subject.participate(Session(text, [output], task()))
+
+
 def test_a_pinned_revision_reaches_every_load(monkeypatch):
     """The revision a model states reaches the download check, its processor and its weights."""
     import brainscore.models._downloads as downloads

@@ -21,9 +21,9 @@ measurements of the same weights.
 - **Precision:** bfloat16. Activity is exported as float32.
 - **Answers:** written replies give choices, ratings and text; the likelihood of each option gives
   log probabilities; a readout fitted on the IT layer gives probabilities and response times.
-  The readout reads the vision part only, so these two formats come from pictures only: a task on
-  text or clips is N/A in pre-flight and refused before any compute. It needs the task's fitting
-  stimuli. The provenance names the readout layer.
+  The readout reads the vision part only, so these two formats come from pictures: a task on text
+  or clips only is N/A in pre-flight and refused before any compute; a trial that shows a picture
+  with other inputs is answered from the picture. It needs the task's fitting stimuli. The provenance names the readout layer.
 - **Pictures:** each picture is one whole image, for a recording and for an answer (the same
   stated settings reach both); a processor that still gives tiles or crops for a recording is
   refused.
