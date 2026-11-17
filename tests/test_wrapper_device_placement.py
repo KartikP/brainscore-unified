@@ -5,6 +5,8 @@ are spread over several devices, some possibly offloaded and left on ``meta``.
 A wrapper must not move such a model, and must send its inputs to the device of
 the model's parameters. A model on one device is moved exactly as before.
 """
+import types
+
 import pytest
 import torch
 
@@ -125,3 +127,109 @@ def test_a_model_placed_by_a_map_only_is_not_moved_and_gives_one_device_form(mak
     wrapper = make(model, device=device)
     assert not model.moved_to
     assert str(wrapper._device) == 'cpu'
+
+
+# -- The device the inputs of a placed model go to ------------------------------
+
+class _OffloadedFirst(torch.nn.Module):
+    """A network whose first registered parameter is offloaded (``meta``); ``net`` takes the input.
+
+    Records the devices of the tensors that reach the forward.
+    """
+
+    def __init__(self, net):
+        super().__init__()
+        self.offloaded = torch.nn.Linear(4, 4).to_empty(device='meta')
+        self.net = net
+        self.received = set()
+
+    def forward(self, *args, **kwargs):
+        self.received |= {value.device for value in (*args, *kwargs.values()) if torch.is_tensor(value)}
+        return self.net(*args, **kwargs)
+
+
+def _run_text(model, device=None):
+    from tests.test_wrapper_cache_guard import _TextNet, _tokenizer
+    from brainscore.model_helpers.text_wrapper import TextWrapper
+    network = _OffloadedFirst(_TextNet())
+    TextWrapper(network, _tokenizer(), identifier='stand-in', device=device)(
+        ['the cat sat', 'dog ran'], layers=['net.proj'])
+    return network
+
+
+def _run_sound(device=None):
+    from tests.test_wrapper_cache_guard import _AudioNet, _AudioProcessor, _audio_files, _load_npy, _stimuli
+    from brainscore.model_helpers.audio_wrapper import AudioWrapper
+    network = _OffloadedFirst(_AudioNet())
+    AudioWrapper(network, _AudioProcessor(), identifier='stand-in', max_duration_sec=4.0,
+                 audio_loader=_load_npy, device=device)(
+        _stimuli('placed-sound', audio_path=_audio_files()), layers=['net.head'])
+    return network
+
+
+def _run_clip(device=None):
+    from tests.test_wrapper_cache_guard import _VideoNet, _frames_to_tensor, _video_files, _stimuli
+    from brainscore.model_helpers.video_wrapper import VideoWrapper
+    network = _OffloadedFirst(_VideoNet())
+    VideoWrapper(network, _frames_to_tensor, identifier='stand-in', num_frames=4, device=device)(
+        _stimuli('placed-clip', video_path=_video_files()), layers=['net.head'])
+    return network
+
+
+def _run_picture(device=None):
+    from tests.test_wrapper_cache_guard import _PatchNet, _PatchProcessor, _image_files, _stimuli
+    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
+    network = _OffloadedFirst(_PatchNet())
+    VLMVisionWrapper(network, _PatchProcessor(), identifier='stand-in', device=device)(
+        _stimuli('placed-picture', image_file_name=_image_files()), layers=['net.blocks.0'])
+    return network
+
+
+RUNS = [lambda device=None: _run_text(None, device), _run_sound, _run_clip, _run_picture]
+
+
+@pytest.mark.parametrize('device', [None, 'cpu:0'])
+@pytest.mark.parametrize('run', RUNS)
+def test_the_forward_of_a_placed_model_receives_inputs_on_its_input_device(run, device, tmp_path, monkeypatch):
+    """Not on ``meta``, where an offloaded parameter registered first would send them."""
+    monkeypatch.chdir(tmp_path)
+    network = run(device)
+    assert network.received == {torch.device('cpu')}
+    assert network.offloaded.weight.device.type == 'meta'      # not moved
+
+
+class _Spread(torch.nn.Module):
+    """Reports parameters on the stated devices (no second device is needed on this machine)."""
+
+    def __init__(self, devices, entry=None):
+        super().__init__()
+        self._devices, self._entry = [torch.device(d) for d in devices], entry
+
+    def parameters(self, recurse=True):
+        return iter([types.SimpleNamespace(device=d) for d in self._devices])
+
+    def to(self, *args, **kwargs):
+        raise AssertionError('a placed model is not moved')
+
+    def get_input_embeddings(self):
+        if self._entry is None:
+            raise NotImplementedError
+        return self._entry
+
+
+def test_the_input_device_is_the_device_of_the_input_module():
+    from brainscore.model_helpers._device import input_device
+    assert str(input_device(_Spread(['cuda:0', 'cuda:1'], entry=_Spread(['cuda:1'])))) == 'cuda:1'
+
+
+@pytest.mark.parametrize('devices', [['meta'], ['cuda:0', 'cuda:1']])
+@pytest.mark.parametrize('make', WRAPPERS)
+def test_an_input_device_that_cannot_be_told_is_refused_at_construction(make, devices):
+    with pytest.raises(ValueError, match='State the input device'):
+        make(_Spread(devices))
+
+
+@pytest.mark.parametrize('make', WRAPPERS)
+def test_a_stated_device_is_used_for_the_inputs_of_a_placed_model(make):
+    model = _Spread(['cuda:0', 'cuda:1'])
+    assert str(make(model, device='cuda:1')._device) == 'cuda:1'
