@@ -1,44 +1,19 @@
-"""CogGym: the authors' pinned checkout, a local asset (see README.md).
+"""CogGym: no dataset here (see README.md).
 
-The runner reads experiments, human results and scoring code from that
-checkout; this plugin registers no dataset.
+The CogGym benchmarks read experiments, human results and scoring code from the authors'
+repository at a pinned commit, in a folder Brain-Score makes at the first use
+(``brainscore/harnesses/_environment_folder.py``); this plugin registers no dataset, and
+``package_data('coggym')`` says so.
 """
 from brainscore import data_builder_registry
-from brainscore.data import local
 from brainscore.data.packaging import DataBuilder
 
-REVISION = 'a1cd9df1118fec80eba7463de237d1497d77e041'
-
-COGGYM_CHECKOUT = local.register(local.LocalAsset(
-    name='coggym-checkout',
-    kind='stimuli',
-    why_local="CogGym's runner reads its experiments, human results and scoring code "
-              "from an unmodified Git checkout at a pinned revision.",
-    source=f'https://github.com/lance-ying/coggym (revision {REVISION})',
-    obtain='git clone https://github.com/lance-ying/coggym.git, then check out the revision above.',
-    prepare='python -m brainscore.data package coggym',
-    used_by=[f'CogGym.{experiment}' for experiment in (
-        'Levine2020Logic.exp1', 'Levine2020Logic.exp2', 'Levine2020Logic.exp3',
-        'Levine2020Logic.exp4', 'Levine2020Logic.exp5', 'Levine2020Logic.exp6',
-        'Yoon2020Polite.exp1', 'Yoon2020Polite.exp2',
-        'Tsvilodub2025Nonliteral.exp1', 'Tsvilodub2025Nonliteral.exp3b', 'Hu2023Fine.exp1',
-        'Aboody2025Inferring.exp1', 'Aboody2025Inferring.exp2',
-        'JaraEttinger2021Quantitative.exp1', 'JaraEttinger2021Quantitative.exp2',
-        'JaraEttinger2021Quantitative.exp3', 'Chandra2024Cooperative.exp1',
-        'Bass2022Partial.exp1', 'Fu2025Hierarchical.exp1', 'Fu2025Hierarchical.exp2',
-        'sosa2021Moral.exp1', 'sosa2021Moral.exp2', 'sosa2021Moral.exp3')],
-))
-
 data_builder_registry['coggym'] = lambda: DataBuilder(
-    source=f'CogGym (Ying et al.), https://github.com/lance-ying/coggym at revision {REVISION}. '
-           'Licence: not stated by the repository.',
+    source='CogGym (Ying et al.), https://github.com/lance-ying/coggym at a pinned commit. The repository '
+           'holds `LICENSE` (MIT) and `DATA_LICENSE.md`.',
     access='public, no account.',
-    layout='none: the script clones the repository itself.',
-    needs='git; the size of the repository (not measured); minutes.',
-    writes='the checkout at the pinned revision (`EML/`, `evaluation/` and the rest).',
-    reads=COGGYM_CHECKOUT.name,
-    then='install `evaluation/requirements.txt` of the checkout into this environment '
-         '(`pip install -r <checkout>/evaluation/requirements.txt`).',
-    build=f'python -m brainscore.data.coggym.data_packaging.fetch --revision {REVISION} --out {{output}}',
-    fetches=True,
+    layout='none.',
+    needs='git and the packages of `brainscore/harnesses/coggym_requirements.txt`, in a folder of its own.',
+    writes='Nothing to package: the first `load_benchmark("CogGym...")` makes the checkout and its environment '
+           '(see this plugin\'s README).',
 )

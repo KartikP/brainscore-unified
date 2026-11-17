@@ -46,7 +46,9 @@ def _require_reset(reset):
 class CogGymBenchmark(BenchmarkBase):
     """One public experiment, returning upstream raw R² without a human ceiling.
 
-    Supply a pinned checkout, or put it at $BRAINSCORE_DATA_HOME/coggym-checkout. ``reset`` is the
+    CogGym's evaluator runs in its own environment, in a folder Brain-Score makes at the first
+    load (``folder`` names another one; ``BRAINSCORE_ENVIRONMENTS_HOME`` moves the default place;
+    ``BS_INSTALL_DEPENDENCIES=no`` forbids making it). ``reset`` is the
     adapter's reset(repetition) callback; it must preserve instrumentation.
     Scoring needs it: give it here or to ``protocol``.
     One repetition is a preliminary evaluation, not a leaderboard replication.
@@ -80,7 +82,7 @@ class CogGymBenchmark(BenchmarkBase):
         self,
         experiment: str,
         *,
-        checkout: str | Path | None = None,
+        folder: str | Path | None = None,
         repetitions: int = 5,
         temperature: float = 1.0,
         max_tokens: int = 512,
@@ -89,10 +91,6 @@ class CogGymBenchmark(BenchmarkBase):
     ) -> None:
         if experiment not in EXPERIMENTS:
             raise ValueError(f'Unknown public CogGym experiment: {experiment}')
-        if checkout is None:
-            from brainscore.data.coggym import COGGYM_CHECKOUT
-            from brainscore.data.local import path
-            checkout = path(COGGYM_CHECKOUT.name)      # the registered data location
         if reset is not None and not callable(reset):
             raise TypeError("reset must be the adapter's reset(repetition) callback")
         self.experiment = experiment
@@ -100,7 +98,7 @@ class CogGymBenchmark(BenchmarkBase):
         self._reset = reset
         self._output_dir = Path(output_dir) if output_dir is not None else None
         self._configuration = {
-            'checkout': Path(checkout),
+            'folder': None if folder is None else Path(folder),
             'experiment': experiment,
             # Video experiments can also contain still-image instruction screens.
             'modalities': {
@@ -115,6 +113,8 @@ class CogGymBenchmark(BenchmarkBase):
         # Validate the reference and all prompts before the caller loads a model.
         # The trials decide which kinds of part a subject must take.
         preflight = CogGymRunner(model='preflight', **self._configuration)
+        # The folder the pre-flight found or made: the scoring run uses the same one.
+        self._configuration['folder'] = preflight.folder
         self.required_input_channels = preflight.required_input_channels
         identifier = f'CogGym.{experiment.replace("/", ".")}'
         self._reference_profile = (repetitions, temperature, max_tokens) == (5, 1.0, 512)

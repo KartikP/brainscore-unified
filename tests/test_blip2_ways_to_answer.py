@@ -313,7 +313,7 @@ def test_the_ewok_choice_runs_by_writing(registered, ewok, tmp_path):
 
 def test_a_coggym_experiment_becomes_applicable_and_runs(registered, scored_reference, tmp_path):
     root, _ = scored_reference
-    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root, reset=lambda repetition: None,
+    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root, reset=lambda repetition: None,
                                           repetitions=1, max_tokens=7, output_dir=tmp_path / 'run')
     model, calls, replies = registered()
     replies[0] = 'A written answer.'

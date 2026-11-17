@@ -14,6 +14,9 @@ from brainscore.harnesses import coggym
 from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.contract import Subject
 
+from brainscore import LoadError
+
+from .coggym_stand_in import ANALYZE_ROW, default_place, write_ready_folder
 from .test_coggym import image_part, reference, make_subject, reply_with_trial
 
 pytestmark = pytest.mark.unit
@@ -21,33 +24,30 @@ pytestmark = pytest.mark.unit
 
 @pytest.fixture
 def scored_reference(reference, monkeypatch):
-    root, cli = reference
-    _, analysis = coggym._load_reference(root)
-    def analyze(paths, *args, **kwargs):
-        runs = [json.loads(path.read_text()) for path in paths]
-        row = {'model': runs[0]['model'], 'experiment': runs[0]['experiment'],
-               'r2': 0.375, 'n_items': 3, 'n_artifacts': len(runs)}
-        return [row], [], []
-    analysis.analyze = analyze
-    return root, analysis
+    root, stand_in = reference
+    stand_in.analyze(ANALYZE_ROW)
+    return root, stand_in
 
 
 @pytest.mark.parametrize('invalid', [False, True])
 def test_slider_validation_preserves_native_results_and_gates_score(scored_reference, tmp_path, invalid):
-    root, _ = scored_reference
-    cli, _ = coggym._load_reference(root)
-    trials = cli._selected_trials(None, None, False)
-    for trial in trials:
-        trial.queries = [SimpleNamespace(
-            tag='rating', type='single-slider', slider_config={'min': 0, 'max': 100}, option=[],
-        )]
+    root, stand_in = scored_reference
     native = [{
-        'trial_id': trial.id,
+        'trial_id': f'trial-{i}',
         'response': '{"answer": <number between 0 and 100>}' if invalid and i == 0 else '{"answer": 42}',
         'parsed': {'rating': {'value': 0 if invalid and i == 0 else 42}},
         'scores': {'rating': {'scorable': True}},
-    } for i, trial in enumerate(trials)]
-    cli._run_experiment = lambda *args: native
+    } for i in range(3)]
+    # Every trial asks for one slider rating; the evaluator returns these native results.
+    stand_in.cli(f'''
+def _selected_trials(experiment, selection, use_all):
+    slider = SimpleNamespace(tag='rating', type='single-slider', slider_config={{'min': 0, 'max': 100}}, option=[])
+    return [SimpleNamespace(id=trial, queries=[slider]) for trial in TRIALS]
+
+
+def _run_experiment(*args):
+    return {native!r}
+''')
     runner = coggym.CogGymRunner(root, model='fixture', repetitions=1)
     direct = runner.run(
         SimpleNamespace(complete_with_metadata=lambda *args: None),
@@ -62,7 +62,7 @@ def test_slider_validation_preserves_native_results_and_gates_score(scored_refer
     assert saved['trials'] == native
     assert saved['umi']['response_validation'] == validation['repetitions'][0]
     benchmark = brainscore.load_benchmark(
-        'CogGym.Hu2023Fine.exp1', checkout=root, repetitions=1,
+        'CogGym.Hu2023Fine.exp1', folder=root, repetitions=1,
         reset=lambda repetition: None, output_dir=tmp_path / 'registered',
     )
     assert benchmark.version == 1
@@ -83,18 +83,21 @@ def test_all_public_experiments_registered_lazily():
     assert Counter(EXPERIMENTS.values()) == {'text': 11, 'image': 6, 'video': 6}
 
 
-def test_loading_requires_explicit_checkout_before_model_use(monkeypatch, tmp_path):
-    # A data home with no checkout: the user's own checkout is never read.
-    monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path / 'data'))
-    with pytest.raises(FileNotFoundError, match=str(tmp_path / 'data' / 'coggym-checkout')):
+def test_with_installs_off_a_missing_folder_stops_the_load_before_model_use(monkeypatch, tmp_path):
+    # No folder at the place of CogGym's folders, and installs are off: one clear error.
+    monkeypatch.setenv('BRAINSCORE_ENVIRONMENTS_HOME', str(tmp_path / 'none'))
+    monkeypatch.setenv('BS_INSTALL_DEPENDENCIES', 'no')
+    with pytest.raises(LoadError, match='BS_INSTALL_DEPENDENCIES'):
         brainscore.load_benchmark('CogGym.Hu2023Fine.exp1')
+    with pytest.raises(LoadError, match='BS_INSTALL_DEPENDENCIES'):     # the named score path too
+        brainscore.score(make_subject(reply_with_trial), 'CogGym.Hu2023Fine.exp1', check_mem=False)
+    assert not (tmp_path / 'none').exists()
 
 
-def test_environment_checkout_and_explicit_provider_reset(scored_reference, monkeypatch):
-    root, _ = scored_reference
-    monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(root.parent / 'data'))
-    (root.parent / 'data').mkdir(exist_ok=True)
-    (root.parent / 'data' / 'coggym-checkout').symlink_to(root)     # a link at the expected place
+def test_the_default_folder_and_explicit_provider_reset(reference, tmp_path, monkeypatch):
+    # A ready folder at the default place under BRAINSCORE_ENVIRONMENTS_HOME: no folder= needed.
+    monkeypatch.setenv('BRAINSCORE_ENVIRONMENTS_HOME', str(tmp_path / 'folders'))
+    write_ready_folder(default_place(tmp_path / 'folders'), analyze=ANALYZE_ROW)
     benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1')
     with pytest.raises(ValueError, match='reset=adapter.reset'):
         benchmark(make_subject(reply_with_trial))
@@ -108,7 +111,7 @@ def test_registered_scoring_preserves_raw_score_and_repetitions(scored_reference
         calls.append(prompt)
         return reply_with_trial(prompt)
     benchmark = brainscore.load_benchmark(
-        'CogGym.Hu2023Fine.exp1', checkout=root, reset=resets.append,
+        'CogGym.Hu2023Fine.exp1', folder=root, reset=resets.append,
         repetitions=2, max_tokens=1234, output_dir=tmp_path / 'scored',
     )
     monkeypatch.setenv('RESULTCACHING_HOME', str(tmp_path / 'cache'))
@@ -140,7 +143,7 @@ def test_registered_scoring_preserves_raw_score_and_repetitions(scored_reference
 
 def test_protocol_and_plain_runner_produce_identical_reference_artifacts(scored_reference, tmp_path):
     root, _ = scored_reference
-    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root)
+    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root)
     direct = coggym.CogGymRunner(root, experiment='Hu2023Fine/exp1', model='fixture', max_tokens=512, repetitions=5)
     from types import SimpleNamespace
     def complete(system, messages, model, temperature, max_tokens):
@@ -162,12 +165,13 @@ def test_protocol_and_plain_runner_produce_identical_reference_artifacts(scored_
 
 @pytest.mark.parametrize('value', [None, float('nan'), float('inf')])
 def test_undefined_score_fails_and_preserves_results(scored_reference, tmp_path, value):
-    root, analysis = scored_reference
+    root, stand_in = scored_reference
     # None is serialized upstream; nonfinite values also must never become scores.
-    analysis.analyze = lambda *args, **kwargs: ([{
-        'model': 'fixture', 'experiment': 'Hu2023Fine/exp1', 'r2': value,
-    }], [], [])
-    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root,
+    stand_in.analyze(f'''
+def analyze(*args, **kwargs):
+    return [{{'model': 'fixture', 'experiment': 'Hu2023Fine/exp1', 'r2': {value if value is None else f"float('{value}')"}}}], [], []
+''')
+    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root,
         reset=lambda repetition: None, output_dir=tmp_path / 'run')
     with pytest.raises(ValueError):
         benchmark(make_subject(reply_with_trial))
@@ -177,7 +181,7 @@ def test_undefined_score_fails_and_preserves_results(scored_reference, tmp_path,
 
 def test_feature_only_model_rejected_before_requests(scored_reference):
     root, _ = scored_reference
-    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root,
+    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root,
         reset=lambda repetition: None)
     # score() runs the one pre-flight; the benchmark checks nothing itself.
     result = brainscore.score(brainscore.load_model('chance-baseline'), benchmark, check_mem=False)
@@ -190,15 +194,16 @@ def test_configuration_is_not_discarded_on_domain_fallback():
 
 
 def test_video_registration_preserves_still_image_instructions(reference):
-    root, cli = reference
-    (root / 'evaluation/public_manifest.json').write_text(json.dumps({
+    root, stand_in = reference
+    (root / 'checkout/evaluation/public_manifest.json').write_text(json.dumps({
         'experiments': [{'path': 'Fu2025Hierarchical/exp1'}],
     }))
-    cli.build_messages = lambda trial, experiment: ('system', [{
-        'role': 'user', 'content': [{'type': 'text', 'text': 'instructions'},
-                                 image_part(), {'type': 'video', 'path': '/clip.mp4'}],
-    }])
-    benchmark = brainscore.load_benchmark('CogGym.Fu2025Hierarchical.exp1', checkout=root)
+    content = [{'type': 'text', 'text': 'instructions'}, image_part(), {'type': 'video', 'path': '/clip.mp4'}]
+    stand_in.cli(f'''
+def build_messages(trial, experiment):
+    return 'system', [{{'role': 'user', 'content': {content!r}}}]
+''')
+    benchmark = brainscore.load_benchmark('CogGym.Fu2025Hierarchical.exp1', folder=root)
     protocol = benchmark.protocol(model='fixture', reset=lambda repetition: None)
     assert set(protocol.metadata['modalities']) == {'text', 'image', 'video'}
     # The still images and the clips are both required inputs.
@@ -229,7 +234,7 @@ def test_participate_only_subject_is_scored(scored_reference, tmp_path):
     root, _ = scored_reference
     subject = _ParticipateOnlySubject()
     benchmark = brainscore.load_benchmark(
-        'CogGym.Hu2023Fine.exp1', checkout=root, reset=lambda repetition: None,
+        'CogGym.Hu2023Fine.exp1', folder=root, reset=lambda repetition: None,
         output_dir=tmp_path / 'run')
     score = benchmark(subject)
     assert float(score) == 0.375
@@ -245,7 +250,7 @@ def test_participate_only_subject_is_scored(scored_reference, tmp_path):
 def test_reset_is_required_before_any_request(scored_reference):
     root, _ = scored_reference
     subject = _ParticipateOnlySubject()
-    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root)
+    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root)
     with pytest.raises(ValueError, match='reset=adapter.reset'):
         benchmark(subject)
     assert subject.requests == []
@@ -259,7 +264,7 @@ def _record_events(directory):
 def test_declares_the_instruction_and_text_in_and_a_written_answer_out(scored_reference):
     from tests.benchmark_declarations import assert_declares, assert_preflight
     root, _ = scored_reference
-    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root,
+    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root,
                                           reset=lambda repetition: None)
     assert_declares(benchmark, {'instruction', 'text'}, {'behavior:text'})
     assert_preflight(benchmark)
@@ -295,7 +300,7 @@ class _NoRawAnswer(Subject):
 def test_a_text_answer_stored_as_missing_is_an_error_of_the_run(scored_reference, tmp_path):
     """M9-01: the stored state decides; a missing written answer is an error of the run."""
     root, _ = scored_reference
-    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root,
+    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root,
                                           reset=lambda repetition: None, repetitions=2,
                                           output_dir=tmp_path / 'scored')
     with pytest.raises(RuntimeError, match='incomplete or failed trials'):
@@ -304,3 +309,25 @@ def test_a_text_answer_stored_as_missing_is_an_error_of_the_run(scored_reference
     run = json.loads((tmp_path / 'scored' / 'coggym' / 'run-001.json').read_text())
     errors = [str(trial.get('error')) for trial in run['trials'] if 'error' in trial]
     assert errors and all('no written answer on behavior:text (state missing' in error for error in errors)
+
+
+def test_an_evaluator_that_cannot_import_a_module_is_one_clear_load_error(reference):
+    root, _ = reference
+    (root / 'checkout/evaluation/providers.py').write_text('import a_package_the_folder_lacks\n')
+    with pytest.raises(LoadError) as refused:
+        brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root)
+    message = str(refused.value)
+    assert 'CogGym.Hu2023Fine.exp1' in message and 'a_package_the_folder_lacks' in message
+    assert str(root) in message
+
+
+@pytest.mark.parametrize('marker', ['[]', '{"revision": "a1cd9df1118fec80eba7463de237d1497d77e041"}', 'not json'])
+def test_a_folder_with_an_incomplete_readiness_record_is_one_clear_load_error(reference, marker):
+    root, _ = reference
+    if marker.startswith('{'):           # the right commit and requirements, but no package list
+        record = json.loads((root / 'ready.json').read_text())
+        del record['freeze']
+        marker = json.dumps(record)
+    (root / 'ready.json').write_text(marker)
+    with pytest.raises(LoadError, match='not a ready CogGym folder'):
+        brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root)

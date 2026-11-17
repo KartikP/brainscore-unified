@@ -31,8 +31,8 @@ _MEDIA = [
 
 
 def _media_benchmark(reference, tmp_path, experiment, content):
-    root, cli = reference
-    (root / 'evaluation/public_manifest.json').write_text(json.dumps({
+    root, stand_in = reference
+    (root / 'checkout/evaluation/public_manifest.json').write_text(json.dumps({
         'experiments': [{'path': experiment}],
     }))
     clip = tmp_path / 'clip.mp4'
@@ -40,8 +40,11 @@ def _media_benchmark(reference, tmp_path, experiment, content):
     parts = {'image': image_part(), 'video': {'type': 'video', 'path': str(clip), 'mime_type': 'video/mp4'}}
     messages = [{'role': 'user', 'content': [{'type': 'text', 'text': 'look'},
                                              *[parts[kind] for kind in content]]}]
-    cli.build_messages = lambda *args: ('instructions', messages)
-    benchmark = brainscore.load_benchmark(f'CogGym.{experiment.replace("/", ".")}', checkout=root,
+    stand_in.cli(f'''
+def build_messages(*args):
+    return 'instructions', {messages!r}
+''')
+    benchmark = brainscore.load_benchmark(f'CogGym.{experiment.replace("/", ".")}', folder=root,
                                           reset=lambda repetition: None)
     return root, clip, benchmark
 
@@ -154,14 +157,17 @@ def test_subject_with_no_shared_input_or_no_text_answer_is_still_na(
 
 def test_coggym_parts_keep_their_order_within_one_trial(reference, tmp_path):
     """Several texts and pictures in one trial reach the reply in CogGym's order."""
-    root, cli = reference
-    (root / 'evaluation/public_manifest.json').write_text(json.dumps({
+    root, stand_in = reference
+    (root / 'checkout/evaluation/public_manifest.json').write_text(json.dumps({
         'experiments': [{'path': 'Aboody2025Inferring/exp1'}],
     }))
     other = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC'
     content = [{'type': 'text', 'text': 'first'}, image_part(), {'type': 'text', 'text': 'second'},
                image_part(other), image_part(), {'type': 'text', 'text': 'third'}]
-    cli.build_messages = lambda *args: ('instructions', [{'role': 'user', 'content': content}])
+    stand_in.cli(f'''
+def build_messages(*args):
+    return 'instructions', [{{'role': 'user', 'content': {content!r}}}]
+''')
     prompts = []
     subject = make_subject(lambda prompt: prompts.append(prompt) or 'ok', ('text', 'vision:image'))
     runner = CogGymRunner(root, experiment='Aboody2025Inferring/exp1', model='fixture',
@@ -186,7 +192,7 @@ def test_coggym_reference_profile_reset_and_leaderboard_policy(scored_reference,
     # The caller gives the provider's reset to the benchmark; it is never read
     # from the subject (Contract Rule 2.2).
     benchmark = brainscore.load_benchmark(
-        'CogGym.Hu2023Fine.exp1', checkout=root, output_dir=tmp_path / 'default',
+        'CogGym.Hu2023Fine.exp1', folder=root, output_dir=tmp_path / 'default',
         reset=resets.append,
     )
     score = benchmark(subject)
@@ -203,7 +209,7 @@ def test_coggym_reference_profile_reset_and_leaderboard_policy(scored_reference,
 def test_coggym_implicit_records_always_deleted(scored_reference, tmp_path, monkeypatch, outcome):
     import brainscore.harnesses.adapter as module
     import tempfile
-    root, analysis = scored_reference
+    root, stand_in = scored_reference
     original = tempfile.TemporaryDirectory
     created = []
 
@@ -219,11 +225,12 @@ def test_coggym_implicit_records_always_deleted(scored_reference, tmp_path, monk
 
     monkeypatch.setattr(module.tempfile, 'TemporaryDirectory', directory)
     if outcome == 'undefined_score':
-        analysis.analyze = lambda *args, **kwargs: ([{
-            'model': 'fixture', 'experiment': 'Hu2023Fine/exp1', 'r2': None,
-        }], [], [])
+        stand_in.analyze('''
+def analyze(*args, **kwargs):
+    return [{'model': 'fixture', 'experiment': 'Hu2023Fine/exp1', 'r2': None}], [], []
+''')
     benchmark = brainscore.load_benchmark(
-        'CogGym.Hu2023Fine.exp1', checkout=root, reset=lambda repetition: None,
+        'CogGym.Hu2023Fine.exp1', folder=root, reset=lambda repetition: None,
     )
     subject = make_subject(respond)
     if outcome == 'success':
@@ -234,7 +241,9 @@ def test_coggym_implicit_records_always_deleted(scored_reference, tmp_path, monk
     else:
         with pytest.raises(KeyboardInterrupt if outcome == 'interrupted' else ValueError):
             benchmark(subject)
-    assert len(created) == 1 and not created[0].exists()
+    # The adapter's record folder was made once; no temporary folder of the run remains.
+    assert len([path for path in created if path.name.startswith('brainscore-adapter-')]) == 1
+    assert not any(path.exists() for path in created)
     assert not list(tmp_path.glob('brainscore-adapter-*'))
 
 
@@ -244,8 +253,8 @@ def test_coggym_implicit_records_always_deleted(scored_reference, tmp_path, monk
 ])
 def test_nonreference_coggym_settings_have_distinct_id(scored_reference, settings):
     root, _ = scored_reference
-    default = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root)
-    custom = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root, **settings)
+    default = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root)
+    custom = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root, **settings)
     assert custom.identifier != default.identifier
 
 
@@ -346,7 +355,7 @@ def test_one_score_checks_compatibility_once(library, scored_reference, prepared
                         lambda subject, benchmark: calls.append(benchmark) or original(subject, benchmark))
     if library == 'coggym':
         root, _ = scored_reference
-        benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root,
+        benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root,
                                               reset=lambda repetition: None)
         subject = make_subject(reply_with_trial)
     else:

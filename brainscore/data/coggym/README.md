@@ -1,51 +1,68 @@
-# Prepare CogGym data locally
+# CogGym: its own folder and environment
 
-CogGym's runner reads experiments and reference human results directly from the
-authors' repository. Preparing data means obtaining that pinned checkout:
-`python -m brainscore.data package coggym` clones it (see Rebuild below).
-This folder documents that workflow; its `__init__.py` declares the checkout as a local
-asset (`coggym-checkout`) and registers no dataset.
+CogGym's evaluator (its trial selection, prompts, answer parsing and scoring) runs
+in its own Python environment, in a separate process. Each model call comes back to
+your process as one request, and your model answers it there: the model, the
+recordings and the tools stay in your process. Nothing is installed into the
+environment you score in, so its environment fingerprint does not change. This works on
+Linux and macOS (it needs POSIX process groups and pipes), not on Windows.
 
-## 1. Obtain the reference files
+## 1. The folder Brain-Score makes
 
-After installing the four UMI packages in your experiment environment, clone
-CogGym into a new directory:
+On a fresh machine, the first `load_benchmark("CogGym...")` makes one folder:
 
-```bash
-# Clone the authors' repository at the pinned revision, into the folder the benchmarks read
-# ($BRAINSCORE_DATA_HOME/coggym-checkout, default ~/brainscore-data/coggym-checkout)
-python -m brainscore.data package coggym
-# Install CogGym's own requirements
-python -m pip install -r ~/brainscore-data/coggym-checkout/evaluation/requirements.txt
-```
+- `checkout/`: the authors' repository (`https://github.com/lance-ying/coggym`) at
+  commit `a1cd9df1118fec80eba7463de237d1497d77e041`;
+- `env/`: a virtual environment with only CogGym's packages, each at an exact
+  version (`brainscore/harnesses/coggym_requirements.txt`, installed with
+  `--no-deps` and checked with `pip check`). The list is CogGym's own requirements
+  (google-genai, python-dotenv, Pillow) and their dependencies at the versions of the
+  earlier CogGym runs; `pip check` at creation is the test that it is complete on
+  your platform;
+- `ready.json`: the commit, the requirements' hash, the Python version and the
+  environment's package list.
 
-Already have the authors' files? Move that Git checkout to
-`$BRAINSCORE_DATA_HOME/coggym-checkout`, or put a link there to it. It must use the revision above, with no tracked edits under `EML/`
-or `evaluation/`. Use a separate checkout if you are editing CogGym itself.
+The folder is `~/.brain-score/environments/CogGym/<commit>-<hash>` (the hash covers the
+requirements and the Python version); set `BRAINSCORE_ENVIRONMENTS_HOME` to an absolute
+path to put the folders of every outside library somewhere else, or pass `folder=...` to
+`load_benchmark` to name one. The general mechanism is described in
+`brainscore/harnesses/README.md`.
 
-The runner uses these files in their original locations:
+How the folder is made:
+- in a temporary folder next to it (`.<name>.partial-*`), published in one step only
+  when it is complete; a folder that exists, or appears meanwhile, is never replaced
+  or changed;
+- git and pip get only the variables they need (user, locale, temporary folder,
+  certificates, proxies, package index); no pip configuration file is read, and pip
+  refuses to run outside the folder's environment, so nothing is installed elsewhere;
+- a failed step (clone, environment, install, check) removes its temporary folder and
+  gives one error with the step's output;
+- if the process that makes the folder is killed, its git or pip command is stopped,
+  and its temporary folder stays until the next creation removes it;
+- a lock file next to the folder (`.<name>.lock`, kept) lets one creation run at a time.
 
-| Path | Purpose |
-| --- | --- |
-| `EML/` | Experiment definitions, stimuli, and reference data |
-| `evaluation/public_manifest.json` | Experiments available to the public evaluator |
-| `evaluation/trial_selection_map.json` | Trials selected for each experiment |
-| `evaluation/` | Prompt building, evaluation, response parsing, and scoring |
+To switch this off, set `BS_INSTALL_DEPENDENCIES=no`. A CogGym load with no ready
+folder then stops before any compute, with one error that names the benchmark, the
+folder and what to run. The setting covers only this folder: Brain-Score never
+installs into the scoring environment.
 
-The installed requirements include the Google SDK because CogGym imports it
-even for local models. A local model does not need a Google API key.
+Every score carries the record of CogGym's environment (commit, requirements hash,
+hash of its package list) in `configuration['evaluator_environment']`; the
+environment fingerprint of the score covers the scoring environment only.
+
+CogGym's evaluation code imports the Google SDK even for a local model. A local model
+does not need a Google API key.
 
 ## 2. Check an experiment before loading a model
 
 ```python
 import brainscore
 
-# Validate the checkout, selected trials, and prompts. No model is called.
+# Make or find CogGym's folder, then check the selected trials and prompts. No model is called.
 benchmark = brainscore.load_benchmark("CogGym.Hu2023Fine.exp1")
 print(benchmark.identifier)
 ```
 
-Alternatively, pass `checkout="/path/to/coggym"` to `load_benchmark()`.
 The integration registers 23 experiments from this pinned public subset:
 11 text, 6 image, and 6 video experiments. The selected experiment's media must
 be present; prompt preparation checks it before inference.
@@ -67,7 +84,6 @@ takes none of the experiment's inputs, or cannot answer on `behavior:text`, is
 N/A before any compute.
 
 ```python
-# Load one experiment with the reset of your model, then score the model
 benchmark = brainscore.load_benchmark("CogGym.Hu2023Fine.exp1", reset=lambda repetition: None)
 score = benchmark(model)
 ```
@@ -78,7 +94,7 @@ place the instruction in the user turn, where CogGym's client sends a separate
 system text. The score says so in `score.attrs['input_adaptation']`.
 
 Supply the reset callback of a model that keeps state between repetitions.
-Save run outputs outside the reference checkout. UMI records model calls while
+Save run outputs outside CogGym's folder. UMI records model calls while
 CogGym keeps its trial selection and scoring.
 
 There is no CogGym request-ID resolver in UMI. Access to additional datasets
@@ -89,9 +105,9 @@ Follow the authors' access and distribution terms for any additional files.
 
 ### coggym
 
-- Source: CogGym (Ying et al.), https://github.com/lance-ying/coggym at revision a1cd9df1118fec80eba7463de237d1497d77e041. Licence: not stated by the repository.
+- Source: CogGym (Ying et al.), https://github.com/lance-ying/coggym at a pinned commit. The repository holds `LICENSE` (MIT) and `DATA_LICENSE.md`.
 - Access: public, no account.
-- Needs: git; the size of the repository (not measured); minutes.
-- Command: `python -m brainscore.data package coggym`. Source folder: none: the script clones the repository itself. Output (or `--output <new folder>`): the folder the benchmarks read, `$BRAINSCORE_DATA_HOME/coggym-checkout` (`~/brainscore-data/coggym-checkout` by default).
-- Writes: the checkout at the pinned revision (`EML/`, `evaluation/` and the rest). Then: install `evaluation/requirements.txt` of the checkout into this environment (`pip install -r <checkout>/evaluation/requirements.txt`).
-- Check: the printed counts; no sha1 is recorded for these files
+- Needs: git and the packages of `brainscore/harnesses/coggym_requirements.txt`, in a folder of its own.
+- Command: none: nothing to package.
+- Writes: Nothing to package: the first `load_benchmark("CogGym...")` makes the checkout and its environment (see this plugin's README).
+- Check: nothing to compare.

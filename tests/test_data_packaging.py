@@ -699,17 +699,6 @@ def _algonauts_film_source(tmp_path, monkeypatch, offline):
     return tmp_path / 'native'
 
 
-def _coggym_source(tmp_path, monkeypatch, offline):
-    def git(argv):
-        if argv[1] == 'clone':                 # a local stand-in of the repository
-            (pathlib.Path(argv[-1]) / 'evaluation').mkdir(parents=True, exist_ok=True)
-            (pathlib.Path(argv[-1]) / 'evaluation' / 'public_manifest.json').write_text('[]')
-        elif argv[3] != 'checkout':
-            raise AssertionError(f'package_data ran {argv}')
-        return types.SimpleNamespace(returncode=0, stdout='', stderr='')
-    offline.programs['git'] = git
-
-
 def _lahner_clips_source(tmp_path, monkeypatch, offline):
     _clips(tmp_path / 'clips', monkeypatch)
 
@@ -739,7 +728,7 @@ def _rajalingham_source(tmp_path, monkeypatch, offline):
 
 
 SOURCES = {'ewok': _ewok_source, 'lebel2023': _lebel_source, 'algonauts2025': _algonauts_film_source,
-           'coggym': _coggym_source, 'lahner2024-frames': _lahner_clips_source,
+           'lahner2024-frames': _lahner_clips_source,
            'lahner2024-sound': _lahner_clips_source, 'lahner2024-timeresolved': _lahner_series_source,
            'lahner2024-motion': _lahner_motion_source, 'rajalingham2018-2afc': _rajalingham_source}
 UPLOAD_FLAGS = {'lebel2023': '--upload', 'lahner2024-timeresolved': '--upload-to-s3',

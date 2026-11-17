@@ -121,6 +121,9 @@ filterwarnings = [
 brainscore = ["data/rajalingham2018_2afc/*.csv"]
 
 "brainscore.models.vjepa_v1.backbone" = ["LICENSE", "NOTICE.md"]
+# The pinned packages of the environment Brain-Score makes for CogGym's evaluator, and the
+# README whose code blocks the tests run (also against an installed package).
+"brainscore.harnesses" = ["coggym_requirements.txt", "README.md"]
 
 [tool.setuptools.exclude-package-data]
 "*" = ["*.pyc", "**/__pycache__/*"]

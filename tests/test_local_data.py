@@ -161,7 +161,6 @@ def test_records_name_only_registered_benchmarks_and_every_known_reader():
 
     known = {
         'algonauts2025-prepared': family('Algonauts2025-'),
-        'coggym-checkout': family('CogGym.'),
         'ewok-core-1.0': family('EWoK-core-1.0-'),
         'lana-atlas': {'LeBel2023-UTS03-encoding-languagemask'},
         # Needed only by the route a subject takes; the benchmark checks them when read.

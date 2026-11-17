@@ -244,7 +244,7 @@ def test_coggym_missing_assets_write_failed_report(tmp_path, missing):
         model.mkdir()
         (model / 'config.json').write_text('{}')
     out = tmp_path / 'out'
-    result = _optimized('', str(EXAMPLES / 'coggym_toolbox.py'), '--checkout', str(tmp_path / 'coggym'),
+    result = _optimized('', str(EXAMPLES / 'coggym_toolbox.py'), '--folder', str(tmp_path / 'coggym'),
                         '--model-path', str(model), '--output-dir', str(out))
     assert result.returncode != 0
     report = json.loads((out / 'qualification.json').read_text())
@@ -405,7 +405,7 @@ def test_coggym_unverified_model_fails_under_optimize(tmp_path):
     model.mkdir()
     (model / 'config.json').write_text('{}')
     out = tmp_path / 'out'
-    result = _optimized('', str(EXAMPLES / 'coggym_toolbox.py'), '--checkout', str(tmp_path / 'coggym'),
+    result = _optimized('', str(EXAMPLES / 'coggym_toolbox.py'), '--folder', str(tmp_path / 'coggym'),
                         '--model-path', str(model), '--output-dir', str(out))
     assert result.returncode != 0
     report = json.loads((out / 'qualification.json').read_text())
