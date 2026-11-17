@@ -753,8 +753,14 @@ def test_every_builder_registration_gives_what_it_declares(monkeypatch, tmp_path
         assert {channel_of[key] for key in inner.extractor} <= subject.in_channels, identifier
         assert {f'neural:{region}' for region in inner.region_layer_map} <= subject.out_channels, identifier
         assert {'behavior:choice', 'behavior:probabilities', 'behavior:log_probabilities', 'behavior:rating',
-                'behavior:rt', 'behavior:text', 'neural:VWFA', 'motor'} <= subject.out_channels, identifier
-        assert {'observation', 'instruction', 'reward'} <= subject.in_channels, identifier
+                'behavior:rt', 'behavior:text', 'neural:VWFA'} <= subject.out_channels, identifier
+        # motor and the policy's inputs come with the policy part, and only with it.
+        if inner._policy is not None:
+            assert 'motor' in subject.out_channels, identifier
+            assert {'observation', 'instruction', 'reward'} <= subject.in_channels, identifier
+        else:
+            assert 'motor' not in subject.out_channels, identifier
+            assert not {'observation', 'reward'} & subject.in_channels, identifier
         # The lesion inputs and their record come with the intervention part, and only with it.
         lesions = {'lesion', 'stimulation', 'pharmacological'}
         if inner._intervention is not None:
