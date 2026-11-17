@@ -64,38 +64,39 @@ def stimuli(tmp_path):
 
 def test_the_benchmark_reads_prepared_frames_and_names_the_command(tmp_path, monkeypatch, stimuli):
     from brainscore.benchmarks.lahner2024._util import frame_table
-    monkeypatch.setenv(LAHNER_FRAMES.env_var, str(tmp_path / 'frames'))
+    monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path))
+    frames = tmp_path / 'lahner2024-frames'
     with pytest.raises(local.LocalDataMissing, match='prepare_frames'):
         frame_table(stimuli, [500, 1500])               # no folder
-    (tmp_path / 'frames').mkdir()
-    frame_file(tmp_path / 'frames', 'a.mp4', 500).write_bytes(b'png')
+    frames.mkdir()
+    frame_file(frames, 'a.mp4', 500).write_bytes(b'png')
     with pytest.raises(local.LocalDataMissing, match='(?s)3 of 4 files .*prepare_frames --sample-times-ms 500 1500'):
         frame_table(stimuli, [500, 1500])
     for clip in ('a', 'b'):
         for time_ms in (500, 1500):
-            frame_file(tmp_path / 'frames', f'{clip}.mp4', time_ms).write_bytes(b'png')
+            frame_file(frames, f'{clip}.mp4', time_ms).write_bytes(b'png')
     table = frame_table(stimuli, [500, 1500])
     assert list(table['clip_id']) == ['a', 'a', 'b', 'b']
     assert set(table.stimulus_paths.values()) == {
-        str(tmp_path / 'frames' / f'{clip}_t{t}.png') for clip in 'ab' for t in (500, 1500)}
+        str(frames / f'{clip}_t{t}.png') for clip in 'ab' for t in (500, 1500)}
 
 
 def test_the_benchmark_reads_prepared_sound_and_names_the_command(tmp_path, monkeypatch, stimuli):
     from brainscore.benchmarks.lahner2024._util import clip_table
-    monkeypatch.setenv(LAHNER_SOUND.env_var, str(tmp_path / 'sound'))
+    monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path))
+    sound = tmp_path / 'lahner2024-sound'
     with pytest.raises(local.LocalDataMissing, match='prepare_audio_tracks'):
         clip_table(stimuli, 'sound', sound=True)
-    (tmp_path / 'sound').mkdir()
-    (tmp_path / 'sound' / 'a.wav').write_bytes(b'wav')
+    sound.mkdir()
+    (sound / 'a.wav').write_bytes(b'wav')
     with pytest.raises(local.LocalDataMissing, match='1 of 2 files'):
         clip_table(stimuli, 'sound', sound=True)
-    (tmp_path / 'sound' / 'b.wav').write_bytes(b'wav')
+    (sound / 'b.wav').write_bytes(b'wav')
     assert list(clip_table(stimuli, 'sound', sound=True)['audio_path']) == [
-        str(tmp_path / 'sound' / 'a.wav'), str(tmp_path / 'sound' / 'b.wav')]
+        str(sound / 'a.wav'), str(sound / 'b.wav')]
 
 
-def test_the_default_folders_are_the_ones_users_already_have(monkeypatch):
-    monkeypatch.delenv(LAHNER_FRAMES.env_var, raising=False)
-    monkeypatch.delenv(LAHNER_SOUND.env_var, raising=False)
-    assert LAHNER_FRAMES.resolved() == Path.home() / 'brainscore-data' / 'lahner2024' / 'frames'
-    assert LAHNER_SOUND.resolved() == Path.home() / '.brainio' / 'lahner2024_audio_16k'
+def test_the_default_folders_are_under_the_default_data_home(monkeypatch):
+    monkeypatch.delenv('BRAINSCORE_DATA_HOME', raising=False)
+    assert LAHNER_FRAMES.resolved() == Path.home() / 'brainscore-data' / 'lahner2024-frames'
+    assert LAHNER_SOUND.resolved() == Path.home() / 'brainscore-data' / 'lahner2024-sound'

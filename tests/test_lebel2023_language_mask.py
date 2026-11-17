@@ -21,7 +21,7 @@ def atlas():
     try:
         lana_probabilities()
     except (FileNotFoundError, ImportError):
-        pytest.skip('LanA atlas not present; set BRAINSCORE_LANA_ATLAS (osf.io/kzwbh)')
+        pytest.skip('LanA atlas not present; put it at $BRAINSCORE_DATA_HOME/lana-atlas (osf.io/kzwbh)')
 
 
 def needs_atlas(test):

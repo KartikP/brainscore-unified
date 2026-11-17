@@ -35,12 +35,11 @@ def test_declared_missing_asset_fails_before_either_factory(monkeypatch, tmp_pat
     import brainscore
     from brainscore.data import local
     asset = local.LocalAsset(
-        name='test-asset', env_var='UMI_TEST_ASSET', default_path='unused',
-        kind='data', why_local='test fixture', source='test', obtain='provide a file',
+        name='test-asset', kind='data', why_local='test fixture', source='test', obtain='provide a file',
         used_by=['offline-test-benchmark'],
     )
     monkeypatch.setitem(local.REGISTRY, asset.name, asset)
-    monkeypatch.setenv('UMI_TEST_ASSET', str(tmp_path / 'missing'))
+    monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path))
     for name in ('load_model', 'load_benchmark'):
         monkeypatch.setattr(brainscore, name, lambda _: pytest.fail('factory called'))
     with pytest.raises(local.LocalDataMissing, match='test-asset'):

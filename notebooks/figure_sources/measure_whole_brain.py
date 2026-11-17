@@ -1,7 +1,8 @@
 """Rerun the full evaluation and save the values used by notebook 16.
 
-Set BRAINSCORE_LEBEL_PICKLE before running. GPT-2 weights are downloaded on first
-use. This writes scores and provenance; render_whole_brain_figures.py draws them.
+Put the LeBel source pickle at $BRAINSCORE_DATA_HOME/sources/lebel2023/assembly_lebel_uts03.pkl
+(default data home ~/brainscore-data) before running. GPT-2 weights are downloaded on first use.
+This writes scores and provenance; render_whole_brain_figures.py draws them.
 """
 from pathlib import Path
 import hashlib

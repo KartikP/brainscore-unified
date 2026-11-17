@@ -9,8 +9,9 @@ a stills-only subject sees (``prepare_frames``) and the sound tracks
 from pathlib import Path
 from typing import Optional
 
-from brainscore import data_registry, stimulus_set_registry
+from brainscore import data_builder_registry, data_registry, stimulus_set_registry
 from brainscore.data import local
+from brainscore.data.packaging import DataBuilder
 
 
 STIMULUS_ID = 'BOLDMoments'
@@ -47,8 +48,6 @@ _CLIPS_SOURCE = ('https://openneuro.org/datasets/ds005165 (BOLD Moments; the cli
 # so no benchmark identifier is listed: the benchmark checks them when it reads them.
 LAHNER_FRAMES = local.register(local.LocalAsset(
     name='lahner2024-frames',
-    env_var='BRAINSCORE_LAHNER_FRAMES_DIR',
-    default_path='brainscore-data/lahner2024/frames',
     kind='stimuli',
     why_local='The frames are cut on this machine from the hosted clips; '
               'Brain-Score hosts the clips, not the frames.',
@@ -59,8 +58,6 @@ LAHNER_FRAMES = local.register(local.LocalAsset(
 
 LAHNER_SOUND = local.register(local.LocalAsset(
     name='lahner2024-sound',
-    env_var='BRAINSCORE_LAHNER_SOUND_DIR',
-    default_path='.brainio/lahner2024_audio_16k',
     kind='stimuli',
     why_local='The sound tracks (16 kHz mono WAV, one per clip) are demuxed on this '
               'machine from the hosted clips; Brain-Score does not host them.',
@@ -68,6 +65,102 @@ LAHNER_SOUND = local.register(local.LocalAsset(
     obtain='Nothing to download: the converter reads the hosted clips (it needs ffmpeg).',
     prepare=_SOUND_COMMAND,
 ))
+
+
+_OPENNEURO = ('BOLD Moments (Lahner et al. 2024), OpenNeuro ds005165 v1.0.4, '
+              'https://openneuro.org/datasets/ds005165; licence as OpenNeuro states it for ds005165 '
+              '(not recorded in this plugin).')
+_TIMESERIES_SOURCE = (f'{_OPENNEURO} The fMRIPrep derivatives `derivatives/versionB/fmriprep` and the '
+                      'raw `events.tsv` files, read from s3://openneuro.org/ds005165 with no account.')
+
+data_builder_registry['lahner2024'] = lambda: DataBuilder(
+    source=f'{_OPENNEURO} The hosted files ({STIMULUS_ID} stimuli and {ASSEMBLY_ID} GLM responses) '
+           'came from vision pull request #1249 (YingtianDt), whose packaging code is not in any '
+           'repository read so far.',
+    access='public, no account (the OpenNeuro data); the hosted files download with no account.',
+    layout='not known: the GLM betas and clips of ds005165 that the hosted files were made from.',
+    needs='not known.',
+    writes=f'`stimulus_{STIMULUS_ID}.csv`, `stimulus_{STIMULUS_ID}.zip`, `assy_{ASSEMBLY_ID}.nc`. '
+           'Use the hosted files: `brainscore.load_dataset` fetches them.',
+    sha1={f'stimulus_{STIMULUS_ID}.csv': STIMULUS_CSV_SHA1, f'stimulus_{STIMULUS_ID}.zip': STIMULUS_ZIP_SHA1,
+          f'assy_{ASSEMBLY_ID}.nc': ASSEMBLY_SHA1},
+    cannot='No script builds the GLM responses and the BOLDMoments stimuli from OpenNeuro. A maintainer '
+           'needs: the packaging code of vision pull request #1249, or a new script from the ds005165 '
+           'GLM betas and clips; the rule that keeps 1,026 of the 1,102 videos (933 training-set, 93 '
+           'test-set), which is not written anywhere found; then a cloud run that compares the rebuilt '
+           'files with the registered sha1 or, for the netCDF file, with the hosted values.',
+)
+
+data_builder_registry['lahner2024-frames'] = lambda: DataBuilder(
+    source=f'{_CLIPS_SOURCE}; licence as OpenNeuro states it for ds005165 (not recorded in this plugin).',
+    access='public, no account: the hosted clips download with no account.',
+    layout='none: the script reads the hosted clips through brainscore.load_stimulus_set.',
+    needs='opencv-python and Pillow; the hosted clips (fetched once into the brainio cache; size not '
+          'measured); disk for the frames and time not measured.',
+    writes=f'one PNG per clip and time ({", ".join(map(str, DEFAULT_SAMPLE_TIMES_MS))} ms): '
+           '`<clip>_t<ms>.png`.',
+    reads=LAHNER_FRAMES.name,
+    build='python -m brainscore.data.lahner2024.data_packaging.prepare_frames --frames-dir {output}',
+    fetches=True,
+)
+
+data_builder_registry['lahner2024-sound'] = lambda: DataBuilder(
+    source=f'{_CLIPS_SOURCE}; licence as OpenNeuro states it for ds005165 (not recorded in this plugin).',
+    access='public, no account: the hosted clips download with no account.',
+    layout='none: the script reads the hosted clips through brainscore.load_stimulus_set.',
+    needs='ffmpeg and ffprobe on the PATH; the hosted clips (fetched once into the brainio cache; size '
+          'not measured); about 100 MB of sound (3 s at 16 kHz, 16 bit, for each of 1,026 clips, '
+          'computed); time not measured.',
+    writes='one 16 kHz mono WAV per clip (`<clip>.wav`; a silent file for a clip with no sound) and '
+           '`manifest.json`.',
+    reads=LAHNER_SOUND.name,
+    build='python -m brainscore.data.lahner2024.data_packaging.prepare_audio_tracks --audio-dir {output}',
+    fetches=True,
+)
+
+data_builder_registry['lahner2024-timeresolved'] = lambda: DataBuilder(
+    source=_TIMESERIES_SOURCE,
+    access='public, no account.',
+    layout='none needed: the script lists and downloads the files itself into a private work folder '
+           '(deleted after the build). A local copy of ds005165 in the source folder, laid out as '
+           'the bucket (`derivatives/versionB/fmriprep/sub-XX/...`, `sub-XX/ses-XX/func/*_events.tsv`), '
+           'is read where it is and never changed.',
+    needs='the `aws` command, nibabel and nilearn; about 20 GB of disk at a time (about 200 GB pass '
+          'through); hours.',
+    writes=f'`assy_{TIMERESOLVED_ASSEMBLY_ID}.nc` and `{TIMERESOLVED_EVENTS_ID}.csv`.',
+    reads='brainio',
+    build=f'python -m brainscore.data.lahner2024.data_packaging.prepare_timeresolved_assembly '
+          f'--output-path {{output}}/assy_{TIMERESOLVED_ASSEMBLY_ID}.nc '
+          f'--events-path {{output}}/{TIMERESOLVED_EVENTS_ID}.csv '
+          '--data-cache {work} --checkpoint-path {work}/run_records.pkl --source-dir {source}',
+    sha1={f'assy_{TIMERESOLVED_ASSEMBLY_ID}.nc': TIMERESOLVED_ASSEMBLY_SHA1,
+          f'{TIMERESOLVED_EVENTS_ID}.csv': TIMERESOLVED_EVENTS_SHA1},
+    fetches=True,
+)
+
+data_builder_registry['lahner2024-motion'] = lambda: DataBuilder(
+    source=_TIMESERIES_SOURCE,
+    access='public, no account.',
+    layout='none needed: the script lists and downloads the fMRIPrep confounds files itself into a '
+           'private work folder (deleted after the build).',
+    needs='boto3; the confounds files of the 520 runs (size and time not measured).',
+    writes=f'`{TIMERESOLVED_MOTION_ID}.csv`.',
+    reads='brainio',
+    build=f'python -m brainscore.data.lahner2024.data_packaging.prepare_motion_sidecar '
+          f'--output-path {{output}}/{TIMERESOLVED_MOTION_ID}.csv --cache-dir {{work}}',
+    sha1={f'{TIMERESOLVED_MOTION_ID}.csv': TIMERESOLVED_MOTION_SHA1},
+    fetches=True,
+)
+
+data_builder_registry['destrieux-atlas'] = lambda: DataBuilder(
+    source='the Destrieux 2009 surface atlas on fsaverage5, as nilearn publishes it '
+           '(`nilearn.datasets.fetch_atlas_surf_destrieux`); its own terms.',
+    access='public, no account.',
+    layout='none.',
+    needs='nilearn; a download made by nilearn, size not measured.',
+    writes='Nilearn fetches the atlas on first use into `$BRAINSCORE_DATA_HOME/destrieux-atlas`, where the '
+           'auditory-ROI benchmark reads it as published.',
+)
 
 
 def frame_file(frames_dir: Path, video_path, time_ms: float) -> Path:
