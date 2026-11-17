@@ -37,7 +37,7 @@ def choose(row):             # your policy: read the row, return an action
     return 1
 
 
-agent = BrainScoreModel(identifier='my-agent', policy=lambda row: {'motor': choose(row)})
+subject = BrainScoreModel(identifier='my-agent', policy=lambda row: {'motor': choose(row)})
 ```
 
 Declare in `policy_in_channels` every row key the policy reads (default `('observation',)`); the session sends only those. A policy that needs earlier steps keeps them itself and clears them in `reset()`, which the model calls when an episode begins ([EXTENDING](../../EXTENDING.md#a-policy-that-keeps-history) has a complete example). A subject with its own loop can implement `participate` directly instead.
@@ -48,13 +48,13 @@ Declare in `policy_in_channels` every row key the policy reads (default `('obser
 from brainscore_core.streaming_helpers import environment_session, run_environment
 
 with environment_session(MyEnvironment(), seed=0) as session:
-    agent.participate(session)
+    subject.participate(session)
 actions = session.collect('motor')
 print(session.source.end_reason)   # 'terminal': the reason the episode ended
-agent.reset()
+subject.reset()
 
 # or, in one call:
-actions = run_environment(agent, MyEnvironment(), seed=0)
+actions = run_environment(subject, MyEnvironment(), seed=0)
 print(actions)   # [1, 1, 1]
 ```
 

@@ -165,9 +165,9 @@ class TurnWhenBlocked:
         return {'motor': action}
 
 
-agent = BrainScoreModel(identifier='turn-when-blocked', policy=TurnWhenBlocked(),
+subject = BrainScoreModel(identifier='turn-when-blocked', policy=TurnWhenBlocked(),
                         policy_in_channels=('observation',))
-score = brainscore.score(agent, 'GridGame-reach-5x5')   # 15 episodes, so 15 resets
+score = brainscore.score(subject, 'GridGame-reach-5x5')   # 15 episodes, so 15 resets
 ```
 
 The grid game's observation is a dict of arrays, so the policy compares observations
