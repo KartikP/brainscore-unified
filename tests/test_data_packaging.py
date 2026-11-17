@@ -306,6 +306,9 @@ CONTENT_PAIRS = {
     'csv equal content': ('a.csv', b'x,y\n1.0,a\n2.0,b\n', b'x,y\n1.00,a\n2.0000000001,b\n', True),
     'netcdf equal content': ('a.nc', _array([1.0, 2.0], [0.0, 1.0]), _array([1.0, 2.0000000001], [-0.0, 1.0]), True),
     'json equal content': ('a.json', {'a': [1.0, 'x']}, {'a': [1.0000000001, 'x']}, True),
+    'netcdf infinity against a finite value': ('a.nc', _array([np.inf]), _array([0.0]), False),
+    'netcdf opposite infinities': ('a.nc', _array([np.inf]), _array([-np.inf]), False),
+    'json null equal content': ('a.json', b'null', b' null\n', True),
 }
 
 
@@ -355,6 +358,21 @@ def test_with_no_copy_a_recorded_digest_decides(passes, tmp_path, monkeypatch, c
                                              'this machine to measure the difference'):
             package_data('made-up', source=source, output=tmp_path / 'second')
         assert not (tmp_path / 'second').exists()
+
+
+def test_the_recorded_digest_does_not_depend_on_the_order_of_the_variables(tmp_path, monkeypatch, capsys, offline):
+    def assembly(*names):
+        return xr.Dataset({name: ('row', np.array(values)) for name, values in
+                           (('a', [1.0, 2.0]), ('b', [3.0, 4.0])) if name in names}
+                          )[list(names)]
+    source = _made_up_plugin(tmp_path, monkeypatch, {'a.nc': _bytes(assembly('a', 'b'), tmp_path)})
+    first = package_data('made-up', source=source, output=tmp_path / 'first')
+    record = json.loads((first / 'build.json').read_text())['files']
+    record['a.nc']['sha1'] = '0' * 40               # no registered copy: the digest decides
+    (tmp_path / 'scripts' / 'expected.json').write_text(json.dumps({'made-up': record}))
+    _made_up_plugin(tmp_path, monkeypatch, {'a.nc': _bytes(assembly('b', 'a'), tmp_path)})
+    package_data('made-up', source=source, output=tmp_path / 'second')
+    assert 'check: same content, bytes differ' in capsys.readouterr().out
 
 
 def _hosted(tmp_path, monkeypatch, files):

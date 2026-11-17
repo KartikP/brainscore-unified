@@ -185,11 +185,12 @@ def _sha1(path: Path) -> str:
     return digest.hexdigest()
 
 
-TOLERANCE = 1e-6       # a float agrees when |built - expected| <= TOLERANCE * max(1, |expected|)
+TOLERANCE = 1e-6       # a finite float agrees when |built - expected| <= TOLERANCE * max(1, |expected|)
+NO_PARSER = object()   # what _read gives for a kind compared by bytes only (JSON null is content)
 
 
 def _read(path: Path):
-    """The parsed content of a file, or ``None`` for a kind with no parser (compared by bytes only).
+    """The parsed content of a file, or ``NO_PARSER`` for a kind compared by bytes only.
 
     A table is read as the LeBel loader reads it (``keep_default_na=False``: text such as ``NA``
     stays text); a netCDF file as xarray loads it; JSON as its structure.
@@ -203,7 +204,7 @@ def _read(path: Path):
         import xarray as xr
         with xr.open_dataset(path) as data:
             return data.load()
-    return None
+    return NO_PARSER
 
 
 def _counts(content) -> str:
@@ -231,7 +232,9 @@ def _array_differences(built, expected, where: str, exact: bool = False) -> list
         return [f'{where}: missing values at other places']
     with np.errstate(invalid='ignore'):
         gap = np.abs(built - expected)
-        off = ~((built == expected) | missing | (not exact and gap <= TOLERANCE * np.maximum(1, np.abs(expected))))
+        finite = np.isfinite(built) & np.isfinite(expected)      # infinities must be equal exactly
+        off = ~((built == expected) | missing
+                | (not exact and finite & (gap <= TOLERANCE * np.maximum(1, np.abs(expected)))))
     return [f'{where}: {int(off.sum())} values differ, the largest by {np.nanmax(gap[off]):.6g}'] if off.any() else []
 
 
@@ -300,7 +303,7 @@ def _content_digest(content) -> str:
     else:
         parts = [(f'{kind} {name}', list(map(str, part.dims)), part.values)
                  for kind, items in (('coordinate', content.coords), ('variable', content.data_vars))
-                 for name, part in items.items()]
+                 for name, part in sorted(items.items(), key=lambda item: str(item[0]))]   # a map: no order
     digest = hashlib.sha1()
     for name, dims, values in parts:      # each header fixes the length of the values after it
         digest.update(json.dumps([name, dims, values.dtype.str, values.shape]).encode())
@@ -343,7 +346,7 @@ def _check(builder: DataBuilder, recorded: dict, relative: str, entry: dict, con
     if sha1 == entry['sha1']:
         return 'identical', ''
     copy = _registered_copy(builder, file, sha1)
-    if copy and content is not None:
+    if copy and content is not NO_PARSER:
         differences = _differences(content, _read(copy))
         if differences:
             return 'failed', f'its content differs from the registered copy {copy}: ' + '; '.join(
@@ -415,8 +418,8 @@ def package_data(name: str, source: str | Path | None = None,
             relative = path.relative_to(staging).as_posix()
             content = _read(path)
             entry = files[relative] = {'bytes': path.stat().st_size, 'sha1': _sha1(path),
-                                       'counts': '' if content is None else _counts(content),
-                                       'digest': None if content is None else _content_digest(content)}
+                                       'counts': '' if content is NO_PARSER else _counts(content),
+                                       'digest': None if content is NO_PARSER else _content_digest(content)}
             entry['check'], problem = _check(builder, recorded.get(relative, {}), relative, entry, content)
             if problem:
                 problems.append(f'  {relative}: {problem}')
