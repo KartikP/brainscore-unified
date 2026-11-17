@@ -5,6 +5,7 @@ A screen in a stimulus column of that name (``present=('image:instruction', ...)
 the example of ``TaskContext``) is an image of the user turn, in its place.
 """
 import pytest
+import torch
 from PIL import Image
 
 from brainscore_core import TaskContext
@@ -28,8 +29,11 @@ class _Processor:
         return self
 
 
-class _Model:
-    device = 'cpu'
+class _Model(torch.nn.Module):
+    """A model on the CPU: its inputs go to the CPU."""
+    def __init__(self):
+        super().__init__()
+        self.layer = torch.nn.Linear(1, 1)
 
 
 def _screen(folder, name):
