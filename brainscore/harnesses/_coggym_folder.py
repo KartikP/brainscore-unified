@@ -34,6 +34,16 @@ _REQUIRED = ('evaluation/__init__.py', 'evaluation/providers.py', 'evaluation/cl
              'evaluation/trial_selection_map.json', 'EML')
 # Seconds one git or pip command may take (a stated bound, not a measured budget).
 _COMMAND_TIMEOUT_S = 3600
+# The only variables of this process that a git or pip command sees: the user, the locale,
+# the temporary folder, certificates, proxies and the package index. Nothing that can move
+# pip's destination (PIP_TARGET, PIP_PREFIX, PIP_ROOT, PIP_USER, a pip configuration file) or
+# git's repository (GIT_DIR, GIT_WORK_TREE) passes.
+_PASSED_VARIABLES = (
+    'PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TMPDIR',
+    'SSL_CERT_FILE', 'SSL_CERT_DIR', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE',
+    'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy',
+    'PIP_INDEX_URL', 'PIP_EXTRA_INDEX_URL', 'PIP_TRUSTED_HOST', 'PIP_CERT', 'PIP_CLIENT_CERT',
+    'PIP_PROXY', 'PIP_TIMEOUT', 'PIP_RETRIES')
 
 
 def environment_python(folder: Path) -> Path:
@@ -108,7 +118,8 @@ def _make(identifier, folder):
             raise ValueError(f'the checkout lacks {missing}')
         _run([sys.executable, '-m', 'venv', str(partial / 'env')])
         # Every package at its pinned version, nothing resolved beyond the list; then a check.
-        _run([str(python), '-m', 'pip', 'install', '--no-deps', '--no-input',
+        # Into this environment only (pip refuses to run outside a virtual environment).
+        _run([str(python), '-m', 'pip', 'install', '--require-virtualenv', '--no-deps', '--no-input',
               '--disable-pip-version-check', '-r', str(REQUIREMENTS)])
         _run([str(python), '-m', 'pip', 'check', '--disable-pip-version-check'])
         freeze = _run([str(python), '-m', 'pip', 'freeze', '--all', '--disable-pip-version-check'])
@@ -128,13 +139,18 @@ def _make(identifier, folder):
             f"permissions of {folder.parent}, and load the benchmark again.") from error
 
 
+def _command_environment() -> dict:
+    """The environment of a git or pip command: the passed variables only; no pip
+    configuration file is read, no user site is used, and git asks nothing."""
+    environment = {name: os.environ[name] for name in _PASSED_VARIABLES if name in os.environ}
+    environment.update(PIP_CONFIG_FILE=os.devnull, PIP_NO_INPUT='1', PIP_DISABLE_PIP_VERSION_CHECK='1',
+                       PYTHONNOUSERSITE='1', GIT_TERMINAL_PROMPT='0', GIT_CONFIG_NOSYSTEM='1')
+    return environment
+
+
 def _run(command) -> str:
-    environment = dict(os.environ, GIT_TERMINAL_PROMPT='0', PIP_NO_INPUT='1')
-    # The scoring environment's own paths must not leak into CogGym's environment.
-    for name in ('PYTHONPATH', 'PYTHONHOME', 'PIP_CONSTRAINT', 'PIP_REQUIRE_VIRTUALENV'):
-        environment.pop(name, None)
     return subprocess.run(command, check=True, capture_output=True, text=True,
-                          timeout=_COMMAND_TIMEOUT_S, env=environment).stdout
+                          timeout=_COMMAND_TIMEOUT_S, env=_command_environment()).stdout
 
 
 @contextlib.contextmanager

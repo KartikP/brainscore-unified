@@ -39,7 +39,8 @@ import pandas as pd
 
 from brainscore.experiments import CallableProtocol
 from brainscore.harnesses._child_process import ChildFailed, ChildProcess
-from brainscore.harnesses._coggym_folder import REFERENCE_REVISION, environment_python, ready_folder
+from brainscore.harnesses._coggym_folder import (REFERENCE_REVISION, _command_environment, environment_python,
+                                                 ready_folder)
 from brainscore.harnesses.adapter import run_request
 from brainscore.harnesses.coggym_validation import SLIDER_VALIDATION_POLICY
 from brainscore_core.compatibility import ExecutionNotFeasibleError
@@ -66,9 +67,10 @@ def _prompt_key(system, messages):
 
 def _check_checkout(checkout):
     def git(*arguments):
+        # The command environment of CogGym's folder: no GIT_DIR or other setting of this process.
         return subprocess.check_output(
             ['git', '-C', str(checkout), *arguments], text=True,
-            stderr=subprocess.STDOUT,
+            stderr=subprocess.STDOUT, env=_command_environment(),
         ).strip()
 
     try:
