@@ -98,7 +98,7 @@ model = BrainScoreModel(
 print(sorted(model.out_channels))                # the declared outputs
 # ['behavior', 'behavior:choice', 'behavior:probabilities', 'behavior:rating', 'behavior:rt',
 #  'neural:IT', 'neural:V1', 'neural:V4']
-# Without the statement, 'behavior:choice' is not in the list.
+# Without that line, 'behavior:choice' is not in the list.
 ```
 
 Pass the same `net` object to the extractor and to `model=`, so recording and interventions act on the same network.

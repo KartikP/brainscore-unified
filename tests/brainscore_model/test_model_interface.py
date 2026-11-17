@@ -428,7 +428,7 @@ class TestBehavioralPathDispatch:
             extractor={'vision': make_stub_extractor()},
             behavioral_readout_layer='layer4' if has_readout else None,
             **answer,
-            **({'capability_config': {'behavior-sessions': {'behavior': 'generation'}}} if answer and has_readout else {}),
+            **({'capability_config': {'behavior-sessions': {}}} if answer and has_readout else {}),
         )
 
     def _fitting_stub(self):
@@ -465,11 +465,11 @@ class TestBehavioralPathDispatch:
             warnings.simplefilter('error', UserWarning)
             m.start_task(ctx)
 
-    def test_two_paths_without_a_stated_owner_are_refused_at_construction(self):
-        with pytest.raises(ValueError, match="'generation', 'readout'.*'behavior'"):
-            BrainScoreModel(identifier='dual-path-model', region_layer_map={'IT': 'layer4'},
-                            extractor={'vision': make_stub_extractor()}, behavioral_readout_layer='layer4',
-                            answer=lambda stim_row, instruction, label_set: label_set[0])
+    def test_an_answer_and_a_readout_build_without_a_statement_and_declare_bare_behavior(self):
+        model = BrainScoreModel(identifier='dual-path-model', region_layer_map={'IT': 'layer4'},
+                                extractor={'vision': make_stub_extractor()}, behavioral_readout_layer='layer4',
+                                answer=lambda stim_row, instruction, label_set: label_set[0])
+        assert 'behavior' in model.out_channels
 
 
 # -- BrainScoreModel state tests ---------------------------------------------

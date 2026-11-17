@@ -200,21 +200,21 @@ class BrainScoreModel(Subject):
         :param capability_config: settings for capabilities, keyed by the
             capability identifier; a capability reads it as
             ``subject.capability_config``. Under ``'behavior-sessions'``: the
-            owner of answer formats, for example ``{'behavior': 'generation',
-            'behavior:rating': 'generation', 'behavior:probabilities':
-            ('likelihood', 'softmax')}``. A part (``'generation'``, which is
+            owner of answer formats, for example ``{'behavior:rating':
+            'generation', 'behavior:probabilities': ('likelihood', 'softmax')}``. A part (``'generation'``, which is
             ``answer``/``reply``; ``'likelihood'``; ``'readout'``) owns a
             format it gives natively; ``(part, conversion)`` owns a format the
             part derives: the readout gives ``behavior:choice`` by
             ``'argmax'``, the likelihood gives ``behavior:probabilities`` by
             ``'softmax'`` and ``behavior:choice`` by ``'softmax_argmax'``. A
             format with one native part is owned by it without a statement; a
-            format with two native parts (bare ``behavior``: ``answer`` and the
-            readout; ``behavior:rating``: ``reply`` and the readout) needs one.
-            ``behavior:rt`` follows the owner of ``behavior:probabilities`` and
-            is not stated. Bare ``behavior`` carries the answer of a response
-            task under its first format, given by the owner of that format; its
-            statement takes a part only, declares the output and selects no part;
+            format with two native parts (``behavior:rating``: ``reply`` and the
+            readout) needs one. ``behavior:rt`` follows the owner of
+            ``behavior:probabilities`` and is not stated. Bare ``behavior``
+            carries the answer of a response task under its first format, given
+            by the owner of that format; it is declared when ``answer`` or a
+            readout with an extractor is wired and takes no statement (a
+            statement that names it is refused);
             ``behavior:choice`` is the choice of a ``Choice`` response. They
             are different channels: neither is shorthand for the other. A
             wrong statement is refused here with a message that says what to

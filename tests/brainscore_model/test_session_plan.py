@@ -168,7 +168,7 @@ def test_trial_history_without_a_part_that_sees_it_is_refused_before_the_readout
     model = BrainScoreModel('answers', extractor={'text': extract}, in_channels={'text'},
                             behavioral_readout_layer='late', answer=answer, memory='trial_history',
                             capability_config={'behavior-sessions': {
-                                'behavior': 'generation', 'behavior:probabilities': 'readout'}})
+                                'behavior:probabilities': 'readout'}})
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)
     with pytest.raises(ExecutionNotFeasibleError, match="memory='trial_history' needs reply="):
         model.participate(stimulus_session(STIMULI, ['behavior:choice', 'behavior:probabilities'], task))

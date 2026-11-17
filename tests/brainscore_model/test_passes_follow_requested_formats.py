@@ -41,8 +41,8 @@ def subject(calls, statement, likelihood=False):
 
 
 @pytest.mark.parametrize('statement, likelihood, owner', [
-    ({'behavior': 'generation'}, False, None),                                   # readout gives them
-    ({'behavior': 'generation', 'behavior:probabilities': ('likelihood', 'softmax')}, True, 'likelihood'),
+    ({}, False, None),                                                           # readout gives them
+    ({'behavior:probabilities': ('likelihood', 'softmax')}, True, 'likelihood'),
 ])
 def test_only_the_owner_of_the_probabilities_runs_when_only_they_are_requested(statement, likelihood, owner):
     calls = []
@@ -58,7 +58,7 @@ def test_a_requested_choice_still_runs_the_answer_part():
     calls = []
     session = stimulus_session(STIMULI, ['behavior:choice', 'behavior:probabilities'],
                                TaskContext(response=Choice(['cat', 'dog']), fitting_stimuli=FITTING))
-    subject(calls, {'behavior': 'generation'}).participate(session)
+    subject(calls, {}).participate(session)
     assert calls.count('answer') == len(STIMULI)
 
 

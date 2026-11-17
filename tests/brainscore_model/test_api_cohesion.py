@@ -214,7 +214,7 @@ def test_the_model_parts_choose_the_behavioral_path(monkeypatch, parts):
     model = BrainScoreModel(
         identifier='dual-path', in_channels={'text'}, behavioral_readout_layer='layer',
         extractor={'text': Extractor()}, **answer,
-        capability_config={'behavior-sessions': {'behavior': 'generation'} if answer
+        capability_config={'behavior-sessions': {} if answer
                            else {'behavior:choice': ('readout', 'argmax')}},
     )
     fitted = []

@@ -327,7 +327,7 @@ def test_answers_saved_and_read_back_collect_as_the_live_answers(tmp_path, stimu
 
 
 class _CarryingSubject(Subject):
-    """Answers probabilities and carries one assembly with an array attribute in the meta."""
+    """Answers probabilities and carries one assembly with the given attribute value in the meta."""
     identifier = 'carrying'
     in_channels = {'text'}
     out_channels = {'behavior:probabilities'}
@@ -346,7 +346,7 @@ class _CarryingSubject(Subject):
                                     coords={'stimulus_id': ('presentation', ids), 'choice': ['cat', 'dog']},
                                     attrs={'response': response_record('behavior:probabilities', 'external')})
         carried = answer.copy()
-        carried.attrs = {'nested': {'values': np.array(self.nested)}}
+        carried.attrs = {'nested': {'values': self.nested}}
         session.respond(StreamEvent('behavior:probabilities', answer, None, meta={'carried': carried}))
 
     def reset(self):
@@ -366,6 +366,16 @@ def _record_answer(directory, nested):
 def test_outputs_whose_meta_holds_an_assembly_with_array_attributes_compare(tmp_path):
     """An assembly in event meta whose attributes hold arrays compares; a changed array differs."""
     a, b, c = (_record_answer(tmp_path / name, nested)
-               for name, nested in (('a', [1., np.nan]), ('b', [1., np.nan]), ('c', [1., 2.])))
+               for name, nested in (('a', np.array([1., np.nan])), ('b', np.array([1., np.nan])),
+                                    ('c', np.array([1., 2.]))))
+    assert compare_outputs(a, b)['equal']
+    assert not compare_outputs(a, c)['equal']
+
+
+def test_outputs_whose_attributes_hold_a_floating_nan_compare(tmp_path):
+    """Two recorded NaN attributes compare equal, as NaN entries of an array do; NaN against a
+    finite value compares different."""
+    a, b, c = (_record_answer(tmp_path / name, value)
+               for name, value in (('a', float('nan')), ('b', float('nan')), ('c', 1.0)))
     assert compare_outputs(a, b)['equal']
     assert not compare_outputs(a, c)['equal']

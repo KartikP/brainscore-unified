@@ -162,12 +162,11 @@ def get_model(identifier: str) -> BrainScoreModel:
         reply=reply,
         likelihood=likelihood,
         behavioral_readout_layer=REGION_LAYER_MAP['IT'],
-        # Generation answers the rating (reply and readout both give it natively). The bare
-        # behavior statement declares that output and selects no part: bare behavior carries
-        # the requested format's answer. The readout gives the probabilities natively (fitted
-        # on the task's fitting stimuli).
+        # Generation answers the rating (reply and readout both give it natively). Bare
+        # behavior carries the requested format's answer and takes no statement. The readout
+        # gives the probabilities natively (fitted on the task's fitting stimuli).
         capability_config={'behavior-sessions': {
-            'behavior': 'generation', 'behavior:rating': 'generation',
+            'behavior:rating': 'generation',
             'behavior:probabilities': 'readout'}},
         intervention=pytorch_intervention(_tower_root(visual, language_model)),
     )

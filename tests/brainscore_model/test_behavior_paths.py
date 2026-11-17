@@ -42,10 +42,10 @@ def _features(stimuli, layers, **kwargs):
 # The owner statement of each part set built below (each with the readout).
 STATEMENTS = {
     frozenset(): {},
-    frozenset({'answer'}): {'behavior': 'generation'},
+    frozenset({'answer'}): {},
     frozenset({'reply', 'likelihood'}): {'behavior:rating': 'generation',
                                          'behavior:probabilities': ('likelihood', 'softmax')},
-    frozenset({'answer', 'reply', 'likelihood'}): {'behavior': 'generation', 'behavior:rating': 'generation',
+    frozenset({'answer', 'reply', 'likelihood'}): {'behavior:rating': 'generation',
                                                    'behavior:probabilities': ('likelihood', 'softmax')},
 }
 
