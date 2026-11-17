@@ -2,7 +2,7 @@
 
 There are two kinds of notebook.
 
-- **Lessons** teach the concepts in order and download nothing. Lessons 1, 2 and 9 use tiny synthetic models; lessons 3-8, 10 and 11 use bundled SqueezeNet weights and CIFAR-10 images. Each runs on a laptop CPU in under two minutes.
+- **Lessons** teach the concepts in order, download nothing and need no credentials. Lessons 1, 2 and 9 use tiny synthetic models; lessons 3-8, 10 and 11 use bundled SqueezeNet weights and CIFAR-10 images. Each runs on a laptop CPU in under two minutes.
 - **Experiments** use those concepts to answer one scientific question each, written as a short lab report: question, background, hypothesis, method, results, conclusion and limits.
 
 Start with the lessons. Read the [manual](../docs/README.md) alongside them when a term is new.

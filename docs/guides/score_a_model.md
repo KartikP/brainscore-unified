@@ -28,8 +28,8 @@ such as `chance-baseline`, does not give the `motor` output, so this pair is N/A
 
 ## A model on brain data
 
-This example downloads the CLIP weights and the MajajHong2015 data, and a full run is
-slow on a laptop:
+This example downloads the CLIP weights and the public MajajHong2015 data (no credentials
+needed), and a full run is slow on a laptop:
 
 ```python
 import brainscore
@@ -38,7 +38,7 @@ score = brainscore.score('clip-vit-b-32', 'MajajHong2015public.IT-pls')  # macaq
 print(float(score), score.attrs.get('raw'))
 ```
 
-A score on behavior data that downloads no model weights: `brainscore.score('chance-baseline', 'Yeatman2021-lexical_decision-image')` downloads the ROAR stimuli and the human lexical decisions, and gives the chance floor of that benchmark. Compare a model with it.
+A score on behavior data that downloads no model weights: `brainscore.score('chance-baseline', 'Yeatman2021-lexical_decision-image')` downloads the ROAR stimuli and the human lexical decisions, and gives the chance floor of that benchmark. These files are not public: the pair needs AWS credentials ([Downloads and runtime](#downloads-and-runtime)).
 
 `score` accepts registered names or objects you built yourself. The random policy
 keeps its random state between runs, so build a new subject for a new score:
@@ -77,7 +77,7 @@ These list every identifier `load_model` and `load_benchmark` can find, across t
 
 ## Downloads and runtime
 
-The first run downloads model weights and benchmark data. Large checkpoints stop before downloading and report their size; set `BRAINSCORE_SKIP_MODEL_DOWNLOAD_CHECK=1` to allow them. Full benchmark runs of large models need a GPU machine.
+The first run downloads model weights and benchmark data. Hosted data comes from Amazon S3: Brain-Score first tries your AWS credentials, from the places boto3 reads (`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, or `aws configure`), then an anonymous request. Public files (for example `MajajHong2015public`) need no credentials. Other files in the bucket `brainscore-storage` (for example `Yeatman2021`) need credentials of an AWS account with read access to that bucket; without them the load fails with `ClientError('An error occurred (403) when calling the HeadObject operation: Forbidden')`. Large checkpoints stop before downloading and report their size; set `BRAINSCORE_SKIP_MODEL_DOWNLOAD_CHECK=1` to allow them. Full benchmark runs of large models need a GPU machine.
 
 ## Reading a score
 
