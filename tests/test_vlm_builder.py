@@ -716,7 +716,30 @@ def _given(subject, channel, folder):
     answer = session.collect(channel)
     if channel.startswith('neural:') or channel in ('behavior:probabilities', 'behavior:log_probabilities'):
         assert np.isfinite(np.asarray(answer.values, dtype=float)).all(), channel
+    if channel.startswith('neural:') and stimuli is pictures:
+        _check_pixel_reduction(subject, channel, stimuli, answer)
     return answer.shape[0]
+
+
+def _check_pixel_reduction(subject, channel, stimuli, answer):
+    """A pixel-input vision part records its fitted LayerPCA components: the recorded values are
+    the fitted reduction of the raw layer values, with one value per component."""
+    from brainscore_vision.model_helpers.activations.pca import LayerPCA
+    from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
+    image = subject._subject.extractor['vision']
+    if not isinstance(image, PytorchWrapper):
+        return
+    hooks = [hook for hook in image._extractor._batch_activations_hooks.values() if isinstance(hook, LayerPCA)]
+    assert len(hooks) == 1, f'the pixel path of {subject.identifier} applies no LayerPCA'
+    layer = subject.region_layer_map[channel.split(':', 1)[1]]
+    pca = hooks[0]._layer_pcas[layer]
+    hooks[0].handle.disable()
+    try:
+        raw = image(list(stimuli['image_file_name']), layers=[layer]).values
+    finally:
+        hooks[0].handle.enable()
+    assert answer.shape[1] == pca.n_components_ < raw.shape[1]
+    assert np.allclose(answer.values, pca.transform(raw), atol=1e-5)
 
 
 def test_every_builder_registration_gives_what_it_declares(monkeypatch, tmp_path):
