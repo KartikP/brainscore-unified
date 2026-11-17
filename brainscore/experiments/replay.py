@@ -143,6 +143,8 @@ def _equal(left, right):
         return left.keys() == right.keys() and all(_equal(left[k], right[k]) for k in left)
     if isinstance(left, (tuple, list)):
         return len(left) == len(right) and all(_equal(a, b) for a, b in zip(left, right))
+    if isinstance(left, (float, np.floating)) and np.isnan(left) and np.isnan(right):
+        return True             # as the array branch: NaN equals NaN (equal_nan)
     result = left == right
     if not isinstance(result, (bool, np.bool_)):
         raise TypeError('Supply a domain metric for unsupported comparison payloads')
