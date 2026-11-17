@@ -11,20 +11,39 @@ response, and the subject answers on ``behavior:text``. The subject builds its
 own prompt from these, so a chat model can place the instruction in the user
 turn where CogGym's own client sends a separate system text. Scores can
 therefore differ a little from scores made with CogGym's own client.
+
+CogGym's evaluator runs in its own environment, in a child process (``_coggym_worker.py``)
+started with the Python of CogGym's folder (``_environment_folder.py``). Its pre-flight gives the
+trials and prompts; one process per run serves every repetition and the analysis, and each
+model call comes back here as one request and one reply. The subject, the sessions, the
+recording and ``reset`` stay in this process; nothing is installed into it.
+
+What crosses the pipe, as JSON (UTF-8): the commands and their settings; the prepared trial
+ids, system texts and messages (pictures as CogGym's base64 text, videos as paths); each model
+call (system text, messages, model, temperature, length) and its reply (text, reasoning, token
+usage); the trial rows, summary, slider validation and analysis. Strings, integers of any size,
+finite floats, None and string-keyed objects in order cross unchanged. A tuple arrives as a
+list and a non-string key as a string, as in the trial file CogGym writes in one process; a
+value JSON cannot hold (bytes, a NumPy scalar, a NaN in a reply) stops the run with a clear
+error. CogGym scores only the reply's text, so the values a score depends on cross exactly; the
+trial rows' NaN and infinity reach this process unchanged, and its strict file writing refuses
+them, as in one process. A failure of the subject arrives in the evaluator as an exception of
+the same type name and message, not of the same class. The evaluator's module state lives for
+one run (all its repetitions and its analysis); the pre-flight and each run start a new process.
 """
 from __future__ import annotations
 
 import base64
 import dataclasses
 import hashlib
-import importlib
-import importlib.util
 import json
 import math
 import mimetypes
 from pathlib import Path
+import os
 import subprocess
 import sys
+import tempfile
 from collections.abc import Callable, Sequence
 from typing import Any
 
@@ -32,19 +51,34 @@ import numpy as np
 import pandas as pd
 
 from brainscore.experiments import CallableProtocol
+from brainscore.harnesses._child_process import ChildFailed, ChildProcess
+from brainscore.harnesses._environment_folder import (Library, _command_environment, environment_python,
+                                                      ready_folder)
 from brainscore.harnesses.adapter import run_request
-from brainscore.harnesses.coggym_validation import SLIDER_VALIDATION_POLICY, validate_slider_responses
+from brainscore.harnesses.coggym_validation import SLIDER_VALIDATION_POLICY
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Text
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
-REFERENCE_REVISION = 'a1cd9df1118fec80eba7463de237d1497d77e041'
 DEFAULT_EXPERIMENT = 'Hu2023Fine/exp1'
+# CogGym at the pinned commit, its pinned packages and the files of the checkout the worker reads.
+COGGYM = Library(
+    name='CogGym', repository='https://github.com/lance-ying/coggym.git',
+    commit='a1cd9df1118fec80eba7463de237d1497d77e041',
+    requirements=Path(__file__).with_name('coggym_requirements.txt'),
+    required_files=('evaluation/__init__.py', 'evaluation/providers.py', 'evaluation/cli.py',
+                    'evaluation/analyze.py', 'evaluation/public_manifest.json',
+                    'evaluation/trial_selection_map.json', 'EML'))
 # The input channel and the stimulus column of each kind of message part.
 _PART_CHANNELS = {'text': 'text', 'image': 'vision:image', 'video': 'vision:video'}
 _PART_COLUMNS = {'text': 'text', 'image': 'image_path', 'video': 'video_path'}
+# The worker that runs CogGym's evaluator in its own environment.
+_WORKER = Path(__file__).with_name('_coggym_worker.py')
+# Seconds the evaluator may work without a word while the parent waits for it (between two
+# model calls, or in its analysis): a stated bound, not a measured budget.
+_EVALUATOR_SILENCE_S = 900.0
 
 
 def _prompt_key(system, messages):
@@ -54,14 +88,15 @@ def _prompt_key(system, messages):
 
 def _check_checkout(checkout):
     def git(*arguments):
+        # The command environment of CogGym's folder: no GIT_DIR or other setting of this process.
         return subprocess.check_output(
             ['git', '-C', str(checkout), *arguments], text=True,
-            stderr=subprocess.STDOUT,
+            stderr=subprocess.STDOUT, env=_command_environment(),
         ).strip()
 
     try:
-        if git('rev-parse', 'HEAD') != REFERENCE_REVISION:
-            raise ValueError(f'CogGym requires revision {REFERENCE_REVISION}')
+        if git('rev-parse', 'HEAD') != COGGYM.commit:
+            raise ValueError(f'CogGym requires revision {COGGYM.commit}')
         if git('status', '--porcelain', '--untracked-files=no', '--',
                'evaluation', 'EML'):
             raise ValueError('CogGym evaluation code or experiment data has tracked edits')
@@ -69,28 +104,46 @@ def _check_checkout(checkout):
         raise ValueError('Provide a local Git checkout of the pinned CogGym revision') from error
 
 
-def _load_reference(checkout):
-    _check_checkout(checkout)
-    # Load relative imports without claiming the generic package name "evaluation".
-    suffix = hashlib.sha256(str(checkout).encode()).hexdigest()[:16]
-    name = f'_brainscore_coggym_{suffix}'
-    if name not in sys.modules:
-        spec = importlib.util.spec_from_file_location(
-            name, checkout / 'evaluation' / '__init__.py',
-            submodule_search_locations=[str(checkout / 'evaluation')],
-        )
-        package = importlib.util.module_from_spec(spec)
-        sys.modules[name] = package
-        spec.loader.exec_module(package)
-    try:
-        # Upstream imports google-genai even when its 'provider' is a local model.
-        importlib.import_module(f'{name}.providers')
-    except ImportError as error:
-        raise ImportError(
-            'Install the pinned CogGym checkout\'s evaluation/requirements.txt '
-            'in your experiment environment. CogGym\'s local providers need no API key.'
-        ) from error
-    return importlib.import_module(f'{name}.cli'), importlib.import_module(f'{name}.analyze')
+def _evaluator(folder: Path, log_directory: Path) -> ChildProcess:
+    """CogGym's evaluator in a child process with the Python of the folder's own environment.
+
+    The child gets no ``PYTHONPATH`` or ``PYTHONHOME`` of the scoring environment."""
+    environment = {name: value for name, value in os.environ.items()
+                   if name not in ('PYTHONPATH', 'PYTHONHOME')}
+    return ChildProcess([environment_python(folder), _WORKER, folder / 'checkout'], env=environment,
+                        log_directory=log_directory, idle_timeout_s=_EVALUATOR_SILENCE_S)
+
+
+def _refuse_start(identifier: str, folder: Path, error: ChildFailed) -> None:
+    """An evaluator that could not import a module becomes one load error with the next step."""
+    if error.error_type in ('ModuleNotFoundError', 'ImportError'):
+        from brainscore import LoadError
+        raise LoadError(
+            f"{identifier}: CogGym's evaluator could not start in {folder}: {error}. The folder's "
+            f'environment lacks a module that CogGym imports. Next step: remove {folder} and load '
+            f'the benchmark again with installs allowed (BS_INSTALL_DEPENDENCIES unset), so '
+            f'Brain-Score makes it anew; if the error comes back, the pinned list {COGGYM.requirements} '
+            f'lacks the package.') from error
+
+
+def _answer(adapter):
+    """The parent's side of a model call: the adapter's reply, or the failure CogGym records."""
+    def answer(call):
+        try:
+            reply = adapter.complete_with_metadata(call['system'], call['messages'], call['model'],
+                                                   call['temperature'], call['max_tokens'])
+        except Exception as error:
+            # CogGym stores a failed trial with this type and message, as in one process.
+            return {'error': [type(error).__name__, str(error)]}
+        for key, value in (reply or {}).items():
+            try:
+                json.dumps(value, allow_nan=False)
+            except (TypeError, ValueError) as error:
+                raise TypeError(
+                    f"The answer's {key!r} cannot go to CogGym's evaluator, which runs in its own "
+                    f'process and stores it in its trial file as JSON: {error}') from None
+        return {'reply': reply}
+    return answer
 
 
 def _check_image(part) -> bytes:
@@ -273,7 +326,7 @@ class CogGymRunner:
 
     def __init__(
         self,
-        checkout: str | Path,
+        folder: str | Path | None = None,
         *,
         model: str,
         temperature: float = 1.0,
@@ -291,41 +344,51 @@ class CogGymRunner:
             raise ValueError('max_tokens must be a positive integer')
         if type(repetitions) is not int or repetitions < 1:
             raise ValueError('repetitions must be a positive integer')
-        self.checkout = Path(checkout).resolve()
         self.model, self.temperature = model, temperature
         self.max_tokens, self.repetitions = max_tokens, repetitions
-        self._cli, self._analysis = _load_reference(self.checkout)
-        manifest = json.loads((self.checkout / 'evaluation' / 'public_manifest.json').read_text())
-        public = {entry['path'] for entry in manifest['experiments']}
-        if experiment not in public:
-            raise ValueError('experiment must be in the pinned public CogGym manifest')
         if not modalities or set(modalities) - {'text', 'image', 'video'}:
             raise ValueError('Declare supported modalities: text, image, video')
         self.experiment = experiment
         self.modalities = tuple(sorted(set(modalities)))
-        self._experiment = self._cli.load_experiment(self.checkout / 'EML' / experiment)
-        selection = self._cli._load_selection_map(
-            self.checkout / 'evaluation' / 'trial_selection_map.json',
-        )
-        canonical = self._cli._selected_trials(self._experiment, selection, False)
-        if trial_ids is None:
-            self._trials = canonical
-        else:
+        # CogGym's folder (made at the first use when installs are allowed), then its checkout.
+        self.folder = ready_folder(COGGYM, f'CogGym.{experiment.replace("/", ".")}', folder).resolve()
+        self.checkout = self.folder / 'checkout'
+        _check_checkout(self.checkout)
+        manifest = json.loads((self.checkout / 'evaluation' / 'public_manifest.json').read_text())
+        public = {entry['path'] for entry in manifest['experiments']}
+        if experiment not in public:
+            raise ValueError('experiment must be in the pinned public CogGym manifest')
+        requested = None
+        if trial_ids is not None:
             requested = list(trial_ids)
             if not requested or len(set(requested)) != len(requested):
                 raise ValueError('trial_ids must be nonempty and distinct')
-            known = {trial.id for trial in canonical}
-            if set(requested) - known:
-                raise ValueError('trial_ids must belong to the canonical CogGym selection')
-            self._trials = [trial for trial in canonical if trial.id in requested]
+        # CogGym's trial selection and prompts, from its evaluator in its own environment.
+        with tempfile.TemporaryDirectory(prefix='coggym-prepare-') as logs:
+            with _evaluator(self.folder, Path(logs)) as child:
+                try:
+                    prepared = child.ask({'do': 'prepare', 'experiment': experiment, 'trial_ids': requested})
+                except ChildFailed as error:
+                    _refuse_start(f'CogGym.{experiment.replace("/", ".")}', self.folder, error)
+                    raise
+        # The evaluator's environment, for the record of every run (the scoring environment's
+        # fingerprint does not cover it).
+        marker = json.loads((self.folder / 'ready.json').read_text())
+        self._environment = {
+            'revision': marker['revision'], 'requirements_sha256': marker['requirements_sha256'],
+            'freeze_sha256': hashlib.sha256('\n'.join(marker['freeze']).encode()).hexdigest()}
+        canonical = prepared['canonical']
+        if requested is not None and set(requested) - set(canonical):
+            raise ValueError('trial_ids must belong to the canonical CogGym selection')
+        self._trials = [trial['id'] for trial in prepared['trials']]
         if not self._trials:
             raise ValueError('The reference trial selection is empty')
         self.canonical_trial_count = len(canonical)
         self._prompt_trials = {}
         shown = {'text'}
         # Preflight the reference prompts, including media loading, before inference.
-        for trial in self._trials:
-            system, messages = self._cli.build_messages(trial, self._experiment)
+        for trial in prepared['trials']:
+            system, messages = trial['system'], trial['messages']
             required = {'text'}
             for message in messages:
                 content = message['content']
@@ -342,7 +405,7 @@ class CogGymRunner:
             if not isinstance(system, str) or required - set(self.modalities):
                 raise ValueError(f'The adapter must support these modalities: {sorted(required)}')
             shown |= required
-            self._prompt_trials.setdefault(_prompt_key(system, messages), []).append(trial.id)
+            self._prompt_trials.setdefault(_prompt_key(system, messages), []).append(trial['id'])
         # The inputs the experiment sends: the system text is the instruction, and
         # every kind of part the selected trials show. A subject that cannot take
         # one runs with it dropped (Contract Rules 5.2, 5.5, 5.6).
@@ -352,11 +415,11 @@ class CogGymRunner:
 
     @property
     def trial_ids(self) -> tuple[str, ...]:
-        return tuple(trial.id for trial in self._trials)
+        return tuple(self._trials)
 
     def describe(self) -> dict[str, Any]:
         return {
-            'reference_revision': REFERENCE_REVISION,
+            'reference_revision': COGGYM.commit,
             'experiment': self.experiment, 'model': self.model,
             'modalities': list(self.modalities),
             'temperature': self.temperature, 'max_tokens': self.max_tokens,
@@ -367,6 +430,7 @@ class CogGymRunner:
             'clock': 'no physical clock; provider_call is an attempt index',
             'reset': 'caller-supplied callback before each repetition',
             'slider_validation': SLIDER_VALIDATION_POLICY,
+            'evaluator_environment': dict(self._environment),
         }
 
     def protocol(self, *, reset: Callable[[int], None]) -> CallableProtocol:
@@ -422,27 +486,22 @@ class CogGymRunner:
             raise TypeError('The adapter must implement complete_with_metadata')
         return self._run(lambda repetition: adapter, Path(output_dir), reset, lambda path: None)
 
-    def _run(self, adapter_factory, directory, reset, register):
-        if not callable(reset):
-            raise TypeError('Supply a reset(repetition) callback for your adapter')
-        _check_checkout(self.checkout)
-        directory.mkdir(parents=True, exist_ok=False)
-        artifacts = []
-        validations = []
+    def _repetitions(self, child, adapter_factory, directory, reset, register):
+        """Each repetition: reset (in this process), CogGym's run (in the evaluator), its file."""
+        artifacts, validations = [], []
         for repetition in range(1, self.repetitions + 1):
             reset(repetition)
             adapter = adapter_factory(repetition)
-            results = self._cli._run_experiment(
-                self._experiment, self._trials, adapter,
-                self.model, self.temperature, self.max_tokens,
-            )
+            ran = child.ask({'do': 'run', 'model': self.model, 'temperature': self.temperature,
+                             'max_tokens': self.max_tokens}, _answer(adapter))
             # A trial the subject could not serve ends the run with the subject's own reason.
             refusal = getattr(adapter, 'refusal', None)
             if refusal is not None:
                 raise refusal
+            results = ran['results']
             # Keep reference parsing and scoring intact. Check separately whether
             # slider ratings really occur in the response, rather than in prose.
-            validation = validate_slider_responses(self._trials, results)
+            validation = ran['validation']
             validations.append(validation)
             coverage = {
                 'expected_trials': len(self._trials),
@@ -467,36 +526,48 @@ class CogGymRunner:
                         'summary_status': 'pending'},
             }
             path = directory / f'run-{repetition:03d}.json'
+            # The completed model calls first (summary pending): they stay saved even if the
+            # summary cannot be written (an overflow, a value that is not finite).
             path.write_text(json.dumps(artifact, indent=2, allow_nan=False) + '\n')
             artifacts.append(path)
-            # Keep completed model calls even if the reference scorer overflows.
             try:
-                artifact['summary'] = self._cli.aggregate_experiment(results)
-                artifact['umi']['summary_status'] = 'complete'
-            except BaseException as error:
-                artifact['umi']['summary_status'] = 'failed'
-                artifact['umi']['summary_error'] = {
-                    'type': type(error).__name__, 'message': str(error),
-                }
-                raise
-            finally:
+                if 'summary_error' in ran:
+                    artifact['umi'].update(summary_status='failed', summary_error=ran['summary_error'])
+                else:
+                    artifact['summary'] = ran['summary']
+                    artifact['umi']['summary_status'] = 'complete'
                 path.write_text(json.dumps(artifact, indent=2, allow_nan=False) + '\n')
+            finally:
                 register(path)
+            if 'summary_error' in ran:
+                failed = ran['summary_error']
+                raise RuntimeError(f"CogGym's summary failed: {failed['type']}: {failed['message']}; "
+                                   f'inspect {path}')
             if not complete:
                 raise RuntimeError(f'CogGym returned incomplete or failed trials; inspect {path}')
-        try:
-            rows, summary, skipped = self._analysis.analyze(
-                artifacts, self.checkout / 'EML',
-                self.checkout / 'evaluation' / 'public_manifest.json', min_items=5,
-            )
-        except BaseException as error:
-            path = directory / 'analysis-error.json'
-            path.write_text(json.dumps({
-                'status': 'failed', 'type': type(error).__name__, 'message': str(error),
-                'configuration': self.describe(),
-            }, indent=2, allow_nan=False) + '\n')
-            register(path)
-            raise
+        return artifacts, validations
+
+    def _run(self, adapter_factory, directory, reset, register):
+        if not callable(reset):
+            raise TypeError('Supply a reset(repetition) callback for your adapter')
+        _check_checkout(self.checkout)
+        directory.mkdir(parents=True, exist_ok=False)
+        # One evaluator process for the whole run: CogGym's module state lives across the
+        # repetitions and the analysis, as in one process. It is stopped and reaped on any exit.
+        with _evaluator(self.folder, directory / 'evaluator') as child:
+            child.ask({'do': 'prepare', 'experiment': self.experiment, 'trial_ids': list(self._trials)})
+            artifacts, validations = self._repetitions(child, adapter_factory, directory, reset, register)
+            try:
+                analyzed = child.ask({'do': 'analyze', 'paths': [str(path) for path in artifacts]})
+            except ChildFailed as error:
+                path = directory / 'analysis-error.json'
+                path.write_text(json.dumps({
+                    'status': 'failed', 'type': error.error_type or type(error).__name__,
+                    'message': str(error), 'configuration': self.describe(),
+                }, indent=2, allow_nan=False) + '\n')
+                register(path)
+                raise
+        rows, summary, skipped = analyzed['rows'], analyzed['summary'], analyzed['skipped']
         result = {'configuration': self.describe(), 'experiments': rows,
                   'summary': summary, 'skipped': skipped,
                   'repetitions': [json.loads(path.read_text())['umi']['coverage'] for path in artifacts]}
