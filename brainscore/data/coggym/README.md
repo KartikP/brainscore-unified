@@ -19,11 +19,14 @@ On a fresh machine, the first `load_benchmark("CogGym...")` makes one folder:
   (google-genai, python-dotenv, Pillow) and their dependencies at the versions of the
   earlier CogGym runs; `pip check` at creation is the test that it is complete on
   your platform;
-- `ready.json`: the commit, the requirements' hash and the environment's package list.
+- `ready.json`: the commit, the requirements' hash, the Python version and the
+  environment's package list.
 
-The folder is `~/.brain-score/coggym/<commit>-<requirements hash>`; set
-`BRAINSCORE_COGGYM_FOLDER` to put these folders somewhere else, or pass
-`folder=...` to `load_benchmark` to name one.
+The folder is `~/.brain-score/environments/CogGym/<commit>-<hash>` (the hash covers the
+requirements and the Python version); set `BRAINSCORE_ENVIRONMENTS_HOME` to an absolute
+path to put the folders of every outside library somewhere else, or pass `folder=...` to
+`load_benchmark` to name one. The general mechanism is described in
+`brainscore/harnesses/README.md`.
 
 How the folder is made:
 - in a temporary folder next to it (`.<name>.partial-*`), published in one step only
