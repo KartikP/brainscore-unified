@@ -19,6 +19,7 @@ Each guide answers one "how do I" question.
 | Install UMI | [Install](guides/install.md) |
 | Score a model on a benchmark | [Score a model](guides/score_a_model.md) |
 | Connect my own network | [Wrap your model](guides/wrap_your_model.md) |
+| Register a Hugging Face vision-language model | [Vision-language model](guides/vision_language_model.md) |
 | Use a model already in Brain-Score | [Existing models](guides/existing_models.md) |
 | Load or add a dataset | [Data](guides/data.md) |
 | Write a benchmark | [Write a benchmark](guides/write_a_benchmark.md) |
