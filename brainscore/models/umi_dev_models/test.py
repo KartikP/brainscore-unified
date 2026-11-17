@@ -75,6 +75,7 @@ class _StatedLayout(torch.nn.Module):
 
     def forward(self, input_ids, attention_mask=None, pixel_values=None, image_grid_thw=None,
                 pixel_values_videos=None, video_grid_thw=None, **_):
+        self.passes = getattr(self, 'passes', 0) + 1
         for given, grid in ((pixel_values, image_grid_thw), (pixel_values_videos, video_grid_thw)):
             if given is not None:
                 self.get_submodule(self._vision)(pixel_values=given, grid_thw=grid)
@@ -278,26 +279,33 @@ def test_each_declared_output_comes_out_of_one_session(stand_in, identifier):
 
 
 @pytest.mark.parametrize('identifier', IDENTIFIERS)
-def test_a_written_answer_with_the_language_layer_is_refused_before_compute(stand_in, identifier):
-    """One session for regions, one for an answer: a trial of a picture and text that asks for a written
-    answer and the language layer is refused before any forward pass. Pre-flight accepts the pair (the
-    text input answers the language layer), so the refusal comes when the session starts."""
+def test_the_language_layer_during_a_task_is_refused_before_compute(stand_in, identifier):
+    """One session for regions, one for an answer: a session that asks for the language layer under a task
+    (with or without an answer among its outputs; on a picture, a clip or text) is refused before any
+    forward pass of the model, its vision part or its language part. Pre-flight accepts such pairs (the text
+    input answers the language layer), so the refusal comes when the session starts."""
     from brainscore_core.compatibility import ExecutionNotFeasibleError, check_compatibility
     config, subject = study.MODEL_CONFIGS[identifier], model_registry[identifier]()
     pictures = _pictures(stand_in, 2)
-    trials = StimulusSet({'stimulus_id': ['p0', 'p1'], 'image_file_name': list(pictures['image_file_name']),
-                          'sentence': ['the cat', 'the dog']})
-    trials.identifier = 'umi-dev-picture-and-text'
-    outputs = ['behavior:text', 'neural:language_system']
+    shown = {'image': StimulusSet({'stimulus_id': ['p0', 'p1'], 'sentence': ['the cat', 'the dog'],
+                                   'image_file_name': list(pictures['image_file_name'])}),
+             'text': StimulusSet({'stimulus_id': ['t0'], 'sentence': ['the cat']})}
+    if config['video']:
+        clip = _clip(stand_in)
+        shown['video'] = StimulusSet({'stimulus_id': ['c0'], 'sentence': ['the cat'], 'video_path': list(clip['video_path'])})
+    for name, stimuli in shown.items():
+        stimuli.identifier = f'umi-dev-task-{name}'
     assert check_compatibility(subject, SimpleNamespace(
         identifier='picture-and-text', trial_memory='none', required_input_channels=frozenset({'vision:image', 'text'}),
-        requested_output_channels=frozenset(outputs))).kind == 'full'
-    task = TaskContext(response=Text(max_tokens=2), present=('image', 'text'))
+        requested_output_channels=frozenset({'behavior:text', 'neural:language_system'}))).kind == 'full'
     network = subject._subject._model
-    vision = network.get_submodule(config['vision'][0])
-    with pytest.raises(ExecutionNotFeasibleError, match='language_system'):
-        _collect(subject, trials, outputs, task)
-    assert vision.passes == 0
+    parts = [network, network.get_submodule(config['vision'][0]), network.get_submodule(config['language'][0])]
+    for form, stimuli in shown.items():
+        present = ('text',) if form == 'text' else (form, 'text')
+        for outputs in (['behavior:text', 'neural:language_system'], ['neural:language_system']):
+            with pytest.raises(ExecutionNotFeasibleError, match='language_system'):
+                _collect(subject, stimuli, outputs, TaskContext(response=Text(max_tokens=2), present=present))
+    assert [getattr(part, 'passes', 0) for part in parts] == [0, 0, 0]
 
 
 @pytest.mark.parametrize('processor, whole, tiled', [

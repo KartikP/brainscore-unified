@@ -36,8 +36,9 @@ def depth_layers(block_paths, depths):
 class _StudySubject(ProvenanceSubject):
     """The study's provenance on every response, and the one input the policy acts on: it reads the
     observation's frame, so ``motor`` is answered from an observation only. The study records the
-    language layer in a session without an answer: a session that asks for it together with an
-    answer is refused before any compute."""
+    language layer in a passive session only: a session that asks for it under a task (the planner runs
+    the task even when only neural outputs are requested) or together with an answer is refused before
+    any compute."""
 
     @property
     def output_inputs(self):
@@ -47,12 +48,14 @@ class _StudySubject(ProvenanceSubject):
         return inputs
 
     def participate(self, session):
-        outputs = set(session.outputs or ())
-        if 'neural:language_system' in outputs and any(o.startswith('behavior') or o == 'motor' for o in outputs):
+        outputs, task = set(session.outputs or ()), session.task
+        answering = (task is not None and task.task_type != 'passive') or any(
+            o.startswith('behavior') or o == 'motor' for o in outputs)
+        if 'neural:language_system' in outputs and answering:
             from brainscore_core.compatibility import ExecutionNotFeasibleError
             raise ExecutionNotFeasibleError(
-                f"'{self.identifier}' records neural:language_system in a session without an answer only "
-                f"(the study's rule: one session for regions, one for an answer). Ask for it in its own session.")
+                f"'{self.identifier}' records neural:language_system in a passive session only (the study's "
+                f"rule: one session for regions, one for an answer). Ask for it in its own passive session.")
         super().participate(session)
 
 
