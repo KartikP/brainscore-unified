@@ -681,6 +681,6 @@ def _likelihood_layouts(likelihood):
         raise ValueError(f"likelihood= maps the layouts 'continuation' (required) and 'segment' "
                          f"to their parts; got {sorted(likelihood)}")
     for layout, part in likelihood.items():
-        if part is not None and not callable(part):
+        if not callable(part):
             raise ValueError(f"likelihood['{layout}'] is a callable part, not {type(part).__name__}")
     return likelihood['continuation'], likelihood.get('segment')
