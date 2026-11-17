@@ -214,3 +214,28 @@ def test_no_distributed_text_names_a_deleted_location_variable():
         text = path.read_text(errors='ignore')
         found += [f'{relative}: {name}' for name in deleted if name in text]
     assert not found, found
+
+
+@pytest.mark.parametrize('document', ['brainscore/data/lebel2023/README.md', 'notebooks/figure_sources/README.md',
+                                      'notebooks/assets/whole_brain/README.md',
+                                      'notebooks/archive/16_whole_brain_encoding.ipynb'])
+def test_the_lebel_source_command_places_the_pickle_where_the_loader_reads_it(document, tmp_path):
+    """A data home that starts with ~ is expanded as everywhere else."""
+    import json
+    import os
+    import re
+    import subprocess
+    import sys
+    root = pathlib.Path(__file__).resolve().parents[1]
+    text = (root / document).read_text()
+    if document.endswith('.ipynb'):
+        text = ''.join(line for cell in json.loads(text)['cells'] for line in cell['source'])
+    command = re.search(r'^SOURCE=.*?mv [^\n]*', text, flags=re.M | re.S).group(0)
+    pickle = tmp_path / 'download' / 'assembly_lebel_uts03.pkl'
+    pickle.parent.mkdir()
+    pickle.write_bytes(b'pickle')
+    command = re.sub(r'/path/to/\S+\.pkl', str(pickle), command)
+    environment = dict(os.environ, HOME=str(tmp_path / 'user'), BRAINSCORE_DATA_HOME='~/data',
+                       PATH=f'{pathlib.Path(sys.executable).parent}{os.pathsep}{os.environ["PATH"]}')
+    subprocess.run(['bash', '-c', command], env=environment, cwd=tmp_path, check=True)
+    assert (tmp_path / 'user' / 'data' / 'sources' / 'lebel2023' / 'assembly_lebel_uts03.pkl').read_bytes() == b'pickle'

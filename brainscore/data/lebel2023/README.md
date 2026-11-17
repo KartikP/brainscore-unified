@@ -18,7 +18,7 @@ It does not accept arbitrary LeBel files or raw scans.
 
 ```bash
 # The source pickle in its one place (or under $BRAINSCORE_DATA_HOME/sources/lebel2023)
-SOURCE="${BRAINSCORE_DATA_HOME:-$HOME/brainscore-data}/sources/lebel2023"
+SOURCE="$(python -c "from brainscore.data.packaging import source_folder; print(source_folder('lebel2023'))")"
 mkdir -p "$SOURCE"
 mv /path/to/UTS03-assembly.pkl "$SOURCE"/assembly_lebel_uts03.pkl
 # The converted files of other settings go to ~/brainscore-data/lebel2023-converted
