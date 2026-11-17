@@ -10,9 +10,12 @@ with `data_packaging/package_hosted.py`.
 ## Other settings: build locally
 
 A context window other than 5 TRs (`context_window_tr=`) or 32 words (`context_words=`) is built
-from the source. Obtain the UTS03 assembly pickle through the
-[LITCoder source](https://github.com/GT-LIT-Lab/litcoder_release) and its access
-instructions. The loader expects that author's `SimpleNeuroidAssembly` layout,
+from the source: the UTS03 assembly pickle `assembly_lebel_uts03.pkl` (sha1
+`d672e6fa0413259cb761042bd0a64990b12ab6dc`). It is not downloadable from a public page:
+the [LITCoder release](https://github.com/GT-LIT-Lab/litcoder_release) does not offer it
+(it offers a script that makes per-participant pickles from fMRIPrep output), and how the
+file was made is not recorded. A Brain-Score maintainer keeps an archive copy; ask the
+maintainers. The loader expects that author's `SimpleNeuroidAssembly` layout,
 including story words, their onset times, TR times and cortical responses.
 It does not accept arbitrary LeBel files or raw scans.
 
@@ -62,9 +65,9 @@ has not yet been compared with the registered sha1.
 
 ### lebel2023
 
-- Source: LeBel et al. 2023, OpenNeuro ds003020 (https://openneuro.org/datasets/ds003020), CC0, as the UTS03 assembly pickle of the LITCoder release (https://github.com/GT-LIT-Lab/litcoder_release).
-- Access: not recorded here: the LITCoder release page states how to obtain the pickle; the recordings themselves are public (CC0).
+- Source: LeBel et al. 2023, OpenNeuro ds003020 (https://openneuro.org/datasets/ds003020), CC0, as one file: `assembly_lebel_uts03.pkl` (2,975,580,003 bytes, sha1 d672e6fa0413259cb761042bd0a64990b12ab6dc), a `SimpleNeuroidAssembly` pickle of the Huth-lab `encoding` package for participant UTS03 (25 stories). How it was made is not recorded. The LITCoder release (https://github.com/GT-LIT-Lab/litcoder_release) does not offer this file: it offers a script (`fmri_processing/to_mni_lebel.py`) that makes per-participant pickles from fMRIPrep output.
+- Access: the source file is not downloadable from a public page; a Brain-Score maintainer keeps an archive copy (the sha1 above): ask the maintainers. The recordings themselves are public (CC0).
 - Needs: the unified install (numpy, pandas, xarray); about 3 GB of disk for the pickle and more than 3 GB of memory; time not measured.
-- Command: `python -m brainscore.data package lebel2023` with the source in `~/brainscore-data/sources/lebel2023` (or `--source <folder>`): `assembly_lebel_uts03.pkl` (the UTS03 assembly pickle of the LITCoder release). Output (or `--output <new folder>`): each identical file at `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), where the loader reads it; the build record in `$BRAINIO_HOME/packaged/lebel2023`.
+- Command: `python -m brainscore.data package lebel2023` with the source in `~/brainscore-data/sources/lebel2023` (or `--source <folder>`): `assembly_lebel_uts03.pkl` (sha1 d672e6fa0413259cb761042bd0a64990b12ab6dc). Output (or `--output <new folder>`): each identical file at `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), where the loader reads it; the build record in `$BRAINIO_HOME/packaged/lebel2023`.
 - Writes: `assy_LeBel2023-UTS03.nc`, `stimulus_LeBel2023-UTS03.csv`, `stimulus_LeBel2023-UTS03-words.csv`, with the registered default settings.
 - Check: sha1 of `assy_LeBel2023-UTS03.nc` is `e03fd25503004d82ea932e272dbbdcb867d99a92`; sha1 of `stimulus_LeBel2023-UTS03.csv` is `9ddf67c7f3f9702473248eb15a877377d11732e6`; sha1 of `stimulus_LeBel2023-UTS03-words.csv` is `ce3d1ba0dc7457d189547ca8cda2c87ebcc8d5c8`

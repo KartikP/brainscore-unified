@@ -30,7 +30,7 @@ ALGONAUTS_PREPARED = local.register(local.LocalAsset(
     name='algonauts2025-prepared',
     kind='neural data',
     why_local='The packaging builds these files from the competition files (the Friends and Movie10 '
-              'films and the fMRI, under a data-use agreement); Brain-Score does not host them.',
+              'films and the fMRI, shared under CC0); Brain-Score does not host them.',
     source='https://github.com/courtois-neuromod/algonauts_2025.competitors',
     obtain='The competition dataset via DataLad (~130 GB), put at $BRAINSCORE_DATA_HOME/sources/algonauts2025; '
            'the command below then writes the assemblies, stimulus tables and per-scan media that the '
@@ -41,14 +41,15 @@ ALGONAUTS_PREPARED = local.register(local.LocalAsset(
 
 data_builder_registry['algonauts2025'] = lambda: DataBuilder(
     source='the Algonauts 2025 competition data (Courtois NeuroMod): '
-           'https://github.com/courtois-neuromod/algonauts_2025.competitors. The fMRI is under the '
-           'data-use agreement of that page; the films (Friends, Movie10) are copyrighted.',
-    access='a data-use agreement: follow the DataLad instructions of the page above and sign its terms.',
+           'https://github.com/courtois-neuromod/algonauts_2025.competitors; its Terms section states that the '
+           'data is shared under CC0.',
+    access='public, no account: the DataLad instructions of the page above download it with no form and no '
+           'account (140.6 GB, about 40 minutes measured).',
     layout='the DataLad dataset as it installs: `fmri/sub-0X/...` (HDF5 responses and '
            '`target_sample_number/`) and `stimuli/` (`movies/`, `transcripts/`), kept together.',
-    needs='DataLad and git-annex (from conda-forge on Ubuntu 22.04), h5py, ffmpeg and ffprobe; about '
-          '130 GB in; out about 25 GB of assemblies, 1.6 GB of frames and 7.8 GB of sound (the training '
-          'films; clips not measured); frames took about 12 minutes with 8 workers, the rest not measured.',
+    needs='DataLad and git-annex (from conda-forge on Ubuntu 22.04), h5py, ffmpeg and ffprobe; '
+          '140.6 GB in; out 17.5 GB: 3.36 GB of assemblies and tables, 4.78 GB of clips, 1.51 GB of frames '
+          'and 7.77 GB of sound; the packaging took 110 minutes (measured once).',
     writes='per participant 1, 2, 3, 5 and split: `algonauts2025_<split>_sub0X.nc` (friends: the fMRI; '
            'friends_s7 and ood: placeholders with no fMRI), `algonauts2025_stim_<split>.csv`, and one '
            'file per scan of the training films: `frames/` (all participants), `clips/` and `sound/` '

@@ -55,9 +55,10 @@ def _pickle_path(pickle_path=None) -> Path:
     path = Path(pickle_path) if pickle_path else source_folder('lebel2023') / PICKLE
     if not path.exists():
         raise local.LocalDataMissing(
-            f'The LeBel source pickle is not at {path}. Put the UTS03 assembly pickle of the LITCoder '
-            f'release (https://github.com/GT-LIT-Lab/litcoder_release) there as {PICKLE}, or give '
-            'pickle_path. The registered default settings read the hosted files and need no pickle.')
+            f'The LeBel source pickle is not at {path}. It is not downloadable from a public page: a '
+            f'Brain-Score maintainer keeps an archive copy (sha1 d672e6fa0413259cb761042bd0a64990b12ab6dc); '
+            f'put it there as {PICKLE}, or give pickle_path. The registered default settings read the '
+            'hosted files and need no pickle.')
     return path
 
 
