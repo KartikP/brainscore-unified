@@ -368,57 +368,73 @@ def test_a_part_offloaded_or_spread_is_refused():
 def test_a_missing_package_and_a_missing_class_are_named_before_any_download(monkeypatch):
     """requirements.txt states each package once; a model that uses one names it, and a load of that model
     without it says what to install. A model that does not use it loads."""
-    assert study.REQUIREMENTS == ['num2words']
-    assert all(set(c['packages']) <= set(study.REQUIREMENTS) for c in study.MODEL_CONFIGS.values())
-    import transformers.utils
+    import importlib
+    import importlib.util
+    from packaging.requirements import Requirement
     from brainscore import LoadError
-    monkeypatch.setattr(transformers.utils, 'is_num2words_available', lambda: False)
+    assert all(Requirement(line) for line in study.REQUIREMENTS)        # each line is a valid requirement
+    assert all(set(c['packages']) <= set(study.REQUIREMENTS) for c in study.MODEL_CONFIGS.values())
+    real = importlib.util.find_spec
+    missing = set(study.REQUIREMENTS)
+    monkeypatch.setattr(importlib.util, 'find_spec', lambda name, *a, **k: None if name in missing else real(name, *a, **k))
+    for package in missing:     # the processor's own check, where transformers has one
+        monkeypatch.setattr(importlib.import_module('transformers.utils'), f'is_{package}_available', lambda: False, raising=False)
     monkeypatch.setattr(study, '_load', lambda *a: pytest.fail('no load before the refusal'))
-    with pytest.raises(LoadError, match="needs the package 'num2words', which is not installed. Next step"):
-        model_registry['smolvlm2-256m_UMI-dev']()
-    study._refuse('qwen3-vl-2b_UMI-dev', study.MODEL_CONFIGS['qwen3-vl-2b_UMI-dev'])    # uses no package of the list
+    for identifier, config in study.MODEL_CONFIGS.items():
+        if config['packages']:
+            with pytest.raises(LoadError, match=f"needs the package '{config['packages'][0]}', which is not installed. Next step"):
+                model_registry[identifier]()
+        else:
+            study._refuse(identifier, config)       # a model that uses none of the packages loads without them
     with pytest.raises(LoadError, match='NoSuchVLM'):
         study._refuse('m', dict(study.MODEL_CONFIGS['qwen3-vl-2b_UMI-dev'], model_class='NoSuchVLM'))
 
 
-@pytest.mark.parametrize('model_class, config', [
-    ('Qwen3VLForConditionalGeneration', lambda t: t.Qwen3VLConfig(
+# A small configuration of each real class, for its path check (no settings files, no weights).
+SMALL_CONFIGS = {
+    'Qwen3VLForConditionalGeneration': lambda t: t.Qwen3VLConfig(
         text_config=dict(num_hidden_layers=2, hidden_size=64, intermediate_size=64, num_attention_heads=2, num_key_value_heads=1,
                          head_dim=32, rope_scaling={'rope_type': 'default', 'mrope_section': [8, 4, 4]}),
         vision_config=dict(depth=3, hidden_size=32, num_heads=2, intermediate_size=32, out_hidden_size=64,
-                           deepstack_visual_indexes=[0, 1]))),
-    ('Qwen3VLMoeForConditionalGeneration', lambda t: t.Qwen3VLMoeConfig(
+                           deepstack_visual_indexes=[0, 1])),
+    'Qwen3VLMoeForConditionalGeneration': lambda t: t.Qwen3VLMoeConfig(
         text_config=dict(num_hidden_layers=2, hidden_size=64, intermediate_size=64, num_attention_heads=2, num_key_value_heads=1,
                          head_dim=32, rope_scaling={'rope_type': 'default', 'mrope_section': [8, 4, 4]}, num_experts=2,
                          num_experts_per_tok=1, moe_intermediate_size=32),
         vision_config=dict(depth=3, hidden_size=32, num_heads=2, intermediate_size=32, out_hidden_size=64,
-                           deepstack_visual_indexes=[0, 1]))),
-    ('Qwen2_5_VLForConditionalGeneration', lambda t: t.Qwen2_5_VLConfig(
+                           deepstack_visual_indexes=[0, 1])),
+    'Qwen2_5_VLForConditionalGeneration': lambda t: t.Qwen2_5_VLConfig(
         text_config=dict(vocab_size=300, num_hidden_layers=2, hidden_size=64, intermediate_size=64, num_attention_heads=2,
                          num_key_value_heads=1, rope_scaling={'type': 'mrope', 'mrope_section': [8, 8, 16]}),
         vision_config=dict(depth=3, hidden_size=32, num_heads=2, intermediate_size=32, out_hidden_size=64,
-                           fullatt_block_indexes=[2]))),
-    ('SmolVLMForConditionalGeneration', lambda t: t.SmolVLMConfig(
+                           fullatt_block_indexes=[2])),
+    'SmolVLMForConditionalGeneration': lambda t: t.SmolVLMConfig(
         text_config=dict(vocab_size=1000, pad_token_id=2, num_hidden_layers=3, hidden_size=64, intermediate_size=64,
                          num_attention_heads=2, num_key_value_heads=1),
-        vision_config=dict(num_hidden_layers=2, hidden_size=32, intermediate_size=32, num_attention_heads=2))),
-    ('Gemma3ForConditionalGeneration', lambda t: t.Gemma3Config(
+        vision_config=dict(num_hidden_layers=2, hidden_size=32, intermediate_size=32, num_attention_heads=2)),
+    'Gemma3ForConditionalGeneration': lambda t: t.Gemma3Config(
         text_config=dict(vocab_size=300, hidden_size=32, intermediate_size=32, num_hidden_layers=3, num_attention_heads=2,
                          num_key_value_heads=1, head_dim=16),
         vision_config=dict(hidden_size=32, intermediate_size=32, num_hidden_layers=2, num_attention_heads=2,
-                           image_size=28, patch_size=14), mm_tokens_per_image=4)),
-    ('InternVLForConditionalGeneration', lambda t: t.InternVLConfig(
+                           image_size=28, patch_size=14), mm_tokens_per_image=4),
+    'InternVLForConditionalGeneration': lambda t: t.InternVLConfig(
         text_config=dict(model_type='qwen2', vocab_size=300, hidden_size=32, intermediate_size=32, num_hidden_layers=3,
                          num_attention_heads=2, num_key_value_heads=1),
         vision_config=dict(hidden_size=32, intermediate_size=32, num_hidden_layers=2, num_attention_heads=2,
-                           image_size=[28, 28], patch_size=[14, 14]))),
-])
-def test_the_stated_paths_are_block_lists_of_the_real_classes(model_class, config):
-    """Each family's class, built from a small config on the meta device (no weights)."""
+                           image_size=[28, 28], patch_size=[14, 14])),
+}
+CLASSES = sorted({c['model_class'] for c in study.MODEL_CONFIGS.values()})
+
+
+@pytest.mark.parametrize('model_class', CLASSES)
+def test_the_stated_paths_are_block_lists_of_the_real_classes(model_class):
+    """Each class of the values file, built from a small config on the meta device (no weights)."""
+    if model_class not in SMALL_CONFIGS:
+        pytest.fail(f'{model_class} has no small configuration for its path check: add one to SMALL_CONFIGS')
     live = sys.modules['transformers']
     network_class = getattr(live, model_class)
     with torch.device('meta'):
-        network = network_class(config(live))
+        network = network_class(SMALL_CONFIGS[model_class](live))
     for row in (c for c in study.MODEL_CONFIGS.values() if c['model_class'] == model_class):
         for root, blocks in (row['vision'], row['language']):
             assert isinstance(network.get_submodule(f'{root}.{blocks}'), torch.nn.ModuleList)
@@ -466,16 +482,20 @@ def _small(model_class, config):
         text.hidden_size = 256                                   # 2 heads of 128: the rope sections
         vision.depth, vision.hidden_size, vision.num_heads, vision.intermediate_size = 4, 64, 2, 64
         vision.out_hidden_size, vision.fullatt_block_indexes = 256, [3]
-    else:                                                        # SmolVLM, Gemma 3, InternVL: SigLIP-like vision parts
+    elif model_class in ('SmolVLMForConditionalGeneration', 'Gemma3ForConditionalGeneration',
+                         'InternVLForConditionalGeneration'):     # SigLIP-like vision parts
         text.hidden_size = 64
         if hasattr(text, 'head_dim'):
             text.head_dim = 32
         vision.num_hidden_layers, vision.hidden_size, vision.intermediate_size, vision.num_attention_heads = 4, 32, 32, 2
+    else:
+        pytest.fail(f'{model_class} has no reduction for its qualification: add one to _small')
     return config
 
 
-QUALIFY = ['qwen3-vl-2b_UMI-dev', 'qwen3-vl-30b-a3b_UMI-dev', 'qwen2.5-vl-3b_UMI-dev', 'smolvlm2-256m_UMI-dev',
-           'gemma-3-4b_UMI-dev', 'internvl3-1b_UMI-dev']    # one model of each family (and the mixture of experts)
+# One model of each class of the values file: its smallest download.
+QUALIFY = sorted(min((i for i, c in study.MODEL_CONFIGS.items() if c['model_class'] == model_class),
+                     key=lambda i: study.MODEL_CONFIGS[i]['download_gb']) for model_class in CLASSES)
 
 
 @pytest.mark.qualification
