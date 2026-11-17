@@ -233,3 +233,13 @@ def test_an_input_device_that_cannot_be_told_is_refused_at_construction(make, de
 def test_a_stated_device_is_used_for_the_inputs_of_a_placed_model(make):
     model = _Spread(['cuda:0', 'cuda:1'])
     assert str(make(model, device='cuda:1')._device) == 'cuda:1'
+
+
+def test_the_reply_path_sends_inputs_where_the_wrapper_does():
+    """One rule for where inputs go: the reply path and a wrapper agree on one placed model."""
+    from brainscore.model_helpers.causal_lm import _CausalLMParts
+    from tests.test_wrapper_cache_guard import _TextNet, _tokenizer
+    from brainscore.model_helpers.text_wrapper import TextWrapper
+    network = _OffloadedFirst(_TextNet())
+    parts = _CausalLMParts(network, _tokenizer())
+    assert parts.device == TextWrapper(network, _tokenizer(), identifier='stand-in')._device == torch.device('cpu')

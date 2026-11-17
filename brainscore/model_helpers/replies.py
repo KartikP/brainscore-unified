@@ -27,6 +27,7 @@ from typing import Mapping, Optional, Sequence
 
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.responses import Choice, Text
+from brainscore.model_helpers._device import input_device
 
 
 def chat_parts(model, processor, *, max_new_tokens: int = 64,
@@ -101,7 +102,7 @@ def _plain_text_scores(model, tokenizer, prompt, candidates: Sequence[str]) -> d
         raise ExecutionNotFeasibleError(
             'Plain-text scoring scores the text alone; it cannot show earlier trials')
     text = texts[0]
-    device = next(model.parameters()).device
+    device = input_device(model)
     context = tokenizer(text, add_special_tokens=False)['input_ids']
     if not context:
         raise ValueError('The text has no tokens to condition on, so the first option token '
@@ -127,7 +128,7 @@ def _scores_alone(model, sequences, start: int) -> list:
     a batch of several options changes it in half precision.
     """
     import torch
-    device = next(model.parameters()).device
+    device = input_device(model)
     totals = []
     for sequence in sequences:
         ids = torch.tensor([sequence], device=device)
@@ -218,4 +219,4 @@ def chat_inputs(model, processor, prompt, template=None):
         call['images'] = images
     if videos:
         call.update(videos=videos, video_metadata=metadata)
-    return processor(**call).to(model.device)
+    return processor(**call).to(input_device(model))
