@@ -451,7 +451,8 @@ class BehavioralReadout:
         a reaction-time link names the rt format; it is no setting of the choice.
 
         A session that requests ``behavior:log_probabilities`` is answered by the
-        likelihood, its only native owner, and only for a verbatim Choice; the
+        likelihood, its only native owner: for a ``Segments`` task by its ``segment``
+        layout, else only for a verbatim Choice; the
         choice and the probabilities it also requests come from that same pass
         (``softmax_argmax``, ``softmax``), so the likelihood runs once. The owner
         of the task's choice must also be able to serve the task, except in a
@@ -490,6 +491,15 @@ class BehavioralReadout:
                     f"Subject '{owner.identifier}' cannot give {LOG_PROBABILITIES} for a "
                     "Segments task: its likelihood= part states no 'segment' layout "
                     "(likelihood={'continuation': ..., 'segment': ...}).", task_type=task.task_type)
+            # The segment part scores the row's parts only: nothing else can be shown.
+            shown = [name for name, on in (('an instruction', bool((task.instruction or '').strip())),
+                                           ('TaskContext.present', task.present is not None),
+                                           ('earlier trials', task.trial_memory != 'none'
+                                            or owner._memory == 'trial_history')) if on]
+            if shown:
+                raise ExecutionNotFeasibleError(
+                    f"Subject '{owner.identifier}' scores the parts of a Segments row only; it "
+                    f"cannot show {', '.join(shown)}.", task_type=task.task_type)
             return 'likelihood', None
         readout_wired = (owner._behavioral_readout_layer is not None
                          and bool(owner._extractors) and task.fitting_stimuli is not None)
@@ -767,24 +777,33 @@ class BehavioralReadout:
         import json
         from brainscore_core.compatibility import ExecutionNotFeasibleError
         owner = self.owner
+        # Before any compute: one text part per trial, and one number of parts in the session.
+        kinds = {tuple(kind for kind, _ in prompt.parts) for prompt in prompts}
+        widths = {len(prompt.response.segments) for prompt in prompts}
+        if kinds - {('text',)} or len(widths) > 1:
+            # ponytail: one assembly per answer; rows of different widths need one session each
+            raise ExecutionNotFeasibleError(
+                f"Subject '{owner.identifier}' answers Segments rows that each show one text, with "
+                f"one number of parts in a session; got parts {sorted(kinds)} and widths "
+                f"{sorted(widths)}", task_type=self.task.task_type)
 
         def call(row, prompt):
             parts.note('likelihood', owner._segment_likelihood, serves=channels)
             return owner._segment_likelihood(prompt)
 
         results, neural = per_stimulus(owner, stimuli, layers, call, prompts, shown)
-        given = {json.dumps(parameters, sort_keys=True) for _, parameters in results}
-        lengths = {len(values) for values, _ in results}
-        if len(given) > 1 or len(lengths) > 1:
-            # ponytail: one assembly per answer; rows of different lengths need one session each
+        if len({json.dumps(parameters, sort_keys=True) for _, parameters in results}) > 1:
             raise ExecutionNotFeasibleError(
-                f"Subject '{owner.identifier}' answers the Segments rows of one session with one "
-                f"length and one record; got lengths {sorted(lengths)}",
-                task_type=self.task.task_type)
-        values = np.array([list(v) for v, _ in results], dtype=np.float64)
+                f"Subject '{owner.identifier}' gave the Segments rows of one session different "
+                'records', task_type=self.task.task_type)
+        # None: a part with no scored token, as the part states it.
+        unscored = [[value is None for value in row] for row, _ in results]
+        values = np.array([[np.nan if value is None else value for value in row]
+                           for row, _ in results], dtype=np.float64)
         reasons = [' and '.join(f'position {i + 1}: '
-                                + ('no conditioning context' if i == 0 else 'not finite')
-                                for i in np.flatnonzero(~np.isfinite(row))) for row in values]
+                                + ('no conditioning context' if gaps[i] else 'not finite')
+                                for i in np.flatnonzero(~np.isfinite(row)))
+                   for row, gaps in zip(values, unscored)]
         record = response_record(LOG_PROBABILITIES, 'likelihood', category='model-derived',
                                  parameters=results[0][1])
         axis = [str(i) for i in range(1, values.shape[1] + 1)]

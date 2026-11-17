@@ -265,7 +265,6 @@ def test_chat_parts_reply_and_likelihood():
     model, processor = TinyLM2(), CharProcessor()
     from brainscore_core.responses import Prompt
     reply, likelihood = chat_parts(model, processor, chat_template_kwargs={'enable_thinking': False})
-    likelihood = likelihood['continuation']
     prompt = Prompt((('text', 'x\n\nwhich'),), stimulus_id='a')
     assert reply(prompt) == 'dog'
     assert processor.kwargs == {'enable_thinking': False}
@@ -796,7 +795,6 @@ def test_chat_parts_scores_plain_text_under_verbatim():
     from brainscore.model_helpers.replies import chat_parts
     model, processor = TinyLM2(), CharProcessor()
     _, likelihood = chat_parts(model, processor)
-    likelihood = likelihood['continuation']
     seen = {}
 
     def forward(input_ids, attention_mask, token_type_ids=None):
@@ -911,7 +909,6 @@ def test_plain_text_scoring_refuses_several_parts_and_trial_history():
     from brainscore_core.responses import Choice, Prompt
     from brainscore.model_helpers.replies import chat_parts
     _, likelihood = chat_parts(TinyLM2(), CharProcessor())
-    likelihood = likelihood['continuation']
     response = Choice(['c', 'dd'], verbatim=True)
     with pytest.raises(ExecutionNotFeasibleError, match='exactly one text part'):
         likelihood(Prompt((('text', 'a'), ('text', 'b')), response=response), ['c', 'dd'])

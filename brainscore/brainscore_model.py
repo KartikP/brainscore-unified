@@ -162,10 +162,11 @@ class BrainScoreModel(Subject):
             (prompt) -> (values, parameters)}``: the ``segment`` entry answers a
             ``Segments`` task on ``behavior:log_probabilities`` with one log
             probability for each of the row's parts (``prompt.response.segments``),
-            given the earlier parts, and the record's parameters of what it
-            computed (layout, context, tokenization, aggregation, units). A
-            callable states the continuation layout only; a ``Segments`` task is
-            then refused before any call.
+            given the earlier parts (``None`` for a part with no scored token), and
+            the record's parameters of what it computed (layout, context,
+            tokenization, aggregation, units). A plain callable states the
+            continuation layout only; a ``Segments`` task is then refused before
+            any call.
         :param policy: ``row -> {output channel: payload}``; chooses an action for
             closed-loop / embodied evaluation. A row is a mapping of channel ->
             payload for one step; the policy needs no Brain-Score import. A value
@@ -679,4 +680,7 @@ def _likelihood_layouts(likelihood):
     if unknown or 'continuation' not in likelihood:
         raise ValueError(f"likelihood= maps the layouts 'continuation' (required) and 'segment' "
                          f"to their parts; got {sorted(likelihood)}")
+    for layout, part in likelihood.items():
+        if part is not None and not callable(part):
+            raise ValueError(f"likelihood['{layout}'] is a callable part, not {type(part).__name__}")
     return likelihood['continuation'], likelihood.get('segment')
