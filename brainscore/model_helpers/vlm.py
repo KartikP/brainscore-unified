@@ -59,6 +59,25 @@ def _load(identifier: str, hf_id: str, model_class: str, dtype: str, download_gb
     return model.eval(), pin_image_processor(processor, hf_id, **download)
 
 
+def _pixel_extractor():
+    """``PytorchWrapper`` that exports a bfloat16 activation as float32 (NumPy has no bfloat16);
+    the network still computes in bfloat16, and every other dtype is exported as
+    ``PytorchWrapper`` exports it."""
+    import torch
+    from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
+
+    class Float32Export(PytorchWrapper):
+        def register_hook(self, layer, layer_name, target_dict):
+            def hook_function(_layer, _input, output, name=layer_name):
+                if isinstance(output, (tuple, list)):
+                    output = output[0]
+                if output.dtype == torch.bfloat16:
+                    output = output.float()
+                target_dict[name] = PytorchWrapper._tensor_to_numpy(output)
+            return layer.register_forward_hook(hook_function)
+    return Float32Export
+
+
 def _reply_client(reply):
     """The model's own ``reply`` as an ``api_policy`` client: ``(model, system, messages, settings)``
     -> text. Each message part keeps its order; a picture arrives as base64 data, as an API gets it.
@@ -205,13 +224,12 @@ def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
                                  device=_placed(vision_module))
     else:
         from brainscore_vision.model_helpers.activations.pca import LayerPCA
-        from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
         device = _placed(vision_module)
         if device is None:
             raise ValueError(f'{identifier!r}: the vision part is spread over devices (or not loaded), and '
                              f'PytorchWrapper moves its module to one device; place the vision part on one '
                              f'device in device_map.')
-        image = PytorchWrapper(model=vision_module, identifier=f'{identifier}-vision', device=device,
+        image = _pixel_extractor()(model=vision_module, identifier=f'{identifier}-vision', device=device,
                                preprocessing=partial(_whole_images, image_processor=processor.image_processor,
                                                      settings=dict(image_processor_kwargs)))
         # Every patch token is kept, too many features for PLS: reduce each layer to 1000.

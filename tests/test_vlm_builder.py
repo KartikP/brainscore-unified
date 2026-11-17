@@ -272,6 +272,35 @@ def test_a_part_left_on_meta_by_a_device_map_stays_there(monkeypatch):
         build(image_processor_kwargs={})
 
 
+def test_a_bfloat16_pixel_part_records_float32_activity(tmp_path, monkeypatch):
+    """The registered precision of a pixel-input vision part: it computes in bfloat16 and its
+    activity is exported as float32 (NumPy has no bfloat16)."""
+    from brainscore_vision.model_helpers.activations.pca import LayerPCA
+    monkeypatch.setattr(LayerPCA, 'hook', classmethod(lambda cls, extractor, n_components: None))
+    subject = vlm.build_vlm_subject('tiny-vlm', 'Org/Tiny-VLM', 'TinyVLMForConditionalGeneration',
+                                    vision=('model.visual', 'blocks'), language=('model.language_model', 'layers'),
+                                    dtype='bfloat16', download_gb=0.1, image_processor_kwargs={})
+    assert {p.dtype for p in subject._subject._model.model.visual.parameters()} == {torch.bfloat16}
+    pictures = _pictures(tmp_path)
+    pictures.stimulus_paths = dict(zip(pictures['stimulus_id'], pictures['image_file_name']))
+    session = stimulus_session(pictures, ['neural:IT'], TaskContext(task_type='passive'))
+    subject.participate(session)
+    values = session.collect('neural:IT').values
+    assert values.dtype == np.float32 and values.shape == (2, 4) and np.isfinite(values).all()
+
+
+@pytest.mark.parametrize('dtype', [torch.float32, torch.float16])
+def test_other_dtypes_export_as_the_legacy_wrapper_exports_them(dtype):
+    from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
+    torch.manual_seed(0)
+    network = torch.nn.Sequential(torch.nn.Linear(4, 4)).to(dtype)
+    images = [np.random.RandomState(i).rand(4).astype(np.float32) for i in range(3)]
+    legacy = PytorchWrapper(model=network, preprocessing=None, identifier='legacy', device='cpu')
+    ours = vlm._pixel_extractor()(model=network, preprocessing=None, identifier='ours', device='cpu')
+    expected, got = legacy.get_activations(images, ['0'])['0'], ours.get_activations(images, ['0'])['0']
+    assert got.dtype == expected.dtype and np.array_equal(got, expected)
+
+
 def test_a_missing_class_is_named_before_the_download_check(monkeypatch):
     import brainscore.models._downloads as downloads
 
