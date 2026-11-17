@@ -555,6 +555,19 @@ def test_an_interrupt_during_the_check_names_the_kept_build(tmp_path, monkeypatc
     assert (kept / 'table.csv').exists() and not (tmp_path / 'out').exists()
 
 
+def test_a_readme_of_a_script_not_written_yet_has_no_record_and_a_missing_dependency_is_raised(
+        tmp_path, monkeypatch):
+    absent = DataBuilder(source='s', access='a', layout='l', needs='n', writes='w',
+                         build='python -m brainscore.data.ewok.data_packaging.not_written_yet {output}')
+    assert 'no sha1 is recorded' in absent.readme('absent')               # the package exists, the script not
+    (tmp_path / 'plugin_with_a_need').mkdir()
+    (tmp_path / 'plugin_with_a_need' / '__init__.py').write_text('import a_package_that_is_not_installed\n')
+    monkeypatch.syspath_prepend(str(tmp_path))
+    needs = dataclasses.replace(absent, build='python -m plugin_with_a_need.script {output}')
+    with pytest.raises(ModuleNotFoundError, match='a_package_that_is_not_installed'):
+        needs.readme('needs')
+
+
 def test_a_file_with_no_expected_record_states_its_counts(tmp_path, monkeypatch, capsys, offline):
     source = _made_up_plugin(tmp_path, monkeypatch, {'table.csv': b'x\n1\n2\n'})
     output = package_data('made-up', source=source, output=tmp_path / 'out')

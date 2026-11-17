@@ -320,24 +320,31 @@ def brainio_home() -> Path:
     return Path(os.environ.get('BRAINIO_HOME') or '~/.brainio').expanduser().absolute()
 
 
-def _packaging_folder(builder: DataBuilder) -> Path:
-    """The plugin's ``data_packaging`` folder: the folder of the build script."""
+def _packaging_folder(builder: DataBuilder) -> Path | None:
+    """The plugin's ``data_packaging`` folder: the folder of the build script, or ``None`` when the
+    script (or its package) does not exist yet. A missing dependency of an existing package is raised."""
     import importlib.util
-    return Path(importlib.util.find_spec(shlex.split(builder.build)[2]).origin).parent
+    module = shlex.split(builder.build)[2]
+    try:
+        spec = importlib.util.find_spec(module)
+    except ModuleNotFoundError as missing:
+        if missing.name != module and not module.startswith(f'{missing.name}.'):
+            raise
+        spec = None
+    return Path(spec.origin).parent if spec is not None else None
 
 
 def _expected(name: str, builder: DataBuilder) -> dict:
     """``{file path: entry of build.json}`` that a cloud run recorded in ``data_packaging/expected.json``."""
-    try:
-        path = _packaging_folder(builder) / 'expected.json'
-    except ModuleNotFoundError:          # a declaration whose script is not written yet records nothing
-        return {}
-    return json.loads(path.read_text()).get(name, {}) if path.exists() else {}
+    folder = _packaging_folder(builder)
+    path = folder / 'expected.json' if folder is not None else None      # no script yet: no record
+    return json.loads(path.read_text()).get(name, {}) if path is not None and path.exists() else {}
 
 
 def _registered_copy(builder: DataBuilder, file: str, sha1: str) -> Path | None:
     """The registered file on this machine, found by its sha1: the brainio cache or the plugin folder."""
-    for candidate in (brainio_home() / sha1 / file, _packaging_folder(builder).parent / file):
+    folder = _packaging_folder(builder)
+    for candidate in [brainio_home() / sha1 / file] + ([folder.parent / file] if folder is not None else []):
         if candidate.is_file() and _sha1(candidate) == sha1:
             return candidate
     return None
