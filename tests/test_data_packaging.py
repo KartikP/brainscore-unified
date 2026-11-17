@@ -866,3 +866,12 @@ def test_every_expected_record_holds_what_the_check_reads(record):
             assert re.fullmatch(r'[0-9a-f]{40}', entry['sha1']), f'{record}: {file} has no sha1'
             assert entry['digest'] is None or re.fullmatch(r'[0-9a-f]{40}', entry['digest']), \
                 f'{record}: {file} has no exact digest'
+
+
+def test_the_package_ships_each_data_plugin_readme_and_expected_record(tmp_path):
+    # The Rebuild gate above reads the READMEs from the imported package, so the wheel must hold them.
+    from tests.test_coggym_packaging import _packaged_files
+    names = _packaged_files(tmp_path)
+    wanted = [f'brainscore/data/{plugin.name}/README.md' for plugin in PLUGINS]
+    wanted += [path.relative_to(DATA.parents[1]).as_posix() for path in DATA.glob('*/data_packaging/expected.json')]
+    assert [name for name in wanted if name not in names] == []

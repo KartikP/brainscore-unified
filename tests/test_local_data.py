@@ -8,6 +8,7 @@ import pathlib
 
 import pytest
 
+import brainscore
 from brainscore.data import local
 from tests.heavy_import import heavy_import_message
 
@@ -226,7 +227,9 @@ def test_the_lebel_source_command_places_the_pickle_where_the_loader_reads_it(do
     import subprocess
     import sys
     root = pathlib.Path(__file__).resolve().parents[1]
-    text = (root / document).read_text()
+    # A plugin README is read from the imported package (installed or source); the notebooks from the tests' tree.
+    base = pathlib.Path(brainscore.__file__).parents[1] if document.startswith('brainscore/') else root
+    text = (base / document).read_text()
     if document.endswith('.ipynb'):
         text = ''.join(line for cell in json.loads(text)['cells'] for line in cell['source'])
     command = re.search(r'^SOURCE=.*?mv [^\n]*', text, flags=re.M | re.S).group(0)
