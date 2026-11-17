@@ -43,10 +43,10 @@ def _run_experiment(experiment, selected, provider, model, temperature, max_toke
         try:
             system, messages = build_messages(trial, experiment)
             raw = provider.complete_with_metadata(system, messages, model, temperature, max_tokens)
-            results.append({'trial_id': trial.id, 'response': raw['text'], 'run': len(RUNS),
+            results.append({'trial_id': trial.id, 'response': raw['text'],
                             'scores': {'answer': {'scorable': True}}})
         except Exception as error:
-            results.append({'trial_id': trial.id, 'error': str(error), 'error_type': type(error).__name__})
+            results.append({'trial_id': trial.id, 'error': str(error)})
     return results
 
 
@@ -55,6 +55,12 @@ def aggregate_experiment(rows):
 '''
 
 ANALYZE = '''
+def analyze(paths, eml, manifest, min_items=5):
+    return [], [], []
+'''
+
+# An analysis that scores the run: one row with a fixed R², from the saved run files.
+ANALYZE_ROW = '''
 import json
 
 
@@ -79,3 +85,37 @@ def write_checkout(root: Path, cli: str = '', analyze: str = '', providers: str 
     (evaluation / 'trial_selection_map.json').write_text('{}')
     (Path(root) / 'EML' / EXPERIMENT).mkdir(parents=True, exist_ok=True)
     return Path(root)
+
+
+def write_ready_folder(folder: Path, **sources) -> Path:
+    """A ready CogGym folder as Brain-Score makes it: the stand-in checkout, an environment
+    whose Python runs this interpreter, and ``ready.json`` for the pinned commit and
+    requirements. ``sources`` go to ``write_checkout``."""
+    import hashlib
+    import sys
+    from brainscore.harnesses import _coggym_folder
+    write_checkout(Path(folder) / 'checkout', **sources)
+    python = _coggym_folder.environment_python(folder)
+    python.parent.mkdir(parents=True, exist_ok=True)
+    python.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    python.chmod(0o755)
+    (Path(folder) / 'ready.json').write_text(json.dumps({
+        'revision': _coggym_folder.REFERENCE_REVISION,
+        'requirements_sha256': hashlib.sha256(_coggym_folder.REQUIREMENTS.read_bytes()).hexdigest(),
+        'freeze': ['stand-in==0']}))
+    return Path(folder)
+
+
+class StandIn:
+    """Change one behavior of the stand-in evaluator: Python source appended to its module."""
+
+    def __init__(self, folder: Path) -> None:
+        self.evaluation = Path(folder) / 'checkout' / 'evaluation'
+
+    def cli(self, source: str) -> None:
+        with (self.evaluation / 'cli.py').open('a') as module:
+            module.write('\n' + source)
+
+    def analyze(self, source: str) -> None:
+        with (self.evaluation / 'analyze.py').open('a') as module:
+            module.write('\n' + source)

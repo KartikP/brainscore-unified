@@ -591,23 +591,16 @@ class TestApiReply:
         from brainscore.harnesses import coggym
         from brainscore.model_helpers.api_behavioral import build_api_reply
         from brainscore.experiments import Experiment
-        from types import SimpleNamespace
         import json
-        (tmp_path / 'evaluation').mkdir()
-        (tmp_path / 'evaluation/public_manifest.json').write_text(json.dumps(
-            {'experiments': [{'path': 'Hu2023Fine/exp1'}]}))
-        trials = [SimpleNamespace(id='trial-0', queries=[])]
+        from tests.coggym_stand_in import write_ready_folder
+        # One trial, asked with CogGym's call: the stand-in evaluator runs in its own process.
+        write_ready_folder(tmp_path, cli='''
+TRIALS = ['trial-0']
 
-        def execute(experiment, selected, provider, model, temperature, max_tokens):
-            raw = provider.complete_with_metadata('system', [{'role': 'user', 'content': 'q'}],
-                                                  model, temperature, max_tokens)
-            return [{'trial_id': 'trial-0', 'response': raw['text'], 'scores': {'a': {'scorable': True}}}]
-        cli = SimpleNamespace(load_experiment=lambda path: None, _load_selection_map=lambda path: {},
-                              _selected_trials=lambda *a: trials,
-                              build_messages=lambda trial, exp: ('system', [{'role': 'user', 'content': 'q'}]),
-                              _run_experiment=execute, aggregate_experiment=lambda rows: {})
-        monkeypatch.setattr(coggym, '_load_reference', lambda checkout: (cli, SimpleNamespace(
-            analyze=lambda *a, **k: ([], [], []))))
+
+def build_messages(trial, experiment):
+    return 'system', [{'role': 'user', 'content': 'q'}]
+''')
         monkeypatch.setattr(coggym, '_check_checkout', lambda checkout: None)
         provider, calls = _recording_provider('{"answer": 3}')
         model = BrainScoreModel('api-fixture', in_channels={'text'},

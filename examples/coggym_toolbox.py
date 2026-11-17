@@ -1,7 +1,8 @@
 """Qualify CogGym recording and intervention with a cached, small trained model.
 
 This CPU smoke run uses Hu2023Fine/exp1; it is not a leaderboard reproduction.
-It needs a local CogGym checkout and model snapshot and never downloads.
+It needs a ready CogGym folder (made by Brain-Score at a first load) and a model snapshot,
+and never downloads.
 qualification.json is written on success and on failure (status, error, hashes).
 For the shorter registered-benchmark walkthrough, see docs/archive/coggym.md.
 """
@@ -118,7 +119,7 @@ def _read_trials(directory: Path) -> list[dict[str, Any]]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--checkout', type=Path, required=True)
+    parser.add_argument('--folder', type=Path, required=True)   # a ready CogGym folder
     parser.add_argument('--model-path', type=Path, required=True)
     parser.add_argument('--output-dir', type=Path, required=True)
     parser.add_argument('--trials', type=int, default=3)
@@ -135,7 +136,7 @@ def main() -> None:
         'provenance': {
             'model_id': model_id,
             'model_path': str(args.model_path.resolve()),
-            'checkout': str(args.checkout.resolve()),
+            'folder': str(args.folder.resolve()),
             'environment': environment(),
         },
     }
@@ -147,16 +148,16 @@ def main() -> None:
 def qualify(args, model_id: str, report: dict[str, Any]) -> None:
     # Require pre-staged assets; nothing here downloads.
     provenance = report['provenance']
-    if not args.checkout.is_dir():
-        raise FileNotFoundError(f'Stage the pinned CogGym checkout first: {args.checkout}')
+    if not args.folder.is_dir():
+        raise FileNotFoundError(f'Make the CogGym folder first (load a CogGym benchmark once): {args.folder}')
     # The model is identified by content before anything loads it.
     provenance['model_identity'] = verify_model_identity(args.model_path, SMOLVLM_MANIFEST)
     provenance['model_sha256'] = snapshot_digest(args.model_path)
-    provenance['coggym_source'] = source_revision(args.checkout)
+    provenance['coggym_source'] = source_revision(args.folder / 'checkout')
 
     # Prepare a small question subset before loading the model.
     prepared = CogGymRunner(
-        args.checkout,
+        args.folder,
         model=model_id,
         temperature=0,
         max_tokens=32,
@@ -164,7 +165,7 @@ def qualify(args, model_id: str, report: dict[str, Any]) -> None:
     if args.trials > len(prepared.trial_ids):
         raise ValueError('--trials exceeds the canonical selection')
     runner = CogGymRunner(
-        args.checkout,
+        args.folder,
         model=model_id,
         temperature=0,
         max_tokens=32,

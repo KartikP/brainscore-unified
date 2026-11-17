@@ -35,7 +35,9 @@ class _Pipe:
         self.read, self.write = os.fdopen(read, 'rb'), os.fdopen(write, 'wb')
 
     def send(self, message):
-        self.write.write((json.dumps(message, allow_nan=False) + '\n').encode())
+        # NaN and infinity pass as Python's JSON writes them: CogGym's values reach the parent
+        # unchanged, and the parent's own checks refuse them as in one process.
+        self.write.write((json.dumps(message) + '\n').encode())
         self.write.flush()
 
     def receive(self):

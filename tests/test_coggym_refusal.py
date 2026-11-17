@@ -28,7 +28,7 @@ def test_the_first_trial_the_subject_cannot_serve_ends_the_run_with_its_reason(r
             raise ExecutionNotFeasibleError(REASON)
         return reply_with_trial(prompt)
 
-    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root, reset=resets.append,
+    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root, reset=resets.append,
                                           repetitions=2, output_dir=tmp_path / 'run')
     with pytest.raises(ExecutionNotFeasibleError) as refused:
         brainscore.score(make_subject(reply), benchmark, check_mem=False)
@@ -37,9 +37,12 @@ def test_the_first_trial_the_subject_cannot_serve_ends_the_run_with_its_reason(r
     assert resets == [1]             # and no later repetition starts
 
 
-def _same_prompt_for_every_trial(cli):
+def _same_prompt_for_every_trial(stand_in):
     """Several CogGym trials can show one prompt: here all of them do."""
-    cli.build_messages = lambda trial, experiment: ('system', [{'role': 'user', 'content': 'one shared prompt'}])
+    stand_in.cli("""
+def build_messages(trial, experiment):
+    return 'system', [{'role': 'user', 'content': 'one shared prompt'}]
+""")
 
 
 def test_a_refused_trial_is_named_when_several_trials_share_its_prompt(reference, tmp_path, monkeypatch):
@@ -54,7 +57,7 @@ def test_a_refused_trial_is_named_when_several_trials_share_its_prompt(reference
             raise ExecutionNotFeasibleError(REASON)
         return 'an answer'
 
-    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root, reset=lambda repetition: None,
+    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root, reset=lambda repetition: None,
                                           repetitions=2, output_dir=tmp_path / 'run')
     with pytest.raises(ExecutionNotFeasibleError) as refused:
         brainscore.score(make_subject(reply), benchmark, check_mem=False)
@@ -73,7 +76,7 @@ def test_each_call_carries_its_own_trial_when_several_trials_share_a_prompt(
         shown.append(prompt.stimulus_id)
         return 'an answer'
 
-    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root, reset=lambda repetition: None,
+    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root, reset=lambda repetition: None,
                                           repetitions=2, output_dir=tmp_path / 'run')
     score = brainscore.score(make_subject(reply), benchmark, check_mem=False)
     assert score.attrs['n_valid'] == score.attrs['n_trials'] == len(shown)

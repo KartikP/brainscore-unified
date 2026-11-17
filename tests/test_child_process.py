@@ -25,7 +25,20 @@ def _worker(checkout, log_directory, idle_timeout_s=20.0):
 
 
 def test_each_model_call_comes_back_to_the_parent_and_its_reply_reaches_the_evaluator(tmp_path):
-    checkout = write_checkout(tmp_path / 'coggym')
+    # The evaluator keeps the failure's type and how many runs this process has made.
+    checkout = write_checkout(tmp_path / 'coggym', cli='''
+def _run_experiment(experiment, selected, provider, model, temperature, max_tokens):
+    RUNS.append(model)
+    results = []
+    for trial in selected:
+        try:
+            raw = provider.complete_with_metadata(*build_messages(trial, experiment), model,
+                                                  temperature, max_tokens)
+            results.append({'trial_id': trial.id, 'response': raw['text'], 'run': len(RUNS)})
+        except Exception as error:
+            results.append({'trial_id': trial.id, 'error': str(error), 'error_type': type(error).__name__})
+    return results
+''')
     calls = []
 
     def answer(call):

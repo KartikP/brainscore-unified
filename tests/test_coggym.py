@@ -13,6 +13,8 @@ from brainscore.experiments import (
 )
 from brainscore import BrainScoreModel
 from brainscore.harnesses import coggym
+
+from .coggym_stand_in import StandIn, write_ready_folder
 from brainscore_core.contract import Subject
 from brainscore_core.responses import Text
 
@@ -21,43 +23,14 @@ pytestmark = pytest.mark.unit
 
 @pytest.fixture
 def reference(tmp_path, monkeypatch):
-    """A provider-call seam, not a substitute for CogGym's scientific evaluator."""
-    folder = tmp_path / 'evaluation'
-    folder.mkdir()
-    (folder / 'public_manifest.json').write_text(json.dumps({
-        'experiments': [{'path': 'Hu2023Fine/exp1'}],
-    }))
-    trials = [SimpleNamespace(id=f'trial-{index}', queries=[]) for index in range(3)]
-    experiment = SimpleNamespace(human_data_mean={'secret': 'never pass to provider'})
+    """A ready CogGym folder with a stand-in evaluator, run in a real child process.
 
-    def prompt(trial, experiment):
-        return 'system', [{'role': 'user', 'content': trial.id}]
-
-    def execute(experiment, selected, provider, model, temperature, max_tokens):
-        results = []
-        for trial in selected:
-            try:
-                system, messages = cli.build_messages(trial, experiment)
-                raw = provider.complete_with_metadata(
-                    system, messages, model, temperature, max_tokens,
-                )
-                results.append({'trial_id': trial.id, 'response': raw['text'],
-                                'scores': {'answer': {'scorable': True}}})
-            except Exception as error:
-                results.append({'trial_id': trial.id, 'error': str(error)})
-        return results
-
-    cli = SimpleNamespace(
-        load_experiment=lambda path: experiment,
-        _load_selection_map=lambda path: {},
-        _selected_trials=lambda exp, selection, use_all: trials,
-        build_messages=prompt, _run_experiment=execute,
-        aggregate_experiment=lambda rows: {'n_trials': len(rows)},
-    )
-    analysis = SimpleNamespace(analyze=lambda *args, **kwargs: ([], [], []))
-    monkeypatch.setattr(coggym, '_load_reference', lambda checkout: (cli, analysis))
+    A provider-call seam, not a substitute for CogGym's scientific evaluator. Returns the
+    folder and a ``StandIn`` that changes one behavior of the evaluator by Python source.
+    """
+    write_ready_folder(tmp_path)
     monkeypatch.setattr(coggym, '_check_checkout', lambda checkout: None)
-    return tmp_path, cli
+    return tmp_path, StandIn(tmp_path)
 
 
 def make_subject(reply, in_channels=('text',)):
@@ -137,10 +110,11 @@ def image_part(data=PIXEL):
 
 
 def test_media_requires_explicit_provider_support(reference):
-    root, cli = reference
-    cli.build_messages = lambda *args: ('system', [{
-        'role': 'user', 'content': [image_part()],
-    }])
+    root, stand_in = reference
+    stand_in.cli(f'''
+def build_messages(trial, experiment):
+    return 'system', [{{'role': 'user', 'content': [{image_part()!r}]}}]
+''')
     with pytest.raises(ValueError, match='modalities'):
         coggym.CogGymRunner(root, model='fixture')
     assert coggym.CogGymRunner(root, model='fixture', modalities=['text', 'image'])
@@ -167,8 +141,8 @@ def test_upstream_caught_error_is_saved_and_fails_the_experiment(reference, tmp_
 
 
 def test_missing_results_cannot_pass(reference, tmp_path):
-    root, cli = reference
-    cli._run_experiment = lambda *args: []
+    root, stand_in = reference
+    stand_in.cli('def _run_experiment(*args):\n    return []\n')
     runner = coggym.CogGymRunner(root, model='fixture')
     with pytest.raises(RuntimeError, match='incomplete or failed'):
         runner.run(SimpleNamespace(complete_with_metadata=lambda *a: None),
@@ -177,18 +151,16 @@ def test_missing_results_cannot_pass(reference, tmp_path):
 
 @pytest.mark.parametrize('stage', ['summary', 'analysis'])
 def test_scoring_failure_preserves_trials_and_registered_hashes(reference, tmp_path, stage):
-    root, cli = reference
+    root, stand_in = reference
     runner = coggym.CogGymRunner(root, model='fixture')
-
-    def overflow(*args, **kwargs):
-        raise OverflowError('reference arithmetic overflow')
-
+    overflow = "(*args, **kwargs):\n    raise OverflowError('reference arithmetic overflow')\n"
     if stage == 'summary':
-        cli.aggregate_experiment = overflow
+        stand_in.cli('def aggregate_experiment' + overflow)
     else:
-        runner._analysis.analyze = overflow
+        stand_in.analyze('def analyze' + overflow)
     output = tmp_path / 'scoring-failed'
-    with pytest.raises(OverflowError, match='reference arithmetic overflow'):
+    # The evaluator's own error, by its type and message (it ran in its own process).
+    with pytest.raises(RuntimeError, match='OverflowError: reference arithmetic overflow'):
         Experiment(
             subject=make_subject(reply_with_trial), protocol=runner.protocol(reset=lambda repetition: None),
             tools=[RecordInputsOutputs()], output_dir=output,
@@ -233,23 +205,22 @@ class _ReasoningReplier(Subject):
 def test_reasoning_and_token_usage_come_from_the_answer_meta_only(
         reference, tmp_path, subject, reasoning, usage):
     """A subject without them gives None; they are never made up (rule 3.9)."""
-    root, cli = reference
-    saved = []
-
-    def execute(experiment, selected, provider, model, temperature, max_tokens):
-        rows = []
-        for trial in selected:
-            raw = provider.complete_with_metadata(*cli.build_messages(trial, experiment),
-                                                  model, temperature, max_tokens)
-            saved.append(raw)
-            rows.append({'trial_id': trial.id, 'response': raw['text'],
-                         'scores': {'answer': {'scorable': True}}})
-        return rows
-
-    cli._run_experiment = execute
+    root, stand_in = reference
+    # The evaluator keeps what its provider returned in each trial row.
+    stand_in.cli('''
+def _run_experiment(experiment, selected, provider, model, temperature, max_tokens):
+    rows = []
+    for trial in selected:
+        raw = provider.complete_with_metadata(*build_messages(trial, experiment),
+                                              model, temperature, max_tokens)
+        rows.append({'trial_id': trial.id, 'response': raw['text'], 'raw': raw,
+                     'scores': {'answer': {'scorable': True}}})
+    return rows
+''')
     runner = coggym.CogGymRunner(root, model='fixture')
     Experiment(subject=subject, protocol=runner.protocol(reset=lambda repetition: None),
                output_dir=tmp_path / 'run').run()
+    saved = [trial['raw'] for trial in json.loads((tmp_path / 'run/coggym/run-001.json').read_text())['trials']]
     assert set(saved[0]) == {'text', 'reasoning', 'token_usage'}
     assert saved[0]['reasoning'] == reasoning
     assert saved[0]['token_usage'] == usage
