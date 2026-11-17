@@ -29,16 +29,17 @@ A wrapper reads a stimulus file path only from the column names that the core ca
 | `EWoK-core-1.0` | `EWoK-core-1.0` | world-knowledge contrasts and their answer keys | local: gated text | `EWoK-core-1.0-logprobs`, `-choice` |
 | `Yeatman2021` | `Yeatman2021` | word and pseudoword images with human lexical decisions (ROAR) | hosted | `Yeatman2021-lexical_decision-*` |
 
-CogGym's experiments, human results and scoring code come from the authors' repository at a pinned revision; point `BRAINSCORE_COGGYM_CHECKOUT` at that checkout. `python -m brainscore.data` lists each data plugin with the place of its source, then the files you supply yourself that a plugin declares as a local asset (the Algonauts 2025 files, the CogGym checkout, the EWoK data, the Lahner2024 frames and sound tracks, the language atlas and the LeBel source pickle), and whether each is found; `python -m brainscore.data <asset name>` prints how to obtain one.
+CogGym's experiments, human results and scoring code come from the authors' repository at a pinned revision; `python -m brainscore.data package coggym` puts that checkout where the benchmarks read it. `python -m brainscore.data` lists each data plugin with the place of its source, then the files you supply yourself that a plugin declares as a local asset (the Algonauts 2025 files, the CogGym checkout, the EWoK data, the Lahner2024 frames and sound tracks, the language atlas), and whether each is found; `python -m brainscore.data <asset name>` prints how to obtain one.
 
 ## Package a dataset from its source
 
-`package_data` builds a plugin's files from the original source, the way Brain-Score reads them. It looks for the source in one place, by the same rule for every plugin: the `source` argument, else `$BRAINSCORE_DATA_HOME/sources/<name>`, else `~/brainscore-data/sources/<name>`.
+`package_data` builds a plugin's files from the original source, the way Brain-Score reads them. It looks for the source in one place, by the same rule for every plugin: the `source` argument, else `$BRAINSCORE_DATA_HOME/sources/<name>`, else `~/brainscore-data/sources/<name>`. It writes where the plugin's benchmarks read the data, so the benchmark runs next with no more steps: a local folder (for example the EWoK folder, `~/.brainio/ewok-core-1.0`, or the folder that its variable `BRAINSCORE_EWOK_ROOT` names when it is set), or, for a hosted file, `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), where the loader reads it in place of the download. The `output` argument (`--output`) writes elsewhere. An existing output is refused; the build goes to a private folder beside the output and moves into place only when it is complete and checked.
 
 ```python
 from brainscore.data import package_data
 
-# Build the EWoK files from the native table in ~/brainscore-data/sources/ewok
+# Build the EWoK files from the native table in ~/brainscore-data/sources/ewok,
+# into the folder the EWoK benchmarks read
 output = package_data(name='ewok')
 
 # Or name the source and the output folders
@@ -52,7 +53,7 @@ python -m brainscore.data                        # each plugin, where its source
 python -m brainscore.data package ewok           # package one
 ```
 
-When the source is missing, the error says what data is needed and from where, the access it needs, the folder and the files to put in it, and the tools and disk space. After a build, `package_data` prints the size, sha1 and counts (rows, dimension sizes, items) of the first 20 files; `build.json` in the output lists them for every file. It then checks each file against the plugin's expected record (the registered sha1, or the `data_packaging/expected.json` that a cloud run copied from its `build.json`): `identical` (equal sha1), `same content, bytes differ` (the content summary agrees: text, integers and coordinates exactly, floats within 1e-6 of their sum of magnitudes; the registered copy on the machine is compared when it is there), or an error that names the file and what differs, and nothing is moved. A file with no record prints `no expected record` and its counts. Then it prints how the plugin's loader takes the files: for a hosted file, a copy with the registered sha1 at `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default) is read in place of the download; for a local folder, a variable names it. A script reads the source and never changes it, and nothing is uploaded. Each plugin README's `## Rebuild` section states the same facts.
+When the source is missing, the error says what data is needed and from where, the access it needs, the folder and the files to put in it, and the tools and disk space. After a build, `package_data` prints the size, sha1 and counts (rows, dimension sizes, items) of the first 20 files; `build.json` in the output lists them for every file. It then checks each file against the plugin's expected record (the registered sha1, or the `data_packaging/expected.json` that a cloud run copied from its `build.json`): `identical` (equal sha1), `same content, bytes differ` (the content summary agrees: text, integers and coordinates exactly, floats within 1e-6 of their sum of magnitudes; the registered copy on the machine is compared when it is there), or an error that names the file and what differs, and nothing is moved. A file with no record prints `no expected record` and its counts. The last lines state where the data is now, whether the benchmarks read it there (or the one step that remains), and the result of the check. A hosted file reaches `$BRAINIO_HOME/<sha1>/<file name>` only when it is `identical`: the loader accepts only the registered bytes. A script reads the source and never changes it, and nothing is uploaded. Each plugin README's `## Rebuild` section states the same facts.
 
 ## Add a data plugin
 

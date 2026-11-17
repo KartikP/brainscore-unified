@@ -201,10 +201,15 @@ def test_ewok_packages_from_the_source_folder_of_the_one_rule(tmp_path, monkeypa
                        Target1=f'target A {i}', Target2=f'target B {i}') for i in range(3)]
                  ).to_csv(source / 'native.csv', index=False)
     output = package_data('ewok')
-    assert output == tmp_path / 'packaged' / 'ewok'
+    # Where the benchmarks read it (here the folder its variable names), with nothing else to do.
+    assert output == local.path('ewok-core-1.0') == tmp_path / 'assets' / 'ewok-core-1.0'
+    assert len(brainscore.load_dataset('EWoK-core-1.0')) == 3
     printed = capsys.readouterr().out
     assert re.search(rf"items\.json .*sha1 {_sha1(output / 'items.json')} .*items 3", printed)
     assert _sha1(output / 'manifest.json') in printed
+    assert printed.splitlines()[-3:] == [
+        f'The data is now in: {output}', 'The benchmarks read it there. No more steps.',
+        'Check: 2 no expected record.']
 
 
 def _made_up_rajalingham():
@@ -573,21 +578,29 @@ def test_a_planted_upload_fails(name, tmp_path, monkeypatch, offline):
     assert not (tmp_path / 'out').exists()
 
 
-def test_a_rebuilt_hosted_file_is_read_where_its_instruction_puts_it(tmp_path, monkeypatch, offline):
+def test_a_rebuilt_hosted_file_goes_where_the_loader_reads_it(tmp_path, monkeypatch, capsys, offline):
     from brainscore.data.lebel2023 import hosted
-    from brainscore_core.supported_data_standards.brainio.s3 import get_path
-    assert _package('lebel2023', tmp_path, monkeypatch, offline) == 0
-    built = tmp_path / 'out' / f'stimulus_{hosted.TR_STIMULI_ID}.csv'
-    # Follow the declared instruction: $BRAINIO_HOME/<sha1>/<file name>, then load with no download.
     from brainscore_core.supported_data_standards.brainio import fetch
-    monkeypatch.setattr(fetch, 'get_local_data_path', lambda: str(tmp_path / 'brainio'))   # BRAINIO_HOME
-    sha1 = _sha1(built)
-    (tmp_path / 'brainio' / sha1).mkdir(parents=True)
-    (tmp_path / 'brainio' / sha1 / built.name).write_bytes(built.read_bytes())
-    assert '$BRAINIO_HOME/<sha1>/<file name>' in data_builder_registry['lebel2023']().writes
-    path = get_path(hosted.TR_STIMULI_ID, 'csv', hosted.BUCKET, hosted.VERSION_ID['TR stimuli'], sha1,
+    from brainscore_core.supported_data_standards.brainio.s3 import get_path
+    builder = data_builder_registry['lebel2023']()
+    assert _package('lebel2023', tmp_path, monkeypatch, offline) == 0     # --output: learn the made-up sha1
+    built = {file: _sha1(tmp_path / 'out' / file) for file in builder.sha1}
+    monkeypatch.delitem(data_builder_registry, 'lebel2023')
+    monkeypatch.setitem(data_builder_registry, 'lebel2023', lambda: dataclasses.replace(builder, sha1=built))
+    capsys.readouterr()
+    record = package_data('lebel2023', source=tmp_path / 'lebel')
+    assert record == tmp_path / 'brainio' / 'packaged' / 'lebel2023'
+    assert sorted(p.name for p in record.iterdir()) == ['build.json']
+    printed = capsys.readouterr().out
+    for file, sha1 in built.items():
+        assert f"    {tmp_path / 'brainio' / sha1 / file}" in printed
+    assert 'The loader reads each placed file there in place of the download. No more steps.' in printed
+    # The loader reads it with no download.
+    monkeypatch.setattr(fetch, 'get_local_data_path', lambda: str(tmp_path / 'brainio'))
+    file = f'stimulus_{hosted.TR_STIMULI_ID}.csv'
+    path = get_path(hosted.TR_STIMULI_ID, 'csv', hosted.BUCKET, hosted.VERSION_ID['TR stimuli'], built[file],
                     filename_prefix='stimulus_', folder_name=hosted.FOLDER)
-    assert _sha1(pathlib.Path(path)) == sha1
+    assert _sha1(pathlib.Path(path)) == built[file]
 
 
 @pytest.mark.skipif(__import__('shutil').which('ffmpeg') is None, reason='ffmpeg is needed')
@@ -615,5 +628,4 @@ def test_an_unrelated_asset_variable_does_not_hide_the_algonauts_recovery_comman
         local.check_benchmark_assets('Algonauts2025-friends-sub01')
     command = str(missing.value).split('Then convert it:')[1].split('\n')[1].strip()
     assert 'algonauts2025-prepared' in str(missing.value)
-    assert shlex.split(command)[5:] == ['--source', str(local.REGISTRY['algonauts2025-root'].resolved()),
-                                        '--output', str(local.REGISTRY['algonauts2025-prepared'].resolved())]
+    assert shlex.split(command)[5:] == ['--source', str(local.REGISTRY['algonauts2025-root'].resolved())]

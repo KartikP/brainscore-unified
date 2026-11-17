@@ -32,7 +32,8 @@ data_builder_registry['ewok'] = lambda: DataBuilder(
            '`analyses/data.zip` and `config.zip`.',
     needs='`pip install -e \'.[ewok-data]\'` (file readers and the `hf` command); under 32 MB; minutes.',
     writes='`items.json` (one item per contrast), `manifest.json` (counts and the items checksum), '
-           '`build.json`. Use it: set BRAINSCORE_EWOK_ROOT to the output folder.',
+           '`build.json`.',
+    reads=EWOK_ROOT.name,
     build='python -m brainscore.data.ewok.data_packaging.prepare {source} {output}',
     requires=('**/*.csv | **/*.parquet | analyses/data.zip',),
 )

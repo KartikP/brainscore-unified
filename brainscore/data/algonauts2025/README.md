@@ -15,12 +15,13 @@ writes per-TR NetCDF assemblies, stimulus CSVs and the media of the registered
 benchmarks. See Rebuild below for its needs.
 
 ```bash
-# Build from the competition files into the folder the benchmarks read
-python -m brainscore.data package algonauts2025 --source ~/algonauts_2025 --output ~/.brainio/algonauts2025
+# Build from the competition files into the folder the benchmarks read (~/.brainio/algonauts2025)
+python -m brainscore.data package algonauts2025 --source ~/algonauts_2025
 ```
 
-With the two variables set, give their folders instead; the benchmark's message for
-missing files prints this command with your folders.
+With `BRAINSCORE_ALGONAUTS_PREPARED` set, the command writes to that folder, where the
+benchmarks then read; the benchmark's message for missing files prints this command
+with your folders.
 
 To convert fewer participants or splits, run the script it wraps,
 `brainscore.data.algonauts2025.data_packaging.prepare_assembly`, with `--subjects`
@@ -49,8 +50,6 @@ registered benchmarks (frames for every participant, clips and sound for
 participant 1). To cut other media or films, run the script it calls:
 
 ```bash
-# Say where the prepared files are
-export BRAINSCORE_ALGONAUTS_PREPARED=/path/to/new-build
 # Cut the frames of the films that participant 1 saw
 python -m brainscore.data.algonauts2025.data_packaging.prepare_stimuli \
   --split friends --participant 1 --media frames
@@ -95,6 +94,6 @@ A fresh build has not been compared with a recorded count or checksum.
 - Source: the Algonauts 2025 competition data (Courtois NeuroMod): https://github.com/courtois-neuromod/algonauts_2025.competitors. The fMRI is under the data-use agreement of that page; the films (Friends, Movie10) are copyrighted.
 - Access: a data-use agreement: follow the DataLad instructions of the page above and sign its terms.
 - Needs: DataLad and git-annex (from conda-forge on Ubuntu 22.04), h5py, ffmpeg and ffprobe; about 130 GB in; out about 25 GB of assemblies, 1.6 GB of frames and 7.8 GB of sound (the training films; clips not measured); frames took about 12 minutes with 8 workers, the rest not measured.
-- Command: `python -m brainscore.data package algonauts2025` with the source in `~/brainscore-data/sources/algonauts2025` (or `--source <folder>`): the DataLad dataset as it installs: `fmri/sub-0X/...` (HDF5 responses and `target_sample_number/`) and `stimuli/` (`movies/`, `transcripts/`), kept together.
-- Writes: per participant 1, 2, 3, 5 and split: `algonauts2025_<split>_sub0X.nc` (friends: the fMRI; friends_s7 and ood: placeholders with no fMRI), `algonauts2025_stim_<split>.csv`, and one file per scan of the training films: `frames/` (all participants), `clips/` and `sound/` (participant 1), the media of the six registered benchmarks. Use them: set BRAINSCORE_ALGONAUTS_PREPARED to the output folder.
+- Command: `python -m brainscore.data package algonauts2025` with the source in `~/brainscore-data/sources/algonauts2025` (or `--source <folder>`): the DataLad dataset as it installs: `fmri/sub-0X/...` (HDF5 responses and `target_sample_number/`) and `stimuli/` (`movies/`, `transcripts/`), kept together. Output (or `--output <new folder>`): the folder the benchmarks read, `~/.brainio/algonauts2025` (or `$BRAINSCORE_ALGONAUTS_PREPARED`).
+- Writes: per participant 1, 2, 3, 5 and split: `algonauts2025_<split>_sub0X.nc` (friends: the fMRI; friends_s7 and ood: placeholders with no fMRI), `algonauts2025_stim_<split>.csv`, and one file per scan of the training films: `frames/` (all participants), `clips/` and `sound/` (participant 1), the media of the six registered benchmarks.
 - Check: the printed counts; no sha1 is recorded for these files

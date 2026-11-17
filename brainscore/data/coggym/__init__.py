@@ -37,9 +37,10 @@ data_builder_registry['coggym'] = lambda: DataBuilder(
     access='public, no account.',
     layout='none: the script clones the repository itself.',
     needs='git; the size of the repository (not measured); minutes.',
-    writes='the checkout at the pinned revision (`EML/`, `evaluation/` and the rest). Use it: set '
-           'BRAINSCORE_COGGYM_CHECKOUT to the output folder, then install '
-           '`<output>/evaluation/requirements.txt`.',
+    writes='the checkout at the pinned revision (`EML/`, `evaluation/` and the rest).',
+    reads=COGGYM_CHECKOUT.name,
+    then='install `evaluation/requirements.txt` of the checkout into this environment '
+         '(`pip install -r <checkout>/evaluation/requirements.txt`).',
     build=f'python -m brainscore.data.coggym.data_packaging.fetch --revision {REVISION} --out {{output}}',
     fetches=True,
 )

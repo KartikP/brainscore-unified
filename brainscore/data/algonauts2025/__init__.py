@@ -23,9 +23,8 @@ _ALGONAUTS_IDENTIFIERS = (
     + ['Algonauts2025-friends-sub01-video',
        'Algonauts2025-friends-sub01-video-audio'])
 
-# Packages from the folder of the competition files into the folder the benchmarks read.
-_PACKAGE = ('python -m brainscore.data package algonauts2025 '
-            '--source {algonauts2025-root} --output {algonauts2025-prepared}')
+# Packages from the folder of the competition files into the folder the benchmarks read (the default output).
+_PACKAGE = 'python -m brainscore.data package algonauts2025 --source {algonauts2025-root}'
 
 ALGONAUTS_ROOT = local.register(local.LocalAsset(
     name='algonauts2025-root',
@@ -72,8 +71,8 @@ data_builder_registry['algonauts2025'] = lambda: DataBuilder(
     writes='per participant 1, 2, 3, 5 and split: `algonauts2025_<split>_sub0X.nc` (friends: the fMRI; '
            'friends_s7 and ood: placeholders with no fMRI), `algonauts2025_stim_<split>.csv`, and one '
            'file per scan of the training films: `frames/` (all participants), `clips/` and `sound/` '
-           '(participant 1), the media of the six registered benchmarks. '
-           'Use them: set BRAINSCORE_ALGONAUTS_PREPARED to the output folder.',
+           '(participant 1), the media of the six registered benchmarks.',
+    reads=ALGONAUTS_PREPARED.name,
     build='python -m brainscore.data.algonauts2025.data_packaging.package --source {source} --out {output}',
     requires=('fmri/sub-0*/func/*.h5', 'fmri/sub-0*/target_sample_number/*.npy',
               'stimuli/movies/friends', 'stimuli/movies/movie10', 'stimuli/movies/ood'),

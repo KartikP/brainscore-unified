@@ -57,8 +57,8 @@ data_builder_registry['lebel2023'] = lambda: DataBuilder(
     needs='the unified install (numpy, pandas, xarray); about 3 GB of disk for the pickle and more '
           'than 3 GB of memory; time not measured.',
     writes=f'`assy_{hosted.ASSEMBLY_ID}.nc`, `stimulus_{hosted.TR_STIMULI_ID}.csv`, '
-           f'`stimulus_{hosted.WORD_STIMULI_ID}.csv`, with the registered default settings. '
-           'Use them: only a file whose sha1 equals the registered one: put it at `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), where the loader reads it in place of the download.',
+           f'`stimulus_{hosted.WORD_STIMULI_ID}.csv`, with the registered default settings.',
+    reads='brainio',
     build='BRAINSCORE_LEBEL_PICKLE={source}/assembly_lebel_uts03.pkl '
           'python -m brainscore.data.lebel2023.data_packaging.package_hosted --out {output}',
     requires=('assembly_lebel_uts03.pkl',),

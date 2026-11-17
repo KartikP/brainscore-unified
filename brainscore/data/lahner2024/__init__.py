@@ -102,7 +102,8 @@ data_builder_registry['lahner2024-frames'] = lambda: DataBuilder(
     needs='opencv-python and Pillow; the hosted clips (fetched once into the brainio cache; size not '
           'measured); disk for the frames and time not measured.',
     writes=f'one PNG per clip and time ({", ".join(map(str, DEFAULT_SAMPLE_TIMES_MS))} ms): '
-           f'`<clip>_t<ms>.png`. Use them: set {LAHNER_FRAMES.env_var} to the output folder.',
+           f'`<clip>_t<ms>.png`.',
+    reads=LAHNER_FRAMES.name,
     build='python -m brainscore.data.lahner2024.data_packaging.prepare_frames --frames-dir {output}',
     fetches=True,
 )
@@ -115,7 +116,8 @@ data_builder_registry['lahner2024-sound'] = lambda: DataBuilder(
           'not measured); about 100 MB of sound (3 s at 16 kHz, 16 bit, for each of 1,026 clips, '
           'computed); time not measured.',
     writes=f'one 16 kHz mono WAV per clip (`<clip>.wav`; a silent file for a clip with no sound) and '
-           f'`manifest.json`. Use them: set {LAHNER_SOUND.env_var} to the output folder.',
+           f'`manifest.json`.',
+    reads=LAHNER_SOUND.name,
     build='python -m brainscore.data.lahner2024.data_packaging.prepare_audio_tracks --audio-dir {output}',
     fetches=True,
 )
@@ -129,8 +131,8 @@ data_builder_registry['lahner2024-timeresolved'] = lambda: DataBuilder(
            'is read where it is and never changed.',
     needs='the `aws` command, nibabel and nilearn; about 20 GB of disk at a time (about 200 GB pass '
           'through); hours.',
-    writes=f'`assy_{TIMERESOLVED_ASSEMBLY_ID}.nc` and `{TIMERESOLVED_EVENTS_ID}.csv`. Use them: '
-           'only a file whose sha1 equals the registered one: put it at `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), where the loader reads it in place of the download.',
+    writes=f'`assy_{TIMERESOLVED_ASSEMBLY_ID}.nc` and `{TIMERESOLVED_EVENTS_ID}.csv`.',
+    reads='brainio',
     build=f'python -m brainscore.data.lahner2024.data_packaging.prepare_timeresolved_assembly '
           f'--output-path {{output}}/assy_{TIMERESOLVED_ASSEMBLY_ID}.nc '
           f'--events-path {{output}}/{TIMERESOLVED_EVENTS_ID}.csv '
@@ -146,8 +148,8 @@ data_builder_registry['lahner2024-motion'] = lambda: DataBuilder(
     layout='none needed: the script lists and downloads the fMRIPrep confounds files itself into a '
            'private work folder (deleted after the build).',
     needs='boto3; the confounds files of the 520 runs (size and time not measured).',
-    writes=f'`{TIMERESOLVED_MOTION_ID}.csv`. Use it: '
-           'only a file whose sha1 equals the registered one: put it at `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), where the loader reads it in place of the download.',
+    writes=f'`{TIMERESOLVED_MOTION_ID}.csv`.',
+    reads='brainio',
     build=f'python -m brainscore.data.lahner2024.data_packaging.prepare_motion_sidecar '
           f'--output-path {{output}}/{TIMERESOLVED_MOTION_ID}.csv --cache-dir {{work}}',
     sha1={f'{TIMERESOLVED_MOTION_ID}.csv': TIMERESOLVED_MOTION_SHA1},

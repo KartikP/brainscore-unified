@@ -29,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
     package = commands.add_parser('package', help='Package a data plugin from its original source')
     package.add_argument('name')
     package.add_argument('--source', help='the folder of the original source data')
-    package.add_argument('--output', help='a new folder for the packaged files')
+    package.add_argument('--output', help='a new folder in place of the place where the benchmarks read the data')
     args = parser.parse_args(argv)
     try:
         package_data(args.name, source=args.source, output=args.output)

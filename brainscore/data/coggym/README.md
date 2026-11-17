@@ -12,16 +12,15 @@ After installing the four UMI packages in your experiment environment, clone
 CogGym into a new directory:
 
 ```bash
-# Clone the authors' repository and check out the pinned revision
-git clone https://github.com/lance-ying/coggym.git /path/to/coggym
-git -C /path/to/coggym checkout a1cd9df1118fec80eba7463de237d1497d77e041
-# Install CogGym's own requirements, then tell the benchmarks where the checkout is
-python -m pip install -r /path/to/coggym/evaluation/requirements.txt
-export BRAINSCORE_COGGYM_CHECKOUT=/path/to/coggym
+# Clone the authors' repository at the pinned revision, into the folder the benchmarks read (~/coggym)
+python -m brainscore.data package coggym
+# Install CogGym's own requirements
+python -m pip install -r ~/coggym/evaluation/requirements.txt
 ```
 
-Already have the authors' files? Point `BRAINSCORE_COGGYM_CHECKOUT` at that Git
-checkout. It must use the revision above, with no tracked edits under `EML/`
+`BRAINSCORE_COGGYM_CHECKOUT`, when it is set, names another folder: the command
+writes there and the benchmarks read there. Already have the authors' files? Point
+`BRAINSCORE_COGGYM_CHECKOUT` at that Git checkout. It must use the revision above, with no tracked edits under `EML/`
 or `evaluation/`. Use a separate checkout if you are editing CogGym itself.
 
 The runner uses these files in their original locations:
@@ -93,6 +92,6 @@ Follow the authors' access and distribution terms for any additional files.
 - Source: CogGym (Ying et al.), https://github.com/lance-ying/coggym at revision a1cd9df1118fec80eba7463de237d1497d77e041. Licence: not stated by the repository.
 - Access: public, no account.
 - Needs: git; the size of the repository (not measured); minutes.
-- Command: `python -m brainscore.data package coggym`. Source folder: none: the script clones the repository itself.
-- Writes: the checkout at the pinned revision (`EML/`, `evaluation/` and the rest). Use it: set BRAINSCORE_COGGYM_CHECKOUT to the output folder, then install `<output>/evaluation/requirements.txt`.
+- Command: `python -m brainscore.data package coggym`. Source folder: none: the script clones the repository itself. Output (or `--output <new folder>`): the folder the benchmarks read, `~/coggym` (or `$BRAINSCORE_COGGYM_CHECKOUT`).
+- Writes: the checkout at the pinned revision (`EML/`, `evaluation/` and the rest). Then: install `evaluation/requirements.txt` of the checkout into this environment (`pip install -r <checkout>/evaluation/requirements.txt`).
 - Check: the printed counts; no sha1 is recorded for these files

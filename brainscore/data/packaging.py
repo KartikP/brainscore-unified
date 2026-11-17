@@ -14,8 +14,8 @@ beside its registration (Contract Rules 11.4)::
     )
 
 The source folder is the ``source`` argument, else ``$BRAINSCORE_DATA_HOME/sources/<name>``,
-else ``~/brainscore-data/sources/<name>``; the output folder is ``output``, else
-``.../packaged/<name>`` under the same root. Nothing is ever uploaded.
+else ``~/brainscore-data/sources/<name>``. The output is ``output``, else the place where the
+plugin's benchmarks read the data (``reads``). Nothing is ever uploaded.
 """
 from dataclasses import dataclass, field
 import fnmatch
@@ -31,6 +31,7 @@ import tempfile
 import warnings
 
 from brainscore import data_builder_registry
+from brainscore.data import local
 from brainscore.data.local import LocalDataMissing
 
 HOME_VARIABLE = 'BRAINSCORE_DATA_HOME'
@@ -45,7 +46,13 @@ class DataBuilder:
     :param access: what access it needs: public, an account, a data-use agreement or private, and how to ask
     :param layout: the files ``package_data`` expects in the source folder
     :param needs: the tools, the disk space and the time
-    :param writes: the files written, and how the plugin's loader takes them (``Use ...``)
+    :param writes: the files written
+    :param reads: where the benchmarks read the output, the default output: the name of a local
+        asset (its folder), ``'brainio'`` (each file with a registered sha1 at
+        ``$BRAINIO_HOME/<sha1>/<file name>``, where the loader reads it in place of the download),
+        or empty: no local place (``$BRAINSCORE_DATA_HOME/packaged/<name>``; ``writes`` says how
+        the files are used)
+    :param then: the one step that remains after the data is where the benchmarks read it, if any
     :param build: the plugin's ``data_packaging`` script as a command line
         (``python -m <module> <arguments>``, optionally led by ``NAME=value`` words);
         ``{source}``, ``{output}`` and ``{work}`` (a private folder for downloads and
@@ -66,6 +73,8 @@ class DataBuilder:
     needs: str
     writes: str
     build: str = ''
+    reads: str = ''
+    then: str = ''
     sha1: dict = field(default_factory=dict)
     cannot: str = ''
     requires: tuple = ()
@@ -80,6 +89,7 @@ class DataBuilder:
             else:
                 command += (f' with the source in `~/brainscore-data/sources/{name}` '
                             f'(or `--source <folder>`): {self.layout}')
+            command = command.rstrip('.') + f'. Output (or `--output <new folder>`): {self._place_text(name)}.'
         elif self.cannot:
             command = f'none yet. {self.cannot}'
         else:
@@ -93,9 +103,18 @@ class DataBuilder:
             f'- Access: {self.access}',
             f'- Needs: {self.needs}',
             f'- Command: {command}',
-            f'- Writes: {self.writes}',
+            f'- Writes: {self.writes}' + (f' Then: {self.then}' if self.then else ''),
             f'- Check: {check}',
         ])
+
+    def _place_text(self, name: str) -> str:
+        if self.reads == 'brainio':
+            return ('each identical file at `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), '
+                    f'where the loader reads it; the build record in `$BRAINIO_HOME/packaged/{name}`')
+        if self.reads:
+            asset = local.REGISTRY[self.reads]
+            return f'the folder the benchmarks read, `~/{asset.default_path}` (or `${asset.env_var}`)'
+        return f'`~/brainscore-data/packaged/{name}`'
 
 
 def data_home() -> Path:
@@ -361,8 +380,8 @@ def package_data(name: str, source: str | Path | None = None,
         lacks = _lacks(native, builder.requires)
         if lacks:
             raise LocalDataMissing(_missing(name, builder, native, lacks))
-    destination = (Path(output).expanduser() if output is not None
-                   else data_home() / 'packaged' / name).absolute()
+    read_place = _read_place(name, builder).absolute()
+    destination = Path(output).expanduser().absolute() if output is not None else read_place
     if destination.exists() or destination.is_symlink():
         raise FileExistsError(f'{destination} already exists; give a new output folder')
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -393,6 +412,7 @@ def package_data(name: str, source: str | Path | None = None,
         if problems:
             raise ValueError('\n'.join([f'The check of the built {name} files failed; nothing was moved '
                                          f'to {destination}.', *problems]))
+        placed = _place_hosted(builder, staging, files) if builder.reads == 'brainio' and destination == read_place else {}
         (staging / 'build.json').write_text(json.dumps(
             {'schema_version': 3, 'name': name, 'source': builder.source, 'files': files},
             indent=2, allow_nan=False) + '\n')
@@ -406,12 +426,42 @@ def package_data(name: str, source: str | Path | None = None,
         shutil.rmtree(work, ignore_errors=True)
         if staging.exists():
             shutil.rmtree(staging)
-    _report(name, builder, destination, files)
+    _report(name, builder, destination, read_place, files, placed)
     return destination
 
 
-def _report(name: str, builder: DataBuilder, destination: Path, files: dict) -> None:
-    print(f'Packaged {name} into {destination}')
+def _read_place(name: str, builder: DataBuilder) -> Path:
+    """Where the plugin's benchmarks read the output: the default output folder."""
+    if builder.reads == 'brainio':
+        return brainio_home() / 'packaged' / name
+    if builder.reads:
+        return local.REGISTRY[builder.reads].resolved()
+    return data_home() / 'packaged' / name
+
+
+def _place_hosted(builder: DataBuilder, staging: Path, files: dict) -> dict:
+    """Move each identical hosted file to ``$BRAINIO_HOME/<sha1>/<file name>``; ``{file path: place}``.
+
+    A file already there is not replaced. The staging folder is under ``$BRAINIO_HOME``, so each
+    move is one rename on one volume.
+    """
+    placed = {}
+    for relative, entry in files.items():
+        file = Path(relative).name
+        if entry['check'] != 'identical' or file not in builder.sha1:
+            continue
+        place = brainio_home() / entry['sha1'] / file
+        if place.exists():
+            continue
+        place.parent.mkdir(parents=True, exist_ok=True)
+        os.rename(staging / relative, place)
+        placed[relative] = place
+    return placed
+
+
+def _report(name: str, builder: DataBuilder, destination: Path, read_place: Path,
+            files: dict, placed: dict) -> None:
+    print(f'Packaged {name}.')
     for index, (relative, entry) in enumerate(files.items()):
         if index == _LISTED_FILES:
             print(f'  ... and {len(files) - index} more files (all in build.json)')
@@ -419,8 +469,44 @@ def _report(name: str, builder: DataBuilder, destination: Path, files: dict) -> 
         counts = _counts(entry['content'])
         print(f"  {relative}  {entry['bytes']} bytes  sha1 {entry['sha1']}" + (f'  ({counts})' if counts else ''))
         print(f"    check: {entry['check']}")
-    # How the plugin's loader takes the files: stated by the plugin, apart from the comparison.
-    print(builder.writes)
+    # (i) where the data is now, (ii) whether the benchmarks read it there, (iii) the check.
+    if placed:
+        print('The data is now in:')
+        for place in placed.values():
+            print(f'    {place}')
+        print(f'    {destination} (build.json' + (', and the files that are not placed)' if len(placed) < len(files) else ')'))
+    else:
+        print(f'The data is now in: {destination}')
+    if destination != read_place:
+        if builder.reads == 'brainio':
+            step = (f'The loader reads a hosted file only at {brainio_home()}/<sha1>/<file name>; one step '
+                    f'remains: run again without --output to place the identical files there.')
+        elif builder.reads:
+            step = (f'The benchmarks read {read_place}; one step remains: set '
+                    f'{local.REGISTRY[builder.reads].env_var}={destination}.')
+        else:
+            step = builder.writes
+    elif builder.reads == 'brainio':
+        kept = [relative for relative in files if Path(relative).name in builder.sha1 and relative not in placed]
+        unread = [relative for relative in files if Path(relative).name not in builder.sha1]
+        step = 'The loader reads each placed file there in place of the download.' if placed else ''
+        if kept:
+            step += (f' The loader accepts only the registered bytes, so for {", ".join(kept)} the benchmarks '
+                     'read the hosted file (already on this machine, or downloaded on first use).')
+        if unread:
+            step += f' {", ".join(unread)}: no registered sha1, so no loader reads it.'
+        step = step.strip()
+    elif builder.reads:
+        step = 'The benchmarks read it there.'
+    else:
+        step = builder.writes
+    print(step + (f' One step remains: {builder.then}' if builder.then else
+                  ' No more steps.' if builder.reads and destination == read_place else ''))
+    outcomes = {}
+    for entry in files.values():
+        outcome = 'no expected record' if entry['check'].startswith('no expected record') else entry['check']
+        outcomes[outcome] = outcomes.get(outcome, 0) + 1
+    print('Check: ' + ', '.join(f'{count} {outcome}' for outcome, count in outcomes.items()) + '.')
 
 
 def listing() -> str:

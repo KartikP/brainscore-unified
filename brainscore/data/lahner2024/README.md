@@ -66,8 +66,8 @@ not interchangeable.
 - Source: https://openneuro.org/datasets/ds005165 (BOLD Moments; the clips are the hosted stimulus set BOLDMoments, which brainscore.load_stimulus_set fetches); licence as OpenNeuro states it for ds005165 (not recorded in this plugin).
 - Access: public, no account: the hosted clips download with no account.
 - Needs: opencv-python and Pillow; the hosted clips (fetched once into the brainio cache; size not measured); disk for the frames and time not measured.
-- Command: `python -m brainscore.data package lahner2024-frames`. Source folder: none: the script reads the hosted clips through brainscore.load_stimulus_set.
-- Writes: one PNG per clip and time (500, 1500, 2500 ms): `<clip>_t<ms>.png`. Use them: set BRAINSCORE_LAHNER_FRAMES_DIR to the output folder.
+- Command: `python -m brainscore.data package lahner2024-frames`. Source folder: none: the script reads the hosted clips through brainscore.load_stimulus_set. Output (or `--output <new folder>`): the folder the benchmarks read, `~/brainscore-data/lahner2024/frames` (or `$BRAINSCORE_LAHNER_FRAMES_DIR`).
+- Writes: one PNG per clip and time (500, 1500, 2500 ms): `<clip>_t<ms>.png`.
 - Check: the printed counts; no sha1 is recorded for these files
 
 ### lahner2024-motion
@@ -75,8 +75,8 @@ not interchangeable.
 - Source: BOLD Moments (Lahner et al. 2024), OpenNeuro ds005165 v1.0.4, https://openneuro.org/datasets/ds005165; licence as OpenNeuro states it for ds005165 (not recorded in this plugin). The fMRIPrep derivatives `derivatives/versionB/fmriprep` and the raw `events.tsv` files, read from s3://openneuro.org/ds005165 with no account.
 - Access: public, no account.
 - Needs: boto3; the confounds files of the 520 runs (size and time not measured).
-- Command: `python -m brainscore.data package lahner2024-motion`. Source folder: none needed: the script lists and downloads the fMRIPrep confounds files itself into a private work folder (deleted after the build).
-- Writes: `Lahner2024-fMRI-timeresolved-motion.csv`. Use it: only a file whose sha1 equals the registered one: put it at `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), where the loader reads it in place of the download.
+- Command: `python -m brainscore.data package lahner2024-motion`. Source folder: none needed: the script lists and downloads the fMRIPrep confounds files itself into a private work folder (deleted after the build). Output (or `--output <new folder>`): each identical file at `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), where the loader reads it; the build record in `$BRAINIO_HOME/packaged/lahner2024-motion`.
+- Writes: `Lahner2024-fMRI-timeresolved-motion.csv`.
 - Check: sha1 of `Lahner2024-fMRI-timeresolved-motion.csv` is `827130c78f6b706b52f6d0d28962eb2301bee00b`
 
 ### lahner2024-sound
@@ -84,8 +84,8 @@ not interchangeable.
 - Source: https://openneuro.org/datasets/ds005165 (BOLD Moments; the clips are the hosted stimulus set BOLDMoments, which brainscore.load_stimulus_set fetches); licence as OpenNeuro states it for ds005165 (not recorded in this plugin).
 - Access: public, no account: the hosted clips download with no account.
 - Needs: ffmpeg and ffprobe on the PATH; the hosted clips (fetched once into the brainio cache; size not measured); about 100 MB of sound (3 s at 16 kHz, 16 bit, for each of 1,026 clips, computed); time not measured.
-- Command: `python -m brainscore.data package lahner2024-sound`. Source folder: none: the script reads the hosted clips through brainscore.load_stimulus_set.
-- Writes: one 16 kHz mono WAV per clip (`<clip>.wav`; a silent file for a clip with no sound) and `manifest.json`. Use them: set BRAINSCORE_LAHNER_SOUND_DIR to the output folder.
+- Command: `python -m brainscore.data package lahner2024-sound`. Source folder: none: the script reads the hosted clips through brainscore.load_stimulus_set. Output (or `--output <new folder>`): the folder the benchmarks read, `~/.brainio/lahner2024_audio_16k` (or `$BRAINSCORE_LAHNER_SOUND_DIR`).
+- Writes: one 16 kHz mono WAV per clip (`<clip>.wav`; a silent file for a clip with no sound) and `manifest.json`.
 - Check: the printed counts; no sha1 is recorded for these files
 
 ### lahner2024-timeresolved
@@ -93,6 +93,6 @@ not interchangeable.
 - Source: BOLD Moments (Lahner et al. 2024), OpenNeuro ds005165 v1.0.4, https://openneuro.org/datasets/ds005165; licence as OpenNeuro states it for ds005165 (not recorded in this plugin). The fMRIPrep derivatives `derivatives/versionB/fmriprep` and the raw `events.tsv` files, read from s3://openneuro.org/ds005165 with no account.
 - Access: public, no account.
 - Needs: the `aws` command, nibabel and nilearn; about 20 GB of disk at a time (about 200 GB pass through); hours.
-- Command: `python -m brainscore.data package lahner2024-timeresolved`. Source folder: none needed: the script lists and downloads the files itself into a private work folder (deleted after the build). A local copy of ds005165 in the source folder, laid out as the bucket (`derivatives/versionB/fmriprep/sub-XX/...`, `sub-XX/ses-XX/func/*_events.tsv`), is read where it is and never changed.
-- Writes: `assy_Lahner2024-fMRI-timeresolved.nc` and `Lahner2024-fMRI-timeresolved-events.csv`. Use them: only a file whose sha1 equals the registered one: put it at `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), where the loader reads it in place of the download.
+- Command: `python -m brainscore.data package lahner2024-timeresolved`. Source folder: none needed: the script lists and downloads the files itself into a private work folder (deleted after the build). A local copy of ds005165 in the source folder, laid out as the bucket (`derivatives/versionB/fmriprep/sub-XX/...`, `sub-XX/ses-XX/func/*_events.tsv`), is read where it is and never changed. Output (or `--output <new folder>`): each identical file at `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), where the loader reads it; the build record in `$BRAINIO_HOME/packaged/lahner2024-timeresolved`.
+- Writes: `assy_Lahner2024-fMRI-timeresolved.nc` and `Lahner2024-fMRI-timeresolved-events.csv`.
 - Check: sha1 of `assy_Lahner2024-fMRI-timeresolved.nc` is `4d06589dde6dddf273a489a64da1337940d5fafd`; sha1 of `Lahner2024-fMRI-timeresolved-events.csv` is `783c5b33a75f121812a49b8b0a7639b9ed07c6a3`
