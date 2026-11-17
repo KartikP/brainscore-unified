@@ -7,6 +7,8 @@ ever hitting a live API.
 import pandas as pd
 import pytest
 
+from tests.coggym_commands import pinned_git  # noqa: F401  (a fixture: git reads the checkout as clean)
+
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore.model_helpers.api_behavioral import (
     api_answer, _find_column, _answer_text, _row_parts, _CACHE_FORM,
@@ -585,7 +587,7 @@ class TestApiReply:
             'type': 'text',
             'text': 'xyz\n\nAnswer with exactly one of: short, long.'}
 
-    def test_an_api_reply_model_runs_coggym(self, tmp_path, monkeypatch):
+    def test_an_api_reply_model_runs_coggym(self, tmp_path, monkeypatch, pinned_git):
         """API models run CogGym: the settings reach the provider call."""
         from brainscore import BrainScoreModel
         from brainscore.harnesses import coggym
@@ -601,7 +603,6 @@ TRIALS = ['trial-0']
 def build_messages(trial, experiment):
     return 'system', [{'role': 'user', 'content': 'q'}]
 ''')
-        monkeypatch.setattr(coggym, '_check_checkout', lambda checkout: None)
         provider, calls = _recording_provider('{"answer": 3}')
         model = BrainScoreModel('api-fixture', in_channels={'text'},
                                 reply=build_api_reply(provider, 'm-1'))

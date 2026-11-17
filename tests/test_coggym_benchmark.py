@@ -15,9 +15,8 @@ from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.contract import Subject
 
 from brainscore import LoadError
-from brainscore.harnesses._coggym_folder import default_folder
 
-from .coggym_stand_in import ANALYZE_ROW, write_ready_folder
+from .coggym_stand_in import ANALYZE_ROW, default_place, write_ready_folder
 from .test_coggym import image_part, reference, make_subject, reply_with_trial
 
 pytestmark = pytest.mark.unit
@@ -98,7 +97,7 @@ def test_with_installs_off_a_missing_folder_stops_the_load_before_model_use(monk
 def test_the_default_folder_and_explicit_provider_reset(reference, tmp_path, monkeypatch):
     # A ready folder at the default place under BRAINSCORE_COGGYM_FOLDER: no folder= needed.
     monkeypatch.setenv('BRAINSCORE_COGGYM_FOLDER', str(tmp_path / 'folders'))
-    write_ready_folder(default_folder(), analyze=ANALYZE_ROW)
+    write_ready_folder(default_place(tmp_path / 'folders'), analyze=ANALYZE_ROW)
     benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1')
     with pytest.raises(ValueError, match='reset=adapter.reset'):
         benchmark(make_subject(reply_with_trial))

@@ -1,5 +1,8 @@
 """CogGym's evaluator runs in a child process; each model call comes back to the parent.
 
+Supplemental tests of the process helper itself (its protocol, deadlines and errors). The
+guarantees a user depends on are tested through the public loaders in ``test_coggym*.py``.
+
 A real child process, started with this interpreter, runs the CogGym worker on a stand-in
 evaluator package in a temporary folder. No install, no network, no clone.
 """

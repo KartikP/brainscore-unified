@@ -8,7 +8,8 @@ whose Python runs this interpreter, and ``-m pip`` does nothing. Anything else r
 interpreter, so the worker and the supervisor run for real. Nothing is cloned or installed.
 
 ``behavior`` changes one step: ``fail`` (a word of the failing command, for example
-``'clone'`` or ``'install'``), ``head`` (the commit ``rev-parse`` prints), ``sleep`` (a word of a
+``'clone'`` or ``'install'``), ``head`` (the commit ``rev-parse`` prints), ``status`` (what
+``git status`` prints: tracked edits), ``sleep`` (a word of a
 command that sleeps for a minute after it writes its process id), ``make`` (a folder a pip
 command creates, as another program would).
 """
@@ -55,6 +56,8 @@ elif 'checkout' in args:
     step('checkout')
 elif 'rev-parse' in args:
     print(behavior.get('head', {commit!r}))
+elif 'status' in args:
+    print(behavior.get('status', ''))
 '''
 
 _PYTHON = '''
@@ -97,20 +100,37 @@ class Commands:
         self.behavior_file.write_text(json.dumps(behavior))
 
 
-@pytest.fixture
-def commands(tmp_path, monkeypatch):
-    """git on ``PATH`` and this process's Python replaced by recording stand-ins."""
-    root = tmp_path / 'commands'
+def _stand_ins(root: Path, monkeypatch, python: bool) -> Commands:
     bin_folder = root / 'bin'
     bin_folder.mkdir(parents=True)
     template = write_checkout(root / 'template')
     names = dict(real=sys.executable, log=str(root / 'calls.jsonl'), behavior=str(root / 'behavior.json'),
                  template=str(template), env_python=str(bin_folder / 'env-python'))
-    for name, body in (('git', _GIT.format(commit=PINNED_COMMIT)), ('python', _PYTHON),
-                       ('env-python', _PYTHON)):
+    programs = [('git', _GIT.format(commit=PINNED_COMMIT))]
+    if python:
+        programs += [('python', _PYTHON), ('env-python', _PYTHON)]
+    for name, body in programs:
         script = bin_folder / name
         script.write_text(_COMMON.format(**names) + body)
         script.chmod(0o755)
     monkeypatch.setenv('PATH', f"{bin_folder}{os.pathsep}{os.environ['PATH']}")
-    monkeypatch.setattr(sys, 'executable', str(bin_folder / 'python'))
+    if python:
+        monkeypatch.setattr(sys, 'executable', str(bin_folder / 'python'))
     return Commands(root)
+
+
+@pytest.fixture
+def commands(tmp_path, monkeypatch):
+    """git on ``PATH`` and this process's Python replaced by recording stand-ins."""
+    return _stand_ins(tmp_path / 'commands', monkeypatch, python=True)
+
+
+def git_stand_in(root: Path, monkeypatch) -> Commands:
+    """git on ``PATH`` replaced by a recording stand-in: a checkout reads as clean, at the pinned commit."""
+    return _stand_ins(root, monkeypatch, python=False)
+
+
+@pytest.fixture
+def pinned_git(tmp_path, monkeypatch):
+    """``git_stand_in`` as a fixture."""
+    return git_stand_in(tmp_path / 'git', monkeypatch)

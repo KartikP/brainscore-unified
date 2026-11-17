@@ -119,3 +119,13 @@ class StandIn:
     def analyze(self, source: str) -> None:
         with (self.evaluation / 'analyze.py').open('a') as module:
             module.write('\n' + source)
+
+
+def default_place(root: Path) -> Path:
+    """Where Brain-Score puts CogGym's folder under ``root``: the pinned commit and the first 12
+    characters of the hash of the shipped requirements."""
+    import hashlib
+    import brainscore
+    requirements = Path(brainscore.__file__).parent / 'harnesses' / 'coggym_requirements.txt'
+    return Path(root) / ('a1cd9df1118fec80eba7463de237d1497d77e041-'
+                         + hashlib.sha256(requirements.read_bytes()).hexdigest()[:12])

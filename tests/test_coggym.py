@@ -14,6 +14,7 @@ from brainscore.experiments import (
 from brainscore import BrainScoreModel
 from brainscore.harnesses import coggym
 
+from .coggym_commands import git_stand_in
 from .coggym_stand_in import StandIn, write_ready_folder
 from brainscore_core.contract import Subject
 from brainscore_core.responses import Text
@@ -26,11 +27,13 @@ def reference(tmp_path, monkeypatch):
     """A ready CogGym folder with a stand-in evaluator, run in a real child process.
 
     A provider-call seam, not a substitute for CogGym's scientific evaluator. Returns the
-    folder and a ``StandIn`` that changes one behavior of the evaluator by Python source.
+    folder and a ``StandIn`` that changes one behavior of the evaluator by Python source. git
+    is a stand-in that reads the checkout as clean, at the pinned commit (``stand_in.git``).
     """
     write_ready_folder(tmp_path)
-    monkeypatch.setattr(coggym, '_check_checkout', lambda checkout: None)
-    return tmp_path, StandIn(tmp_path)
+    stand_in = StandIn(tmp_path)
+    stand_in.git = git_stand_in(tmp_path / 'git', monkeypatch)
+    return tmp_path, stand_in
 
 
 def make_subject(reply, in_channels=('text',)):
@@ -293,13 +296,13 @@ def test_hook_cleanup_after_caught_provider_failure(reference, tmp_path):
     assert not model[0]._forward_hooks
 
 
-@pytest.mark.parametrize('head,edits', [('wrong-revision', ''), (coggym.REFERENCE_REVISION, ' M evaluation/cli.py')])
-def test_changed_reference_checkout_is_rejected(monkeypatch, tmp_path, head, edits):
-    def git(command, **kwargs):
-        return head if 'rev-parse' in command else edits
-    monkeypatch.setattr(coggym.subprocess, 'check_output', git)
+@pytest.mark.parametrize('behavior', [{'head': 'f' * 40}, {'status': ' M evaluation/cli.py'}])
+def test_changed_reference_checkout_is_rejected(reference, behavior):
+    """A checkout at another commit, or with tracked edits in CogGym's code, is refused at load."""
+    root, stand_in = reference
+    stand_in.git.behave(**behavior)
     with pytest.raises(ValueError):
-        coggym._check_checkout(tmp_path)
+        coggym.CogGymRunner(root, model='fixture')
 
 
 # ── One answer per call, in call order (Contract Rule 10.1) ──────────────

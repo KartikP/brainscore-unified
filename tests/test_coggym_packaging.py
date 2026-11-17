@@ -34,3 +34,4 @@ def test_the_wheel_contains_the_coggym_requirements_and_worker(tmp_path):
     assert 'brainscore/harnesses/coggym_requirements.txt' in names
     assert 'brainscore/harnesses/_coggym_worker.py' in names
     assert 'brainscore/harnesses/coggym_validation.py' in names
+    assert 'brainscore/harnesses/_supervise.py' in names

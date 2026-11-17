@@ -82,3 +82,38 @@ def test_each_call_carries_its_own_trial_when_several_trials_share_a_prompt(
     assert score.attrs['n_valid'] == score.attrs['n_trials'] == len(shown)
     first, second = shown[:len(shown) // 2], shown[len(shown) // 2:]
     assert len(set(first)) == len(first) and second == first     # one id per trial, again per repetition
+
+
+def test_the_evaluator_records_the_refused_trial_as_failed_with_the_reason(reference, tmp_path, monkeypatch):
+    """CogGym's own trial record of the refused trial (and of the trials after it) is a failure
+    with the subject's reason, never an answer."""
+    import json
+    root, stand_in = reference
+    seen = tmp_path / 'evaluator-results.json'
+    stand_in.cli(f'''
+_run = _run_experiment
+
+
+def _run_experiment(*args):
+    import json
+    results = _run(*args)
+    with open({str(seen)!r}, 'w') as handle:
+        json.dump(results, handle)
+    return results
+''')
+    monkeypatch.setenv('RESULTCACHING_HOME', str(tmp_path / 'cache'))
+    calls = []
+
+    def reply(prompt):
+        calls.append(prompt)
+        if len(calls) == 2:
+            raise ExecutionNotFeasibleError(REASON)
+        return reply_with_trial(prompt)
+
+    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root, reset=lambda repetition: None,
+                                          repetitions=1, output_dir=tmp_path / 'run')
+    with pytest.raises(ExecutionNotFeasibleError):
+        brainscore.score(make_subject(reply), benchmark, check_mem=False)
+    results = json.loads(seen.read_text())
+    assert 'response' in results[0] and 'error' not in results[0]
+    assert all('response' not in result and REASON in result['error'] for result in results[1:])

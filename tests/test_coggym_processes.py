@@ -10,7 +10,6 @@ import time
 import pytest
 
 from brainscore.harnesses import coggym
-from brainscore.harnesses._child_process import ChildFailed
 
 from .test_coggym import reference  # noqa: F401  (a fixture)
 
@@ -91,7 +90,7 @@ def aggregate_experiment(rows):
     _descendant()
     os._exit(3)
 ''')
-    with pytest.raises(ChildFailed):
+    with pytest.raises(RuntimeError):         # the evaluator's process exited
         runner.run(_Provider(), output_dir=tmp_path / 'run', reset=lambda repetition: None)
     assert _gone(pids)
 
@@ -103,9 +102,12 @@ def test_a_failure_to_open_the_pipes_leaves_no_descriptor_open(reference, monkey
     real, calls = os.pipe, []
 
     def pipe():
-        calls.append(None)
-        if len(calls) == 2:
-            raise OSError(errno.EMFILE, 'Too many open files')
+        # Only the pipes of the evaluator's process: the second of them is refused.
+        import sys
+        if sys._getframe(1).f_code.co_filename.endswith('_child_process.py'):
+            calls.append(None)
+            if len(calls) == 2:
+                raise OSError(errno.EMFILE, 'Too many open files')
         return real()
     before = len(os.listdir('/dev/fd'))
     monkeypatch.setattr(os, 'pipe', pipe)
