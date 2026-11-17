@@ -55,18 +55,48 @@ _FULL_DESIGN = {(s, m, f) for s in range(1, 41) for m in range(1, 8) for f in ra
 
 
 def _check(stimuli, reference) -> None:
-    """The design and the reference agree before any subject runs."""
+    """The design and the reference agree before any subject runs (as in pull request #63)."""
     if stimuli.empty or stimuli.stimulus_id.duplicated().any():
         raise ValueError('Use nonempty stimuli with distinct stimulus ids')
     for base_id, rows in stimuli.groupby('base_id'):
-        if sorted(rows.flip) != [1, 2, 3, 4]:
-            raise ValueError(f'{base_id}: each scene and modulation needs the four flips')
+        if sorted(rows.flip) != [1, 2, 3, 4] or rows.scene.nunique() != 1 or rows.modulation.nunique() != 1:
+            raise ValueError(f'{base_id}: each scene and modulation group needs one scene, one modulation '
+                             'and the four flips')
+    if stimuli.drop_duplicates('base_id').duplicated(['scene', 'modulation']).any():
+        raise ValueError('Each scene and modulation pair must be exactly one group')
+    if set(reference.dims) != {'presentation', 'participant', 'axis'}:
+        raise ValueError('The reference has the dimensions presentation, participant and axis')
     ids = [str(i) for i in reference['stimulus_id'].values]
     if len(ids) != len(set(ids)) or set(ids) != set(stimuli.base_id):
         raise ValueError('The reference ids must match the scene and modulation groups of the stimuli')
-    if (list(reference['axis'].values) != ['x', 'y'] or reference.sizes['participant'] != 3
+    if (list(reference['axis'].values) != ['x', 'y'] or list(reference['participant'].values) != [1, 2, 3]
             or not np.isfinite(reference.values).all()):
-        raise ValueError('Use finite x/y reference vectors of the three participants')
+        raise ValueError('Use finite x/y reference vectors of the three participants 1, 2 and 3')
+    groups = stimuli.drop_duplicates('base_id').set_index('base_id')
+    for coordinate in ('scene', 'modulation'):
+        if list(reference[coordinate].values) != list(groups.loc[ids, coordinate]):
+            raise ValueError(f'The reference {coordinate} coordinates do not match the stimuli')
+
+
+def _full_design(stimuli) -> bool:
+    return (len(stimuli) == len(_FULL_DESIGN)
+            and set(zip(stimuli.scene, stimuli.modulation, stimuli.flip)) == _FULL_DESIGN)
+
+
+def _subset_identifier(stimuli, reference) -> str:
+    """A hash of the content: the same subset in any row or dimension order has one identifier."""
+    human = reference.transpose('presentation', 'participant', 'axis')
+    ids = [str(i) for i in human['stimulus_id'].values]
+    order = np.argsort(ids)
+    content = {
+        'trials': sorted((str(r.stimulus_id), str(r.base_id), int(r.scene), int(r.modulation), int(r.flip))
+                         for r in stimuli.itertuples(index=False)),
+        'reference_ids': [ids[i] for i in order],
+        'reference': human.values[order].tolist(),
+        'stimulus_set': getattr(stimuli, 'identifier', None),
+        'reference_build': reference.attrs.get('identifier'),
+    }
+    return f'{IDENTIFIER}-subset-{hashlib.sha256(json.dumps(content).encode()).hexdigest()[:16]}'
 
 
 class Sun2025MotionBenchmark(BenchmarkBase):
@@ -84,15 +114,8 @@ class Sun2025MotionBenchmark(BenchmarkBase):
 
     def __init__(self, stimuli, reference: BehavioralAssembly) -> None:
         _check(stimuli, reference)
-        self.full_study = (set(zip(stimuli.scene, stimuli.modulation, stimuli.flip)) == _FULL_DESIGN
-                           and len(stimuli) == len(_FULL_DESIGN) and reference.attrs.get('complete') is True)
-        identifier = IDENTIFIER
-        if not self.full_study:
-            order = np.argsort([str(i) for i in reference['stimulus_id'].values])
-            content = {'stimulus_ids': sorted(map(str, stimuli.stimulus_id)),
-                       'reference': reference.values[order].tolist()}
-            digest = hashlib.sha256(json.dumps(content).encode()).hexdigest()[:16]
-            identifier = f'{IDENTIFIER}-subset-{digest}'
+        self.full_study = _full_design(stimuli) and reference.attrs.get('complete') is True
+        identifier = IDENTIFIER if self.full_study else _subset_identifier(stimuli, reference)
         # A fixed, seeded trial order; each clip is its own trial.
         self.stimulus_set = stimuli.sample(frac=1, random_state=0).reset_index(drop=True)
         self.stimulus_set.identifier = f'{getattr(stimuli, "identifier", "sun2025")}-order-0'
@@ -171,7 +194,7 @@ def load_benchmark(*, root=None, scenes=None) -> Sun2025MotionBenchmark:
     from brainscore.data.sun2025 import IDENTIFIER as DATA
     stimuli = load_stimulus_set(DATA, root=root)
     reference = load_dataset(DATA, root=root)
-    if scenes is None and not reference.attrs.get('complete'):
+    if scenes is None and not (_full_design(stimuli) and reference.attrs.get('complete')):
         raise ValueError('This build holds only some scenes; prepare all 40 scenes for the registered '
                          'benchmark, or pass scenes=[...] for a named subset')
     if scenes is not None:

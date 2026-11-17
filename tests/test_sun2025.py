@@ -161,10 +161,15 @@ def test_unflip_reverses_each_flip():
 
 
 def _design(human):
-    """An in-memory design: group g has scene 1, modulation g + 1 and four flips; human is groups x 3 x 2."""
+    """An in-memory benchmark: group g has scene 1, modulation g + 1 and four flips; human is groups x 3 x 2."""
+    from brainscore.benchmarks.sun2025.benchmark import Sun2025MotionBenchmark
+    return Sun2025MotionBenchmark(*_parts(human))
+
+
+def _parts(human):
+    """The stimuli and the reference of ``_design``."""
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
     from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-    from brainscore.benchmarks.sun2025.benchmark import Sun2025MotionBenchmark
     groups = range(len(human))
     stimuli = StimulusSet([dict(stimulus_id=f'g{g}-f{f}', base_id=f'g{g}', scene=1, modulation=g + 1,
                                 flip=f, video_path=f'g{g}-f{f}.avi') for g in groups for f in (1, 2, 3, 4)])
@@ -175,7 +180,7 @@ def _design(human):
                 'scene': ('presentation', [1] * len(human)),
                 'modulation': ('presentation', [g + 1 for g in groups]),
                 'participant': [1, 2, 3], 'axis': ['x', 'y']})
-    return Sun2025MotionBenchmark(stimuli, reference)
+    return stimuli, reference
 
 
 def test_the_score_equals_the_old_implementation_to_the_last_digit():
@@ -207,3 +212,43 @@ def test_a_number_outside_the_supported_range_is_an_invalid_answer():
     row = list(reports['stimulus_id'].values).index('g0-f1')
     assert reports['response_state'].values[row] == 'invalid' and reports.values[row] == huge
     assert score.attrs['n_invalid'] == 1 and score.attrs['result_validity'] == 'invalid'
+
+
+TWO_GROUPS = [[[0.0, 0.0]] * 3, [[10.0, 0.0], [9.0, 1.0], [11.0, -1.0]]]
+
+
+def test_a_reference_that_does_not_match_the_stimuli_is_refused():
+    from brainscore.benchmarks.sun2025.benchmark import Sun2025MotionBenchmark
+    stimuli, reference = _parts(TWO_GROUPS)
+    swapped = stimuli.copy()
+    swapped['base_id'] = swapped.base_id.map({'g0': 'g1', 'g1': 'g0'})
+    with pytest.raises(ValueError, match='reference modulation'):
+        Sun2025MotionBenchmark(swapped, reference)
+    from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
+    wrong_scenes = BehavioralAssembly(
+        reference.values, dims=['presentation', 'participant', 'axis'],
+        coords={'stimulus_id': ('presentation', ['g0', 'g1']), 'scene': ('presentation', [99, 98]),
+                'modulation': ('presentation', [1, 2]), 'participant': [1, 2, 3], 'axis': ['x', 'y']})
+    with pytest.raises(ValueError, match='reference scene'):
+        Sun2025MotionBenchmark(stimuli, wrong_scenes)
+    with pytest.raises(ValueError, match='participants'):
+        Sun2025MotionBenchmark(stimuli, reference.assign_coords(participant=[1, 2, 4]))
+
+
+def test_a_subset_has_one_identity_whatever_the_order():
+    from brainscore.benchmarks.sun2025.benchmark import Sun2025MotionBenchmark
+    stimuli, reference = _parts(TWO_GROUPS + [[[1.0, 2.0]] * 3, [[3.0, 4.0]] * 3])
+    first = Sun2025MotionBenchmark(stimuli, reference).identifier
+    reordered = stimuli.iloc[::-1].reset_index(drop=True)
+    reordered.identifier = stimuli.identifier
+    transposed = reference.isel(presentation=[3, 1, 0, 2]).transpose('participant', 'axis', 'presentation')
+    assert Sun2025MotionBenchmark(reordered, transposed).identifier == first
+    changed = reference.copy(data=reference.values + 1)
+    assert Sun2025MotionBenchmark(stimuli, changed).identifier != first
+
+
+def test_the_registered_identifier_needs_the_full_design(build):
+    manifest = json.loads((build / 'manifest.json').read_text())
+    (build / 'manifest.json').write_text(json.dumps(dict(manifest, complete=True)))
+    with pytest.raises(ValueError, match='40 scenes'):
+        brainscore.load_benchmark('Sun2025-motion-vector-error', root=build)
