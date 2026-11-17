@@ -36,10 +36,22 @@ class TestResolution:
         monkeypatch.delenv('BRAINSCORE_DATA_HOME')
         assert asset.resolved() == pathlib.Path.home() / 'brainscore-data' / 'test-asset'
 
-    def test_a_relative_data_home_is_made_absolute(self, asset, tmp_path, monkeypatch):
+    @pytest.mark.parametrize('value', ['', '   ', 'relative', '.', '~relative-user-name-that-is-absent'])
+    def test_an_empty_or_relative_data_home_is_refused_and_makes_no_folder(
+            self, asset, tmp_path, monkeypatch, value):
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv('BRAINSCORE_DATA_HOME', 'relative')
-        assert asset.resolved() == pathlib.Path.cwd() / 'relative' / 'test-asset'
+        monkeypatch.setenv('BRAINSCORE_DATA_HOME', value)
+        before = sorted(tmp_path.iterdir())
+        with pytest.raises(ValueError, match='BRAINSCORE_DATA_HOME'):
+            asset.resolved()
+        with pytest.raises(ValueError, match='BRAINSCORE_DATA_HOME'):
+            from brainscore.data import package_data
+            package_data('ewok', source=tmp_path)
+        assert sorted(tmp_path.iterdir()) == before
+
+    def test_a_tilde_data_home_is_the_home_folder(self, asset, monkeypatch):
+        monkeypatch.setenv('BRAINSCORE_DATA_HOME', '~/elsewhere')
+        assert asset.resolved() == pathlib.Path.home() / 'elsewhere' / 'test-asset'
 
     def test_present_file_resolves(self, asset):
         asset.resolved().parent.mkdir(parents=True)

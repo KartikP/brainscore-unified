@@ -54,7 +54,17 @@ def data_home() -> pathlib.Path:
     It holds ``sources/<name>`` (the original source of ``package_data(name)``) and one folder
     for each local asset, ``<asset name>``. A data set on another drive: put a link at its place.
     """
-    return pathlib.Path(os.environ.get(HOME_VARIABLE) or '~/brainscore-data').expanduser().absolute()
+    value = os.environ.get(HOME_VARIABLE)
+    if value is None:
+        return pathlib.Path.home() / 'brainscore-data'
+    try:
+        home = pathlib.Path(value).expanduser()
+    except RuntimeError:                 # ~name of a user that does not exist
+        home = pathlib.Path(value)
+    if not value.strip() or not home.is_absolute():
+        raise ValueError(f'{HOME_VARIABLE}={value!r} names no absolute folder. Set it to an absolute path '
+                         f'(or a path that starts with ~), or unset it to use {pathlib.Path.home() / "brainscore-data"}.')
+    return home
 
 
 @dataclass(frozen=True)

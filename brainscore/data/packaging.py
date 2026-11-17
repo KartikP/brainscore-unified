@@ -372,6 +372,7 @@ def package_data(name: str, source: str | Path | None = None,
     Raises ``LocalDataMissing`` with what to get and where to put it when the source
     is missing, and ``NotImplementedError`` when no builder exists yet.
     """
+    data_home()             # a data home that names no absolute folder is refused before any folder is made
     builder = _builder(name)
     if builder.cannot:
         raise NotImplementedError(
