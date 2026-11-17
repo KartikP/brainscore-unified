@@ -29,7 +29,30 @@ A wrapper reads a stimulus file path only from the column names that the core ca
 | `EWoK-core-1.0` | `EWoK-core-1.0` | world-knowledge contrasts and their answer keys | local: gated text | `EWoK-core-1.0-logprobs`, `-choice` |
 | `Yeatman2021` | `Yeatman2021` | word and pseudoword images with human lexical decisions (ROAR) | hosted | `Yeatman2021-lexical_decision-*` |
 
-CogGym's experiments, human results and scoring code come from the authors' repository at a pinned revision; point `BRAINSCORE_COGGYM_CHECKOUT` at that checkout. `python -m brainscore.data` lists the files you supply yourself that a plugin declares as a local asset (the Algonauts 2025 files, the CogGym checkout, the EWoK data, the Lahner2024 frames and sound tracks, the language atlas and the LeBel source pickle), where to get each and whether it is found; `python -m brainscore.data <name>` prints how to obtain one.
+CogGym's experiments, human results and scoring code come from the authors' repository at a pinned revision; point `BRAINSCORE_COGGYM_CHECKOUT` at that checkout. `python -m brainscore.data` lists each data plugin with the place of its source, then the files you supply yourself that a plugin declares as a local asset (the Algonauts 2025 files, the CogGym checkout, the EWoK data, the Lahner2024 frames and sound tracks, the language atlas and the LeBel source pickle), and whether each is found; `python -m brainscore.data <asset name>` prints how to obtain one.
+
+## Package a dataset from its source
+
+`package_data` builds a plugin's files from the original source, the way Brain-Score reads them. It looks for the source in one place: the `source` argument, else `$BRAINSCORE_DATA_HOME/sources/<name>`, else `~/brainscore-data/sources/<name>`.
+
+```python
+from brainscore.data import package_data
+
+# Build the EWoK files from the native table in ~/brainscore-data/sources/ewok
+output = package_data(name='ewok')
+
+# Or name the source and the output folders
+output = package_data(name='lebel2023', source='/data/litcoder', output='/data/lebel-build')
+```
+
+The same from a shell:
+
+```bash
+python -m brainscore.data                        # each plugin, where its source is expected, and whether it is there
+python -m brainscore.data package ewok           # package one
+```
+
+When the source is missing, the error says what data is needed and from where, the access it needs, the folder and the files to put in it, and the tools and disk space. After a build, `package_data` prints each file's size, sha1 and counts (rows, dimension sizes, items). For a file that the plugin hosts, it says whether the sha1 equals the registered one; a file with the registered sha1, put at `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), is used in place of the download. Nothing is uploaded. Each plugin README's `## Rebuild` section states the same facts.
 
 ## Add a data plugin
 
@@ -37,7 +60,7 @@ CogGym's experiments, human results and scoring code come from the authors' repo
 brainscore/data/<name>/
     __init__.py          registration: identifiers, loader functions and local assets, no I/O until called
     README.md            where the data come from, their license, how to cite them
-    data_packaging/      scripts that build the hosted files from the source data
+    data_packaging/      the script that builds the plugin's files from the source data
 ```
 
 The folder registers by its presence: every subpackage of `brainscore/data/` is imported with `brainscore`, so no other file changes. A plugin in another package (another repository) registers when you import that package before you load it.
@@ -78,7 +101,30 @@ the value.
 `templates/new_data/` is a complete data plugin with loaders for stimuli, recordings and
 participant choices, image files and tests. Its test goes to `tests/test_<name>.py`.
 
-Hosted files are fetched once, checked against a sha1 and cached (see `brainscore/data/lebel2023/hosted.py`). Data you may not redistribute stays local: declare it as a `LocalAsset` in your plugin's `__init__.py`, so users get instructions instead of a missing-file error, and `python -m brainscore.data` lists it. Put the script that prepares it in your `data_packaging/` folder and name it in `prepare`. Read the location with `local.path(...)` when the data is needed, not at import. A second asset with the same name is refused.
+Say how your files are built from the source: declare a `DataBuilder` beside the registry lines, with your `data_packaging/` script as its command. `package_data` fills in `{source}` and `{output}`, runs the script, and prints the sha1 and counts of what it wrote.
+
+```python
+from brainscore import data_builder_registry
+from brainscore.data import DataBuilder
+
+# In brainscore/data/mystudy2026/__init__.py, beside the registry lines.
+data_builder_registry['mystudy2026'] = DataBuilder(
+    source='https://example.org/mystudy2026; licence CC-BY 4.0',     # what is needed, from where
+    access='public, no account',                                     # or an account, an agreement, private
+    layout='responses.mat and the stimuli/ folder, as the download unpacks',   # the source folder
+    needs='scipy; 2 GB of disk; minutes',
+    writes='assy_MyStudy2026.nc, stimulus_MyStudy2026.csv',
+    build='python -m brainscore.data.mystudy2026.data_packaging.package --source {source} --out {output}',
+    sha1={'assy_MyStudy2026.nc': '<the sha1 your loader pins>'},     # lets a user check a rebuild
+)
+
+# The README section is generated from the same facts; paste it under "## Rebuild"
+print(data_builder_registry['mystudy2026'].readme('mystudy2026'))
+```
+
+A dataset that cannot be rebuilt yet states `cannot=` (what is known, what a maintainer needs); one that is read as published leaves out `build`. `tests/test_data_packaging.py` fails a data plugin without a declaration or with a README that differs from it, and prints the block to paste.
+
+Hosted files are fetched once, checked against a sha1 and cached (see `brainscore/data/lebel2023/hosted.py`). Data you may not redistribute stays local: declare it as a `LocalAsset` in your plugin's `__init__.py`, so users get instructions instead of a missing-file error, and `python -m brainscore.data` lists it. Name the command that prepares it in `prepare`. Read the location with `local.path(...)` when the data is needed, not at import. A second asset with the same name is refused.
 
 ```python
 from brainscore.data import local
@@ -92,7 +138,7 @@ MY_FILMS = local.register(local.LocalAsset(
     why_local='The films are licensed to each lab; Brain-Score may not share them.',
     source='https://example.org/mystudy2026',
     obtain='The 12 film files, about 4 GB.',
-    prepare='python -m brainscore.data.mystudy2026.data_packaging.cut_frames',
+    prepare='python -m brainscore.data package mystudy2026',
 ))
 
 try:
