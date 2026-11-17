@@ -25,9 +25,10 @@ stimuli, and the Choice forms that remain (shared or per-row labels, plain or
 verbatim, choice or probabilities requested, with and without fitting stimuli),
 the reaction time of each link, and the log probabilities that replace the old raw
 scores (verbatim per-row options; a request that is not verbatim is refused). The
-answer and likelihood parts without a reply refuse a verbatim session even when it
-requests only the log probabilities: the choice format of the task keeps an owner
-that can serve the task (``_choose`` in ``brainscore/_model/behavioral.py``).
+answer and likelihood parts without a reply refuse a verbatim session that also requests
+the choice: the choice format of the task keeps an owner that can serve the task
+(``_choose`` in ``brainscore/_model/behavioral.py``); a session that requests only the log
+probabilities needs no such owner.
 """
 import re
 

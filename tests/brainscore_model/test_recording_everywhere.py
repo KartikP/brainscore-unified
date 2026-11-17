@@ -102,6 +102,67 @@ def test_recording_during_likelihood_scoring_is_the_prompt_pass():
     np.testing.assert_array_equal(recorded.values, expected)
 
 
+def test_log_probabilities_of_per_row_options_and_a_region_in_one_session():
+    """Each row gives its own options (EWoK's form) and a region is recorded in the same pass:
+    the recording keeps the scalar stimulus columns; the options stay with the answer."""
+    stimuli = STIMULI.assign(options=[['cat', 'dog house'], ['dog', 'dog house'], ['cat', 'dog']])
+    stimuli.identifier = 'everywhere-options'
+    session = stimulus_session(stimuli, ['behavior:log_probabilities', 'neural:A'],
+                               task=TaskContext(response=Choice('options', verbatim=True)))
+    _model(Net()).participate(session)
+    recorded = session.collect('neural:A')
+    assert recorded.sizes['presentation'] == len(stimuli)
+    assert list(recorded['sentence'].values) == list(stimuli['sentence'])
+    log_probabilities = session.collect('behavior:log_probabilities')
+    assert log_probabilities.attrs['response']['method'] == 'likelihood'
+    assert set(log_probabilities['response_state'].values) == {'valid'}
+
+
+class _PassiveToo(Recordable):
+    """Records while answering, and presents a table passively through the shipped attachment."""
+
+    def __call__(self, stimuli, layers, **kwargs):
+        from brainscore.model_helpers._extractors import attach_stimulus_set
+        values = [self.net.forward(text)[layers[0]] for text in stimuli['sentence']]
+        return attach_stimulus_set(NeuroidAssembly(np.array(values), dims=['presentation', 'neuroid'], coords={
+            'neuroid_id': ('neuroid', [f'{layers[0]}.{i}' for i in range(len(values[0]))]),
+            'layer': ('neuroid', [layers[0]] * len(values[0]))}), stimuli)
+
+
+def test_a_column_of_single_value_arrays_is_kept_on_a_recording_while_answering():
+    """A zero-dimensional array is one value: the recording keeps it, as a passive recording does."""
+    stimuli = STIMULI.assign(extra=[np.array(3), np.array(7), np.array(9)])
+    stimuli.identifier = 'everywhere-single-values'
+    net = Net()
+    model = BrainScoreModel('toy', extractor={'text': _PassiveToo(net)},
+                            region_layer_map={'A': LayerSelector('early', modality='text')},
+                            likelihood=lambda prompt, labels: net.forward(prompt.text()) and {
+                                label: -1.0 for label in labels})
+    task = stimulus_session(stimuli, ['behavior:log_probabilities', 'neural:A'],
+                            task=TaskContext(response=Choice(['cat', 'dog'], verbatim=True)))
+    model.participate(task)
+    passive = stimulus_session(stimuli, ['neural:A'])
+    model.participate(passive)
+    assert ([int(value) for value in task.collect('neural:A')['extra'].values]
+            == [int(value) for value in passive.collect('neural:A')['extra'].values] == [3, 7, 9])
+
+
+@pytest.mark.parametrize('streaming', [False, True])
+def test_a_recording_while_answering_names_the_stimulus_columns_it_leaves_out(streaming):
+    stimuli = STIMULI.assign(options=[['cat', 'dog house'], ['dog', 'dog house'], ['cat', 'dog']])
+    stimuli.identifier = 'everywhere-left-out'
+    session = stimulus_session(stimuli, ['behavior:log_probabilities', 'neural:A'],
+                               task=TaskContext(response=Choice('options', verbatim=True)), streaming=streaming)
+    _model(Net()).participate(session)
+    recording = session.collect('neural:A').attrs['recording']
+    assert 'options' in recording['stimulus_columns_left_out'] and recording['reason']
+    # A table of single values leaves nothing out, and says nothing.
+    scalar = stimulus_session(STIMULI, ['behavior:log_probabilities', 'neural:A'],
+                              task=TaskContext(response=Choice(['cat', 'dog'], verbatim=True)), streaming=streaming)
+    _model(Net()).participate(scalar)
+    assert 'stimulus_columns_left_out' not in scalar.collect('neural:A').attrs['recording']
+
+
 def test_a_reply_with_implied_probabilities_records_the_prompt_pass():
     net = Net()
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))

@@ -8,6 +8,11 @@ Pure language model with no vision encoder. This tests how much of a
 behavioral benchmark like ROAR can be solved from the string alone,
 without any visual word form processing.
 
+Ways to answer: the readout (a choice, probabilities and a rating, fitted on
+the task's fitting stimuli) and the likelihood (the log probabilities of the
+options of a verbatim choice, as EWoK asks). GPT-2 is not instruction-tuned,
+so it does not write answers.
+
 Architecture:
   h.{0-11}  -- 12 transformer decoder layers
 """
@@ -33,10 +38,13 @@ REGION_LAYER_MAP = {
 def get_model(identifier: str) -> BrainScoreModel:
     assert identifier == 'gpt2-small'
 
-    from transformers import GPT2Model, GPT2Tokenizer
+    from transformers import GPT2LMHeadModel, GPT2Tokenizer
+    from brainscore.model_helpers.causal_lm import _CausalLMParts
     from brainscore.model_helpers.text_wrapper import TextWrapper
 
-    gpt2 = GPT2Model.from_pretrained('gpt2')
+    # The language head scores the options; its transformer is the network that is recorded.
+    language_model = GPT2LMHeadModel.from_pretrained('gpt2')
+    gpt2 = language_model.transformer
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
     # GPT-2 has no pad token; set one so batching works
     tokenizer.pad_token = tokenizer.eos_token
@@ -61,6 +69,9 @@ def get_model(identifier: str) -> BrainScoreModel:
         # its own criterion. Yeatman2021-lexical_decision-text is unchanged by
         # the re-map (raw 0.81 at both), confirming the two are independent.
         behavioral_readout_layer='h.11',
-        # The readout derives the choice from its probabilities by argmax.
+        # The likelihood gives the log probabilities of the options of a verbatim choice.
+        likelihood=_CausalLMParts(language_model, tokenizer).likelihood,
+        # The readout derives the choice from its probabilities by argmax; the readout
+        # also gives the probabilities and the rating.
         capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}},
     )

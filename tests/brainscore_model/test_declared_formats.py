@@ -51,7 +51,7 @@ DECLARED = {
     'models/api_closed/model.py': ({B, CH, RA, TE}, {B, CH, RA, TE}),
     'models/blip2_opt_2_7b/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
     'models/clip_vit_b_32/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
-    'models/gpt2_small/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
+    'models/gpt2_small/model.py': ({B, CH, P, RA, RT}, {B, CH, P, LP, RA, RT}),
     'models/qwen36_27b/model.py': ({B, CH, P, RA, RT, TE}, {B, CH, P, LP, RA, RT, TE}),
     'models/random_vit_b_32/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
     'tools/rajalingham2018_2afc/score_2afc.py': ({B, CH}, {B, CH}),
@@ -76,7 +76,7 @@ COMPATIBLE = {
     'models/api_closed/model.py': (ALL - {'EWoK logprobs'}, ALL - {'EWoK logprobs'}),
     'models/blip2_opt_2_7b/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
     'models/clip_vit_b_32/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
-    'models/gpt2_small/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
+    'models/gpt2_small/model.py': (ALL - {'CogGym'}, ALL - {'CogGym'}),
     'models/qwen36_27b/model.py': (ALL, ALL),
     'models/random_vit_b_32/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
     'tools/rajalingham2018_2afc/score_2afc.py': (ALL - {'EWoK logprobs', 'CogGym'},
@@ -156,11 +156,11 @@ def test_the_matrix_changes_only_where_the_declarations_change():
     registrations state ('readout', 'argmax') and keep behavior:choice. EWoK logprobs now
     requests behavior:log_probabilities, which only a likelihood
     gives, so the readout-only registrations are N/A there (before, the run raised:
-    raw scores came only from a likelihood)."""
+    raw scores came only from a likelihood); gpt2-small has a likelihood and stays applicable."""
     changed = {(where, name) for where, (before, after) in COMPATIBLE.items() for name in before ^ after}
     assert changed == {('model_helpers/causal_lm.py', 'facade')} | {
         (where, 'EWoK logprobs') for where in ('models/blip2_opt_2_7b/model.py', 'models/clip_vit_b_32/model.py',
-                                               'models/gpt2_small/model.py', 'models/random_vit_b_32/model.py')}
+                                               'models/random_vit_b_32/model.py')}
     assert all(after <= before for before, after in COMPATIBLE.values())
 
 

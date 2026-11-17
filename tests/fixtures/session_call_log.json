@@ -3333,7 +3333,7 @@
     "c"
    ]
   ],
-  "refused": true
+  "refused": false
  },
  "answer+reply+likelihood+behavioral_readout_layer | ewok log scores | live region history": {
   "calls": [
@@ -3350,9 +3350,37 @@
    [
     "take",
     "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "take",
+    "c"
    ]
   ],
-  "refused": true
+  "refused": false
  },
  "answer+reply+likelihood+behavioral_readout_layer | ewok log scores | live region stream": {
   "calls": [
@@ -3369,9 +3397,37 @@
    [
     "take",
     "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "take",
+    "c"
    ]
   ],
-  "refused": true
+  "refused": false
  },
  "answer+reply+likelihood+behavioral_readout_layer | ewok log scores | stream": {
   "calls": [
@@ -7013,7 +7069,7 @@
     "c"
    ]
   ],
-  "refused": true
+  "refused": false
  },
  "reply+likelihood | ewok log scores | live region history": {
   "calls": [
@@ -7030,9 +7086,37 @@
    [
     "take",
     "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "take",
+    "c"
    ]
   ],
-  "refused": true
+  "refused": false
  },
  "reply+likelihood | ewok log scores | live region stream": {
   "calls": [
@@ -7049,9 +7133,37 @@
    [
     "take",
     "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "take",
+    "c"
    ]
   ],
-  "refused": true
+  "refused": false
  },
  "reply+likelihood | ewok log scores | stream": {
   "calls": [
