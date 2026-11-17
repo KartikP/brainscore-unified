@@ -453,7 +453,10 @@ class BehavioralReadout:
         A session that requests ``behavior:log_probabilities`` is answered by the
         likelihood, its only native owner, and only for a verbatim Choice; the
         choice and the probabilities it also requests come from that same pass
-        (``softmax_argmax``, ``softmax``), so the likelihood runs once.
+        (``softmax_argmax``, ``softmax``), so the likelihood runs once. The owner
+        of the task's choice must also be able to serve the task, except in a
+        session that requests only the log probabilities, records no region, has
+        trial memory ``'none'`` and a subject that keeps no trial history.
 
         A task with a response is answered by the owner of its answer format
         (the response kind's own format: choice, rating or text) and, when
@@ -526,10 +529,16 @@ class BehavioralReadout:
                 task_type=task.task_type)
         source = None
         wanted = requested & self._PROBABILITY_SIDE
-        if log_probabilities:
+        # Nothing reads the answer of the choice owner: no region is recorded and no later trial reads this one.
+        unread = (not recording and task.trial_memory == 'none'
+                  and owner._memory != 'trial_history')
+        if log_probabilities and not (requested == {LOG_PROBABILITIES} and unread):
             # The task's choice format keeps an owner that can serve the task, as the setup
             # of the task always checked (``_eligible_picks``); the likelihood answers it here.
+            # A session that requests only the log probabilities and that nothing else reads
+            # needs no choice owner (as the probability-only pass below).
             self._choice_owner_serves(task)
+        if log_probabilities:
             # One likelihood pass gives the log probabilities and what derives from them.
             return path, (path if wanted else None)
         # The requested formats decide the passes: the probability owner runs (first,
@@ -544,8 +553,7 @@ class BehavioralReadout:
                     f"Subject '{owner.identifier}' cannot give implied probabilities: "
                     'it needs likelihood= or a readout (behavioral_readout_layer=, '
                     'fitting_stimuli).', task_type=task.task_type)
-        if (wanted and not requested - self._PROBABILITY_SIDE and not recording
-                and task.trial_memory == 'none' and self.owner._memory != 'trial_history'):
+        if wanted and not requested - self._PROBABILITY_SIDE and unread:
             # Only the probability side is requested, no region is recorded and no later trial
             # reads this one: the answer of the choice owner would be read by nothing, so only
             # the probability owner runs (ADR-0063 decision 1).

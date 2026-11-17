@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from brainscore import BrainScoreModel
+from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice
 from brainscore_core.streaming_helpers import stimulus_session
@@ -87,3 +88,26 @@ def test_with_trial_history_the_reply_still_runs_and_later_trials_read_it():
         assert calls.count('reply') == len(STIMULI)
     assert rows[1] == rows[2]
     assert rows[1][0] != rows[1][1]          # the second trial read the first reply
+
+
+def test_log_probabilities_alone_need_no_part_that_gives_the_choice():
+    """A readout gives the choice and cannot serve a verbatim task: a session that requests only
+    the log probabilities runs the likelihood alone; with a recorded region it is refused."""
+    def build(calls):
+        def score(prompt, candidates):
+            calls.append('likelihood')
+            return {candidate: -1.0 for candidate in candidates}
+        return BrainScoreModel('log-probabilities-alone', extractor={'text': features},
+                               region_layer_map={'IT': 'mid'}, behavioral_readout_layer='late',
+                               likelihood=score,
+                               capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
+    task = TaskContext(response=Choice(['cat', 'dog'], verbatim=True))
+    calls = []
+    session = stimulus_session(STIMULI, ['behavior:log_probabilities'], task)
+    build(calls).participate(session)
+    assert calls == ['likelihood'] * len(STIMULI)
+    assert session.collect('behavior:log_probabilities').attrs['response']['method'] == 'likelihood'
+    calls = []
+    with pytest.raises(ExecutionNotFeasibleError):
+        build(calls).participate(stimulus_session(STIMULI, ['behavior:log_probabilities', 'neural:IT'], task))
+    assert calls == []
