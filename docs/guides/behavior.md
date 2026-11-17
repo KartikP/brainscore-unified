@@ -85,6 +85,8 @@ Every collected answer carries a response record in `attrs['response']`, and eve
 | **Likelihood** | the model scores each label as its reply, without generating | log probabilities (native, verbatim tasks only), choice (`softmax_argmax`), probabilities (`softmax`) | `likelihood` |
 | **Readout** | a classifier or ridge regression on one layer, fitted on `fitting_stimuli` | choice (`argmax`), probabilities, rating | `behavioral_readout_layer` and an extractor |
 
+The ways of each registered model, and the way that gives each kind of answer: [Ways to answer](../reference/ways_to_answer.md).
+
 Each kind of answer (choice, rating, probabilities, reaction time, text, log probabilities) comes from one named part of the model: writing (`reply`), a fixed-choice answer (`answer`), the likelihood of the options (`likelihood`) or a trained readout (`behavioral_readout_layer`). A part gives a kind directly or converts another kind (the table above). When two parts could give it, the registration says which one, in `capability_config={'behavior-sessions': {...}}` (the code calls this line a statement, and the chosen part the owner); a kind that a part only converts is given only when that line names it, for example `('likelihood', 'softmax')` for the probabilities. A session that asks for a kind the model has no part for stops before any compute:
 
 ```python
