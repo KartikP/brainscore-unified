@@ -84,7 +84,11 @@ Other participants are 2, 3 and 5. Splits `friends_s7` and `ood` contain held-ou
 response placeholders, not measured responses available for local scoring.
 Do not treat those NaNs as an acquired human dataset.
 
-A fresh build has not been compared with a recorded count or checksum.
+A fresh build is checked against `data_packaging/expected.json`, the record of a cloud
+rebuild (2026-11-17): the sha1 and exact content digest of the 12 assemblies. The three
+stimulus tables have no expected record yet: their rows hold film and transcript paths of
+the build machine's source folder, so a record taken there cannot match another machine.
+The frames, clips and sound files have none.
 
 ## Rebuild
 

@@ -71,24 +71,6 @@
       "counts": "presentation 4918, neuroid 1000",
       "digest": "32b22e58f36be5e5d54af147c19b5e81d08ef942",
       "sha1": "556ff447719bf8f9b47fd803627d27d219dcf3ff"
-    },
-    "algonauts2025_stim_friends.csv": {
-      "bytes": 77098,
-      "counts": "rows 336",
-      "digest": "312416b35f5700e7a023aee26f41b192000c1bd4",
-      "sha1": "6db6d7008aa7097288cb0bb94f52abc8da987291"
-    },
-    "algonauts2025_stim_friends_s7.csv": {
-      "bytes": 11389,
-      "counts": "rows 49",
-      "digest": "01d1f29482df1ee5814d84563a6dca60909e6684",
-      "sha1": "e29779e2076acc45255ca1f73faf7f94444d8042"
-    },
-    "algonauts2025_stim_ood.csv": {
-      "bytes": 2670,
-      "counts": "rows 12",
-      "digest": "d0c33593d44fe71a4f4efb8a2430dcb71bde6cf8",
-      "sha1": "9d95f943af8abee36970d1776351a9a9d63ef42d"
     }
   }
 }
