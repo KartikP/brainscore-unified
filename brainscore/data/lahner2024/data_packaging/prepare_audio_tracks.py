@@ -104,7 +104,8 @@ def main():
         manifest.append({
             'stimulus_id': sid,
             'video_path': str(video_path),
-            'audio_path': str(audio_path),
+            # Relative to the audio folder, so the manifest stays right when the folder moves.
+            'audio_path': audio_path.relative_to(args.audio_dir).as_posix(),
             'action': action,
         })
 

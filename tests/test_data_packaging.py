@@ -348,3 +348,33 @@ def test_the_algonauts_recovery_command_reads_the_folder_the_benchmark_names(tmp
     assert main(command.replace('<this folder>', str(prepared)).split()[3:]) == 0
     local.check_benchmark_assets('Algonauts2025-friends-sub01')
     assert brainscore.load_dataset('Algonauts2025-friends-sub01', root=prepared).sizes['presentation'] == 3
+
+
+def _clips(folder, monkeypatch):
+    """Two tiny hosted clips, one with sound and one without, as ``load_stimulus_set`` gives them."""
+    import subprocess
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    folder.mkdir()
+    paths = {'stimulus_0001': folder / '0001.mp4', 'stimulus_0002': folder / '0002.mp4'}
+    for path, sound in zip(paths.values(), (True, False)):
+        inputs = ['-f', 'lavfi', '-i', 'testsrc=duration=3:size=64x48:rate=25']
+        if sound:
+            inputs += ['-f', 'lavfi', '-i', 'sine=duration=3:sample_rate=16000']
+        subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', *inputs, '-shortest', '-c:v', 'libx264',
+                        '-pix_fmt', 'yuv420p', str(path)], check=True)
+    stimuli = StimulusSet(pd.DataFrame({'stimulus_id': list(paths)}))
+    stimuli.identifier = 'BOLDMoments'
+    stimuli.stimulus_paths = {key: str(path) for key, path in paths.items()}
+    monkeypatch.setattr(brainscore, 'load_stimulus_set', lambda identifier: stimuli)
+    return paths
+
+
+@pytest.mark.skipif(__import__('shutil').which('ffmpeg') is None, reason='ffmpeg is needed')
+def test_the_lahner_sound_manifest_names_files_that_exist_after_the_build(tmp_path, monkeypatch, offline):
+    import json
+    _clips(tmp_path / 'clips', monkeypatch)
+    output = package_data('lahner2024-sound', output=tmp_path / 'sound')
+    manifest = json.loads((output / 'manifest.json').read_text())
+    assert len(manifest['entries']) == 2
+    for entry in manifest['entries']:
+        assert (output / entry['audio_path']).is_file()
