@@ -38,13 +38,19 @@ def _load(identifier: str, hf_id: str, model_class: str, dtype: str, download_gb
     import transformers
     from brainscore_core.hf_compat import pin_image_processor
     from brainscore.models._downloads import hf_preflight
+    # The class first: a class this transformers lacks is the first thing to fix, before any download.
+    try:
+        checkpoint_class = getattr(transformers, model_class)
+    except AttributeError:
+        raise ImportError(f'{identifier!r} needs transformers.{model_class}, which transformers '
+                          f'{transformers.__version__} does not have.') from None
     download = hf_preflight(identifier, hf_id, download_gb, revision=revision)
     placement = {}
     if device_map is not None:
         placement = {'device_map': device_map}
         if device_map == 'auto':
             placement['max_memory'] = _placement_budget(torch)
-    model = getattr(transformers, model_class).from_pretrained(
+    model = checkpoint_class.from_pretrained(
         hf_id, dtype=getattr(torch, dtype), **placement, **download)
     if device_map is None:
         from brainscore.model_helpers._device import select_device

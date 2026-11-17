@@ -184,6 +184,18 @@ def test_precision_and_device_map_reach_the_load():
     assert 'max_memory' in settings and settings['local_files_only'] is True
 
 
+def test_a_missing_class_is_named_before_the_download_check(monkeypatch):
+    import brainscore.models._downloads as downloads
+
+    def download_needed(*args, **kwargs):
+        raise RuntimeError('download the checkpoint first')
+    monkeypatch.setattr(downloads, 'hf_preflight', download_needed)
+    with pytest.raises(ImportError, match='NoSuchVLMForConditionalGeneration'):
+        vlm.build_vlm_subject('tiny-vlm', 'Org/Tiny-VLM', 'NoSuchVLMForConditionalGeneration',
+                              vision=('model.visual', 'blocks'), language=('model.language_model', 'layers'),
+                              dtype='float32', download_gb=0.1)
+
+
 def test_a_neural_session_records_the_vision_part(tmp_path):
     subject = _build()
     session = stimulus_session(_pictures(tmp_path), ['neural:IT', 'neural:V1'], TaskContext(task_type='passive'))
