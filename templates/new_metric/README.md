@@ -45,6 +45,7 @@ from brainscore_core.supported_data_standards.brainio.assemblies import Behavior
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
+# Metric: agreement with the people's majority choice
 def majority_agreement(answer, people):
     """Share of trials where the model chose the people's most common choice."""
     majority = {stimulus: Counter(people.values[people['stimulus_id'].values == stimulus]).most_common(1)[0][0]
@@ -58,6 +59,7 @@ def majority_agreement(answer, people):
     return score
 
 
+# Three words; two participants' choices for each
 stimuli = StimulusSet({'stimulus_id': ['s1', 's2', 's3'], 'sentence': ['cat', 'dog', 'cat or dog']})
 stimuli.identifier = 'metric-example-choices'
 people = BehavioralAssembly(['cat', 'cat', 'dog', 'dog', 'cat', 'dog'], dims=['presentation'], coords={
@@ -69,6 +71,7 @@ def answer(*, stimulus_row, instruction, label_set):      # a stand-in model
     return stimulus_row['sentence'] if stimulus_row['sentence'] in label_set else 'unsure'
 
 
+# Run the stand-in on the task, then score
 model = BrainScoreModel(identifier='stand-in', in_channels={'text'}, answer=answer)
 session = stimulus_session(stimuli, ['behavior:choice'],
                            TaskContext(instruction='Cat or dog?', response=Choice(['cat', 'dog'])))

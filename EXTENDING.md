@@ -47,6 +47,7 @@ runs as written:
 import brainscore
 import new_data, new_metric, new_benchmark, new_model   # importing a template registers it
 
+# Load each template by its identifier
 stimuli   = brainscore.load_stimulus_set('your-stimuli')
 data      = brainscore.load_dataset('your-measurements')
 metric    = brainscore.load_metric('your-metric')
@@ -160,11 +161,12 @@ class TurnWhenBlocked:
     def __call__(self, row):
         observation = row['observation']
         blocked = bool(self.history) and same(self.history[-1][0], observation)
-        action = (self.history[-1][1] + 1) % 4 if blocked else 0
+        action = (self.history[-1][1] + 1) % 4 if blocked else 0   # 4 directions; 0 is the first
         self.history.append((observation, action))
         return {'motor': action}
 
 
+# Subject with the history-keeping policy
 subject = BrainScoreModel(identifier='turn-when-blocked', policy=TurnWhenBlocked(),
                         policy_in_channels=('observation',))
 score = brainscore.score(subject, 'GridGame-reach-5x5')   # 15 episodes, so 15 resets
@@ -266,6 +268,7 @@ the session before any compute.
 ```python
 import os
 
+# One pass per region for this run; restore the old value
 previous = os.environ.get('BRAINSCORE_REGIONS_PER_PASS')
 os.environ['BRAINSCORE_REGIONS_PER_PASS'] = 'one'
 try:
