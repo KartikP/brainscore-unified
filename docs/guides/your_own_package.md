@@ -15,7 +15,7 @@ You can extend Brain-Score from a package of your own, outside its repositories,
 
 ## The package
 
-The example is made up: a reader that looks further to the right for a longer word, with no human data. The package registers everything at module level, so the registrations run once, when the package is imported. `register_channel` refuses a second registration of a new entry with the same name, so a function that builds the entry and registers it fails when it is called a second time. `register_tool` refuses a second registration of a tool name, and a registry of `brainscore` refuses a name that another source registered.
+You write your own package, `mylab_ext`, outside the Brain-Score repositories: one file, `mylab_ext/__init__.py`. The example is made up and has no human data.
 
 ```python
 # mylab_ext/__init__.py
@@ -27,11 +27,18 @@ from brainscore_core.streaming import StreamEvent
 from brainscore.experiments import Tool
 from brainscore.tools import register_tool
 
+# New output channel: gaze position, shape (2,)
 register_channel(CatalogEntry(
-    'eye_position', 'output', 'StreamEvent', 'gaze in degrees of visual angle, shape (2,)',
-    'mylab_ext', owner='my-lab', shape_validator=lambda x: getattr(x, 'shape', None) == (2,)))
+    name='eye_position',
+    direction='output',
+    carried_by='StreamEvent',
+    payload_contract='gaze in degrees of visual angle, shape (2,)',
+    handled_by='mylab_ext',
+    owner='my-lab',
+    shape_validator=lambda x: getattr(x, 'shape', None) == (2,)))  # checked on each payload
 
 
+# Subject: answers each word with a gaze position
 class Reader(Subject):
     identifier = 'mylab-reader'
     in_channels = {'text'}
@@ -39,10 +46,11 @@ class Reader(Subject):
 
     def participate(self, session):
         while (event := session.next_input()) is not None:
-            gaze = np.array([0.5 * len(event.payload), 0.0])
+            gaze = np.array([0.5 * len(event.payload), 0.0])  # x grows with word length
             session.respond(StreamEvent('eye_position', gaze, event.t_ms, dict(event.meta)))
 
 
+# Tool: counts the subject's outputs
 class CountOutputs(Tool):
     name = 'output_count'
 
@@ -54,9 +62,12 @@ class CountOutputs(Tool):
             self.count += 1
 
 
+# Register both by name
 brainscore.model_registry['mylab-reader'] = Reader
 register_tool('mylab-count-outputs', CountOutputs)
 ```
+
+The file registers everything at module level, so the registrations run once, when Python imports the package. `register_channel` refuses a second registration of a new entry with the same name, so a function that builds the entry and registers it fails when it is called a second time. `register_tool` refuses a second registration of a tool name, and a registry of `brainscore` refuses a name that another source registered.
 
 ## Use it by name
 
@@ -71,17 +82,21 @@ from brainscore.tools import load_tool
 from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
+# Stimuli: two words, sent on 'text'
 words = StimulusSet(pd.DataFrame({'stimulus_id': ['w0', 'w1'], 'sentence': ['cat', 'elephant']}))
 words.identifier = 'two-words'
 
 
+# One session per repetition: the words, gaze requested
 @contextmanager
 def make_session(repetition):
     yield stimulus_session(words, ['eye_position'])
 
 
-protocol = SessionProtocol('gaze-on-words', make_session, required_input_channels=['text'],
+protocol = SessionProtocol(identifier='gaze-on-words', session_factory=make_session,
+                           required_input_channels=['text'],
                            requested_output_channels=['eye_position'])
+# Load the subject and the tool by name, then run
 counter = load_tool('mylab-count-outputs')
 experiment = Experiment(subject=brainscore.load_model('mylab-reader'), protocol=protocol,
                         tools=[counter])

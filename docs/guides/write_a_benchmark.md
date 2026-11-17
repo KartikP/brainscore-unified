@@ -22,8 +22,10 @@ class MyITBenchmark(BenchmarkBase):
         self._measured, self._metric = measured, metric
 
     def __call__(self, subject):
+        # Record IT, 70 to 170 ms after image onset
         session = stimulus_session(self.stimulus_set, ['neural:IT'], time_bins=[(70, 170)])
         subject.participate(session)
+        # Compare with the measured data
         raw = self._metric(session.collect('neural:IT'), self._measured)
         return benchmark_score(self, raw=raw, metric='pls')
 ```
@@ -41,6 +43,7 @@ from brainscore_core.streaming import StreamEvent
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
+# Six images, made-up IT data (6 images x 2 sites)
 ids = [f'image{i}' for i in range(6)]
 stimuli = StimulusSet(pd.DataFrame({'stimulus_id': ids, 'image_path': [f'{i}.png' for i in ids]}))
 measured = NeuroidAssembly(np.arange(6.0)[:, None] * [1, 2], dims=['presentation', 'neuroid'],
@@ -49,10 +52,12 @@ measured = NeuroidAssembly(np.arange(6.0)[:, None] * [1, 2], dims=['presentation
                                    'neuroid_id': ('neuroid', [0, 1])})
 
 
+# Metric: correlation of the means across images
 def correlation(predicted, measured):
     return Score(np.corrcoef(predicted.values.mean(1), measured.values.mean(1))[0, 1])
 
 
+# Subject: one unit, its activity is the image's row
 class Counter(Subject):
     """Answers each image with its position in the table."""
     identifier = 'counter'
@@ -71,7 +76,7 @@ class Counter(Subject):
 
 import brainscore
 
-benchmark = MyITBenchmark(stimuli, measured, correlation, ceiling=Score(0.8))
+benchmark = MyITBenchmark(stimuli=stimuli, measured=measured, metric=correlation, ceiling=Score(0.8))
 score = brainscore.score(Counter(), benchmark)
 print(round(float(score), 3), round(float(score.attrs['raw']), 3), score.attrs['normalized'])
 # 1.25 1.0 True
@@ -124,6 +129,7 @@ least 30 stimuli. With fewer, give a larger test fold:
 ```python
 import brainscore
 
+# 10 splits, half the stimuli to fit
 metric = brainscore.load_metric('linear_predictivity',
                                 crossvalidation_kwargs=dict(splits=10, train_size=0.5))
 ```

@@ -21,10 +21,11 @@ import torch
 from PIL import Image
 
 
+# Stand-in network: three named layers
 class Net(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.layer1 = torch.nn.Conv2d(3, 12, 3)
+        self.layer1 = torch.nn.Conv2d(3, 12, 3)  # 3 channels in, 12 out, 3 x 3 kernel
         self.layer3 = torch.nn.Conv2d(12, 12, 3)
         self.layer4 = torch.nn.Sequential(torch.nn.ReLU(), torch.nn.AdaptiveAvgPool2d(2),
                                           torch.nn.Flatten(), torch.nn.Linear(48, 8))
@@ -44,6 +45,7 @@ def preprocess(paths):
     return torch.from_numpy(np.stack(images)).permute(0, 3, 1, 2)
 
 
+# Two random 16 x 16 images: cat.png, dog.png
 workspace = tempfile.TemporaryDirectory()      # removed when the script ends
 folder = workspace.name
 image_paths = {}
@@ -93,7 +95,7 @@ model = BrainScoreModel(
     # State that conversion for a model that must answer a choice task:
     capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}},
 )
-print(sorted(model.out_channels))
+print(sorted(model.out_channels))                # the declared outputs
 # ['behavior', 'behavior:choice', 'behavior:probabilities', 'behavior:rating', 'behavior:rt',
 #  'neural:IT', 'neural:V1', 'neural:V4']
 # Without the statement, 'behavior:choice' is not in the list.
@@ -124,6 +126,7 @@ stimuli = StimulusSet(pd.DataFrame({
 }))
 stimuli.identifier = 'my-images'          # names the activation cache entry
 
+# Show the images, record IT
 activations = neural_response(model, stimuli, ['neural:IT'])
 print(activations.dims, activations.shape)   # ('presentation', 'neuroid') (2, 8)
 ```
@@ -146,6 +149,7 @@ model = BrainScoreModel(
     model=clip,
     extractor={'vision': image_wrapper, 'text': text_wrapper},
     region_layer_map={
+        # Same layer name in both parts: name the part
         'IT': LayerSelector(name='encoder.layers.10', modality='vision'),
         'language_system': LayerSelector(name='encoder.layers.10', modality='text'),
     },
@@ -168,6 +172,7 @@ from brainscore import LayerSelector
 from brainscore.model_helpers.text_wrapper import TextWrapper
 
 
+# Stand-in text network
 class TextNet(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -178,6 +183,7 @@ class TextNet(torch.nn.Module):
         return self.encoder(self.embed(input_ids))
 
 
+# Stand-in tokenizer: characters as token ids
 def tokenizer(texts, padding=True, truncation=True, max_length=512, return_tensors='pt', **kwargs):
     """Characters as token ids, padded with 0 to the longest text."""
     ids = [[ord(character) % 128 for character in text][:max_length] for text in texts]
@@ -186,11 +192,12 @@ def tokenizer(texts, padding=True, truncation=True, max_length=512, return_tenso
             'attention_mask': torch.tensor([[1] * len(row) + [0] * (width - len(row)) for row in ids])}
 
 
+# One model, one extractor per input type
 text_net = TextNet().eval()
 both = BrainScoreModel(
     identifier='my-cnn-and-text',
     extractor={'vision': vision,
-               'text': TextWrapper(text_net, tokenizer, layer_aggregation='mean')},
+               'text': TextWrapper(model=text_net, tokenizer=tokenizer, layer_aggregation='mean')},
     region_layer_map={'IT': LayerSelector(name='layer4', modality='vision'),
                       'language_system': LayerSelector(name='encoder', modality='text')},
 )
@@ -213,6 +220,7 @@ def my_answer(*, stimulus_row, instruction, label_set):   # likewise
     return label_set[0]
 
 
+# No extractor: inputs declared directly
 model = BrainScoreModel(identifier='my-api-model', in_channels={'text'},
                         reply=my_reply, answer=my_answer)
 print(sorted(model.out_channels))
@@ -240,6 +248,7 @@ from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
+# Subject: first option, fixed reaction time
 class FirstOption(Subject):
     """Answers each word with the first option; reports a fixed time when asked."""
     identifier = 'first-option'
@@ -256,13 +265,15 @@ class FirstOption(Subject):
         options = session.task.response.labels
         wanted = session.outputs or ()
         while (event := session.next_input()) is not None:
-            trial = {'stimulus_id': event.meta['stimulus_id']}
+            trial = {'stimulus_id': event.meta['stimulus_id']}  # the row it answers
             if 'behavior:choice' in wanted:
-                session.respond(StreamEvent('behavior:choice', options[0], None, trial))
+                session.respond(StreamEvent('behavior:choice', options[0], t_ms=None, meta=trial))
             if 'behavior:rt' in wanted:
-                session.respond(StreamEvent('behavior:rt', 450.0, None, {**trial, 'units': 'ms'}))
+                session.respond(StreamEvent('behavior:rt', 450.0, t_ms=None,
+                                            meta={**trial, 'units': 'ms'}))
 
 
+# Two words, a choice task, one session
 words = StimulusSet(pd.DataFrame({'stimulus_id': ['w0', 'w1'], 'text': ['cat', 'blick']}))
 words.identifier = 'two-words'
 task = TaskContext(instruction='Is this a word?',

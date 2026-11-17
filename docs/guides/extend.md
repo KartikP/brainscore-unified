@@ -8,11 +8,13 @@ You can add channels, tools and capabilities from your own package, without edit
 from brainscore_core.extensions import CatalogEntry, register_channel
 
 register_channel(CatalogEntry(
-    'eye_position', 'output', 'StreamEvent',                # name, direction, carried by
-    'Gaze position in degrees of visual angle, shape (2,)',  # payload description
-    'my_package',                                            # who interprets it
+    name='eye_position',
+    direction='output',
+    carried_by='StreamEvent',
+    payload_contract='Gaze position in degrees of visual angle, shape (2,)',
+    handled_by='my_package',
     owner='my-lab',
-    shape_validator=lambda x: getattr(x, 'shape', None) == (2,),
+    shape_validator=lambda x: getattr(x, 'shape', None) == (2,),  # checked on each payload
 ))
 ```
 
@@ -21,7 +23,8 @@ Experiments and benchmark scoring both refuse a channel that is not registered.
 An input channel can also claim stimulus-table columns. Each column then feeds the channel: a table session sends it on that channel, pre-flight accepts the channel, and a subject that does not declare the channel does not get the column.
 
 ```python
-register_channel(CatalogEntry('odor', 'input', 'StimulusSet column', 'an odorant name', 'my_package'),
+register_channel(CatalogEntry(name='odor', direction='input', carried_by='StimulusSet column',
+                              payload_contract='an odorant name', handled_by='my_package'),
                  columns=('odor_name',))
 ```
 
@@ -69,7 +72,7 @@ class, and whether `artifact=` loads a saved tool. The module is imported only w
 `load_tool` asks for it, so importing the package imports no tool:
 
 ```text
-'linear-probe': ('brainscore.tools.linear_probe', 'LinearProbe', True),
+'linear-probe': ('brainscore.tools.linear_probe', 'LinearProbe', True),   # module, class, loads a saved tool
 ```
 
 A tool in your own package is registered with `register_tool(identifier, factory)` (from

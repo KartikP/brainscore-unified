@@ -20,7 +20,7 @@ class MyEnvironment:
     def step(self, outputs):
         self.position += outputs['motor']
         row = {'observation': {'x': self.position}, 'reward': 0.0}
-        return row, ('terminal' if self.position >= 3 else None)
+        return row, ('terminal' if self.position >= 3 else None)  # None: the episode goes on
 ```
 
 `observation` is defined by your environment. Declaring `observation_spec()` and `action_spec()` (with `ArraySpec`, `ActionSpec` and friends from `brainscore_core.environment`) lets the session validate shapes, units and bounds. [A new kind of output](new_output.md) shows a structured action (a pointer move, a click, a key press) with these specifications.
@@ -47,6 +47,7 @@ Declare in `policy_in_channels` every row key the policy reads (default `('obser
 ```python
 from brainscore_core.streaming_helpers import environment_session, run_environment
 
+# Session that drives the environment
 with environment_session(MyEnvironment(), seed=0) as session:
     subject.participate(session)
 actions = session.collect('motor')

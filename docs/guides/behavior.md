@@ -10,6 +10,7 @@ from brainscore import BrainScoreModel
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
+# Words shown as text, with their correct labels
 def word_table(words, labels):
     return StimulusSet(pd.DataFrame({'stimulus_id': words, 'sentence': words, 'label': labels}))
 
@@ -64,6 +65,7 @@ Run the task through a session, or attach `RecordBehavior` in an [experiment](ex
 ```python
 from brainscore_core.streaming_helpers import stimulus_session
 
+# Session: stimuli, requested outputs, task
 session = stimulus_session(test_stimuli, ['behavior:choice'], task)
 model.participate(session)
 choices = session.collect('behavior:choice')   # BehavioralAssembly: presentation x choice
@@ -110,6 +112,7 @@ print(choice.collect('behavior:choice').attrs['response']['method'],   # generat
 With one native path per format, no statement is needed; a derived format without a statement is not declared:
 
 ```python
+# Reply and likelihood parts, no statement
 plain = BrainScoreModel(identifier='plain-parts', in_channels={'text'},
                         reply=lambda prompt: 'real', likelihood=likelihood)
 choice = stimulus_session(test_stimuli, ['behavior:choice'], TaskContext(
@@ -130,11 +133,13 @@ import numpy as np
 from brainscore_core.response_formats import response_record
 from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
 
+# One trial, 'pseudo', derived by argmax
 choice = BehavioralAssembly(
     np.array([[0.0, 1.0]], dtype=np.float32), dims=['presentation', 'choice'],
     coords={'stimulus_id': ('presentation', ['w1']), 'choice': ['real', 'pseudo'],
             'raw_answer': ('presentation', ['[0.2, 0.8]'])},     # the probabilities it came from
-    attrs={'response': response_record('behavior:choice', 'external', conversion='argmax',
+    attrs={'response': response_record(format='behavior:choice', method='external',
+                                       conversion='argmax',
                                        source_format='behavior:probabilities')})
 ```
 
@@ -146,7 +151,7 @@ Written answers are stored as written; scoring them (a parser, a judge, a compar
 
 ```python
 reply, likelihood = chat_parts(hf_model, processor, chat_template_kwargs={'enable_thinking': False})
-BrainScoreModel(..., reply=reply, likelihood=likelihood,
+BrainScoreModel(..., reply=reply, likelihood=likelihood,   # '...': your model's other arguments
                 capability_config={'behavior-sessions': {
                     'behavior:probabilities': ('likelihood', 'softmax')}})
 ```

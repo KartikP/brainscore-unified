@@ -15,6 +15,7 @@ import brainscore
 from brainscore import BrainScoreModel
 from brainscore.harnesses.grid_game import random_action_policy
 
+# Subject with a random-move policy
 subject = BrainScoreModel(identifier='random-moves', policy=random_action_policy(seed=0))
 score = brainscore.score(subject, 'GridGame-reach-5x5')
 print(float(score), score.attrs['success_rate'], score.attrs['random_floor'])
@@ -33,7 +34,7 @@ slow on a laptop:
 ```python
 import brainscore
 
-score = brainscore.score('clip-vit-b-32', 'MajajHong2015public.IT-pls')
+score = brainscore.score('clip-vit-b-32', 'MajajHong2015public.IT-pls')  # macaque IT recordings
 print(float(score), score.attrs.get('raw'))
 ```
 
@@ -44,7 +45,7 @@ keeps its random state between runs, so build a new subject for a new score:
 
 ```python
 benchmark = brainscore.load_benchmark('GridGame-reach-5x5')
-subject = BrainScoreModel(identifier='random-moves', policy=random_action_policy(seed=0))
+subject = BrainScoreModel(identifier='random-moves', policy=random_action_policy(seed=0))  # a new subject
 score = brainscore.score(subject, benchmark)
 ```
 
