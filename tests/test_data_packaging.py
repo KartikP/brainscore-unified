@@ -10,6 +10,7 @@ import dataclasses
 import hashlib
 import importlib.util
 import json
+import os
 import pathlib
 import re
 import shlex
@@ -248,7 +249,7 @@ def test_rajalingham_checks_a_rebuild_against_the_files_its_tool_reads(tmp_path,
         assert f'check: no expected record: rows {rows}' in printed
 
 
-def _made_up_plugin(tmp_path, monkeypatch, files, sha1=None):
+def _made_up_plugin(tmp_path, monkeypatch, files, sha1=None, reads=''):
     """A plugin whose script copies its source folder: the test chooses the built files.
 
     Its ``data_packaging`` folder is ``tmp_path / 'scripts'``; its plugin folder is ``tmp_path``.
@@ -267,7 +268,7 @@ def _made_up_plugin(tmp_path, monkeypatch, files, sha1=None):
         return source
     monkeypatch.setitem(data_builder_registry, 'made-up', lambda: DataBuilder(
         source='made up', access='public', layout='any files', needs='nothing', writes='the same files',
-        build='python -m made_up_copy {source} {output}', sha1=sha1 or {}))
+        build='python -m made_up_copy {source} {output}', sha1=sha1 or {}, reads=reads))
     return source
 
 
@@ -355,6 +356,26 @@ def test_with_no_copy_a_recorded_digest_decides(passes, tmp_path, monkeypatch, c
                                              'this machine to measure the difference'):
             package_data('made-up', source=source, output=tmp_path / 'second')
         assert not (tmp_path / 'second').exists()
+
+
+def _hosted(tmp_path, monkeypatch, files):
+    """A made-up plugin whose files are hosted: each registered sha1 is the sha1 of the built file."""
+    sha1 = {file: hashlib.sha1(content).hexdigest() for file, content in files.items()}
+    return _made_up_plugin(tmp_path, monkeypatch, files, sha1=sha1, reads='brainio'), sha1
+
+
+@pytest.mark.parametrize('occupant', ['other bytes', 'folder', 'broken link'])
+def test_an_occupied_cache_name_that_is_not_the_registered_file_is_refused_and_kept(
+        occupant, tmp_path, monkeypatch, offline):
+    source, sha1 = _hosted(tmp_path, monkeypatch, {'a.bin': b'registered'})
+    place = tmp_path / 'brainio' / sha1['a.bin'] / 'a.bin'
+    place.parent.mkdir(parents=True)
+    {'other bytes': lambda: place.write_bytes(b'mine'), 'folder': place.mkdir,
+     'broken link': lambda: place.symlink_to(tmp_path / 'absent')}[occupant]()
+    with pytest.raises(FileExistsError, match=re.escape(str(place))):
+        package_data('made-up', source=source)
+    assert os.path.lexists(place) and (occupant != 'other bytes' or place.read_bytes() == b'mine')
+    assert not (tmp_path / 'brainio' / 'packaged' / 'made-up').exists()
 
 
 def test_a_file_with_no_expected_record_states_its_counts(tmp_path, monkeypatch, capsys, offline):

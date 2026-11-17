@@ -395,6 +395,12 @@ def package_data(name: str, source: str | Path | None = None,
     destination = Path(output).expanduser().absolute() if output is not None else read_place
     if destination.exists() or destination.is_symlink():
         raise FileExistsError(f'{destination} already exists; give a new output folder')
+    if builder.reads == 'brainio' and destination == read_place:
+        for file, sha1 in builder.sha1.items():     # the loader would refuse an entry that is not the file
+            place = brainio_home() / sha1 / file
+            if os.path.lexists(place) and not (place.is_file() and _sha1(place) == sha1):
+                raise FileExistsError(f'{place} is not the registered file (sha1 {sha1}), and the loader refuses '
+                                      'it. It is kept: move it away, then run again.')
     destination.parent.mkdir(parents=True, exist_ok=True)
     # Build beside the destination and rename only after success: an interrupted
     # build must not look like a ready dataset.
