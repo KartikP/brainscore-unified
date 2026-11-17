@@ -71,7 +71,7 @@ def test_a_readout_alone_gives_probabilities_natively():
 
 def test_two_owners_for_choice_and_probabilities_are_refused_before_compute():
     calls = []
-    owners = {'behavior': 'generation', 'behavior:rating': 'generation',
+    owners = {'behavior:rating': 'generation',
               'behavior:choice': ('likelihood', 'softmax_argmax'), 'behavior:probabilities': 'readout'}
     model = _model(*QWEN, owners=owners, calls=calls)
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']),
@@ -91,15 +91,15 @@ STATEMENTS = {
     ('answer', 'reply'): {}, ('answer', 'likelihood'): {'behavior:probabilities': L},
     ('reply', 'likelihood'): {'behavior:probabilities': L},
     ('answer', 'reply', 'likelihood'): {'behavior:probabilities': L},
-    ('answer', 'behavioral_readout_layer'): {'behavior': G},
+    ('answer', 'behavioral_readout_layer'): {},
     ('reply', 'behavioral_readout_layer'): {'behavior:rating': G},
     ('likelihood', 'behavioral_readout_layer'): {'behavior:choice': ('likelihood', 'softmax_argmax'),
                                                  'behavior:probabilities': L},
-    ('answer', 'reply', 'behavioral_readout_layer'): {'behavior': G, 'behavior:rating': G},
-    ('answer', 'likelihood', 'behavioral_readout_layer'): {'behavior': G, 'behavior:probabilities': L},
+    ('answer', 'reply', 'behavioral_readout_layer'): {'behavior:rating': G},
+    ('answer', 'likelihood', 'behavioral_readout_layer'): {'behavior:probabilities': L},
     ('reply', 'likelihood', 'behavioral_readout_layer'): {'behavior:rating': G, 'behavior:probabilities': L},
     ('answer', 'reply', 'likelihood', 'behavioral_readout_layer'): {
-        'behavior': G, 'behavior:rating': G, 'behavior:probabilities': L},
+        'behavior:rating': G, 'behavior:probabilities': L},
 }
 
 

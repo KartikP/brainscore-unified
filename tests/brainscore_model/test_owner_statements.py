@@ -18,11 +18,11 @@ from tests.brainscore_model.test_behavior_paths import FITTING
 pytestmark = pytest.mark.unit
 
 QWEN = ('answer', 'reply', 'likelihood', 'behavioral_readout_layer')
-QWEN_STATEMENT = {'behavior': 'generation', 'behavior:rating': 'generation',
+QWEN_STATEMENT = {'behavior:rating': 'generation',
                   'behavior:probabilities': ('likelihood', 'softmax')}
 CHOICE = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']),
                      fitting_stimuli=FITTING)
-FORMATS = ("['behavior', 'behavior:choice', 'behavior:log_probabilities', 'behavior:probabilities', "
+FORMATS = ("['behavior:choice', 'behavior:log_probabilities', 'behavior:probabilities', "
            "'behavior:rating', 'behavior:text']")
 
 
@@ -44,7 +44,6 @@ def test_a_readout_only_model_builds_without_a_statement():
     ({'behavior:choice': ('readout',)}, r"a statement is a part \('readout'\) or a tuple"),
     ({'behavior:choice': ['readout', 'argmax']}, r"a statement is a part"),
     ({'behavior:rt': 'readout'}, r"follows the owner of 'behavior:probabilities'"),
-    ({'behavior': ('readout', 'argmax')}, r"'behavior' takes a part, not a conversion"),
     ({'behavior:probabilities': 'likelihood'}, r"names 'likelihood' for 'behavior:probabilities', "
                                               r"but no likelihood= part is wired"),
     ({'behavior:choise': 'readout'},
@@ -52,11 +51,30 @@ def test_a_readout_only_model_builds_without_a_statement():
     ({'behavior:choice': 'readuot'}, r"parts are 'generation', 'likelihood', 'readout'"),
     ({'behavior:choice': ('readout', 'argmx')}, r"conversions are 'argmax', 'softmax', 'softmax_argmax'"),
 ], ids=['native string for a derived format', 'conversion on a native format', 'wrong conversion',
-        'one-tuple', 'list', 'rt', 'conversion on bare behavior', 'part not wired', 'misspelled key',
+        'one-tuple', 'list', 'rt', 'part not wired', 'misspelled key',
         'misspelled part', 'misspelled conversion'])
 def test_a_wrong_statement_is_refused_with_what_to_write(owners, message):
     with pytest.raises(ValueError, match=message):
         _readout(owners)
+
+
+@pytest.mark.parametrize('statement', ['generation', 'readout', ('readout', 'argmax')])
+def test_a_statement_for_bare_behavior_is_refused_with_the_line_to_delete(statement):
+    """Bare behavior takes no statement: it carries the answer under the response's own format."""
+    with pytest.raises(ValueError, match=r"names 'behavior'\. Delete this line"):
+        _model('answer', 'behavioral_readout_layer', owners={'behavior': statement})
+
+
+@pytest.mark.parametrize('parts', [('answer',), ('behavioral_readout_layer',),
+                                   ('answer', 'behavioral_readout_layer'), QWEN])
+def test_bare_behavior_is_declared_when_an_answer_or_a_readout_is_wired(parts):
+    owners = {'behavior:rating': 'generation'} if 'reply' in parts else {}
+    assert 'behavior' in _model(*parts, owners=owners).out_channels
+
+
+@pytest.mark.parametrize('parts', [('reply',), ('likelihood',), ('reply', 'likelihood')])
+def test_bare_behavior_is_not_declared_without_an_answer_or_a_readout(parts):
+    assert 'behavior' not in _model(*parts).out_channels
 
 
 def test_confidence_is_no_response_format():

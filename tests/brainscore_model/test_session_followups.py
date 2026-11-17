@@ -151,7 +151,7 @@ def task_model(net, extractor_type, regions, readout=False):
     def answer(stimulus_row, instruction, label_set):
         net.forward(stimulus_row['stimulus_id'], prompt=instruction)
         return label_set[0]
-    owners = {'behavior': 'generation', **({'behavior:choice': ('readout', 'argmax')} if readout else {})}
+    owners = {'behavior:choice': ('readout', 'argmax')} if readout else {}
     return BrainScoreModel('task-layers', extractor={'text': extractor_type(net)}, region_layer_map=regions,
                            behavioral_readout_layer='late', answer=answer,
                            capability_config={'behavior-sessions': owners})

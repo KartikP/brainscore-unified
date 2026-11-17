@@ -118,7 +118,7 @@ def test_an_owner_that_cannot_give_the_output_is_refused(owners, message):
 
 
 def test_a_task_no_part_can_serve_stays_not_feasible():
-    model = _model('answer', 'behavioral_readout_layer', owners={'behavior': 'generation'})
+    model = _model('answer', 'behavioral_readout_layer', owners={})
     task = TaskContext(response=Choice(['cat', 'dog'], verbatim=True), fitting_stimuli=FITTING)
     with pytest.raises(ExecutionNotFeasibleError, match='verbatim'):
         _run(model, ['behavior:choice'], task)
@@ -185,7 +185,7 @@ def test_several_parts_that_do_not_own_the_output_are_refused_before_compute():
     both could, and neither owns the choice: no other part answers it."""
     calls = []
     model = _model('answer', 'likelihood', 'behavioral_readout_layer', calls=calls,
-                   owners={'behavior': 'generation', 'behavior:probabilities': ('likelihood', 'softmax')})
+                   owners={'behavior:probabilities': ('likelihood', 'softmax')})
     task = TaskContext(response=Choice(['cat', 'dog'], verbatim=True), fitting_stimuli=FITTING)
     with pytest.raises(ExecutionNotFeasibleError, match=r"'behavior:choice' is owned by 'generation', "
                                                         r"which cannot serve this task \(task settings: verbatim\)"):
@@ -204,8 +204,8 @@ REGISTERED_PART_SETS = {('behavioral_readout_layer',), BLIP2, QWEN, CAUSAL_LM, (
 # GPT-2; BLIP-2; the Qwen family; causal_lm; the API models), checked by the scan below.
 REGISTERED_STATEMENTS = {
     ('behavioral_readout_layer',): {'behavior:choice': ('readout', 'argmax')},
-    BLIP2: {'behavior': 'generation'},
-    QWEN: {'behavior': 'generation', 'behavior:rating': 'generation',
+    BLIP2: {},
+    QWEN: {'behavior:rating': 'generation',
            'behavior:probabilities': ('likelihood', 'softmax')},
     CAUSAL_LM: {'behavior:probabilities': ('likelihood', 'softmax')},
     ('answer', 'reply'): {},

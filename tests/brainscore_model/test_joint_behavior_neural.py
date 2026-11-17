@@ -105,7 +105,7 @@ def _model(net, extractor_type=ToyExtractor, **kwargs):
                                              'B': LayerSelector('late', modality='text')},
                            answer=answer, intervention=intervention, **kwargs,
                            capability_config={'behavior-sessions': (
-                               {'behavior': 'generation', 'behavior:choice': ('readout', 'argmax')}
+                               {'behavior:choice': ('readout', 'argmax')}
                                if 'behavioral_readout_layer' in kwargs else {})})
 
 
