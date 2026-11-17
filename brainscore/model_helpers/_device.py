@@ -26,7 +26,11 @@ def place_model(model, device=None):
     Moving it would fail ("Cannot copy out of meta tensor") or undo the plan.
     Its inputs go to the device of its token embedding (``embed_tokens``) when it
     has one, else to the device of its first parameter. Any other model is moved
-    to ``select_device(device)``, which is also the device for its inputs.
+    to ``select_device(device)``, which is also the device for its inputs,
+    exactly as before this rule (so its cache key is unchanged).
+
+    The input device of a placed model is in one form (``canonical_device``),
+    so that one physical device gives one cache key.
     """
     devices = set()
     for parameter in model.parameters():
@@ -39,4 +43,16 @@ def place_model(model, device=None):
         target = select_device(device)
         return model.to(target), target
     embedding = getattr(model, 'embed_tokens', None)
-    return model, next((embedding if embedding is not None else model).parameters()).device
+    return model, canonical_device(next((embedding if embedding is not None else model).parameters()).device)
+
+
+def canonical_device(device):
+    """``device`` in the form torch gives a tensor's device: ``cpu`` without an index,
+    any other type with one (``cuda`` is the current CUDA device, ``mps`` is ``mps:0``)."""
+    import torch
+    device = torch.device(device)
+    if device.type == 'cpu':
+        return torch.device('cpu')
+    if device.index is None:
+        return torch.device(device.type, torch.cuda.current_device() if device.type == 'cuda' else 0)
+    return device
