@@ -53,7 +53,7 @@ Features are grouped by how much you need to know to use them, and by how settle
 
 ## Names
 
-Each part has one name. The older names in the right column were removed without an alias; code that uses them fails with a `TypeError`.
+Each part has one name. The older names in the right column were removed without an alias; code that uses them fails.
 
 | Current | Removed name |
 | --- | --- |
