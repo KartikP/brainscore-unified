@@ -304,13 +304,12 @@ def _trials_to_assembly(trials, stimuli, layer: str, region: str):
 
     The neuroid and extra-axis coordinates come from the first trial, and every
     presentation coordinate the extractor gave (a clip's path) is kept, as are the
-    stimulus columns that can be coordinates (not a column of per-row options); the
+    stimulus columns that can be coordinates (``_stimulus_coordinates``); the
     extractor gives every trial of a session the same extra axis (a clip's clock).
     """
     import numpy as np
     import pandas as pd
     from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
-    from .answers import _presentation
 
     trials = [trial.get(layer) for trial in trials]
     for index, trial in enumerate(trials):
@@ -334,12 +333,32 @@ def _trials_to_assembly(trials, stimuli, layer: str, region: str):
                          and (name != dim or not listed and dim != 'presentation')]
     coords = {name: ('neuroid', np.asarray(first[name].values)) for name in names('neuroid')}
     coords['region'] = ('neuroid', [region] * first.sizes['neuroid'])
-    coords.update(_presentation(stimuli))       # the stimulus columns that can be coordinates
+    coords.update(_stimulus_coordinates(stimuli))
     coords.update({name: ('presentation', [trial[name].values[0] for trial in trials])
                    for name in names('presentation') if name not in stimuli.columns})
     coords.update({name: (dim, np.asarray(first[name].values)) for dim in extra for name in names(dim)})
     rows = [np.asarray(trial.transpose(*dims).values)[0] for trial in trials]
     return NeuroidAssembly(np.stack(rows), coords=coords, dims=dims)
+
+
+def _stimulus_coordinates(stimuli):
+    """The stimulus columns as presentation coordinates of a recording made while answering.
+
+    A zero-dimensional array is its single value. The other columns follow the
+    rule of the behavior tables (``answers._presentation``): a column with a cell
+    that is not a single value is left out, never turned into text.
+    """
+    import numpy as np
+    import pandas as pd
+    from .answers import _presentation
+    def one(value):
+        return value.item() if isinstance(value, np.ndarray) and value.ndim == 0 else value
+    # Only a column that holds a zero-dimensional array is rebuilt; every other column keeps its values.
+    single = pd.DataFrame({column: [one(value) for value in values]
+                           if any(isinstance(value, np.ndarray) and value.ndim == 0 for value in values)
+                           else values
+                           for column, values in ((column, stimuli[column].values) for column in stimuli.columns)})
+    return _presentation(single)
 
 
 def declared_layers(owner, modality: Optional[str] = None):
