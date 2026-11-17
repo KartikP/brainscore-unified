@@ -79,34 +79,63 @@ class ChildProcess:
         if self.process is None:
             return
         try:
-            self.process.wait(timeout=0 if error is not None else STOP_GRACE_SECONDS)
-        except subprocess.TimeoutExpired:
-            pass
+            # The child stops when its pipe closes; give it the grace time, unless this is an error.
+            self._leader_exited(0 if error is not None else STOP_GRACE_SECONDS)
         finally:
             self.kill()
 
     def kill(self) -> None:
-        """Kill the child's process group (if it still runs) and reap the child."""
+        """Kill the child's whole process group, also when the child itself has exited, then
+        reap the child.
+
+        Where the platform can wait without reaping (``os.waitid``, Linux), the group is killed
+        while the exited child still holds its id, so the id cannot belong to another group. On
+        macOS (Python 3.11 has no ``os.waitid``) a child that exited on its own is reaped first
+        and its group is killed at once after. A descendant that left the group (``setsid``) is
+        not killed.
+        """
         if self.process is None:
             return
-        if self.process.poll() is None:
-            try:
-                os.killpg(self.process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+        try:
+            os.killpg(self.process.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
         self.process.wait()
+
+    def _leader_exited(self, timeout_s: float) -> bool:
+        """Whether the child exited within ``timeout_s``; it is not reaped where the platform allows."""
+        if not hasattr(os, 'waitid'):
+            try:
+                self.process.wait(timeout=timeout_s)
+                return True
+            except subprocess.TimeoutExpired:
+                return False
+        deadline = time.monotonic() + timeout_s
+        while True:
+            try:
+                if os.waitid(os.P_PID, self.process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None:
+                    return True
+            except ChildProcessError:
+                return True                 # already reaped
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.02)
 
     def wait(self, timeout_s: float) -> int:
         """Wait for the child to exit; ``subprocess.TimeoutExpired`` after ``timeout_s``
-        (the child is killed), ``CalledProcessError`` on a nonzero exit."""
+        (the child is killed), ``CalledProcessError`` on a nonzero exit. The child's process
+        group is killed in both cases."""
         try:
-            returncode = self.process.wait(timeout=timeout_s)
+            exited = self._leader_exited(timeout_s)
         except BaseException:
             self.kill()
             raise
-        if returncode:
-            raise subprocess.CalledProcessError(returncode, self.command)
-        return returncode
+        self.kill()
+        if not exited:
+            raise subprocess.TimeoutExpired(self.command, timeout_s)
+        if self.process.returncode:
+            raise subprocess.CalledProcessError(self.process.returncode, self.command)
+        return self.process.returncode
 
     def ask(self, command: Any, answer: Callable[[Any], Any] = None) -> Any:
         """Send ``command``; answer each call of the child; return its ``done`` value.
