@@ -55,7 +55,7 @@ def plan_session(model, session, passes: str) -> SessionPlan:
     inputs); ``passes`` is the pass plan ``participate`` read. The answering part
     is chosen here, once per session. Refusals: the outputs no one part answers
     together, a task session without a task, several time bins during a task, an
-    answer format a legacy task does not give, trial-to-trial variance, a task no
+    task with no response, trial-to-trial variance, a task no
     part can answer, trial history without a part that sees it, a region the
     readout cannot record from its input (``ExecutionNotFeasibleError``); a
     malformed task, a bad prompt layout and rows with different numbers of
@@ -80,7 +80,7 @@ def plan_session(model, session, passes: str) -> SessionPlan:
     if handler is _NEURAL:
         task_path = task is not None and task.task_type != 'passive'
     elif handler is _BEHAVIOR:
-        task_path = set(outputs) != {'behavior'} or (task is not None and task.response is not None)
+        task_path = True
     else:
         task_path = False
 
@@ -114,12 +114,6 @@ def plan_session(model, session, passes: str) -> SessionPlan:
         if handler is _MOTOR and regions:
             # Regions recorded during each policy step: refused, or grouped, before the first step.
             recordings = plan_recordings(model, None, _region_layers(model, regions))
-        if handler is _BEHAVIOR and task is not None and task.task_type != 'passive':
-            # Bare behavior of a legacy task (core's typed driver): its part is chosen here too.
-            refuse_variance(model, session)
-            model._behavioral.validate_task(task)
-            pick = model._behavioral._choose_path(task, ['behavior'])
-            pick_key = _pick_key(task, ['behavior'])
     return SessionPlan(handler=handler, regions_per_pass=passes, answers=answers, regions=regions,
                        task_path=task_path, delivery=delivery, pick=pick, pick_key=pick_key,
                        by_answer=by_answer, recordings=recordings, passive=passive)
@@ -163,11 +157,16 @@ def _refuse_task_session(model, session, task, answers, regions) -> None:
         raise ExecutionNotFeasibleError(
             "Recording during a task returns one time bin; request at most one.",
             channels={f'neural:{region}' for region in regions} or outputs, task_type=task.task_type)
-    formats = set(answers) - {'behavior'}
-    if task.response is None and formats:
+    if task.response is None and answers:
+        formats = set(answers) - {'behavior'}
+        if formats:
+            raise ExecutionNotFeasibleError(
+                f"{list(answers)} need TaskContext(response=...); task_type {task.task_type!r} "
+                f"states no response.", channels=formats, task_type=task.task_type)
+        model._behavioral.validate_task(task)     # a task with no response that is not passive: ValueError
         raise ExecutionNotFeasibleError(
-            f"{list(answers)} need TaskContext(response=...); task_type "
-            f"{task.task_type!r} answers on 'behavior'.", channels=formats, task_type=task.task_type)
+            "'behavior' needs TaskContext(response=...); a passive task gives no answer.",
+            channels={'behavior'}, task_type=task.task_type)
     # A format the task's response does not name was refused when the session was built (core).
     refuse_variance(model, session)
 

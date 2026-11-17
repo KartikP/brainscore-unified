@@ -20,8 +20,7 @@ A registered part set is built with the statement its registrations carry
 ``behavior:choice`` by argmax.
 
 These are the selection facts the fixed-order table pinned before it was
-deleted: the legacy forms (label set absent, empty or given; instruction and
-fitting stimuli absent or present), Scale and Text with and without fitting
+deleted: Scale and Text with and without fitting
 stimuli, and the Choice forms that remain (shared or per-row labels, plain or
 verbatim, choice or probabilities requested, with and without fitting stimuli),
 the reaction time of each link, and the log probabilities that replace the old raw
@@ -79,9 +78,6 @@ def test_answer_reply_and_likelihood_without_a_readout_answer_a_scale_through_th
 # --- every part set on every task form ----------------------------------------------------
 
 REFUSALS = {
-    'legacy': r"cannot run the behavioral task task_type='probabilities'\. Paths tried: "
-              r"generation needs answer=, TaskContext\.instruction and TaskContext\.label_set; .*"
-              r"readout needs TaskContext\.fitting_stimuli \(and behavioral_readout_layer=\)",
     'scale': r"cannot give a Scale answer\. Paths tried: generation needs reply= .*"
              r"readout needs behavioral_readout_layer=, an extractor and fitting_stimuli",
     'choice': r"cannot give a Choice answer\. Paths tried: generation needs reply= .*"
@@ -102,12 +98,6 @@ REFUSALS = {
 def _forms():
     """(stimuli, requested channel, task) of each task form."""
     forms = {}
-    for instruction in (None, 'Which?'):
-        for labels in (None, [], ['cat', 'dog']):
-            for fitting in (None, FITTING):
-                forms[f'legacy instr={instruction is not None} labels={labels} fit={fitting is not None}'] = (
-                    STIMULI, 'behavior', TaskContext(task_type='probabilities', label_set=labels,
-                                                     instruction=instruction, fitting_stimuli=fitting))
     for fitting in (None, RATINGS):
         forms[f'scale fit={fitting is not None}'] = (
             STIMULI, 'behavior:rating',
@@ -141,54 +131,6 @@ def _forms():
 FORMS = _forms()
 
 EXPECTED = {
-    'legacy instr=False labels=None fit=False': {
-        'R': '!legacy', 'AR': '!legacy', 'APLR': '!legacy',
-        'PL': '-', 'AP': '!legacy',
-    },
-    'legacy instr=False labels=None fit=True': {
-        'R': 'readout:readout', 'AR': 'readout:readout', 'APLR': 'readout:readout',
-        'PL': '-', 'AP': '!legacy',
-    },
-    'legacy instr=False labels=[] fit=False': {
-        'R': '!legacy', 'AR': '!legacy', 'APLR': '!legacy',
-        'PL': '-', 'AP': '!legacy',
-    },
-    'legacy instr=False labels=[] fit=True': {
-        'R': 'readout:readout', 'AR': 'readout:readout', 'APLR': 'readout:readout',
-        'PL': '-', 'AP': '!legacy',
-    },
-    "legacy instr=False labels=['cat', 'dog'] fit=False": {
-        'R': '!legacy', 'AR': '!legacy', 'APLR': '!legacy',
-        'PL': '-', 'AP': '!legacy',
-    },
-    "legacy instr=False labels=['cat', 'dog'] fit=True": {
-        'R': 'readout:readout', 'AR': 'readout:readout', 'APLR': 'readout:readout',
-        'PL': '-', 'AP': '!legacy',
-    },
-    'legacy instr=True labels=None fit=False': {
-        'R': '!legacy', 'AR': '!legacy', 'APLR': '!legacy',
-        'PL': '-', 'AP': '!legacy',
-    },
-    'legacy instr=True labels=None fit=True': {
-        'R': 'readout:readout', 'AR': 'readout:readout', 'APLR': 'readout:readout',
-        'PL': '-', 'AP': '!legacy',
-    },
-    'legacy instr=True labels=[] fit=False': {
-        'R': '!legacy', 'AR': '!legacy', 'APLR': '!legacy',
-        'PL': '-', 'AP': '!legacy',
-    },
-    'legacy instr=True labels=[] fit=True': {
-        'R': 'readout:readout', 'AR': 'readout:readout', 'APLR': 'readout:readout',
-        'PL': '-', 'AP': '!legacy',
-    },
-    "legacy instr=True labels=['cat', 'dog'] fit=False": {
-        'R': '!legacy', 'AR': 'generation:answer', 'APLR': 'generation:answer',
-        'PL': '-', 'AP': 'generation:answer',
-    },
-    "legacy instr=True labels=['cat', 'dog'] fit=True": {
-        'R': 'readout:readout', 'AR': 'generation:answer', 'APLR': 'generation:answer',
-        'PL': '-', 'AP': 'generation:answer',
-    },
     'scale fit=False': {
         'R': '!scale', 'AR': '!scale', 'APLR': 'generation:reply',
         'PL': 'generation:reply', 'AP': 'generation:reply',
@@ -283,13 +225,10 @@ EXPECTED = {
 # outcome of the selection (a refusal, a method and the parts it calls) under test.
 OTHER_PART_SETS = {
     ('plain probabilities fit=False', 'PR'): '!implied',
-    ('legacy instr=False labels=None fit=False', 'A'): '!legacy',
     ('per-row verbatim choice fit=False', 'AL'): '!owner',
     ('scale fit=False', 'LR'): '!scale',
     ('log probabilities not verbatim fit=False', 'L'): '!tokenization',
     ('per-row verbatim choice fit=False', 'A'): '!verbatim',
-    ('legacy instr=False labels=None fit=False', 'P'): '-',
-    ("legacy instr=True labels=['cat', 'dog'] fit=False", 'A'): 'generation:answer',
     ('scale fit=False', 'P'): 'generation:reply',
     ('plain probabilities fit=False', 'AL'): 'likelihood:likelihood',
     ('plain choice fit=False', 'LR'): 'likelihood:likelihood',
@@ -300,7 +239,6 @@ OTHER_PART_SETS = {
     ('reaction time evidence_margin fit=True', 'APR'): 'link/readout:readout',
     ('reaction time evidence_margin fit=True', 'PR'): 'link/readout:readout',
     ('plain probabilities fit=True', 'APR'): 'readout:readout',
-    ('legacy instr=False labels=None fit=True', 'PR'): 'readout:readout',
     ('plain probabilities fit=True', 'PR'): 'readout:readout',
 }
 

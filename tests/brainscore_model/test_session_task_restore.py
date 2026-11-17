@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 from brainscore import BrainScoreModel
+from brainscore_core.responses import Choice
 from brainscore_core.contract import TaskContext
 from brainscore_core.streaming_helpers import behavioral_response, neural_response
 from brainscore_core.supported_data_standards.brainio.assemblies import (
@@ -50,12 +51,19 @@ def _labelled(n=4, labels=('cat', 'dog')):
 def _model():
     extractor = _Extractor()
     model = BrainScoreModel('restore', region_layer_map={'IT': 'layer'},
-                            extractor={'vision': extractor}, behavioral_readout_layer='layer')
+                            extractor={'vision': extractor}, behavioral_readout_layer='layer',
+                            capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
     return model, extractor
 
 
 def _task(labels=('cat', 'dog')):
-    return TaskContext(task_type='probabilities', fitting_stimuli=_labelled(labels=labels))
+    return TaskContext(response=Choice(list(labels)), fitting_stimuli=_labelled(labels=labels))
+
+
+def _read_out(model, stimuli):
+    """The configured readout's probabilities for ``stimuli``."""
+    behavioral = model._behavioral
+    return behavioral.readout_classifier.predict_proba(behavioral.extract_behavioral_features(stimuli))
 
 
 def _fits(extractor):
@@ -79,7 +87,7 @@ def test_the_callers_task_survives_a_behavior_session():
     behavioral_response(model, _images(), _task())
     assert model._behavioral.task is prior
     assert model._behavioral.readout_classifier is classifier
-    output = model._behavioral.predict_probabilities(_images())
+    output = _read_out(model, _images())
     assert sorted(output['choice'].values) == ['bird', 'fish']
 
 
@@ -107,7 +115,7 @@ def test_the_same_task_in_a_later_session_keeps_its_fitted_readout():
     np.testing.assert_array_equal(first.values, second.values)
     model.start_task(task)                           # the caller sends the same task
     assert _fits(extractor) == 1
-    assert isinstance(model._behavioral.predict_probabilities(_images()), BehavioralAssembly)
+    assert isinstance(_read_out(model, _images()), BehavioralAssembly)
 
 
 def test_a_new_task_in_a_later_session_fits_again():
@@ -149,7 +157,7 @@ def test_a_failed_task_setup_never_leaves_a_half_built_readout():
         model.start_task(one_class)                  # the same failure, outside a session
     model.start_task(_task(labels=('cat', 'dog')))   # another task, configured directly
     model.start_task(a)
-    assert sorted(model._behavioral.predict_probabilities(_images())['choice'].values) == ['bird', 'fish']
+    assert sorted(_read_out(model, _images())['choice'].values) == ['bird', 'fish']
 
 
 def test_a_neutral_session_keeps_the_remembered_readout():
@@ -163,7 +171,7 @@ def test_a_neutral_session_keeps_the_remembered_readout():
     neural_response(model, _images(), ['neural:IT'])
     behavioral_response(model, _images(), b)
     assert _fits(extractor) == 2
-    assert sorted(model._behavioral.predict_probabilities(_images())['choice'].values) == ['bird', 'fish']
+    assert sorted(_read_out(model, _images())['choice'].values) == ['bird', 'fish']
 
 
 def test_a_reset_inside_a_session_stands(monkeypatch):
@@ -192,7 +200,7 @@ def test_an_unhashable_fitting_table_fits_no_more_often_than_before():
     facade.look_at(_images())
     facade.look_at(_images())
     assert _fits(extractor) == 1                         # the base count
-    task = TaskContext(task_type='probabilities', fitting_stimuli=fitting)
+    task = TaskContext(response=Choice(['cat', 'dog']), fitting_stimuli=fitting)
     behavioral_response(model, _images(), task)
     behavioral_response(model, _images(), task)
     assert _fits(extractor) == 2                         # a new task object fits once

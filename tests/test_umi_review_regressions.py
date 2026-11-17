@@ -276,16 +276,22 @@ def test_localized_and_random_lesions_use_original_subset_indices(layers):
 def test_reset_and_readout_clear_composite_recording():
     model = BrainScoreModel('composite-reset',
         region_layer_map={'IT': CompositeSelector((('L', (0,)),))},
-        extractor={'text': _Extractor(np.ones((4, 2)))}, behavioral_readout_layer='L')
+        extractor={'text': _Extractor(np.ones((4, 2)))}, behavioral_readout_layer='L',
+        capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
     model.start_recording('IT', time_bins=[(0, 1)])
     # Readout extraction must also work while composite recording is configured.
-    task = TaskContext('probabilities', fitting_stimuli=_stimuli())
+    from brainscore_core.responses import Choice
+    task = TaskContext(response=Choice(['real', 'pseudo']), fitting_stimuli=_stimuli())
+
+    def read_out():
+        behavioral = model._behavioral
+        return behavioral.readout_classifier.predict_proba(behavioral.extract_behavioral_features(_stimuli()))
     model.start_task(task)
-    assert isinstance(model._behavioral.predict_probabilities(_stimuli()), BehavioralAssembly)
+    assert isinstance(read_out(), BehavioralAssembly)
     model.reset()
     assert not model._recording_request.composite_recording and model._recording_request.time_bins is None
     model.start_task(task)
-    assert isinstance(model._behavioral.predict_probabilities(_stimuli()), BehavioralAssembly)
+    assert isinstance(read_out(), BehavioralAssembly)
 
 
 class _CountingPolicy:

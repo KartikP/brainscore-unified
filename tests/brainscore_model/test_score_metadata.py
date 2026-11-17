@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from brainscore_core.responses import Choice
 from brainscore_core.streaming_helpers import behavioral_response
 
 from brainscore_core.contract import TaskContext
@@ -40,16 +41,16 @@ def _readout_model():
     return BrainScoreModel(
         identifier='test-readout', model=None, region_layer_map={},
         extractor={'vision': _fake_preprocessor_returning(features)},
-        behavioral_readout_layer='some_layer')
+        behavioral_readout_layer='some_layer',
+        capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
 
 
-_GENERATION_TASK = dict(task_type='probabilities', label_set=['cat', 'dog'],
-                        instruction='What animal is this?')
+_GENERATION_TASK = dict(response=Choice(['cat', 'dog']), instruction='What animal is this?')
 
 
 @pytest.mark.parametrize('model_factory, task_kwargs, expected', [
     (_generation_model, _GENERATION_TASK, {'generation'}),
-    (_readout_model, dict(task_type='probabilities', label_set=['cat', 'dog']), {'readout'}),
+    (_readout_model, dict(response=Choice(['cat', 'dog'])), {'readout'}),
 ])
 @pytest.mark.parametrize('route', ['session', 'facade'])
 def test_brainscore_model_records_name_the_answering_method(model_factory, task_kwargs, expected, route):
@@ -86,8 +87,7 @@ def test_a_decoded_saved_generation_record_does_not_change_a_readout_stamp():
     """Events built but never accepted by a session (a decoded run record, a
     fixture, a copy) are not responses of this run."""
     model = _readout_model()
-    task = TaskContext(fitting_stimuli=_stimuli(), task_type='probabilities',
-                       label_set=['cat', 'dog'])
+    task = TaskContext(fitting_stimuli=_stimuli(), response=Choice(['cat', 'dog']))
     saved = BehavioralAssembly(
         [[1.0, 0.0]], coords={'stimulus_id': ('presentation', ['s0']),
                               'choice': ['cat', 'dog']},
@@ -97,7 +97,7 @@ def test_a_decoded_saved_generation_record_does_not_change_a_readout_stamp():
         StreamEvent('behavior', saved, 0.0, meta={'decoded': True})   # read, not sent
         behavioral_response(model, _stimuli(), task)
 
-    assert measures.responses == (response_record('behavior', 'readout'),)
+    assert _methods(measures) == {'readout'}
 
 
 # --- direct sessions (moved from core) ------------------------------------

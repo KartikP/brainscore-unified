@@ -94,15 +94,14 @@ def _reply_model(calls, memory=None):
                                'behavior:rating': 'generation', 'behavior:probabilities': 'readout'}})
 
 
-@pytest.mark.parametrize('delivery', ['table', 'per trial', 'stream', 'legacy task'])
+@pytest.mark.parametrize('delivery', ['table', 'per trial', 'stream'])
 def test_every_selection_is_made_once_per_session(delivery, monkeypatch):
     """The answering part and, within generation, the answer or the reply part: once each.
 
     Before the plan the answering part was chosen once in the driver, once per format
     of the Choice in the set-up (three), once in the fit and once per answered batch
     (6 for a table, 5 + n for n trials one at a time or streamed: 8 here), and the
-    answer-or-reply test ran once per batch (1, or n). Bare behavior of a legacy task
-    was chosen in the set-up, after the capability set-up.
+    answer-or-reply test ran once per batch (1, or n).
     """
     from brainscore._model.behavioral import BehavioralReadout
     chosen, original = [], BehavioralReadout._choose_path
@@ -113,13 +112,6 @@ def test_every_selection_is_made_once_per_session(delivery, monkeypatch):
                         lambda self, *a, **k: tested.append(1) or by_answer(self, *a, **k))
     calls = []
     model = _reply_model(calls, memory='trial_history' if delivery == 'per trial' else None)
-    if delivery == 'legacy task':
-        task = TaskContext(task_type='probabilities', label_set=['cat', 'dog'], fitting_stimuli=FITTING)
-        session = stimulus_session(STIMULI, ['behavior'], task)
-        model.participate(session)
-        assert session.collect('behavior').sizes['presentation'] == len(STIMULI)
-        assert (len(chosen), len(tested)) == (1, 0)      # a legacy task has no answer-or-reply test
-        return
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)
     session = stimulus_session(STIMULI, ['behavior:choice', 'behavior:probabilities'], task,
                                streaming=delivery == 'stream')

@@ -482,7 +482,7 @@ def _answer_columns(channel, rows, keys, columns):
     its answer rows (``_rows_of``), matched to the keys by stimulus and occurrence."""
     import numpy as np
     by_key = {key: (source, row) for key, source, row in rows}
-    # A bare behavior answer (a legacy task) keeps its earlier name: 'choice' when it
+    # A bare behavior answer (an old model's legacy task) keeps its earlier name: 'choice' when it
     # has a choice axis, else 'answer'.
     fmt = (channel.split(':', 1)[1] if ':' in channel else
            'choice' if any(row is not None and 'choice' in source.dims for _, source, row in rows)

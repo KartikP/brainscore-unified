@@ -45,15 +45,18 @@ def _noisy_readout_model():
 
 def test_the_choice_request_scores_what_the_legacy_request_scored(synthetic_roar):
     """ROAR asks for behavior:choice. A readout's derived choice is the argmax of its own
-    probability rows, as the benchmark's argmax over the legacy rows was."""
+    probability rows (behavior:probabilities)."""
     import numpy as np
     from brainscore_core.contract import TaskContext
-    from brainscore_core.streaming_helpers import behavioral_response
+    from brainscore_core.responses import Choice
+    from brainscore_core.streaming_helpers import stimulus_session
     benchmark = Yeatman2021LexicalDecision(channels=('text',), identifier='Yeatman2021-lexical_decision-text')
     new = float(benchmark(_noisy_readout_model()).attrs['raw'])
-    legacy = TaskContext(task_type='probabilities', fitting_stimuli=benchmark._train_stimuli,
-                         label_set=['real', 'pseudo'], instruction='Is this a real word or a pseudo word?')
-    rows = behavioral_response(_noisy_readout_model(), benchmark.stimulus_set, legacy)
+    task = TaskContext(response=Choice(['real', 'pseudo']), fitting_stimuli=benchmark._train_stimuli,
+                       instruction='Is this a real word or a pseudo word?')
+    session = stimulus_session(benchmark.stimulus_set, ['behavior:probabilities'], task)
+    _noisy_readout_model().participate(session)
+    rows = session.collect('behavior:probabilities')
     labels = list(rows['choice'].values)
     truth = dict(zip(benchmark.stimulus_set['stimulus_id'], benchmark.stimulus_set['image_label']))
     old = float(np.mean([labels[i] == truth[sid] for sid, i in

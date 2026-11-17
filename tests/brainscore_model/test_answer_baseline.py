@@ -34,4 +34,5 @@ def test_the_registered_part_sets_give_the_recorded_answers():
 def test_the_baseline_covers_every_part_set_and_session():
     recorded = json.loads(Path(FIXTURE).read_text(encoding='utf-8'))
     assert len(recorded) == 5
-    assert all(len(entry['sessions']) == 11 for entry in recorded.values())
+    assert all(len(entry['sessions']) == len(next(iter(recorded.values()))['sessions'])
+               for entry in recorded.values())

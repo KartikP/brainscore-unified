@@ -101,7 +101,7 @@ def test_every_declared_output_answers_or_fails_before_any_compute():
 
 @pytest.mark.parametrize('output, task', [
     ('neural:IT', None),
-    ('behavior', TaskContext(task_type='probabilities', fitting_stimuli=FITTING)),
+    ('behavior', TaskContext(response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)),
     ('behavior:choice', TaskContext(response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)),
     ('behavior:probabilities', TaskContext(response=Choice(['cat', 'dog']),
                                            fitting_stimuli=FITTING)),

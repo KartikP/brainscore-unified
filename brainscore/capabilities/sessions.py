@@ -106,41 +106,7 @@ class BehaviorSessions(Capability):
             if readout or records_while_answering(subject, region)}
 
     def participate(self, subject, session) -> None:
-        if subject._session_plan.task_path:
-            drive_behavior_and_neural_session(subject, session)
-            return
-        # A legacy task answered on 'behavior' alone is packaged by core's typed
-        # behavior driver, as for every legacy adapter: one event for the table
-        # (one per trial when streamed), one begin. The answer comes from the
-        # same respond() as every other behavior session.
-        typed = _LegacyTaskAnswers(subject)
-        if subject._session_plan.delivery == 'stream':
-            _drivers.drive_behavior_session_streaming(typed, session, on_begin=subject._begin_episode)
-        else:
-            _drivers.drive_behavior_session(typed, session, on_begin=subject._begin_episode)
-
-
-class _LegacyTaskAnswers:
-    """What core's typed behavior driver calls: ``start_task`` and ``process``.
-
-    ``process`` answers through ``BehavioralReadout.respond``; it is not the
-    model's ``process``, which no longer answers behavior.
-    """
-
-    def __init__(self, subject) -> None:
-        self.subject = subject
-
-    @property
-    def identifier(self) -> str:
-        return self.subject.identifier
-
-    def start_task(self, task) -> None:
-        # The session's plan chose the part of bare behavior (formats: ['behavior']).
-        self.subject.start_task(task, formats=['behavior'])
-
-    def process(self, stimuli):
-        behavior, _ = self.subject._behavioral.respond(stimuli, ['behavior'])
-        return behavior['behavior']
+        drive_behavior_and_neural_session(subject, session)
 
 
 class MotorSessions(Capability):

@@ -2,8 +2,7 @@
 
 ``BehavioralReadout.respond`` gets the answers (replies, likelihood scores,
 readout values); the functions here package them: one-hot choices, ratings,
-texts, implied probabilities and reaction times, and a legacy task's one-hot
-rows over ``label_set``. An answer that cannot be read is kept with
+texts, implied probabilities and reaction times. An answer that cannot be read is kept with
 ``answer_valid=False`` (a NaN row for a choice or a number, rule 6.2); a trial
 with no reply keeps ``raw_answer`` None. Every answer carries its response
 record in ``attrs['response']`` (``brainscore_core.response_formats``); the
@@ -19,48 +18,6 @@ from brainscore_core.streaming import StreamEvent
 def _raw(values):
     """Raw responses as text; None stays None (no reply: a missing trial)."""
     return [None if value is None else str(value) for value in values]
-
-
-def legacy_one_hot(answers, label_set, stimuli):
-    """A legacy task's answers as one-hot rows over ``label_set``.
-
-    Each answer is the text an ``answer`` part generated; core's ``Choice.parse``
-    reads the label, as for a response task. A text it cannot read is recorded as
-    invalid (NaN row, ``answer_valid=False``) with a warning, as legacy behavioral
-    benchmarks expect. The raw answer is the text itself. The coordinates keep their
-    order: ``stimulus_id``, the other stimulus columns, ``raw_answer``, ``answer_valid``.
-    """
-    from brainscore_core.responses import Choice
-    from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
-    import warnings
-    label_to_idx = {label: i for i, label in enumerate(label_set)}
-    choice = Choice(list(label_set))
-    proba = np.zeros((len(stimuli), len(label_set)), dtype=np.float32)
-    raw_answers, valid = [], []
-    for i, reply in enumerate(answers):
-        raw_answers.append(str(reply))
-        label, _ = choice.parse(str(reply))
-        valid.append(label is not None)
-        if valid[-1]:
-            proba[i, label_to_idx[label]] = 1.0
-        else:
-            # No label is credited: a substituted label would bias accuracy toward it.
-            proba[i, :] = np.nan
-            warnings.warn(
-                f"answer function returned {reply!r}, which names no single label of "
-                f"label_set={list(label_set)}. The response is recorded as invalid "
-                f"(NaN probabilities, answer_valid=False)."
-            )
-    coords = {'stimulus_id': ('presentation', list(stimuli['stimulus_id'].values))}
-    for column in stimuli.columns:
-        if column != 'stimulus_id':
-            coords[column] = ('presentation', list(stimuli[column].values))
-    coords['raw_answer'] = ('presentation', raw_answers)
-    coords['answer_valid'] = ('presentation', valid)
-    return BehavioralAssembly(proba, coords={**coords, 'choice': list(label_set)},
-                              dims=['presentation', 'choice'],
-                              attrs={'response': response_record('behavior', 'generation',
-                                                                 parsed_by='model')})
 
 
 def _presentation(stimuli):

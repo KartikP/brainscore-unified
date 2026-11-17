@@ -114,10 +114,10 @@ def test_behavior_session_collection_and_replay_preserve_task(tmp_path):
     @contextmanager
     def factory(trial):
         table = stimuli()
+        from brainscore_core.responses import Choice
         yield stimulus_session(table, ['behavior'], TaskContext(
-            task_type='probabilities',
+            response=Choice(['yes', 'no']),
             instruction='Is this an animal?',
-            label_set=['yes', 'no'],
             metadata={'stimulus_set': table},
         ))
 

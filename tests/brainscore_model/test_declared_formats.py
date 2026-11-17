@@ -166,12 +166,7 @@ def test_the_matrix_changes_only_where_the_declarations_change():
 
 def test_no_pair_that_answers_today_becomes_not_applicable():
     """Each newly N/A pair was an error of the run before: no part could answer its task.
-    A readout without a choice statement (no registration) could not answer EWoK choice either."""
-    legacy = TaskContext(task_type='probabilities', instruction='Which?', label_set=['cat', 'dog'],
-                         fitting_stimuli=FITTING)
-    causal = _stand_in(['reply', 'likelihood'], {P: ('likelihood', 'softmax')})
-    with pytest.raises(ExecutionNotFeasibleError, match='Paths tried'):
-        causal._behavioral._choose_path(legacy)            # ROAR, dyslexia, facade: bare behavior
+    A readout without a choice statement (no registration) could not answer EWoK choice."""
     ewok_choice = TaskContext(response=Choice(labels=('1', '2'), verbatim=True), trial_memory='none')
     with pytest.raises(ExecutionNotFeasibleError, match='Paths tried'):
         _stand_in(['behavioral_readout_layer'], {})._behavioral._choose_path(ewok_choice)
@@ -242,8 +237,7 @@ def test_session_support_uses_the_declared_set():
 
 # One session per format that requests that format alone.
 SESSIONS = {
-    B: TaskContext(task_type='probabilities', instruction='Which?', label_set=['cat', 'dog'],
-                   fitting_stimuli=FITTING),
+    B: TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING),
     CH: TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING),
     P: TaskContext(instruction='Which?', response=Choice(['cat', 'dog']),
                    fitting_stimuli=FITTING),

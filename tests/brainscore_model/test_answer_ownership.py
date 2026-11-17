@@ -193,31 +193,9 @@ def test_several_parts_that_do_not_own_the_output_are_refused_before_compute():
     assert calls == []
 
 
-LEGACY_NO_INSTRUCTION = TaskContext(task_type='probabilities', label_set=['cat', 'dog'],
-                                    fitting_stimuli=FITTING)
 QWEN = ('answer', 'reply', 'likelihood', 'behavioral_readout_layer')
 BLIP2 = ('answer', 'behavioral_readout_layer')
 CAUSAL_LM = ('reply', 'likelihood')
-
-# The cases where a registered model answers bare behavior through a part that does
-# not own it, because the task form excludes the owner and exactly one other part
-# can serve it: a legacy task without an instruction (as the facade sends) goes to
-# the readout. Only bare behavior keeps this fallback; a format channel is
-# answered by its owner or refused.
-TASK_FORM_CASES = {
-    'qwen legacy without instruction': (QWEN, LEGACY_NO_INSTRUCTION, ['behavior'], 'readout'),
-    'blip2 legacy without instruction': (BLIP2, LEGACY_NO_INSTRUCTION, ['behavior'], 'readout'),
-}
-
-
-@pytest.mark.parametrize('case', sorted(TASK_FORM_CASES))
-def test_the_one_part_that_serves_a_task_form_answers_for_a_registered_model(case):
-    parts, task, outputs, source = TASK_FORM_CASES[case]
-    owners = REGISTERED_STATEMENTS[parts]
-    assert owners[outputs[0]] != source                  # not the owner of the output
-    session = _run(_model(*parts, owners=owners), outputs, task)
-    assert session.collect(outputs[0]).attrs['response']['method'] == source
-
 
 # --- the registered part sets ------------------------------------------------
 

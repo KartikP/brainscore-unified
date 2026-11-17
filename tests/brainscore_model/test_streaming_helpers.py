@@ -3,6 +3,7 @@ import pandas as pd
 import xarray as xr
 
 from brainscore import BrainScoreModel, LayerSelector
+from brainscore_core.responses import Choice
 from brainscore_core.contract import TaskContext
 from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
 from brainscore_core.streaming import StreamEvent
@@ -267,14 +268,14 @@ def _behavior_model(features, model_cls=BrainScoreModel):
         region_layer_map={},
         extractor={"vision": _fake_preprocessor_returning(features)},
         behavioral_readout_layer="some_layer",
+        capability_config={"behavior-sessions": {"behavior:choice": ("readout", "argmax")}},
     )
 
 
 def _behavior_context(fitting_stimuli):
     return TaskContext(
-        task_type="probabilities",
+        response=Choice(["cat", "dog"]),
         fitting_stimuli=fitting_stimuli,
-        label_set=["cat", "dog"],
         instruction="Choose the animal",
     )
 
@@ -321,8 +322,7 @@ def _generation_model(calls, model_cls=BrainScoreModel):
 
 def _generation_context():
     return TaskContext(
-        task_type="probabilities",
-        label_set=["cat", "dog"],
+        response=Choice(["cat", "dog"]),
         instruction="What animal is this?",
     )
 

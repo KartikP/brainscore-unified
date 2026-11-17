@@ -3,6 +3,7 @@ import pytest
 
 from brainscore.brainscore_model import BrainScoreModel
 from brainscore_core.contract import TaskContext
+from brainscore_core.responses import Choice
 from brainscore_core.streaming_helpers import behavioral_response
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
@@ -12,15 +13,14 @@ def _answers(*replies):
     model = BrainScoreModel(identifier='answer', in_channels={'text'},
                             answer=lambda stimulus_row, instruction, label_set:
                             lookup[stimulus_row.stimulus_id])
-    task = TaskContext(task_type='probabilities', instruction='choose', label_set=['cat', 'dog'])
+    task = TaskContext(instruction='choose', response=Choice(['cat', 'dog']))
     stimuli = StimulusSet({'sentence': ['x', 'y'], 'stimulus_id': ['a', 'b']})
     stimuli.identifier = 'invalid-answers'
     return behavioral_response(model, stimuli, task)
 
 
 def test_invalid_answer_credits_no_label():
-    with pytest.warns(UserWarning, match='invalid'):
-        result = _answers('neither', 'dog')
+    result = _answers('neither', 'dog')
     assert np.isnan(result.values[0]).all()
     np.testing.assert_array_equal(result.values[1], [0, 1])
     assert list(result['raw_answer'].values) == ['neither', 'dog']

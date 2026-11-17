@@ -146,16 +146,18 @@ class Incomplete(ToyExtractor):
             yield rec
 
 
-def task_model(net, extractor_type, regions):
+def task_model(net, extractor_type, regions, readout=False):
+    """A model with an answer part and a readout; with ``readout`` the readout owns the choice."""
     def answer(stimulus_row, instruction, label_set):
         net.forward(stimulus_row['stimulus_id'], prompt=instruction)
         return label_set[0]
+    owners = {'behavior': 'generation', **({'behavior:choice': ('readout', 'argmax')} if readout else {})}
     return BrainScoreModel('task-layers', extractor={'text': extractor_type(net)}, region_layer_map=regions,
                            behavioral_readout_layer='late', answer=answer,
-                           capability_config={'behavior-sessions': {'behavior': 'generation'}})
+                           capability_config={'behavior-sessions': owners})
 
 
-READOUT = TaskContext(task_type='probabilities', label_set=['cat', 'dog'], fitting_stimuli=STIMULI)
+READOUT = TaskContext(response=Choice(['cat', 'dog']), fitting_stimuli=STIMULI)
 TASKS = {'readout': READOUT, 'generation': GENERATE}
 MIX = {'mix': CompositeSelector((('early', None), ('late', None)), modality='text')}
 
@@ -163,7 +165,7 @@ MIX = {'mix': CompositeSelector((('early', None), ('late', None)), modality='tex
 @pytest.mark.parametrize('mode', ['readout', 'generation'])
 def test_task_composite_refuses_missing_selected_layer(mode):
     """Readout and generation refuse it, like the neural session path."""
-    m = task_model(ToyNet(), Incomplete, MIX)
+    m = task_model(ToyNet(), Incomplete, MIX, readout=mode == 'readout')
     with pytest.raises(ValueError, match='layer|neuroid|activity'):
         _run(m, TASKS[mode], ['neural:mix'])
 
@@ -175,7 +177,7 @@ def test_neural_session_refuses_the_same_missing_layer():
 
 
 def test_readout_refuses_a_plain_region_whose_layer_is_missing():
-    m = task_model(ToyNet(), Incomplete, {'E': LayerSelector('early', modality='text')})
+    m = task_model(ToyNet(), Incomplete, {'E': LayerSelector('early', modality='text')}, readout=True)
     with pytest.raises(ValueError, match='every selected layer'):
         _run(m, READOUT, ['behavior', 'neural:E'])
 
@@ -184,10 +186,10 @@ def test_readout_refuses_a_plain_region_whose_layer_is_missing():
 def test_task_accepts_an_absent_layer_whose_unit_subset_is_empty(mode):
     """A composite layer with no selected units is not required (required_layers)."""
     regions = {'mix': CompositeSelector((('early', ()), ('late', None)), modality='text')}
-    session = _run(task_model(ToyNet(), Incomplete, regions), TASKS[mode], ['behavior', 'neural:mix'])
+    session = _run(task_model(ToyNet(), Incomplete, regions, readout=mode == 'readout'), TASKS[mode], ['behavior', 'neural:mix'])
     mix = session.collect('neural:mix')
     assert set(mix['layer'].values) == {'late'}
-    complete = _run(task_model(ToyNet(), ToyExtractor, regions), TASKS[mode], ['behavior', 'neural:mix'])
+    complete = _run(task_model(ToyNet(), ToyExtractor, regions, readout=mode == 'readout'), TASKS[mode], ['behavior', 'neural:mix'])
     np.testing.assert_array_equal(mix.values, complete.collect('neural:mix').values)
 
 
@@ -195,14 +197,14 @@ def test_task_accepts_an_absent_layer_whose_unit_subset_is_empty(mode):
 def test_task_refuses_a_composite_that_selects_no_units(mode):
     regions = {'mix': CompositeSelector((('early', ()), ('late', ())), modality='text')}
     with pytest.raises(ValueError, match='no neuroids'):
-        _run(task_model(ToyNet(), ToyExtractor, regions), TASKS[mode], ['behavior', 'neural:mix'])
+        _run(task_model(ToyNet(), ToyExtractor, regions, readout=mode == 'readout'), TASKS[mode], ['behavior', 'neural:mix'])
 
 
 @pytest.mark.parametrize('mode', ['readout', 'generation'])
 def test_complete_composite_keeps_its_pass_count_and_values(mode):
     behavior_net, joint_net = ToyNet(), ToyNet()
-    _run(task_model(behavior_net, ToyExtractor, MIX), TASKS[mode], ['behavior'])
-    joint = _run(task_model(joint_net, ToyExtractor, MIX), TASKS[mode], ['behavior', 'neural:mix'])
+    _run(task_model(behavior_net, ToyExtractor, MIX, readout=mode == 'readout'), TASKS[mode], ['behavior'])
+    joint = _run(task_model(joint_net, ToyExtractor, MIX, readout=mode == 'readout'), TASKS[mode], ['behavior', 'neural:mix'])
     assert joint_net.passes == behavior_net.passes          # recording adds no forward pass
     if mode == 'generation':
         assert joint_net.passes == len(STIMULI)
@@ -234,8 +236,7 @@ def conditional_extractor(pattern):
     return Conditional
 
 
-GENERATION_FORMS = {'answer': GENERATE,
-                    'choice': replace(GENERATE, task_type=None, label_set=None, response=Choice(('cat', 'dog')))}
+GENERATION_FORMS = {'choice': GENERATE}
 
 
 @pytest.mark.parametrize('form', sorted(GENERATION_FORMS))
