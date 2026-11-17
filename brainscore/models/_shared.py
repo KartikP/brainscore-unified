@@ -57,16 +57,22 @@ def fit_frames(frames, count: int) -> List[np.ndarray]:
     return frames
 
 
-def _load_preprocess_images(image_filepaths, processor):
-    """The images at ``image_filepaths`` as RGB, prepared by a HuggingFace image ``processor``."""
+def _load_preprocess_images(image_filepaths, processor, **settings):
+    """The images at ``image_filepaths`` as RGB, prepared by a HuggingFace image ``processor``
+    with ``settings``, as ``(B, C, H, W)``. A processor that gives several tiles per image
+    (five axes) is called on each image alone and gives its first tile: the whole image
+    in the Hugging Face processors (SmolVLM without splitting, LLaVA-OneVision)."""
     images = []
     for path in image_filepaths:
         with Image.open(path) as img:
             if img.mode != 'RGB':
                 img = img.convert('RGB')
             images.append(img.copy())
-    processed = processor(images=images, return_tensors='pt')
-    return processed['pixel_values'].numpy()
+    pixels = processor(images=images, return_tensors='pt', **settings)['pixel_values'].numpy()
+    if pixels.ndim == 5:
+        pixels = np.concatenate([processor(images=[image], return_tensors='pt', **settings)['pixel_values']
+                                 .numpy()[0, :1] for image in images])
+    return pixels
 
 
 def build_audio_wrapper(combo_identifier: str, random_init: bool = False):

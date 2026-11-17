@@ -33,23 +33,6 @@ REGION_LAYER_MAP = {
     'language_system': 'layers.40',
 }
 
-# Share of each accelerator given over to weights; the rest holds activations.
-WEIGHT_FRACTION = 0.78
-
-
-def _placement_budget(torch):
-    """Per-device memory budget for ``device_map='auto'``, or None on CPU."""
-    if not torch.cuda.is_available():
-        return None
-    budget = {
-        index: int(torch.cuda.get_device_properties(index).total_memory
-                   * WEIGHT_FRACTION)
-        for index in range(torch.cuda.device_count())
-    }
-    budget['cpu'] = '64GiB'      # spill target if the weights still do not fit
-    return budget
-
-
 def _tower_root(visual, language_model):
     """One module whose attribute paths match the region map, so an
     intervention named by a region's layer (``blocks.N`` or ``layers.N``)
@@ -114,6 +97,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
     from brainscore.model_helpers.intervention import pytorch_intervention
     from brainscore.selection import LayerSelector
+    from brainscore.model_helpers.vlm import _placement_budget
 
     # 56 GB at bf16, so placement is automatic. Left to itself accelerate packs
     # each device to the brim and the first forward pass then OOMs on
