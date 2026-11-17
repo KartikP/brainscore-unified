@@ -149,7 +149,7 @@ def qualify(args, model_id: str, report: dict[str, Any]) -> None:
     # Require pre-staged assets; nothing here downloads.
     provenance = report['provenance']
     if not args.folder.is_dir():
-        raise FileNotFoundError(f'Make the CogGym folder first (load a CogGym benchmark once): {args.folder}')
+        raise FileNotFoundError(f'Stage the CogGym folder first (load a CogGym benchmark once to make it): {args.folder}')
     # The model is identified by content before anything loads it.
     provenance['model_identity'] = verify_model_identity(args.model_path, SMOLVLM_MANIFEST)
     provenance['model_sha256'] = snapshot_digest(args.model_path)
