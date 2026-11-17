@@ -34,8 +34,9 @@ from brainscore_core.environment import DiscreteSpec, MappingSpec
 
 KINDS = ('move', 'click', 'key', 'wait', 'run')
 KEYS = ('enter', 'escape', 'space')
-SIZE = 64
+SIZE = 64      # screen width and height in pixels
 
+# Environment: a button that turns green after two ticks
 class ScreenTask:
     def action_spec(self):
         return MappingSpec({'kind': DiscreteSpec(len(KINDS)), 'x': DiscreteSpec(SIZE),
@@ -53,6 +54,7 @@ class ScreenTask:
         draw.rectangle((40, 40, 56, 56), fill='green' if ready else 'gray')   # the button
         return np.asarray(picture)
 
+    # Apply one action; the episode ends on a green click
     def step(self, outputs):
         action = outputs['motor']            # already checked against action_spec()
         kind = KINDS[action['kind']]
@@ -69,9 +71,10 @@ The policy is a plain function. It reads the picture and returns one action:
 def action(kind, x=0, y=0, key=0):
     return {'kind': KINDS.index(kind), 'x': x, 'y': y, 'key': key}
 
+# Policy: click the button once it is green
 def policy(row):
     red, green, blue = row['observation'][48, 48]   # the centre of the button
-    return {'motor': action('click', 48, 48) if green > red else action('run')}
+    return {'motor': action('click', x=48, y=48) if green > red else action('run')}
 
 subject = BrainScoreModel(identifier='screen-agent', policy=policy,
                         policy_in_channels=('observation',), policy_out_channels=('motor',))
@@ -106,6 +109,7 @@ from brainscore_core.responses import Prompt, Text
 reply, _ = chat_parts(vlm, processor)   # a Hugging Face vision-language model and its processor
 ASK = 'Answer with four numbers: the kind (0 move, 1 click, 2 key, 3 wait, 4 run), x, y, key.'
 
+# Policy: show the screen, read four numbers back
 def vlm_policy(row):
     screen = io.BytesIO()
     Image.fromarray(row['observation']).save(screen, format='PNG')

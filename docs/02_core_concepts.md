@@ -26,7 +26,7 @@ class WordLengthReader(Subject):
 
     def participate(self, session):
         while (event := session.next_input()) is not None:
-            # A reading time in ms for each word: one number per trial.
+            # Reading time: 200 ms plus 30 ms per letter
             session.respond(StreamEvent('behavior:rt', 200 + 30 * len(event.payload),
                                         t_ms=event.t_ms, meta={**event.meta, 'units': 'ms'}))
 ```
@@ -58,6 +58,7 @@ A **session** is one run of an experiment with one subject. There is one session
 ```python
 from brainscore_core.streaming import Session
 
+# Two words on 'text', 500 ms apart
 session = Session([StreamEvent('text', w, t_ms=i * 500) for i, w in enumerate(['cat', 'elephant'])])
 WordLengthReader().participate(session)
 session.collect()
@@ -99,7 +100,7 @@ class ToyReadingTimes(Benchmark):
     measured_ms = [310, 390, 330, 520]       # made-up reading times, one per word
 
     def __call__(self, subject):
-        session = stimulus_session(self.stimulus_set, ['behavior:rt'])
+        session = stimulus_session(self.stimulus_set, ['behavior:rt'])   # show the words, request reading times
         subject.participate(session)
         predicted = session.collect('behavior:rt').values.ravel()   # one stored row per word
         return Score(np.corrcoef(predicted, self.measured_ms)[0, 1])   # the metric
@@ -166,6 +167,7 @@ import torch
 from brainscore import BrainScoreModel
 from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
 
+# Two named layers (channels in, channels out, kernel size)
 net = torch.nn.Sequential(OrderedDict(layer3=torch.nn.Conv2d(3, 8, 3), layer4=torch.nn.Conv2d(8, 8, 3)))
 
 

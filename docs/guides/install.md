@@ -5,7 +5,7 @@ UMI is four Python packages that are installed together: `core` (the interface),
 ## On a new machine
 
 ```bash
-mkdir brainscore-umi && cd brainscore-umi
+mkdir brainscore-umi && cd brainscore-umi    # empty folder for the four repositories
 base=https://raw.githubusercontent.com/KartikP/brainscore-unified/unified-model-interface-v2/install
 curl -fsSLO "$base/setup.sh"
 curl -fsSLO "$base/environment-unified.yml"
@@ -16,6 +16,7 @@ conda activate brainscore-unified
 ## With the four repositories already side by side
 
 ```bash
+# From the folder that holds core/, vision/, language/, unified/
 conda create -y -n brainscore-unified --override-channels -c conda-forge python=3.11
 conda activate brainscore-unified
 python -m pip install -c unified/install/v2-constraints.txt \

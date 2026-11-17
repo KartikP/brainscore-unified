@@ -8,11 +8,11 @@ consistency check.
 ## One-liner (no prior checkout)
 
 ~~~bash
-mkdir brainscore-umi && cd brainscore-umi
+mkdir brainscore-umi && cd brainscore-umi    # empty folder for the four repositories
 base=https://raw.githubusercontent.com/KartikP/brainscore-unified/unified-model-interface-v2/install
 curl -fsSLO "$base/setup.sh"
 curl -fsSLO "$base/environment-unified.yml"
-bash setup.sh          # clones the four repos here + builds the env
+bash setup.sh          # clones the four repositories, builds the environment
 conda activate brainscore-unified
 ~~~
 
@@ -27,7 +27,7 @@ declare only broad bounds; `v2-constraints.txt` holds the tested versions, so ke
 `-c` option:
 
 ~~~bash
-cd <workspace-root>
+cd <workspace-root>           # holds core/, vision/, language/, unified/
 conda create -y -n brainscore-unified --override-channels -c conda-forge python=3.11
 conda activate brainscore-unified
 python -m pip install -c unified/install/v2-constraints.txt -e ./core -e ./vision -e ./language -e "./unified[notebooks,test]"
@@ -85,6 +85,7 @@ unified at the revision you want to evaluate, then run from the workspace root:
 
 ```bash
 git clone --branch unified-model-interface-v2 https://github.com/KartikP/brainscore-unified.git unified
+# Clone core, vision, language at the pinned commits
 python3.11 - <<'PYTHON'
 import json, subprocess
 from pathlib import Path
@@ -137,6 +138,7 @@ of them. Give a local checkout path or `[owner/repo@]ref` for each repository
 that changes; the other peers use the pins in `peer-revisions.json`:
 
 ```bash
+# Each repository: a local checkout or owner/repo@ref
 unified/install/run_candidate.sh --work ~/umi-candidate --venv ~/umi-candidate/venvs \
   --core ~/src/core --vision brain-score/vision@my-branch \
   --language ~/src/language --unified ~/src/unified all

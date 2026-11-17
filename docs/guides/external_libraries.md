@@ -83,6 +83,7 @@ class MadeUpLibraryChoice(BenchmarkBase):
                          ceiling=not_estimated())
 
     def __call__(self, subject):
+        # Run the items, then score agreement with people
         session = stimulus_session(self.stimulus_set, ['behavior:choice'], self.task)
         subject.participate(session)
         answer = session.collect('behavior:choice')       # one stored row per item
@@ -105,6 +106,7 @@ def likelihood(prompt, candidates):
     return {candidate: -float(len(candidate)) for candidate in candidates}
 
 
+# Three stand-in models: likelihood, reply, unsure reply
 scorer = BrainScoreModel(identifier='likelihood-stand-in', in_channels={'text'}, likelihood=likelihood,
                          capability_config={'behavior-sessions': {
                              'behavior:choice': ('likelihood', 'softmax_argmax')}})
@@ -121,6 +123,7 @@ for subject in (scorer, replier, unsure):
 # reply-stand-in 1.0 4 0
 # unsure-stand-in 0.75 3 1
 
+# No choice statement: the pair is N/A
 viewer = BrainScoreModel(identifier='no-choice', in_channels={'text'}, likelihood=likelihood)
 print(brainscore.score(viewer, MadeUpLibraryChoice(), check_mem=False).attrs['status'])   # N/A
 ```

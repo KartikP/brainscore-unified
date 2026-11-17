@@ -26,7 +26,7 @@ set; a branch in work can need later peer commits), builds the pinned environmen
 checks it:
 
 ```bash
-mkdir brainscore-umi && cd brainscore-umi
+mkdir brainscore-umi && cd brainscore-umi    # empty folder for the four repositories
 base=https://raw.githubusercontent.com/KartikP/brainscore-unified/unified-model-interface-v2/install
 curl -fsSLO "$base/setup.sh" && curl -fsSLO "$base/environment-unified.yml"
 bash setup.sh
@@ -54,6 +54,7 @@ service of Anaconda's default channels.
 cd <workspace-root>          # the directory holding core/ vision/ language/ unified/
 conda create -y -n brainscore-unified --override-channels -c conda-forge python=3.11
 conda activate brainscore-unified
+# Install the four checkouts together, at the tested versions
 python -m pip install -c unified/install/v2-constraints.txt -e ./core -e ./vision -e ./language -e "./unified[notebooks,test]"
 python -m pip check
 python -m brainscore.doctor

@@ -24,6 +24,7 @@ def build_policy():
     return policy
 
 
+# A model with only a policy part
 model = BrainScoreModel(
     identifier='your-agent',
     policy=build_policy(),

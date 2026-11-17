@@ -15,6 +15,7 @@ from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
+# Stand-in network, its extractor, and twelve localizer images
 class Net(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -67,12 +68,14 @@ from brainscore_core import Perturbation, Selection, StateChange
 from brainscore_core.streaming_helpers import apply_state_change
 from brainscore.model_helpers.intervention import pytorch_intervention
 
+# Model with an intervention part (forward hooks)
 model = BrainScoreModel(identifier='my-cnn', model=net, extractor={'vision': vision},
                         region_layer_map={'IT': 'layer4'},
                         intervention=pytorch_intervention(net))
 
+# Silence channels 0, 5 and 9 of layer3
 applied = apply_state_change(model, StateChange(kind='ablation',
-                             target=Selection(layer='layer3', indices=[0, 5, 9], axis=1),
+                             target=Selection(layer='layer3', indices=[0, 5, 9], axis=1),  # axis 1: channels
                              perturbation=Perturbation(kind='zero')))
 # ... record or score the changed subject ...
 apply_state_change(model, StateChange(kind='reset', handle_id=applied.handle_id))  # undo this one
@@ -117,8 +120,10 @@ A `UnitSelection` is a recipe that `resolve(subject)` turns into a `Selection`:
 ```python
 from brainscore import FunctionalSelection, RandomSelection
 
-selected = FunctionalSelection('IT', localizer_stimuli, contrast=(['face'], ['object']),
-                               n_units=10).resolve(model)
+# 10 IT units most selective for faces
+selected = FunctionalSelection(region='IT', localizer_stimuli=localizer_stimuli,
+                               contrast=(['face'], ['object']), n_units=10).resolve(model)
+# Control: 10 random units, same layer
 control = RandomSelection.matched_to(selected, seed=0).resolve(model)
 print(selected.layer, len(selected.indices), control.layer, len(control.indices))   # layer4 10 layer4 10
 ```
@@ -133,6 +138,7 @@ Use held-out stimuli for the localizer and for the test, and several random seed
 ```python
 from brainscore import CompositeSelector
 
+# IT: units 0-2 of layer3, all of layer4
 region_layer_map = {'IT': CompositeSelector(layers=(('layer3', (0, 1, 2)), ('layer4', None)))}
 ```
 

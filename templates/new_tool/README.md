@@ -40,12 +40,14 @@ from new_tool import tool
 register_tool('your-tool', tool.YourTool)          # the template is not in the tool table
 print(type(load_tool('your-tool')).__name__)        # YourTool
 
+# Tiny network as a subject; IT is its layer '1'
 torch.manual_seed(0)
 net = torch.nn.Sequential(torch.nn.Conv2d(3, 4, 3), torch.nn.ReLU()).eval()
 subject = BrainScoreModel(identifier='tiny-cnn', model=net, region_layer_map={'IT': '1'},
                           extractor={'vision': PytorchWrapper(
                               identifier='tiny-cnn', model=net,
                               preprocessing=lambda paths: load_preprocess_images(paths, image_size=16))})
+# Four random 16 x 16 images
 workspace = tempfile.TemporaryDirectory()      # removed when the script ends
 folder = workspace.name
 paths = {f's{i}': os.path.join(folder, f'{i}.png') for i in range(4)}
@@ -54,5 +56,6 @@ for i, path in enumerate(paths.values()):
 stimuli = StimulusSet(pd.DataFrame({'stimulus_id': list(paths), 'image_path': list(paths.values())}))
 stimuli.stimulus_paths = paths
 stimuli.identifier = 'tiny-images'
+# Run the tool: the mean IT response
 print(sorted(tool.region_means(subject, stimuli, ['IT'])))   # ['IT']
 ```

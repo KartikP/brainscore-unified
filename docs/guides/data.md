@@ -65,6 +65,7 @@ def load_responses():               # read your recordings here
                                    'neuroid_id': ('neuroid', [0, 1, 2])})
 
 
+# Register both under one identifier, then load
 data_registry['MyStudy2026'] = load_responses           # returns a DataAssembly
 stimulus_set_registry['MyStudy2026'] = load_stimuli     # returns a StimulusSet
 print(brainscore.load_dataset('MyStudy2026').shape)      # (2, 3)
@@ -86,7 +87,7 @@ from brainscore.data import local
 MY_FILMS = local.register(local.LocalAsset(
     name='mystudy2026-films',
     env_var='BRAINSCORE_MYSTUDY2026_FILMS',
-    default_path='mystudy2026/films',           # under the home folder when the variable is unset
+    default_path='mystudy2026/films',           # under the home folder when env_var is unset
     kind='stimuli',
     why_local='The films are licensed to each lab; Brain-Score may not share them.',
     source='https://example.org/mystudy2026',

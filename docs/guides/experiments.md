@@ -38,6 +38,7 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
 
 
+# Stand-in network as a subject, eight images, a task, a lesion
 class Net(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -64,7 +65,7 @@ for index in range(8):
     path = os.path.join(folder, f'{index}.png')
     Image.fromarray(np.random.RandomState(index).randint(0, 256, (8, 8, 3), dtype=np.uint8)).save(path)
     rows.append({'stimulus_id': f'image{index}', 'image_path': path,
-                 'noise': [0.0, 0.5][index % 2]})            # a stimulus factor
+                 'noise': [0.0, 0.5][index % 2]})            # a stimulus factor: noise level
 stimuli = StimulusSet(pd.DataFrame(rows))
 stimuli.identifier = 'my-images'
 
@@ -81,14 +82,15 @@ subject = BrainScoreModel(identifier='my-cnn', model=net, region_layer_map={'IT'
                                                               preprocessing=preprocess)},
                           answer=answer, intervention=pytorch_intervention(net))
 task = TaskContext(instruction='Animal or vehicle?', response=Choice(['animal', 'vehicle']))
-lesion = StateChange(kind='ablation', target=Selection(layer='layer3'),
+lesion = StateChange(kind='ablation', target=Selection(layer='layer3'),   # all of layer3
                      perturbation=Perturbation(kind='zero'))
 ```
 
 ```python
 from brainscore.experiments import Experiment, Intervene, RecordBehavior, RecordNeural, TaskProtocol
 
-protocol = TaskProtocol(stimuli, task, identifier='animal-or-vehicle',
+# Two conditions; record IT and choices; lesion in one
+protocol = TaskProtocol(stimuli=stimuli, task=task, identifier='animal-or-vehicle',
                         conditions=['intact', 'lesioned'], repetitions=[0])
 experiment = Experiment(subject=subject, protocol=protocol,
                         tools=[RecordNeural(['IT']), RecordBehavior(),
@@ -96,6 +98,7 @@ experiment = Experiment(subject=subject, protocol=protocol,
                         output_dir='runs/my-study')
 experiment.validate()          # checks subject, protocol and tools against each other; runs nothing
 result = experiment.run()
+# Read back the saved results
 choices = result.behavior(condition='lesioned', repetition=0, measure='choice')
 it = result.neural('IT', condition='lesioned', repetition=0)
 ```
@@ -178,6 +181,7 @@ protocol = SessionProtocol(identifier='silence-layer3', session_factory=make_ses
                            conditions=['baseline', 'silenced'], repetitions=[0, 1, 2],
                            required_input_channels=['vision:image'], requested_output_channels=['behavior'])
 
+# Tools that save events, lesion, and record layer3
 experiment = Experiment(
     subject=subject,
     protocol=protocol,
@@ -186,7 +190,7 @@ experiment = Experiment(
            RecordActivity(['layer3'])],                    # every forward pass, unaggregated
     instrumentation=TorchInstrumentation(net),
     output_dir='runs/silence-layer3',
-    metadata={'checkpoint': 'v1.2', 'seed': 7},
+    metadata={'checkpoint': 'v1.2', 'seed': 7},            # your own notes, saved with the run
 )
 experiment.validate()          # checks channels and tools without running the model
 result = experiment.run()
@@ -242,6 +246,7 @@ trials by their state:
 
 ```python
 valid = trials[trials['choice_state'] == 'valid']
+# Share of 'animal' answers per condition and noise level
 print(valid.groupby(['condition', 'noise'])['choice'].apply(lambda c: (c == 'animal').mean()))
 ```
 
@@ -255,6 +260,7 @@ for event in list(result.record.events())[:3]:          # or RunRecord(...), fro
     print(event['condition'], event['repetition_id'], event['kind'])
 outputs = list(result.record.outputs())
 
+# Replay the saved inputs; compare the outputs
 replay = Experiment(subject=subject, protocol=replay_sessions(result.directory),
                     tools=[RecordInputsOutputs()], output_dir='runs/replay').run()
 print(compare_outputs(result.directory, replay.directory)['equal'])   # True
@@ -274,6 +280,7 @@ def evaluate(subject, context):
     answers = []
     for trial in range(3):
         # One request is one session, recorded as record repetition `trial`.
+        # Arguments: subject, context, repetition, stimuli, outputs, task
         session = run_request(subject, context, trial, stimuli, ['behavior'], task)
         answers.append(session.collect('behavior'))
     return my_score(answers)

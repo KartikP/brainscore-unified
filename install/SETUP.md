@@ -87,7 +87,7 @@ unnecessary; the shared constraints file holds the shared dependencies that move
 or break imports at their tested versions (not every package; see the reproducible setup):
 
 ~~~bash
-cd <workspace-root>
+cd <workspace-root>           # holds core/, vision/, language/, unified/
 conda create -y -n brainscore-unified --override-channels -c conda-forge python=3.11
 conda activate brainscore-unified
 pip install -c unified/install/v2-constraints.txt -e ./core -e ./vision -e ./language -e "./unified[notebooks,test]"
@@ -101,11 +101,12 @@ directory:
 
 ~~~bash
 cd <workspace-root>
-cp unified/install/environment-unified.yml .
+cp unified/install/environment-unified.yml .    # beside the repositories, so its paths resolve
 conda env create -n brainscore-unified -f environment-unified.yml
 conda activate brainscore-unified
 python -m pip check
 python -c "import brainscore"
+# The transformers that language scoring needs
 python -c "from transformers import DynamicCache; assert hasattr(DynamicCache(), 'to_legacy_cache')"
 ~~~
 
@@ -122,6 +123,7 @@ Lesson 1 uses images and weights committed with the lessons and downloads nothin
 
 ~~~bash
 cd unified/notebooks/lessons
+# Run lesson 1; the executed copy goes to /tmp
 jupyter nbconvert --to notebook --execute --stdout 01_your_first_subject.ipynb >/tmp/umi-lesson01.ipynb
 ~~~
 
