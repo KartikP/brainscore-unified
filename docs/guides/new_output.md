@@ -6,7 +6,7 @@ Your experiment needs something from the subject that no other guide shows. This
 
 | The subject gives... | Way | Who names it | Who checks the payload | Who produces it | Who reads it |
 | --- | --- | --- | --- | --- | --- |
-| An answer to a trial: a choice, probabilities, a rating, a response time, text, log probabilities | One of the six answer formats, a closed list ([Behavior](behavior.md)). Nothing to add. | The benchmark, in `TaskContext(response=...)` | Core, by the format's schema | The model's answer, reply or readout part | The benchmark, which compares it with human answers |
+| An answer to a trial: a choice, probabilities, a rating, a response time, text, log probabilities | One of the six answer formats, a closed list ([Behavior](behavior.md)). Nothing to add. | The benchmark, in `TaskContext(response=...)` | Core, by the format's schema | One named part of the model: `reply`, `answer`, `likelihood` or the readout | The benchmark, which compares it with human answers |
 | An action that changes what it sees next: a key press, a pointer move, a motor command, "wait" | A closed loop ([Closed loop](closed_loop.md)). The action goes on `motor`, or on another channel the policy names. | The policy (`policy_out_channels`); the benchmark requests it | The session, with the environment's `action_spec()` | The policy, once per step | The environment (`step`), then the benchmark |
 | A measurement that is neither, for example eye position | A new registered channel ([Extend UMI](extend.md#a-new-channel)) | You, with `register_channel` | The session, with the channel's `shape_validator` | A model part (a policy can return it at each step) or your own subject | The benchmark |
 

@@ -1,6 +1,6 @@
 # External experiment libraries
 
-This guide is for the owner of an experiment library: a collection of experiments with people, each with stimuli, a procedure and the people's responses. You map each experiment to a Brain-Score benchmark once. The experiment then runs on every model that fits, with Brain-Score's tools (recording, lesions, replay) and with your data as the reference. You get a column: results for every model. A modeler who adapts a model once gets a row: results on every experiment that fits, yours included.
+This guide is for the maintainer of an experiment library: a collection of experiments with people, each with stimuli, a procedure and the people's responses. You map each experiment to a Brain-Score benchmark once. The experiment then runs on every model that fits, with Brain-Score's tools (recording, lesions, replay) and with your data as the reference. You get a column: results for every model. A modeler who adapts a model once gets a row: results on every experiment that fits, yours included.
 
 Two libraries are mapped today: CogGym (`brainscore/benchmarks/coggym/`, `brainscore/harnesses/coggym.py`) and EWoK (`brainscore/benchmarks/ewok/`, `brainscore/data/ewok/`). Their code and tests (`tests/test_coggym.py`, `tests/test_coggym_benchmark.py`, `tests/test_ewok.py`) are the full examples.
 
@@ -98,7 +98,7 @@ class MadeUpLibraryChoice(BenchmarkBase):
                                answer_policy='invalid: wrong, counted; missing: wrong, counted')
 ```
 
-Two stand-in models take part: one with a `likelihood` part, which scores each continuation, and one with a `reply` part, which writes an answer. A third reply model cannot answer one item. A model with a likelihood part but no statement for the choice does not declare `behavior:choice`, so it is not applicable:
+Two stand-in models take part: one with a `likelihood` part, which scores each continuation, and one with a `reply` part, which writes an answer. A third reply model cannot answer one item. A model with a likelihood part but no registration line for the choice does not declare `behavior:choice`, so it is not applicable:
 
 ```python
 def likelihood(prompt, candidates):
@@ -123,7 +123,7 @@ for subject in (scorer, replier, unsure):
 # reply-stand-in 1.0 4 0
 # unsure-stand-in 0.75 3 1
 
-# No choice statement: the pair is N/A
+# No line for the choice: the pair is N/A
 viewer = BrainScoreModel(identifier='no-choice', in_channels={'text'}, likelihood=likelihood)
 print(brainscore.score(viewer, MadeUpLibraryChoice(), check_mem=False).attrs['status'])   # N/A
 ```

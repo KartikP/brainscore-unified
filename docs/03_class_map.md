@@ -109,7 +109,7 @@ A callable cannot list its layers, so it counts as having every layer. Next to a
 | --- | --- |
 | `'layer4'` | Every unit of one layer (shorthand for `LayerSelector(name='layer4')`). |
 | `LayerSelector(name=..., modality='text')` | One layer in a specific tower, when towers of two input families have a layer of that name. |
-| `LayerSelector(name=..., modality=('text', 'vision'))` | The same, recorded by the text extractor, with the statement that pictures also reach the layer during an answer. |
+| `LayerSelector(name=..., modality=('text', 'vision'))` | The same, recorded by the text extractor, with the claim that pictures also reach the layer during an answer. |
 | `CompositeSelector(layers=(('layer3', (0, 1)), ('layer4', None)))` | Units drawn from several layers. |
 
 ### Behavior, action and intervention parts
