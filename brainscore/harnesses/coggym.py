@@ -482,15 +482,19 @@ class CogGymRunner:
                         'summary_status': 'pending'},
             }
             path = directory / f'run-{repetition:03d}.json'
-            # Keep completed model calls even if the reference scorer overflows.
-            if 'summary_error' in ran:
-                artifact['umi'].update(summary_status='failed', summary_error=ran['summary_error'])
-            else:
-                artifact['summary'] = ran['summary']
-                artifact['umi']['summary_status'] = 'complete'
+            # The completed model calls first (summary pending): they stay saved even if the
+            # summary cannot be written (an overflow, a value that is not finite).
             path.write_text(json.dumps(artifact, indent=2, allow_nan=False) + '\n')
             artifacts.append(path)
-            register(path)
+            try:
+                if 'summary_error' in ran:
+                    artifact['umi'].update(summary_status='failed', summary_error=ran['summary_error'])
+                else:
+                    artifact['summary'] = ran['summary']
+                    artifact['umi']['summary_status'] = 'complete'
+                path.write_text(json.dumps(artifact, indent=2, allow_nan=False) + '\n')
+            finally:
+                register(path)
             if 'summary_error' in ran:
                 failed = ran['summary_error']
                 raise RuntimeError(f"CogGym's summary failed: {failed['type']}: {failed['message']}; "

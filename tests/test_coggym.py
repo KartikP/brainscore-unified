@@ -408,3 +408,17 @@ def test_a_call_without_a_usable_written_answer_is_an_error_of_the_run():
         'response_state': ('presentation', ['missing'])})
     with pytest.raises(TypeError, match='no written answer'):
         _written_answer(StreamEvent('behavior:text', missing, None))
+
+
+def test_a_summary_that_cannot_be_saved_keeps_the_completed_trials(reference, tmp_path):
+    """CogGym's summary holds a value that is not finite: the run fails, the trials stay saved."""
+    root, stand_in = reference
+    stand_in.cli("def aggregate_experiment(rows):\n    return {'mean': float('nan')}\n")
+    runner = coggym.CogGymRunner(root, model='fixture')
+    with pytest.raises(ValueError):
+        runner.run(SimpleNamespace(complete_with_metadata=lambda *a: {
+            'text': 'answer', 'reasoning': None, 'token_usage': None}),
+            output_dir=tmp_path / 'run', reset=lambda repetition: None)
+    saved = json.loads((tmp_path / 'run/run-001.json').read_text())
+    assert [trial['response'] for trial in saved['trials']] == ['answer'] * len(saved['trials'])
+    assert saved['trials'] and saved['umi']['summary_status'] == 'pending'
