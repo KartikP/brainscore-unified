@@ -6,7 +6,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | --- | --- |
 | **Ablate** | An experiment tool that sets selected unit outputs of a network that is not a subject to zero during chosen conditions. A subject is changed with `Intervene`. |
 | **Adapter** | A permanent wrapper that presents a classic Brain-Score vision or language model as a subject. |
-| **`answer`** | A `BrainScoreModel` part: `(stimulus_row, instruction, label_set) -> label`. It phrases and parses its own prompt. It answers an older `task_type`/`label_set` task and a plain `Choice`; a task with settings goes to `reply`. |
+| **`answer`** | A `BrainScoreModel` part: `(stimulus_row, instruction, label_set) -> text`, called with keywords. It words its own prompt and returns the generated text; `BrainScoreModel` parses it with `Choice.parse`. It answers a plain `Choice`; a task with settings goes to `reply`. |
 | **Assembly** | A labeled array. `NeuroidAssembly` has `presentation` (stimuli), `neuroid` (units) and optionally `time_bin`. `BehavioralAssembly` holds choices. |
 | **Benchmark** | A fixed test: stimuli, requested outputs, a metric and measured data. Returns a score. It declares `requested_output_channels`; its inputs are read from the table it keeps (`stimulus_set`, and `task`), or declared in `required_input_channels` when it keeps no table. Its `__call__(subject)` takes the subject. |
 | **`BrainScoreModel`** | A ready-made subject assembled from parts (extractor, region map, answer, policy, intervention). |

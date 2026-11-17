@@ -150,7 +150,7 @@ Writing `participate` by hand works for anything. For neural networks, `BrainSco
 | `extractor={'vision': ..., 'text': ...}` | Prepares inputs, runs the network, returns the activity of requested layers. One per input type. | input channels |
 | `region_layer_map={'IT': 'layer4'}` | Says which layer stands in for which brain region. | `neural:<region>` outputs |
 | `behavioral_readout_layer` | Fits a classifier on one layer. It gives probabilities; its choice is the most probable option, a conversion that the registration states with `capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}`. | `behavior`, `behavior:probabilities`, `behavior:rating`, `behavior:rt`, and `behavior:choice` with the statement |
-| `answer` | Your function that phrases a prompt for one stimulus and returns a label. Answers an older `task_type`/`label_set` task and a plain choice. | `behavior`, `behavior:choice` |
+| `answer` | Your function that words a prompt for one stimulus and returns the generated text; `BrainScoreModel` parses it. Answers a plain choice. | `behavior`, `behavior:choice` |
 | `reply` | Your function that returns the model's raw reply to one trial's prompt; the task parses it. | `behavior:choice`, `behavior:rating`, `behavior:text` |
 | `likelihood` | Your function that scores each option as the reply, without generating. | `behavior:choice`, `behavior:probabilities` |
 | `policy` | Your function that maps an environment observation to an action. | `observation` in, `motor` out |

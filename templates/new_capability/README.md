@@ -9,7 +9,7 @@ The built-in abilities are `BrainScoreModel` constructor slots. Pass a function:
 | Slot | Runs on | Signature |
 |------|---------|-----------|
 | `extractor` | stimuli, for recording | `{modality: wrapper}`; each wrapper takes `(stimuli, layers=...)` |
-| `answer` | a `StimulusSet` + `TaskContext.instruction` | `(stimulus_row, instruction, label_set) -> str` |
+| `answer` | a plain `Choice` task | `(*, stimulus_row, instruction, label_set) -> str`, called with keywords |
 | `policy` | a row (a mapping of channel -> payload) | `(row) -> {output channel: payload}` |
 | `intervention` | a `StateChange` | `(state_change) -> (PerturbationApplied, cleanup)` |
 
