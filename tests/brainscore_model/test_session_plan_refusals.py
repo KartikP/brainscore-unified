@@ -249,7 +249,7 @@ def _r13(log, monkeypatch, tmp_path):
 
 
 def _answer_and_readout(log, **kwargs):
-    return _subject(log, parts=('answer', 'behavioral_readout_layer'), owners={'behavior': 'generation'},
+    return _subject(log, parts=('answer', 'behavioral_readout_layer'), owners={},
                     **kwargs)
 
 

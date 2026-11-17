@@ -20,8 +20,7 @@ Y02 = {
     'answer+likelihood': (('answer', 'likelihood'),
                           {'behavior:probabilities': ('likelihood', 'softmax')}),
     'answer+likelihood+readout': (('answer', 'likelihood', 'behavioral_readout_layer'),
-                                  {'behavior': 'generation',
-                                   'behavior:probabilities': ('likelihood', 'softmax')}),
+                                  {'behavior:probabilities': ('likelihood', 'softmax')}),
 }
 
 

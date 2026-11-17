@@ -889,13 +889,14 @@ def trial_prompts(task, stimuli, compare_options: bool = True):
 # that derives it. ``answer`` and ``reply`` are the two kinds of the part
 # ``generation``. The likelihood gives the log probabilities natively. ``'link'``:
 # ``behavior:rt`` follows the owner of ``behavior:probabilities`` and is
-# never stated. Bare ``behavior`` carries the answer of a response task (its first format).
+# never stated. Bare ``behavior`` is no part's format: it carries the answer of a response
+# task under its first format, given by that format's owner (``_declared_formats``).
 _PART_FORMATS = {
-    'answer': {'behavior': None, 'behavior:choice': None},
+    'answer': {'behavior:choice': None},
     'reply': {'behavior:choice': None, 'behavior:rating': None, 'behavior:text': None},
     'likelihood': {LOG_PROBABILITIES: None, 'behavior:probabilities': 'softmax',
                    'behavior:choice': 'softmax_argmax', 'behavior:rt': 'link'},
-    'readout': {'behavior': None, 'behavior:probabilities': None, 'behavior:rating': None,
+    'readout': {'behavior:probabilities': None, 'behavior:rating': None,
                 'behavior:choice': 'argmax', 'behavior:rt': 'link'},
 }
 
@@ -920,11 +921,14 @@ def _declared_formats(subject) -> set:
 
     A format has an owner when a statement names it or exactly one part gives it
     natively (``answer_owners``); a derived format with no statement has none, so
-    it is not declared. Bare ``behavior`` therefore needs ``answer=`` or a readout
-    with an extractor. A ``'link'`` format (``behavior:rt``) is declared with
+    it is not declared. Bare ``behavior`` is declared when ``answer=`` or a readout
+    with an extractor is wired. A ``'link'`` format (``behavior:rt``) is declared with
     ``behavior:probabilities``, whose owner gives it.
     """
     declared = set(subject._behavioral.owners)
+    if subject._answer is not None or (subject._behavioral_readout_layer is not None
+                                       and subject._extractors):
+        declared.add('behavior')
     if 'behavior:probabilities' in declared:
         declared |= {f for formats in _PART_FORMATS.values() for f, how in formats.items()
                      if how == 'link'}
@@ -980,6 +984,10 @@ def answer_owners(subject, stated) -> Dict[str, str]:
     formats = sorted({f for kinds in _PART_FORMATS.values() for f in kinds} - followers)
     owners: Dict[str, str] = {}
     for key, value in (stated or {}).items():
+        if key == 'behavior':
+            raise ValueError(f"{prefix}names 'behavior'. Delete this line: bare 'behavior' "
+                             f"carries the answer of a response task under its first format, "
+                             f"given by the owner of that format; it takes no statement.")
         if key in followers:
             raise ValueError(f"{prefix}names {key!r}: {key!r} follows the owner of "
                              f"'behavior:probabilities'; state that owner instead.")
@@ -995,9 +1003,6 @@ def answer_owners(subject, stated) -> Dict[str, str]:
         if part not in _ARGUMENTS:
             raise ValueError(f"{prefix}names the part {part!r} for {key!r}; parts are "
                              f"'generation', 'likelihood', 'readout'.")
-        if conversion is not None and key == 'behavior':
-            raise ValueError(f"{prefix}gives {value!r} for 'behavior'; 'behavior' takes a part, "
-                             f"not a conversion.")
         if conversion is not None and conversion not in ('argmax', 'softmax', 'softmax_argmax'):
             raise ValueError(f"{prefix}names the conversion {conversion!r} for {key!r}; "
                              f"conversions are 'argmax', 'softmax', 'softmax_argmax'.")

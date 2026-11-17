@@ -232,12 +232,11 @@ def get_model(identifier: str, *, probabilities: Optional[str] = None) -> Subjec
         # Also enable the readout path so Qwen can be compared on the same
         # behavioral benchmark both ways. Uses the same vision layer as 'IT'.
         behavioral_readout_layer='blocks.28',
-        # Generation answers the rating (reply and readout both give it natively). The bare
-        # behavior statement declares that output and selects no part: bare behavior carries
-        # the requested format's answer. The probabilities come from the part the
-        # registration states.
+        # Generation answers the rating (reply and readout both give it natively). Bare
+        # behavior carries the requested format's answer and takes no statement. The
+        # probabilities come from the part the registration states.
         capability_config={'behavior-sessions': {
-            'behavior': 'generation', 'behavior:rating': 'generation',
+            'behavior:rating': 'generation',
             'behavior:probabilities': PROBABILITY_PARTS[probabilities]}},
         **variant_kwargs,
     )
