@@ -1,0 +1,154 @@
+"""The folder Brain-Score makes for CogGym: the pinned checkout and CogGym's own environment.
+
+``<folder>/checkout`` is the authors' repository at the pinned commit; ``<folder>/env`` is a
+virtual environment with CogGym's pinned packages only (``coggym_requirements.txt``,
+installed with ``--no-deps`` and checked with ``pip check``); ``<folder>/ready.json`` says the
+folder is complete (the commit, the requirements' hash and the environment's ``pip freeze``).
+Nothing is installed into the scoring environment.
+
+The default place is ``~/.brain-score/coggym/<commit>-<requirements hash>`` (the root can be
+moved with ``BRAINSCORE_COGGYM_FOLDER``), so a changed pin gets a new folder. The folder is
+made at the first use when ``BS_INSTALL_DEPENDENCIES`` allows installs (``yes``, the default, or
+``newenv``: the folder's environment is a new one either way): in a temporary
+sibling folder, checked, then renamed into place. Creation is serialized by a lock; a
+failure removes only its own temporary folder; an existing folder is never changed.
+"""
+from __future__ import annotations
+
+import contextlib
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+
+REFERENCE_REVISION = 'a1cd9df1118fec80eba7463de237d1497d77e041'
+REPOSITORY = 'https://github.com/lance-ying/coggym.git'
+REQUIREMENTS = Path(__file__).with_name('coggym_requirements.txt')
+# The files of the checkout that the worker reads.
+_REQUIRED = ('evaluation/__init__.py', 'evaluation/providers.py', 'evaluation/cli.py',
+             'evaluation/analyze.py', 'evaluation/public_manifest.json',
+             'evaluation/trial_selection_map.json', 'EML')
+# Seconds one git or pip command may take (a stated bound, not a measured budget).
+_COMMAND_TIMEOUT_S = 3600
+
+
+def environment_python(folder: Path) -> Path:
+    """The Python of the folder's CogGym environment."""
+    return Path(folder) / 'env' / 'bin' / 'python'
+
+
+def default_folder() -> Path:
+    """``<root>/<commit>-<requirements hash>``; the root is ``BRAINSCORE_COGGYM_FOLDER`` or
+    ``~/.brain-score/coggym``."""
+    root = os.environ.get('BRAINSCORE_COGGYM_FOLDER') or str(Path.home() / '.brain-score' / 'coggym')
+    return Path(root).expanduser() / f'{REFERENCE_REVISION}-{_requirements_hash()[:12]}'
+
+
+def ready_folder(identifier: str, folder: Path | None = None) -> Path:
+    """The ready CogGym folder for ``identifier`` (a benchmark identifier, for the messages):
+    ``folder``, or the default one; made first when it is absent and installs are allowed."""
+    from brainscore import LoadError
+    from brainscore_core.plugin_management.import_plugin import installation_preference
+    if not REQUIREMENTS.is_file():
+        raise LoadError(f'{identifier}: this Brain-Score installation lacks {REQUIREMENTS}, the pinned '
+                        f"packages of CogGym's environment (a packaging fault). Next step: install "
+                        f'Brain-Score from a source that ships it.')
+    folder = Path(folder) if folder is not None else default_folder()
+    if not folder.exists():
+        if installation_preference() == 'no':
+            raise LoadError(
+                f"{identifier} needs CogGym's folder {folder} (CogGym at commit "
+                f"{REFERENCE_REVISION} and CogGym's own environment), and it is not there. "
+                f"BS_INSTALL_DEPENDENCIES=no forbids making it. Next step: load the benchmark "
+                f"once with BS_INSTALL_DEPENDENCIES unset (or 'yes'); Brain-Score then makes the "
+                f"folder (a clone and an install into that folder only; the scoring environment "
+                f"is not changed).")
+        with _creation_lock(folder):
+            if not folder.exists():
+                _make(identifier, folder)
+    _check_ready(identifier, folder)
+    return folder
+
+
+def _check_ready(identifier, folder):
+    from brainscore import LoadError
+    try:
+        marker = json.loads((folder / 'ready.json').read_text())
+    except (OSError, ValueError):
+        marker = None
+    expected = {'revision': REFERENCE_REVISION, 'requirements_sha256': _requirements_hash()}
+    if (marker is None or {key: marker.get(key) for key in expected} != expected
+            or not environment_python(folder).exists()):
+        raise LoadError(
+            f'{identifier}: {folder} exists but is not a ready CogGym folder for commit '
+            f'{REFERENCE_REVISION} and the pinned requirements (no matching ready.json, or no '
+            f'environment). Brain-Score does not change a folder it did not finish. Next step: '
+            f'remove it yourself, or use another place (BRAINSCORE_COGGYM_FOLDER, or folder=).')
+
+
+def _make(identifier, folder):
+    from brainscore import LoadError
+    folder.parent.mkdir(parents=True, exist_ok=True)
+    partial = Path(tempfile.mkdtemp(prefix=f'.{folder.name}.partial-', dir=folder.parent))
+    try:
+        checkout, python = partial / 'checkout', environment_python(partial)
+        # No checkout of the default branch, and no local hooks: only the pinned commit is checked out.
+        _run(['git', 'clone', '--quiet', '--no-checkout', REPOSITORY, str(checkout)])
+        _run(['git', '-c', 'core.hooksPath=/dev/null', '-C', str(checkout), 'checkout', '--quiet',
+              REFERENCE_REVISION])
+        head = _run(['git', '-C', str(checkout), 'rev-parse', 'HEAD']).strip()
+        if head != REFERENCE_REVISION:
+            raise ValueError(f'the clone is at {head}, not at {REFERENCE_REVISION}')
+        missing = [name for name in _REQUIRED if not (checkout / name).exists()]
+        if missing:
+            raise ValueError(f'the checkout lacks {missing}')
+        _run([sys.executable, '-m', 'venv', str(partial / 'env')])
+        # Every package at its pinned version, nothing resolved beyond the list; then a check.
+        _run([str(python), '-m', 'pip', 'install', '--no-deps', '--no-input',
+              '--disable-pip-version-check', '-r', str(REQUIREMENTS)])
+        _run([str(python), '-m', 'pip', 'check', '--disable-pip-version-check'])
+        freeze = _run([str(python), '-m', 'pip', 'freeze', '--all', '--disable-pip-version-check'])
+        (partial / 'ready.json').write_text(json.dumps({
+            'revision': REFERENCE_REVISION, 'requirements_sha256': _requirements_hash(),
+            'freeze': sorted(line for line in freeze.splitlines() if line.strip())}, indent=2) + '\n')
+        if folder.exists():
+            raise FileExistsError(f'{folder} appeared while it was being made')
+        os.rename(partial, folder)
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        shutil.rmtree(partial, ignore_errors=True)
+        detail = getattr(error, 'stderr', None) or ''
+        raise LoadError(
+            f"{identifier}: Brain-Score could not make CogGym's folder {folder}: "
+            f"{type(error).__name__}: {error}" + (f'\n{detail.strip()[-2000:]}' if detail else '')
+            + f"\nNothing was left at {folder}. Next step: check the network, the disk and the "
+            f"permissions of {folder.parent}, and load the benchmark again.") from error
+
+
+def _run(command) -> str:
+    environment = dict(os.environ, GIT_TERMINAL_PROMPT='0', PIP_NO_INPUT='1')
+    # The scoring environment's own paths must not leak into CogGym's environment.
+    for name in ('PYTHONPATH', 'PYTHONHOME', 'PIP_CONSTRAINT', 'PIP_REQUIRE_VIRTUALENV'):
+        environment.pop(name, None)
+    return subprocess.run(command, check=True, capture_output=True, text=True,
+                          timeout=_COMMAND_TIMEOUT_S, env=environment).stdout
+
+
+@contextlib.contextmanager
+def _creation_lock(folder):
+    """One creation of ``folder`` at a time, across threads and processes of this machine."""
+    import fcntl
+    key = hashlib.sha256(str(folder.resolve()).encode()).hexdigest()[:16]
+    with open(Path(tempfile.gettempdir()) / f'brainscore-coggym-{key}.lock', 'w') as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def _requirements_hash() -> str:
+    return hashlib.sha256(REQUIREMENTS.read_bytes()).hexdigest()
