@@ -41,11 +41,15 @@ class _StudySubject(ProvenanceSubject):
 
 def _refuse(identifier, config):
     """A stated package that is missing, or a class this transformers lacks: named before any download."""
+    import importlib
     import importlib.util
     import transformers
     from brainscore import LoadError
+    utils = importlib.import_module('transformers.utils')
     for package in config['requires']:
-        if importlib.util.find_spec(package) is None:
+        # The check the processor itself makes (transformers.utils.is_<package>_available), else an import.
+        available = getattr(utils, f'is_{package}_available', None)
+        if not (available() if available else importlib.util.find_spec(package)):
             raise LoadError(f"'{identifier}' needs the package '{package}', which is not installed. Next step: "
                             f"pip install -r brainscore/models/umi_dev_models/requirements.txt, or install "
                             f"'{package}' yourself.")

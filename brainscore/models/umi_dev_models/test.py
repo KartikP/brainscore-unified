@@ -325,10 +325,9 @@ def test_a_part_offloaded_or_spread_is_refused():
 
 
 def test_a_missing_package_and_a_missing_class_are_named_before_any_download(monkeypatch):
-    import importlib.util
+    import transformers.utils
     from brainscore import LoadError
-    real = importlib.util.find_spec
-    monkeypatch.setattr(importlib.util, 'find_spec', lambda name, *a, **k: None if name == 'num2words' else real(name, *a, **k))
+    monkeypatch.setattr(transformers.utils, 'is_num2words_available', lambda: False)
     monkeypatch.setattr(study, '_load', lambda *a: pytest.fail('no load before the refusal'))
     with pytest.raises(LoadError, match="needs the package 'num2words', which is not installed. Next step"):
         model_registry['smolvlm2-256m_UMI-dev']()
