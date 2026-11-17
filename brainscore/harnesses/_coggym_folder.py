@@ -79,9 +79,17 @@ def ready_folder(identifier: str, folder: Path | None = None) -> Path:
                 f"once with BS_INSTALL_DEPENDENCIES unset (or 'yes'); Brain-Score then makes the "
                 f"folder (a clone and an install into that folder only; the scoring environment "
                 f"is not changed).")
-        with _creation_lock(folder):
-            if not folder.exists():
-                _make(identifier, folder)
+        try:
+            with _creation_lock(folder):
+                if not folder.exists():
+                    _make(identifier, folder)
+        except OSError as error:
+            # The lock, the folder's parent or the temporary folder could not be made: nothing of
+            # this attempt exists to remove.
+            raise LoadError(
+                f"{identifier}: Brain-Score could not make CogGym's folder {folder}: "
+                f"{type(error).__name__}: {error}. Next step: make {folder.parent} writable, or "
+                f"put CogGym's folders elsewhere (BRAINSCORE_COGGYM_FOLDER, or folder=).") from error
     _check_ready(identifier, folder)
     return folder
 

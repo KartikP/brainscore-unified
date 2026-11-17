@@ -156,3 +156,18 @@ def test_a_killed_creator_leaves_no_command_running_and_the_next_load_succeeds(f
     fresh.behave()
     _load()
     assert _partials(tmp_path / 'folders') == []
+
+
+def test_a_read_only_place_is_one_clear_error(fresh, tmp_path, monkeypatch):
+    read_only = tmp_path / 'read-only'
+    read_only.mkdir()
+    read_only.chmod(0o500)
+    monkeypatch.setenv('BRAINSCORE_COGGYM_FOLDER', str(read_only / 'nested'))
+    try:
+        with pytest.raises(LoadError) as refused:
+            _load()
+    finally:
+        read_only.chmod(0o700)
+    message = str(refused.value)
+    assert BENCHMARK in message and str(read_only / 'nested') in message
+    assert 'BRAINSCORE_COGGYM_FOLDER' in message and fresh.calls == []
