@@ -44,4 +44,4 @@ and any EC2-only verification.
 - `brainscore/benchmarks/roar_yeatman2021/`: behavioral (generation + readout paths).
 - `brainscore/benchmarks/induced_dyslexia/`: intervention (`apply_state_change` + random null).
 - `brainscore/benchmarks/lahner2024/`: naturalistic fMRI encoding (temporal kit, ROI variants).
-- `brainscore/benchmarks/algonauts2025/`: multimodal movie fMRI (video+audio+text, banded ridge).
+- `brainscore/benchmarks/algonauts2025/`: movie fMRI (one frame, one clip, or the clip with its sound for each scan; banded ridge).

@@ -57,5 +57,5 @@ request. Every method takes the model as its first argument, named `subject`.
 4. Adapt `test_capability.py` and run it. It runs a `Session` through
    `subject.participate(session)`.
 
-See the [tool-authoring guide](../../docs/guides/extend.md) for channel
+See [Extend UMI](../../docs/guides/extend.md#a-new-channel) for channel
 registration details.
