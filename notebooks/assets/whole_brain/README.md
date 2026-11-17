@@ -27,8 +27,9 @@ From the repository root, in the coordinated notebook environment:
 
 ```bash
 # The LeBel source pickle, in its one place
-mkdir -p ~/brainscore-data/sources/lebel2023
-mv /path/to/assembly_lebel_uts03.pkl ~/brainscore-data/sources/lebel2023/
+SOURCE="${BRAINSCORE_DATA_HOME:-$HOME/brainscore-data}/sources/lebel2023"
+mkdir -p "$SOURCE"
+mv /path/to/assembly_lebel_uts03.pkl "$SOURCE"/
 python notebooks/figure_sources/measure_whole_brain.py
 python notebooks/figure_sources/render_whole_brain_figures.py
 ```
