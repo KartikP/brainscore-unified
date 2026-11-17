@@ -343,3 +343,29 @@ def test_changed_fitting_data_in_the_same_task_object_refits():
     from brainscore_core.streaming_helpers import behavioral_response
     behavioral_response(model, _images(), task)  # a measurement on the unchanged task: no refit
     assert _fits(extractor) == 3
+
+
+def test_an_old_probabilities_answer_keeps_the_column_order_when_the_subject_ignores_an_input():
+    """A readout that takes text only: the benchmark's other columns follow the readout's own
+    coordinates in the benchmark's order, as on the bare channel."""
+    def extract(stimuli, layers, **kwargs):
+        ids = list(stimuli['stimulus_id'])
+        return NeuroidAssembly(np.array([[2.0, 0.0] if i % 2 == 0 else [0.0, 2.0] for i in range(len(ids))]),
+                               dims=['presentation', 'neuroid'],
+                               coords={'stimulus_id': ('presentation', ids), 'feature_extra': ('presentation', [4] * len(ids)),
+                                       'neuroid_id': ('neuroid', ['n0', 'n1']), 'layer': ('neuroid', ['late'] * 2)})
+
+    def table(prefix):
+        stimuli = StimulusSet(pd.DataFrame({'stimulus_id': [f'{prefix}{i}' for i in range(4)],
+                                            'image_file_name': ['unused.png'] * 4,
+                                            'image_label': ['cat', 'dog'] * 2, 'extra': list('abcd'),
+                                            'sentence': ['one', 'two'] * 2}))
+        stimuli.identifier = f'ignored-input-{prefix}'
+        return stimuli
+    model = BrainScoreModel('text-readout', extractor={'text': extract}, behavioral_readout_layer='late',
+                            capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
+    facade = _facade(model)
+    facade.start_task('probabilities', fitting_stimuli=table('f'))
+    names = list(facade.look_at(table('s')).indexes['presentation'].names)
+    assert names[:2] == ['stimulus_id', 'feature_extra']                   # the readout's own coordinates
+    assert names[2:] == ['image_file_name', 'image_label', 'extra', 'sentence']   # then the table's, in order

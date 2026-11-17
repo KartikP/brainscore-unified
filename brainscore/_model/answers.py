@@ -168,17 +168,18 @@ def conversion_errors(valid):
 
 def readout_probabilities(assembly, stimuli):
     """A readout's probabilities, one row per stimulus, for ``behavior:probabilities``: the
-    readout's own values and float type (float64), its presentation coordinates in their
-    order, then the stimulus columns it lacks, and the readout's record. The coordinates are
-    those of the readout's answer to an old probabilities task, which the legacy facade
-    hands to an old benchmark."""
+    readout's own values and float type (float64), its own presentation coordinates (the
+    extractor's) in their order, and the readout's record. These are the coordinates of the
+    readout's answer to an old probabilities task; the legacy facade adds the benchmark's
+    columns the answer lacks, in the benchmark's order, as it did on the bare channel."""
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
     index = assembly.indexes.get('presentation')
     names = [name for name in (getattr(index, 'names', None) or ()) if name and name != 'presentation']
     names += [name for name, coord in assembly.coords.items()
               if coord.dims == ('presentation',) and name != 'presentation' and name not in names]
     coords = {name: ('presentation', list(assembly[name].values)) for name in names}
-    coords.update({name: column for name, column in _presentation(stimuli).items() if name not in coords})
+    if 'stimulus_id' not in coords:   # the format matches rows by stimulus id
+        coords = {'stimulus_id': ('presentation', list(stimuli['stimulus_id'])), **coords}
     coords['choice'] = list(assembly['choice'].values)
     return BehavioralAssembly(np.asarray(assembly.values), coords=coords, dims=['presentation', 'choice'],
                               attrs={'response': response_record('behavior:probabilities', 'readout')})
