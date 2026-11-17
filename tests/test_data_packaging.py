@@ -528,3 +528,15 @@ def test_algonauts_fails_as_a_whole_when_an_assembly_names_an_absent_film(tmp_pa
     assert not (tmp_path / 'out').exists()
     assert not list(tmp_path.glob('.brainscore-*'))
     assert _tree(source) == before
+
+
+def test_an_unrelated_asset_variable_does_not_hide_the_algonauts_recovery_command(tmp_path, offline, monkeypatch):
+    # The competition files exist, the prepared folder does not, and an unrelated variable is empty.
+    local.REGISTRY['algonauts2025-root'].resolved().mkdir(parents=True)
+    monkeypatch.setenv(local.REGISTRY['lana-atlas'].env_var, '')
+    with pytest.raises(LocalDataMissing) as missing:
+        local.check_benchmark_assets('Algonauts2025-friends-sub01')
+    command = str(missing.value).split('Then convert it:')[1].split('\n')[1].strip()
+    assert 'algonauts2025-prepared' in str(missing.value)
+    assert shlex.split(command)[5:] == ['--source', str(local.REGISTRY['algonauts2025-root'].resolved()),
+                                        '--output', str(local.REGISTRY['algonauts2025-prepared'].resolved())]

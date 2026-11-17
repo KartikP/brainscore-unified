@@ -119,7 +119,9 @@ class LocalAsset:
             import shlex
             command = self.prepare
             for name, asset in REGISTRY.items():      # {<asset name>}: that asset's folder
-                command = command.replace('{' + name + '}', shlex.quote(str(asset.resolved())))
+                placeholder = '{' + name + '}'
+                if placeholder in command:            # resolve only the assets the command names
+                    command = command.replace(placeholder, shlex.quote(str(asset.resolved())))
             lines += ['', 'Then convert it:', f'    {command}']
         if self.used_by:
             lines += ['', f'Needed by: {", ".join(self.used_by)}']
