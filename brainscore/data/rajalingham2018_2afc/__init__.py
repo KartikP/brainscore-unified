@@ -12,7 +12,7 @@ FOLDER = Path(__file__).resolve().parent
 TRIALS_CSV = FOLDER / 'trials.csv'
 TOKENS_CSV = FOLDER / 'tokens.csv'
 
-data_builder_registry['rajalingham2018-2afc'] = DataBuilder(
+data_builder_registry['rajalingham2018-2afc'] = lambda: DataBuilder(
     source='the Brain-Score vision datasets Rajalingham2018.public (human 2-AFC trials of '
            'Rajalingham et al. 2018) and objectome.public (the images); licence as the vision plugins state it.',
     access='public, no account: the hosted vision files download with no account.',

@@ -48,7 +48,7 @@ from .data import DEFAULT_CONTEXT_TR, DEFAULT_CONTEXT_WORDS, IDENTIFIER, build_w
 
 WORDS_IDENTIFIER = f'{IDENTIFIER}-words'
 
-data_builder_registry['lebel2023'] = DataBuilder(
+data_builder_registry['lebel2023'] = lambda: DataBuilder(
     source='LeBel et al. 2023, OpenNeuro ds003020 (https://openneuro.org/datasets/ds003020), CC0, '
            'as the UTS03 assembly pickle of the LITCoder release (https://github.com/GT-LIT-Lab/litcoder_release).',
     access='as the LITCoder release page states; the recordings themselves are public (CC0).',
@@ -64,7 +64,7 @@ data_builder_registry['lebel2023'] = DataBuilder(
           f'stimulus_{hosted.WORD_STIMULI_ID}.csv': hosted.SHA1['word stimuli']},
 )
 
-data_builder_registry['lana-atlas'] = DataBuilder(
+data_builder_registry['lana-atlas'] = lambda: DataBuilder(
     source=f'the LanA language atlas (Lipkin et al. 2022), {LANA_ATLAS.source}; its own terms.',
     access='public, no account.',
     layout=LANA_ATLAS.obtain,

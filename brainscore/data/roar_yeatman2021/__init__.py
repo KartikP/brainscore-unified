@@ -14,7 +14,7 @@ STIMULUS_ZIP_VERSION_ID = '0M.L.ZJwaDZ1psldFkspKKcTvX5qS3r4'
 ASSEMBLY_SHA1 = 'fee134858a68ac4bd113f6b6ec79f4f8722db1b8'
 ASSEMBLY_VERSION_ID = 'zAOrOdPgYFoyklSkOXgqg.uW8oDqR7lj'
 
-data_builder_registry['yeatman2021'] = DataBuilder(
+data_builder_registry['yeatman2021'] = lambda: DataBuilder(
     source='not stated. The benchmark cites the ROAR lexical decision task of Yeatman et al. 2021 '
            'and the protocol of Honarmand et al. 2026; the files were put on the Brain-Score bucket '
            'in unified commit e1085ba0 (2026-07-02) with no packaging script. No address and no licence '

@@ -101,14 +101,14 @@ the value.
 `templates/new_data/` is a complete data plugin with loaders for stimuli, recordings and
 participant choices, image files and tests. Its test goes to `tests/test_<name>.py`.
 
-Say how your files are built from the source: declare a `DataBuilder` beside the registry lines, with your `data_packaging/` script as its command. `package_data` fills in `{source}` and `{output}`, runs the script, and prints the sha1 and counts of what it wrote.
+Say how your files are built from the source: register a factory of a `DataBuilder` beside the registry lines, with your `data_packaging/` script as its command. `package_data` fills in `{source}` and `{output}`, runs the script, and prints the sha1 and counts of what it wrote.
 
 ```python
 from brainscore import data_builder_registry
 from brainscore.data import DataBuilder
 
 # In brainscore/data/mystudy2026/__init__.py, beside the registry lines.
-data_builder_registry['mystudy2026'] = DataBuilder(
+data_builder_registry['mystudy2026'] = lambda: DataBuilder(
     source='https://example.org/mystudy2026; licence CC-BY 4.0',     # what is needed, from where
     access='public, no account',                                     # or an account, an agreement, private
     layout='responses.mat and the stimuli/ folder, as the download unpacks',   # the source folder
@@ -119,7 +119,7 @@ data_builder_registry['mystudy2026'] = DataBuilder(
 )
 
 # The README section is generated from the same facts; paste it under "## Rebuild"
-print(data_builder_registry['mystudy2026'].readme('mystudy2026'))
+print(data_builder_registry['mystudy2026']().readme('mystudy2026'))
 ```
 
 A dataset that cannot be rebuilt yet states `cannot=` (what is known, what a maintainer needs); one that is read as published leaves out `build`. `tests/test_data_packaging.py` fails a data plugin without a declaration or with a README that differs from it, and prints the block to paste.

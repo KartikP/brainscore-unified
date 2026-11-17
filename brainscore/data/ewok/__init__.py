@@ -17,7 +17,7 @@ EWOK_ROOT = local.register(local.LocalAsset(
     used_by=['EWoK-core-1.0-logprobs', 'EWoK-core-1.0-choice'],
 ))
 
-data_builder_registry['ewok'] = DataBuilder(
+data_builder_registry['ewok'] = lambda: DataBuilder(
     source='EWoK-core-1.0 (Ivanova et al. 2024, https://arxiv.org/abs/2405.09605): '
            'https://huggingface.co/datasets/ewok-core/ewok-core-1.0 at revision '
            '34d912a608066c92e2990a0328ffc3bd9a716042, or the paper checkout '

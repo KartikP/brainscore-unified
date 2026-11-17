@@ -31,7 +31,7 @@ COGGYM_CHECKOUT = local.register(local.LocalAsset(
         'sosa2021Moral.exp1', 'sosa2021Moral.exp2', 'sosa2021Moral.exp3')],
 ))
 
-data_builder_registry['coggym'] = DataBuilder(
+data_builder_registry['coggym'] = lambda: DataBuilder(
     source=f'CogGym (Ying et al.), https://github.com/lance-ying/coggym at revision {REVISION}. '
            'Licence: not stated by the repository.',
     access='public, no account.',

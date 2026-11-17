@@ -55,7 +55,7 @@ ALGONAUTS_PREPARED = local.register(local.LocalAsset(
     used_by=_ALGONAUTS_IDENTIFIERS,
 ))
 
-data_builder_registry['algonauts2025'] = DataBuilder(
+data_builder_registry['algonauts2025'] = lambda: DataBuilder(
     source='the Algonauts 2025 competition data (Courtois NeuroMod): '
            'https://github.com/courtois-neuromod/algonauts_2025.competitors. The fMRI is under the '
            'data-use agreement of that page; the films (Friends, Movie10) are copyrighted.',

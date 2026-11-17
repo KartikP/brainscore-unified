@@ -5,6 +5,7 @@ registers a ``DataBuilder`` and its README carries the ``## Rebuild`` block of t
 declaration. The others run two builders end to end on tiny made-up sources, with
 the network replaced by a function that fails.
 """
+import dataclasses
 import hashlib
 import importlib.util
 import pathlib
@@ -50,7 +51,7 @@ def test_every_data_plugin_states_how_its_data_is_packaged(plugin):
         f"'## Rebuild' to its README.md with DataBuilder.readme(<name>). See docs/guides/data.md.")
     for name, block in blocks.items():
         assert name in data_builder_registry, f'{plugin.name}/README.md names {name!r}, which no plugin registers'
-        expected = data_builder_registry[name].readme(name)
+        expected = data_builder_registry[name]().readme(name)
         assert block == expected, (
             f'{plugin.name}/README.md: the Rebuild block of {name} differs from its declaration. '
             f'Paste this block:\n\n{expected}')
@@ -58,7 +59,8 @@ def test_every_data_plugin_states_how_its_data_is_packaged(plugin):
 
 def test_every_declaration_is_in_a_readme_and_answers_package_data():
     documented = set().union(*(_rebuild_blocks(plugin / 'README.md') for plugin in PLUGINS))
-    for name, builder in data_builder_registry.items():
+    for name, factory in data_builder_registry.items():
+        builder = factory()
         assert name in documented, f'{name} has no Rebuild block in its plugin README.md'
         assert isinstance(builder, DataBuilder)
         assert not (builder.build and builder.cannot), f'{name} has a builder and says it cannot'
@@ -77,10 +79,11 @@ def no_network(monkeypatch):
 
 def test_a_missing_source_says_what_to_get_and_where_to_put_it(tmp_path, monkeypatch, no_network):
     monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path / 'home'))
-    needs_source = [name for name, b in data_builder_registry.items() if b.build and not b.fetches]
+    needs_source = [name for name, factory in data_builder_registry.items()
+                    if factory().build and not factory().fetches]
     assert needs_source
     for name in needs_source:
-        builder = data_builder_registry[name]
+        builder = data_builder_registry[name]()
         with pytest.raises(LocalDataMissing) as missing:
             package_data(name)
         message = str(missing.value)
@@ -91,7 +94,8 @@ def test_a_missing_source_says_what_to_get_and_where_to_put_it(tmp_path, monkeyp
 
 
 def test_a_plugin_with_no_builder_says_so(tmp_path):
-    for name, builder in data_builder_registry.items():
+    for name, factory in data_builder_registry.items():
+        builder = factory()
         if builder.cannot:
             with pytest.raises(NotImplementedError) as refused:
                 package_data(name, output=tmp_path / name)
@@ -151,8 +155,8 @@ def test_rajalingham_prints_sha1_and_counts_and_names_the_cache_path_when_equal(
     assert 'differs from the registered sha1' in printed          # made-up data is not the registered data
     # A rebuild that equals the registered sha1 is told where brainio uses it with no download.
     registered = _sha1(first / 'trials.csv')
-    original = data_builder_registry['rajalingham2018-2afc']
+    original = data_builder_registry['rajalingham2018-2afc']()
     monkeypatch.setitem(data_builder_registry, 'rajalingham-fixture',
-                        DataBuilder(**{**original.__dict__, 'sha1': {'trials.csv': registered}}))
+                        lambda: dataclasses.replace(original, sha1={'trials.csv': registered}))
     package_data('rajalingham-fixture', output=tmp_path / 'second')
     assert f'$BRAINIO_HOME/{registered}/trials.csv' in capsys.readouterr().out

@@ -1,9 +1,9 @@
 """Package a data plugin's files from the original source: ``package_data(name)``.
 
-Each data plugin declares one :class:`DataBuilder` per packaged dataset beside its
-registration::
+Each data plugin registers a factory of one :class:`DataBuilder` per packaged dataset
+beside its registration (Contract Rules 11.4)::
 
-    data_builder_registry['mystudy2026'] = DataBuilder(
+    data_builder_registry['mystudy2026'] = lambda: DataBuilder(
         source='https://example.org/mystudy2026; licence CC-BY 4.0',
         access='public',
         layout='responses.mat and the stimuli/ folder, as the download unpacks',
@@ -100,9 +100,10 @@ def source_folder(name: str) -> Path:
 
 def _builder(name: str) -> DataBuilder:
     try:
-        return data_builder_registry[name]
+        factory = data_builder_registry[name]
     except KeyError:
         raise ValueError(f'no data plugin packages {name!r}; known: {sorted(data_builder_registry)}') from None
+    return factory()
 
 
 def _missing(name: str, builder: DataBuilder, source: Path) -> str:
@@ -248,7 +249,7 @@ def listing() -> str:
     """Each packaged dataset, where its source is expected and whether it is there."""
     lines = []
     for name in sorted(data_builder_registry):
-        builder = data_builder_registry[name]
+        builder = _builder(name)
         if builder.cannot:
             where = 'cannot be packaged yet'
         elif not builder.build:

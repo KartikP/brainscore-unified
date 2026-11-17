@@ -77,7 +77,7 @@ _OPENNEURO = ('BOLD Moments (Lahner et al. 2024), OpenNeuro ds005165 v1.0.4, '
 _TIMESERIES_SOURCE = (f'{_OPENNEURO} The fMRIPrep derivatives `derivatives/versionB/fmriprep` and the '
                       'raw `events.tsv` files, read from s3://openneuro.org/ds005165 with no account.')
 
-data_builder_registry['lahner2024'] = DataBuilder(
+data_builder_registry['lahner2024'] = lambda: DataBuilder(
     source=f'{_OPENNEURO} The hosted files ({STIMULUS_ID} stimuli and {ASSEMBLY_ID} GLM responses) '
            'came from vision pull request #1249 (YingtianDt), whose packaging code is not in any '
            'repository read so far.',
@@ -95,7 +95,7 @@ data_builder_registry['lahner2024'] = DataBuilder(
            'files with the registered sha1 or, for the netCDF file, with the hosted values.',
 )
 
-data_builder_registry['lahner2024-frames'] = DataBuilder(
+data_builder_registry['lahner2024-frames'] = lambda: DataBuilder(
     source=_CLIPS_SOURCE,
     access='public, no account: the hosted clips download with no account.',
     layout='none: the script reads the hosted clips through brainscore.load_stimulus_set.',
@@ -106,7 +106,7 @@ data_builder_registry['lahner2024-frames'] = DataBuilder(
     fetches=True,
 )
 
-data_builder_registry['lahner2024-sound'] = DataBuilder(
+data_builder_registry['lahner2024-sound'] = lambda: DataBuilder(
     source=_CLIPS_SOURCE,
     access='public, no account: the hosted clips download with no account.',
     layout='none: the script reads the hosted clips through brainscore.load_stimulus_set.',
@@ -117,7 +117,7 @@ data_builder_registry['lahner2024-sound'] = DataBuilder(
     fetches=True,
 )
 
-data_builder_registry['lahner2024-timeresolved'] = DataBuilder(
+data_builder_registry['lahner2024-timeresolved'] = lambda: DataBuilder(
     source=_TIMESERIES_SOURCE,
     access='public, no account.',
     layout='none: the script lists and downloads the files itself, into the source folder as its '
@@ -135,7 +135,7 @@ data_builder_registry['lahner2024-timeresolved'] = DataBuilder(
     fetches=True,
 )
 
-data_builder_registry['lahner2024-motion'] = DataBuilder(
+data_builder_registry['lahner2024-motion'] = lambda: DataBuilder(
     source=_TIMESERIES_SOURCE,
     access='public, no account.',
     layout='none: the script lists and downloads the fMRIPrep confounds files itself, into the source '
@@ -148,7 +148,7 @@ data_builder_registry['lahner2024-motion'] = DataBuilder(
     fetches=True,
 )
 
-data_builder_registry['destrieux-atlas'] = DataBuilder(
+data_builder_registry['destrieux-atlas'] = lambda: DataBuilder(
     source='the Destrieux 2009 surface atlas on fsaverage5, as nilearn publishes it '
            '(`nilearn.datasets.fetch_atlas_surf_destrieux`); its own terms.',
     access='public, no account.',
