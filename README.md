@@ -2,7 +2,7 @@
 
 A Brain-Score benchmark is an experiment with brain or behavior data from people and animals, and a metric that compares a model with that data. With UMI an experimenter writes the experiment once and it runs on every model that fits, and a modeler adapts a model once and it takes part in every experiment that fits, with recording and experiment tools for both. A `Subject` connects the model to the experiment; `BrainScoreModel` supplies extraction and task helpers. Use `Experiment` to combine a protocol with recording and intervention tools.
 
-**Start here:** [Lesson 1: your first subject](notebooks/lessons/01_your_first_subject.ipynb), then [Lesson 10: a whole study in one notebook](notebooks/lessons/10_run_an_experiment.ipynb) (design a task, record answers and activity, save the run, turn it into a benchmark). [Score a model](docs/guides/score_a_model.md) scores a first pair with no download. Reference: [Manual](docs/README.md) | [What UMI is](docs/01_what_is_umi.md) | [Core concepts](docs/02_core_concepts.md) | [All lessons](notebooks/README.md#lessons) | [Experiments](notebooks/README.md#experiments)
+**Start here:** [Lesson 1: your first subject](notebooks/lessons/01_your_first_subject.ipynb), then [Lesson 10: a whole study in one notebook](notebooks/lessons/10_run_an_experiment.ipynb) (design a task, record answers and activity, save the run, turn it into a benchmark). [Score a model](docs/guides/score_a_model.md) scores a first pair with no download and no credentials; it says which data needs AWS credentials. Reference: [Manual](docs/README.md) | [What UMI is](docs/01_what_is_umi.md) | [Core concepts](docs/02_core_concepts.md) | [All lessons](notebooks/README.md#lessons) | [Experiments](notebooks/README.md#experiments)
 
 UMI is a source candidate on the `unified-model-interface-v2` branches; its packages are not published on PyPI.
 
@@ -18,7 +18,7 @@ UMI is a source candidate on the `unified-model-interface-v2` branches; its pack
 
 ## Install
 
-Requires Python 3.11, `conda` (miniforge or miniconda) and `git`.
+Requires Python 3.11, `conda` (miniforge or miniconda; [how to get it](install/README.md#requirements)) and `git`.
 
 **On a new machine** (recommended): the bootstrap clones all four repositories, with core,
 vision and language at the commits named in `install/peer-revisions.json` (the last pinned

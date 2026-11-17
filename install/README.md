@@ -48,6 +48,23 @@ Invoking conda from the workspace root does not help. The file itself has to be 
 `setup.sh` downloads it to the workspace root, which is why the bootstrap never hits
 this. To use the file directly, `cp` it beside the repositories first.
 
+### The full lock with checkouts that `setup.sh --lock` refuses
+
+`setup.sh --lock` accepts only git checkouts: unified on `unified-model-interface-v2`, and
+core, vision and language on that branch or at the commits of `peer-revisions.json`. For
+other code (archives, a branch in work), run its three lock steps from the workspace root:
+
+~~~bash
+LOCK=unified/install/lock-linux-py311-cu124.txt
+conda create -y -n brainscore-unified --override-channels -c conda-forge "python==$(sed -n 's/^# python==\([0-9.]*\)$/\1/p' $LOCK)" pip
+conda run -n brainscore-unified python -m pip install -r $LOCK
+conda run -n brainscore-unified python -m pip install --no-deps -e ./core -e ./vision -e ./language -e ./unified
+~~~
+
+Code without `.git` (an archive) names its commit in a file `COMMIT` in each repository's
+folder (`git rev-parse HEAD > COMMIT` when the archive is made); a score then records it in
+`code_commits`, else None.
+
 ## Common mistakes
 
 | Symptom | Cause |
@@ -58,8 +75,15 @@ this. To use the file directly, `cp` it beside the repositories first.
 
 ## Requirements
 
-- `conda` (miniconda or miniforge). On a fresh miniconda, `setup.sh` accepts the
-  Anaconda-channel Terms of Service; miniforge does not require this step.
+- `conda` (miniforge or miniconda). `setup.sh` uses conda-forge only: it never contacts
+  Anaconda's default channels and accepts no terms of service on your behalf. Without conda,
+  install Miniforge (Linux or macOS):
+
+  ~~~bash
+  curl -fsSLO "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+  bash "Miniforge3-$(uname)-$(uname -m).sh" -b -p "$HOME/miniforge3"   # -b: no questions
+  eval "$("$HOME/miniforge3/bin/conda" shell.bash hook)"            # conda in this shell
+  ~~~
 - `git`, outbound HTTPS to GitHub, ~10 GB free disk.
 
 ## After installing
