@@ -63,9 +63,10 @@ def _gpt2(monkeypatch):
     import transformers
     import brainscore.model_helpers.text_wrapper as text_wrapper
     from brainscore.models.gpt2_small import model as module
-    monkeypatch.setattr(transformers, 'GPT2Model', _loader(object), raising=False)
-    monkeypatch.setattr(transformers, 'GPT2Tokenizer', _loader(lambda: SimpleNamespace(eos_token='e')),
+    monkeypatch.setattr(transformers, 'GPT2LMHeadModel', _loader(lambda: SimpleNamespace(transformer=object())),
                         raising=False)
+    monkeypatch.setattr(transformers, 'GPT2Tokenizer',
+                        _loader(lambda: SimpleNamespace(eos_token='e', pad_token_id=0)), raising=False)
     monkeypatch.setattr(text_wrapper, 'TextWrapper', _Extractor)
     return module
 
