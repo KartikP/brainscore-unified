@@ -46,7 +46,7 @@ def test_declarations(model):
     assert isinstance(model, Subject) and model.identifier == 'qwen3-vl-2b'
     assert {'vision:image', 'vision:video', 'text'} <= model.in_channels
     assert {'neural:V1', 'neural:IT', 'neural:VWFA', 'neural:language_system', 'behavior:choice',
-            'behavior:probabilities', 'perturbation'} <= model.out_channels
+            'behavior:probabilities', 'perturbation', 'motor'} <= model.out_channels
 
 
 def test_records_the_vision_part_from_pictures(model, tmp_path):

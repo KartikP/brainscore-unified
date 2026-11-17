@@ -18,10 +18,17 @@ What a model from the builder gives (the parts are wired by default; the registr
 | `behavior:log_probabilities` | the likelihood of each option | a verbatim choice on text |
 | `behavior:probabilities`, `rt` | the readout on the IT layer | the task's fitting stimuli |
 | `perturbation` (inputs `lesion`, `stimulation`, `pharmacological`) | `pytorch_intervention` over both parts | |
+| `motor` (inputs `observation`, `instruction`, `reward`) | `api_policy` with the model's reply as its client | an environment such as `GridGame-reach-5x5` |
+
+The policy asks the model exactly as an API model is asked (the defaults of `api_policy`):
+the rendered frame (`obs_mode='vision'`, resized to 384 pixels) after the mission and the
+numbered legal actions, no earlier moves (`history_window=0`), at most 512 tokens, greedy; the
+reply's first `Action: <number>` (else its last legal number) is the action, and an unusable
+reply takes a seeded random legal action. The reward reaches the policy in its row; the prompt does not show it.
 
 A family that cannot take a part says so with one argument: `intervention=False` when its
-vision and language block paths start with the same name (the builder refuses with this advice).
-`motor` (a policy for an environment) is not given.
+vision and language block paths start with the same name (the builder refuses with this
+advice), `policy=False` to leave out the policy.
 
 A model plugin has the usual three files in `brainscore/models/<name>/`. The builder
 is only a helper that `get_model` calls: a `get_model` that builds a `BrainScoreModel`
