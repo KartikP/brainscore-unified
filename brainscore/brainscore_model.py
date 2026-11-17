@@ -402,10 +402,14 @@ class BrainScoreModel(Subject):
         for region, selector in given.items():
             modality = getattr(selector, 'modality', None)
             stated = modality if isinstance(modality, tuple) else (modality,) if modality is not None else ()
-            if isinstance(modality, tuple) and (not modality or not all(isinstance(m, str) for m in modality)
-                                                or len({canonical_modality(m) for m in modality}) != len(modality)):
-                raise ValueError(f"Region {region!r}: a tuple modality names distinct input families, "
-                                 f"the recording extractor first; got {modality!r}")
+            # The inputs after the first are distinct input keys ('vision' and 'video' are two
+            # forms of one family); none is of the recording extractor's family.
+            if isinstance(modality, tuple) and (
+                    not modality or not all(isinstance(m, str) for m in modality)
+                    or len(set(modality)) != len(modality)
+                    or canonical_modality(modality[0]) in {canonical_modality(m) for m in modality[1:]}):
+                raise ValueError(f"Region {region!r}: a tuple modality names the recording extractor first, "
+                                 f"then other distinct inputs of other families; got {modality!r}")
             for name in stated:
                 if canonical_modality(name) not in families:
                     raise ValueError(f"Region {region!r} references modalities with no extractor: {name!r}")

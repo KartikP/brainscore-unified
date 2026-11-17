@@ -189,8 +189,9 @@ def test_a_wrong_statement_fails_at_the_first_pass():
 
 @pytest.mark.parametrize('modality, message', [
     (('text', 'audio'), "references modalities with no extractor: 'audio'"),
-    (('text', 'text'), 'a tuple modality names distinct input families'),
-    ((), 'a tuple modality names distinct input families'),
+    (('text', 'text'), 'a tuple modality names the recording extractor first'),
+    ((), 'a tuple modality names the recording extractor first'),
+    (('vision', 'video'), 'a tuple modality names the recording extractor first'),
 ])
 def test_a_malformed_statement_is_refused_when_the_model_is_built(modality, message):
     with pytest.raises(ValueError, match=message):

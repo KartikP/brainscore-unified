@@ -163,11 +163,12 @@ def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
     language_module, language_blocks = _blocks(model, language)
     region_layer_map = depth_layers(vision_blocks, DEPTH_TABLE['vision'])
     depths = dict(DEPTH_TABLE['vision'], **DEPTH_TABLE['language'])
-    # The picture tokens enter the language model, so its layer is reached from text and
-    # from a picture in an answering pass; the text extractor records it.
+    # The picture tokens (and the clip tokens, with video) enter the language model, so its
+    # layer is reached from text and from a picture or a clip in an answering pass; the text
+    # extractor records it.
     region_layer_map['language_system'] = LayerSelector(
         name=depth_layers(language_blocks, DEPTH_TABLE['language'])['language_system'],
-        modality=('text', 'vision'))
+        modality=('text', 'vision', 'video') if video else ('text', 'vision'))
 
     if image_processor_kwargs is None:
         from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper

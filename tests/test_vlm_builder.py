@@ -77,7 +77,8 @@ class TinyVLM(torch.nn.Module):
         hidden = self.model.language_model(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
         return SimpleNamespace(logits=self.lm_head(hidden))
 
-    def generate(self, input_ids, **_):
+    def generate(self, input_ids, attention_mask=None, **_):
+        self(input_ids=input_ids, attention_mask=attention_mask)    # the prompt pass a recording keeps
         return torch.cat([input_ids, torch.tensor([[WORDS.index('dog')]])], dim=1)
 
 
@@ -235,6 +236,36 @@ def test_a_neural_session_records_the_vision_part(tmp_path):
     responses = {event.channel: event.payload for event in session.emitted}
     assert responses['neural:IT'].shape == (2, 4) and responses['neural:V1'].shape == (2, 4)
     assert responses['neural:IT'].attrs['provenance']['region_layer_map_status'].startswith('depth hypothesis v1')
+
+
+def _clip(folder, text=None):
+    import cv2
+    path = str(folder / 'clip.mp4')
+    writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*'mp4v'), 4, (8, 8))
+    for frame in range(4):
+        writer.write(np.full((8, 8, 3), 60 * frame, np.uint8))
+    writer.release()
+    stimuli = StimulusSet({'stimulus_id': ['c0'], 'video_path': [path],
+                           **({'sentence': [text]} if text else {})})
+    stimuli.identifier = 'vlm-builder-clip' + ('-text' if text else '')
+    return stimuli
+
+
+def test_with_video_the_language_layer_is_recorded_during_an_answer_to_a_clip(tmp_path):
+    from brainscore_core.compatibility import check_compatibility
+    from brainscore_core.responses import Text
+    subject = _build(video=True)
+    assert 'vision:video' in subject.output_inputs['neural:language_system']
+    assert 'vision:video' not in _build().output_inputs['neural:language_system']
+    clip_language = SimpleNamespace(required_input_channels=frozenset({'vision:video'}),
+                                    requested_output_channels=frozenset({'neural:language_system'}),
+                                    trial_memory='none', identifier='clip-language')
+    assert check_compatibility(subject, clip_language).kind == 'full'
+    session = stimulus_session(_clip(tmp_path, text='the cat sat'), ['behavior:text', 'neural:language_system'],
+                               TaskContext(response=Text(max_tokens=2), present=('video', 'text')))
+    subject.participate(session)
+    assert session.collect('neural:language_system').shape[0] == 1
+    assert list(session.collect('behavior:text').values) == ['dog']
 
 
 def test_a_choice_session_is_answered_by_the_reply(tmp_path):
