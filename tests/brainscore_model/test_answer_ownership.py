@@ -299,20 +299,42 @@ def _registrations():
     return found, expanded, not_literal
 
 
-def test_every_registration_states_the_owners_of_the_table():
-    """Covers every ``BrainScoreModel(...)`` and ``<module>.BrainScoreModel(...)`` call in
-    the library, helpers included (``model_helpers/causal_lm.py``). A call whose part set
-    is in ``LIBRARY_STATEMENTS`` states the owners of the table; a call with another part
-    set is checked by the constructor only. Not covered: keywords that arrive through
-    ``**`` expansion (``EXPANDED``), a ``capability_config`` that is not a literal, and
-    models built outside the library; the constructor checks those."""
+def _answering_parts(model):
+    """The part that answers each response format the model declares (or the refusal), through
+    ``participate``: what a user of the registration sees."""
+    from brainscore_core.responses import Scale, Text
+    from tests.brainscore_model.stage2_answers_baseline import RATINGS
+    tasks = {'behavior:choice': CHOICE, 'behavior:probabilities': CHOICE,
+             'behavior:rating': TaskContext(instruction='How much?', response=Scale(1, 7), fitting_stimuli=RATINGS),
+             'behavior:text': TaskContext(instruction='Say it.', response=Text())}
+    parts = {}
+    for channel, task in tasks.items():
+        if channel not in model.out_channels:
+            continue
+        try:
+            parts[channel] = _run(model, [channel], task).collect(channel).attrs['response']['method']
+        except ExecutionNotFeasibleError as error:
+            parts[channel] = type(error).__name__
+    return parts
+
+
+def test_every_registration_answers_each_format_with_the_part_of_its_part_set():
+    """Every ``BrainScoreModel(...)`` call of the library, helpers included, whose part set is
+    in ``LIBRARY_STATEMENTS``: its statement is accepted, and through ``participate`` each
+    format it declares is answered by the part that the part set's statement gives (the Qwen
+    family: either probabilities statement). A statement that only names an owner the part set
+    already has is valid. The Qwen registrations are also built by their registry loaders
+    (``tests/test_qwen_probability_statements.py``), the readout-only ones by their builders
+    (``tests/test_readout_registrations.py``)."""
     registrations, expanded, not_literal = _registrations()
     assert set(EXPANDED) <= expanded, 'a call listed in EXPANDED no longer expands keywords: remove its line'
-    # The Qwen2.5-VL builder states the probabilities part its registration passes (not a literal).
-    assert {'models/qwen25_vl_3b/model.py', 'models/qwen36_27b/model.py', 'models/blip2_opt_2_7b/model.py',
+    assert {'models/qwen36_27b/model.py', 'models/blip2_opt_2_7b/model.py',
             'model_helpers/causal_lm.py'} <= {r[0] for r in registrations} | not_literal
     for where, wired, stated in registrations:
-        if tuple(wired) in LIBRARY_STATEMENTS:
-            allowed = [LIBRARY_STATEMENTS[tuple(wired)]] + ([QWEN_READOUT_STATEMENT] if tuple(wired) == QWEN else [])
-            assert stated in allowed, where
-        _model(*wired, owners=stated)                       # construction accepts it
+        model = _model(*wired, owners=stated)                 # construction accepts it
+        if tuple(wired) not in LIBRARY_STATEMENTS:
+            continue
+        references = [LIBRARY_STATEMENTS[tuple(wired)]] + ([QWEN_READOUT_STATEMENT] if tuple(wired) == QWEN else [])
+        found = _answering_parts(model)
+        assert any(found == _answering_parts(_model(*wired, owners=reference)) for reference in references), (where, found)
+
