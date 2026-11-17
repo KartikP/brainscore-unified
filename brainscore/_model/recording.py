@@ -304,7 +304,8 @@ def _trials_to_assembly(trials, stimuli, layer: str, region: str):
 
     The neuroid and extra-axis coordinates come from the first trial, and every
     presentation coordinate the extractor gave (a clip's path) is kept, as are the
-    stimulus columns that can be coordinates (``_stimulus_coordinates``); the
+    stimulus columns that can be coordinates (``_stimulus_coordinates``; the columns
+    left out are named in ``attrs['recording']``); the
     extractor gives every trial of a session the same extra axis (a clip's clock).
     """
     import numpy as np
@@ -333,16 +334,26 @@ def _trials_to_assembly(trials, stimuli, layer: str, region: str):
                          and (name != dim or not listed and dim != 'presentation')]
     coords = {name: ('neuroid', np.asarray(first[name].values)) for name in names('neuroid')}
     coords['region'] = ('neuroid', [region] * first.sizes['neuroid'])
-    coords.update(_stimulus_coordinates(stimuli))
+    kept, left_out = _stimulus_coordinates(stimuli)
+    coords.update(kept)
     coords.update({name: ('presentation', [trial[name].values[0] for trial in trials])
                    for name in names('presentation') if name not in stimuli.columns})
     coords.update({name: (dim, np.asarray(first[name].values)) for dim in extra for name in names(dim)})
     rows = [np.asarray(trial.transpose(*dims).values)[0] for trial in trials]
-    return NeuroidAssembly(np.stack(rows), coords=coords, dims=dims)
+    assembly = NeuroidAssembly(np.stack(rows), coords=coords, dims=dims)
+    if left_out:
+        # The reader of the recording learns which stimulus columns it does not carry, and why.
+        assembly.attrs['recording'] = {'stimulus_columns_left_out': left_out,
+                                       'reason': _LEFT_OUT_REASON}
+    return assembly
+
+
+_LEFT_OUT_REASON = ('a cell of the column is not a single value (a list, tuple, set, dict or array), '
+                   'so the column cannot be a presentation coordinate; the stimulus table keeps it')
 
 
 def _stimulus_coordinates(stimuli):
-    """The stimulus columns as presentation coordinates of a recording made while answering.
+    """``({column: coordinate}, [columns left out])`` for a recording made while answering.
 
     A zero-dimensional array is its single value. The other columns follow the
     rule of the behavior tables (``answers._presentation``): a column with a cell
@@ -358,7 +369,8 @@ def _stimulus_coordinates(stimuli):
                            if any(isinstance(value, np.ndarray) and value.ndim == 0 for value in values)
                            else values
                            for column, values in ((column, stimuli[column].values) for column in stimuli.columns)})
-    return _presentation(single)
+    kept = _presentation(single)
+    return kept, [column for column in stimuli.columns if column not in kept]
 
 
 def declared_layers(owner, modality: Optional[str] = None):

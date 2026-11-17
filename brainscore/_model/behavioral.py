@@ -743,7 +743,8 @@ class BehavioralReadout:
                       for region, assembly in neural.items()}
         stamp = self._stamp(path, 'readout extraction' if path == 'readout' else 'prompt')
         return ({c: outputs[c] for c in channels},
-                {r: a.assign_attrs(recording=stamp) for r, a in neural.items()})
+                {r: a.assign_attrs(recording={**a.attrs.get('recording', {}), **stamp})
+                 for r, a in neural.items()})
 
     @staticmethod
     def _readout_probabilities(outputs, ordered, stimuli):

@@ -147,6 +147,22 @@ def test_a_column_of_single_value_arrays_is_kept_on_a_recording_while_answering(
             == [int(value) for value in passive.collect('neural:A')['extra'].values] == [3, 7, 9])
 
 
+@pytest.mark.parametrize('streaming', [False, True])
+def test_a_recording_while_answering_names_the_stimulus_columns_it_leaves_out(streaming):
+    stimuli = STIMULI.assign(options=[['cat', 'dog house'], ['dog', 'dog house'], ['cat', 'dog']])
+    stimuli.identifier = 'everywhere-left-out'
+    session = stimulus_session(stimuli, ['behavior:log_probabilities', 'neural:A'],
+                               task=TaskContext(response=Choice('options', verbatim=True)), streaming=streaming)
+    _model(Net()).participate(session)
+    recording = session.collect('neural:A').attrs['recording']
+    assert 'options' in recording['stimulus_columns_left_out'] and recording['reason']
+    # A table of single values leaves nothing out, and says nothing.
+    scalar = stimulus_session(STIMULI, ['behavior:log_probabilities', 'neural:A'],
+                              task=TaskContext(response=Choice(['cat', 'dog'], verbatim=True)), streaming=streaming)
+    _model(Net()).participate(scalar)
+    assert 'stimulus_columns_left_out' not in scalar.collect('neural:A').attrs['recording']
+
+
 def test_a_reply_with_implied_probabilities_records_the_prompt_pass():
     net = Net()
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
