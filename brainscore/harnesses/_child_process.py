@@ -215,6 +215,8 @@ class ChildProcess:
                 raise self._fail('the child exited')
             self._buffer += chunk
         line, self._buffer = self._buffer.split(b'\n', 1)
+        if len(line) + 1 > MAX_LINE_BYTES:      # the whole frame, its newline included
+            raise self._fail(f'the child wrote a line longer than {MAX_LINE_BYTES} bytes')
         try:
             message = json.loads(line)
         except ValueError:

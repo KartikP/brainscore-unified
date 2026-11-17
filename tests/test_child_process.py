@@ -137,3 +137,14 @@ def test_a_child_that_writes_a_line_slowly_is_killed_at_the_deadline(tmp_path):
         with _stand_in(tmp_path, body) as child:
             child.ask({'do': 'prepare'})
     assert time.monotonic() - started < 10 and child.process.poll() is not None
+
+
+def test_a_complete_line_longer_than_the_limit_is_refused(tmp_path, monkeypatch):
+    """The limit counts the whole frame, its newline included, before the line is read."""
+    monkeypatch.setattr(_child_process, 'MAX_LINE_BYTES', 16)
+    body = ('out = os.fdopen(int(os.environ["BRAINSCORE_CHILD_FDS"].split(",")[1]), "wb", 0)\n'
+            'out.write(b\'{"done": "123456789"}\\n\')\ntime.sleep(60)\n')
+    with pytest.raises(ChildFailed, match='longer than'):
+        with _stand_in(tmp_path, body) as child:
+            child.ask({'do': 'x'})
+    assert child.process.poll() is not None
