@@ -41,7 +41,7 @@ Where your protocol fixes the exact text, use `Choice(..., verbatim=True)`: the 
 
 ## Where the data lives
 
-The stimuli and the human responses are a data plugin in `brainscore/data/<name>/`, with the scripts that package them ([Data](data.md)). Data you may not redistribute stays local and is declared as a local asset: EWoK's prepared items (`BRAINSCORE_EWOK_ROOT`), CogGym's pinned checkout (`BRAINSCORE_COGGYM_CHECKOUT`). A registered benchmark has brain or behavior data, or reads a model-derived measure under a published evaluation protocol and states its reference (EWoK's log-probability form compares likelihoods by the criterion of its paper).
+The stimuli and the human responses are a data plugin in `brainscore/data/<name>/`, with the scripts that package them ([Data](data.md)). Data you may not redistribute stays local and is declared as a local asset: EWoK's prepared items (`BRAINSCORE_EWOK_ROOT`). A library with packages of its own runs in its own environment: CogGym's evaluator runs in a separate process, from a folder Brain-Score makes at the first load (the pinned checkout and a virtual environment with CogGym's pinned packages; `BS_INSTALL_DEPENDENCIES=no` forbids making it), and each model call comes back to your process. Nothing is installed into the scoring environment ([the CogGym page](../../brainscore/data/coggym/README.md)). A registered benchmark has brain or behavior data, or reads a model-derived measure under a published evaluation protocol and states its reference (EWoK's log-probability form compares likelihoods by the criterion of its paper).
 
 ## A complete example
 

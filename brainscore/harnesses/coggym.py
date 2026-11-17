@@ -11,6 +11,12 @@ response, and the subject answers on ``behavior:text``. The subject builds its
 own prompt from these, so a chat model can place the instruction in the user
 turn where CogGym's own client sends a separate system text. Scores can
 therefore differ a little from scores made with CogGym's own client.
+
+CogGym's evaluator runs in its own environment, in a child process (``_coggym_worker.py``)
+started with the Python of CogGym's folder (``_coggym_folder.py``). Its pre-flight gives the
+trials and prompts; one process per run serves every repetition and the analysis, and each
+model call comes back here as one request and one reply. The subject, the sessions, the
+recording and ``reset`` stay in this process; nothing is installed into it.
 """
 from __future__ import annotations
 
