@@ -35,14 +35,9 @@ def depth_layers(block_paths, depths):
 
 class _StudySubject(ProvenanceSubject):
     """The study's provenance on every response, and the one input the policy acts on: it reads the
-    observation's frame, so ``motor`` is answered from an observation only. A model whose language
-    model gets inputs v2's recording cannot read (``extra_forward_inputs``) refuses, before any
-    compute, a session that asks for the language layer together with an answer: the answering
-    pass is the one its recording would read."""
-
-    def __init__(self, subject, provenance, records_while_answering):
-        super().__init__(subject, provenance)
-        self._records_while_answering = records_while_answering
+    observation's frame, so ``motor`` is answered from an observation only. The study records the
+    language layer in a session without an answer: a session that asks for it together with an
+    answer is refused before any compute."""
 
     @property
     def output_inputs(self):
@@ -53,13 +48,11 @@ class _StudySubject(ProvenanceSubject):
 
     def participate(self, session):
         outputs = set(session.outputs or ())
-        if (not self._records_while_answering and 'neural:language_system' in outputs
-                and any(o.startswith('behavior') or o == 'motor' for o in outputs)):
+        if 'neural:language_system' in outputs and any(o.startswith('behavior') or o == 'motor' for o in outputs):
             from brainscore_core.compatibility import ExecutionNotFeasibleError
             raise ExecutionNotFeasibleError(
-                f"'{self.identifier}' records neural:language_system in a session without an answer only: its "
-                f"language model gets {self._provenance['extra_forward_inputs']} in an answering pass, which "
-                f"the recording cannot read. Ask for the language layer in its own session.")
+                f"'{self.identifier}' records neural:language_system in a session without an answer only "
+                f"(the study's rule: one session for regions, one for an answer). Ask for it in its own session.")
         super().participate(session)
 
 
@@ -209,10 +202,8 @@ def get_model(identifier: str):
     language_module, language_blocks = _blocks(model, config['language'])
     region_layer_map = depth_layers(vision_blocks, DEPTH_TABLE['vision'])
     language_layer = depth_layers(language_blocks, DEPTH_TABLE['language'])['language_system']
-    # The picture tokens reach the language layer in an answering pass; v2's recording reads that pass
-    # unless the language model gets inputs it cannot read (README: needs a general change).
-    region_layer_map['language_system'] = LayerSelector(
-        name=language_layer, modality='text' if config['extra_forward_inputs'] else ('text', 'vision'))
+    # Recorded from text, in a session without an answer (README: one session for regions, one for an answer).
+    region_layer_map['language_system'] = LayerSelector(name=language_layer, modality='text')
     pixels = config['image_processor_kwargs']
     if pixels is None:          # the processor's flattened patches (Qwen-VL layout)
         from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
@@ -243,9 +234,8 @@ def get_model(identifier: str):
     depths = ', '.join(f'{region} {f:.2f}' for table in DEPTH_TABLE.values() for region, f in table.items())
     return _StudySubject(subject, {
         'study': 'umi_dev_models', 'checkpoint': config['hf_id'], 'revision': config['revision'],
-        'dtype': config['dtype'], 'extra_forward_inputs': config['extra_forward_inputs'],
+        'dtype': config['dtype'],
         'device_map': config['device_map'],
         'region_layer_map_status': f'{DEPTH_HYPOTHESIS}: {depths}; no layer search',
         'readout_layer': f"{region_layer_map['IT']} (the IT layer of the vision part)",
-        'intervention': 'on' if parts else 'off: the vision layers are recorded as LayerPCA components'},
-        records_while_answering=not config['extra_forward_inputs'])
+        'intervention': 'on' if parts else 'off: the vision layers are recorded as LayerPCA components'})

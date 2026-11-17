@@ -29,6 +29,10 @@ measurements of the same weights.
   large download.
 - **Provenance:** each score names the checkpoint and its revision (`not pinned` until a load
   test fixes it), the depth hypothesis and the readout layer.
+- **One session for regions, one session for an answer:** the language layer is recorded from text
+  in a session without an answer, and a session that asks for it together with an answer is refused
+  before any compute. A recording during an answer has to be verified for each family apart, and no
+  benchmark of the study asks for it.
 
 ## What a model gets
 
@@ -36,7 +40,7 @@ measurements of the same weights.
 |---|---|---|
 | neural V1, V2, V4, IT, VWFA | all | |
 | neural language_system, from text | all | |
-| neural language_system during an answer | SmolVLM, InternVL, Qwen2.5-VL | Qwen3-VL and Gemma 3 refuse such a session before any compute; needs a general change (below) |
+| neural language_system during an answer | none | the study's rule above; a later general change (below) |
 | clips (`vision:video`), from the vision part | Qwen3-VL | the other processors give no flattened clip patches; Qwen2.5-VL's clip path is not checked yet |
 | behavior: choice, probabilities, log_probabilities, rating, rt, text | all | |
 | perturbation (lesion, stimulation, pharmacological) | Qwen3-VL, Qwen2.5-VL | the other families record their vision layers as PCA components, and a lesion addresses the module's units |
@@ -46,12 +50,12 @@ measurements of the same weights.
 
 These abilities need a change of shared code; the study does not declare them:
 
-- Qwen3-VL: the language layer during an answer. Its language model gets `visual_pos_masks`,
-  the positions of the picture tokens; the recording refuses every mask other than
-  `attention_mask` (`brainscore/model_helpers/_extractors.py`). Pre-flight cannot tell a session
-  without an answer from one with an answer, so the model refuses the second when it starts.
-- Gemma 3: the same, because its language model gets its attention mask as a mapping of causal
-  masks, which the text recording cannot read (`brainscore/model_helpers/text_wrapper.py`).
+- The language layer during an answer, verified for each family. On v2 it would run for SmolVLM,
+  InternVL3 and Qwen2.5-VL; Qwen3-VL's language model gets `visual_pos_masks`, which the recording
+  refuses (`brainscore/model_helpers/_extractors.py`), and Gemma 3's gets its attention mask as a
+  mapping of causal masks, which the text recording cannot read (`brainscore/model_helpers/text_wrapper.py`).
+  Pre-flight cannot tell a session without an answer from one with an answer, so a study model
+  refuses the second when it starts.
 - Qwen3-VL: clips reaching the language layer: a region's input tuple cannot name two forms of
   one input family (`brainscore/brainscore_model.py`).
 - A vision part split over several accelerators: the vision extractor moves its module to one
@@ -74,9 +78,6 @@ Add one entry to `model_configs.json` and one registry line to `__init__.py`. Th
 - `video`: `true` only for the flattened-patch layout with a video processor.
 - `device_map`: `"auto"` when the weights (2 bytes per parameter) take more than about two thirds
   of one accelerator.
-- `extra_forward_inputs`: what the language model gets beyond its tokens and a 2-D attention mask
-  in an answering pass (read the model's forward); the language layer is then recorded only in a
-  session without an answer.
 - `packages`: the packages the model's processor or forward imports beyond the reference
   environment, by name; each is stated once, with its version, in `requirements.txt` (the run
   environment of the study installs that file). A load without one names it before any download.

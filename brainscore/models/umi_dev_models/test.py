@@ -53,9 +53,7 @@ class _Part(torch.nn.Module):
 
 
 class _StatedLayout(torch.nn.Module):
-    """The parts at the paths a configuration states. Pictures and clips go through the vision part,
-    and the language part gets the extra inputs the configuration states, as the real model gives
-    them (Qwen3-VL: visual_pos_masks; Gemma 3: its attention_mask as a mapping of causal masks)."""
+    """The parts at the paths a configuration states; pictures and clips go through the vision part."""
 
     def __init__(self, config):
         super().__init__()
@@ -69,7 +67,6 @@ class _StatedLayout(torch.nn.Module):
                 parent = parent._modules[name]
             parent.add_module(last, _Part(blocks, words))
         self._vision, self._language = config['vision'][0], config['language'][0]
-        self._extra = config['extra_forward_inputs']
         self.head = torch.nn.Linear(4, len(WORDS))
 
     @property
@@ -78,18 +75,10 @@ class _StatedLayout(torch.nn.Module):
 
     def forward(self, input_ids, attention_mask=None, pixel_values=None, image_grid_thw=None,
                 pixel_values_videos=None, video_grid_thw=None, **_):
-        shown = False
         for given, grid in ((pixel_values, image_grid_thw), (pixel_values_videos, video_grid_thw)):
             if given is not None:
                 self.get_submodule(self._vision)(pixel_values=given, grid_thw=grid)
-                shown = True
-        extra = {}
-        if shown and 'visual_pos_masks' in self._extra:
-            extra['visual_pos_masks'] = input_ids == WORDS.index('<image>')
-        if any('mapping' in name for name in self._extra):
-            attention_mask = {'full_attention': torch.zeros(1, 1, input_ids.shape[1], input_ids.shape[1])}
-        hidden = self.get_submodule(self._language)(input_ids=input_ids, attention_mask=attention_mask,
-                                                    **extra).last_hidden_state
+        hidden = self.get_submodule(self._language)(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
         return SimpleNamespace(logits=self.head(hidden))
 
     def generate(self, input_ids, **inputs):
@@ -237,8 +226,7 @@ def test_each_declared_output_comes_out_of_one_session(stand_in, identifier):
     assert ('vision:video' in subject.in_channels) == config['video']
     pixel = config['image_processor_kwargs'] is not None
     assert ('perturbation' in subject.out_channels) == (not pixel) == ('lesion' in subject.in_channels)
-    # The language layer during an answer to a picture is declared only where v2's recording reads that pass.
-    assert ('vision:image' in subject.output_inputs['neural:language_system']) == (not config['extra_forward_inputs'])
+    assert subject.output_inputs['neural:language_system'] == {'text'}      # one session for regions, one for an answer
 
     for region in ('V1', 'V2', 'V4', 'IT', 'VWFA'):
         values = _collect(subject, pictures, [f'neural:{region}'], passive)[f'neural:{region}'].values
@@ -246,15 +234,6 @@ def test_each_declared_output_comes_out_of_one_session(stand_in, identifier):
         assert values.shape[1] == (2 if pixel else 4), region         # the fitted PCA's components, or the hidden width
     language = _collect(subject, sentences, ['neural:language_system'], passive)['neural:language_system']
     assert language.shape[0] == 2 and np.isfinite(language.values).all()
-    if 'vision:image' in subject.output_inputs['neural:language_system']:
-        during = _collect(subject, pictures, ['behavior:text', 'neural:language_system'], TaskContext(response=Text(max_tokens=2)))
-        assert during['neural:language_system'].shape[0] == 4
-    else:   # not declared (v2's recording cannot read this model's answering pass): N/A in pre-flight
-        from brainscore_core.compatibility import CompatibilityError, check_compatibility
-        with pytest.raises(CompatibilityError, match='language_system'):
-            check_compatibility(subject, SimpleNamespace(
-                identifier='picture-language', trial_memory='none', required_input_channels=frozenset({'vision:image'}),
-                requested_output_channels=frozenset({'behavior:text', 'neural:language_system'})))
     if config['video']:
         assert _collect(subject, _clip(folder), ['neural:IT'], passive)['neural:IT'].shape[0] == 1
 
@@ -299,10 +278,10 @@ def test_each_declared_output_comes_out_of_one_session(stand_in, identifier):
 
 
 @pytest.mark.parametrize('identifier', IDENTIFIERS)
-def test_a_written_answer_with_the_language_layer_runs_or_is_refused_before_compute(stand_in, identifier):
-    """A trial of a picture and text, asking for a written answer and the language layer: the answering
-    pass is recorded where v2 can read it, else the session is refused before any forward pass. Pre-flight
-    cannot tell the two apart (it accepts the text input for the language layer)."""
+def test_a_written_answer_with_the_language_layer_is_refused_before_compute(stand_in, identifier):
+    """One session for regions, one for an answer: a trial of a picture and text that asks for a written
+    answer and the language layer is refused before any forward pass. Pre-flight accepts the pair (the
+    text input answers the language layer), so the refusal comes when the session starts."""
     from brainscore_core.compatibility import ExecutionNotFeasibleError, check_compatibility
     config, subject = study.MODEL_CONFIGS[identifier], model_registry[identifier]()
     pictures = _pictures(stand_in, 2)
@@ -316,12 +295,9 @@ def test_a_written_answer_with_the_language_layer_runs_or_is_refused_before_comp
     task = TaskContext(response=Text(max_tokens=2), present=('image', 'text'))
     network = subject._subject._model
     vision = network.get_submodule(config['vision'][0])
-    if config['extra_forward_inputs']:
-        with pytest.raises(ExecutionNotFeasibleError, match='language_system'):
-            _collect(subject, trials, outputs, task)
-        assert vision.passes == 0
-    else:
-        assert _collect(subject, trials, outputs, task)['neural:language_system'].shape[0] == 2
+    with pytest.raises(ExecutionNotFeasibleError, match='language_system'):
+        _collect(subject, trials, outputs, task)
+    assert vision.passes == 0
 
 
 @pytest.mark.parametrize('processor, whole, tiled', [
@@ -541,12 +517,9 @@ def test_qualify_the_family(identifier, monkeypatch, tmp_path):
     assert play_game(subject, GridGameEnv(size=5, seed=1, max_steps=2))['actions']
     if config['video']:
         assert _collect(subject, _clip(tmp_path), ['neural:IT'], passive)['neural:IT'].shape[0] == 1
-    # A written answer with the language layer, on a picture and text: recorded, or refused before compute.
+    # A written answer with the language layer, on a picture and text: refused before compute.
     trials = StimulusSet({'stimulus_id': ['p0'], 'image_file_name': [pictures['image_file_name'][0]], 'sentence': ['the cat']})
     trials.identifier = 'umi-dev-qualify-mixed'
     mixed = TaskContext(response=Text(max_tokens=2), present=('image', 'text'))
-    if config['extra_forward_inputs']:
-        with pytest.raises(ExecutionNotFeasibleError):
-            _collect(subject, trials, ['behavior:text', 'neural:language_system'], mixed)
-    else:
-        assert _collect(subject, trials, ['behavior:text', 'neural:language_system'], mixed)['neural:language_system'].shape[0] == 1
+    with pytest.raises(ExecutionNotFeasibleError):
+        _collect(subject, trials, ['behavior:text', 'neural:language_system'], mixed)

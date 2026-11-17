@@ -10,7 +10,6 @@
     "image_processor_kwargs": null,
     "video": true,
     "device_map": null,
-    "extra_forward_inputs": ["visual_pos_masks"],
     "packages": []
   },
   "qwen3-vl-4b_UMI-dev": {
@@ -24,7 +23,6 @@
     "image_processor_kwargs": null,
     "video": true,
     "device_map": null,
-    "extra_forward_inputs": ["visual_pos_masks"],
     "packages": []
   },
   "qwen3-vl-8b_UMI-dev": {
@@ -38,7 +36,6 @@
     "image_processor_kwargs": null,
     "video": true,
     "device_map": null,
-    "extra_forward_inputs": ["visual_pos_masks"],
     "packages": []
   },
   "qwen3-vl-32b_UMI-dev": {
@@ -52,7 +49,6 @@
     "image_processor_kwargs": null,
     "video": true,
     "device_map": "auto",
-    "extra_forward_inputs": ["visual_pos_masks"],
     "packages": []
   },
   "qwen3-vl-30b-a3b_UMI-dev": {
@@ -66,7 +62,6 @@
     "image_processor_kwargs": null,
     "video": true,
     "device_map": "auto",
-    "extra_forward_inputs": ["visual_pos_masks"],
     "packages": []
   },
   "qwen2.5-vl-3b_UMI-dev": {
@@ -80,7 +75,6 @@
     "image_processor_kwargs": null,
     "video": false,
     "device_map": null,
-    "extra_forward_inputs": [],
     "packages": []
   },
   "qwen2.5-vl-7b_UMI-dev": {
@@ -94,7 +88,6 @@
     "image_processor_kwargs": null,
     "video": false,
     "device_map": null,
-    "extra_forward_inputs": [],
     "packages": []
   },
   "smolvlm2-256m_UMI-dev": {
@@ -108,7 +101,6 @@
     "image_processor_kwargs": {"do_image_splitting": false},
     "video": false,
     "device_map": null,
-    "extra_forward_inputs": [],
     "packages": ["num2words"]
   },
   "smolvlm2-2.2b_UMI-dev": {
@@ -122,7 +114,6 @@
     "image_processor_kwargs": {"do_image_splitting": false},
     "video": false,
     "device_map": null,
-    "extra_forward_inputs": [],
     "packages": ["num2words"]
   },
   "gemma-3-4b_UMI-dev": {
@@ -136,7 +127,6 @@
     "image_processor_kwargs": {"do_pan_and_scan": false},
     "video": false,
     "device_map": null,
-    "extra_forward_inputs": ["attention_mask as a mapping of causal masks"],
     "packages": []
   },
   "gemma-3-12b_UMI-dev": {
@@ -150,7 +140,6 @@
     "image_processor_kwargs": {"do_pan_and_scan": false},
     "video": false,
     "device_map": null,
-    "extra_forward_inputs": ["attention_mask as a mapping of causal masks"],
     "packages": []
   },
   "gemma-3-27b_UMI-dev": {
@@ -164,7 +153,6 @@
     "image_processor_kwargs": {"do_pan_and_scan": false},
     "video": false,
     "device_map": "auto",
-    "extra_forward_inputs": ["attention_mask as a mapping of causal masks"],
     "packages": []
   },
   "internvl3-1b_UMI-dev": {
@@ -178,7 +166,6 @@
     "image_processor_kwargs": {"crop_to_patches": false},
     "video": false,
     "device_map": null,
-    "extra_forward_inputs": [],
     "packages": []
   },
   "internvl3-8b_UMI-dev": {
@@ -192,7 +179,6 @@
     "image_processor_kwargs": {"crop_to_patches": false},
     "video": false,
     "device_map": null,
-    "extra_forward_inputs": [],
     "packages": []
   },
   "internvl3-14b_UMI-dev": {
@@ -206,7 +192,6 @@
     "image_processor_kwargs": {"crop_to_patches": false},
     "video": false,
     "device_map": null,
-    "extra_forward_inputs": [],
     "packages": []
   }
 }
