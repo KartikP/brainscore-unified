@@ -481,28 +481,24 @@ QUALIFY = ['qwen3-vl-2b_UMI-dev', 'qwen3-vl-30b-a3b_UMI-dev', 'qwen2.5-vl-3b_UMI
 @pytest.mark.qualification
 @pytest.mark.parametrize('identifier', QUALIFY)
 def test_qualify_the_family(identifier, monkeypatch, tmp_path):
-    from brainscore import LoadError
     from brainscore_core.compatibility import ExecutionNotFeasibleError
     from brainscore_core.hf_compat import pin_image_processor
     from brainscore_vision.model_helpers.activations import pca
     live = sys.modules['transformers']
     config = study.MODEL_CONFIGS[identifier]
+
+    def refuse(*args, **kwargs):
+        raise AssertionError('a qualification must not load a checkpoint')
+    monkeypatch.setattr(live.PreTrainedModel, 'from_pretrained', classmethod(refuse))
+    # Selected explicitly, the qualification fails for anything it needs that is missing.
+    study._refuse(identifier, config)       # a missing package: the clear message, as a failure
+    at = {'local_files_only': True, **({} if config['revision'] == 'not pinned' else {'revision': config['revision']})}
     try:
-        settings = live.AutoConfig.from_pretrained(config['hf_id'], local_files_only=True)
-    except OSError:
-        pytest.skip(f"the settings files of {config['hf_id']} are not in the cache (README: Add a model)")
-    try:                    # the needed packages are present, or the clear message appears
-        study._refuse(identifier, config)
-    except LoadError as error:
-        assert 'which is not installed. Next step' in str(error)
-        # Go on as a machine with the folder's requirements would: a processor that imports a
-        # missing package then fails when it is built.
-        monkeypatch.setitem(study.MODEL_CONFIGS, identifier, dict(config, packages=[]))
-    try:
-        processor = pin_image_processor(live.AutoProcessor.from_pretrained(config['hf_id'], local_files_only=True),
-                                        config['hf_id'], local_files_only=True)
-    except ImportError as error:
-        pytest.skip(f'{identifier}: the real processor cannot be built here: {error}')
+        settings = live.AutoConfig.from_pretrained(config['hf_id'], **at)
+        processor = pin_image_processor(live.AutoProcessor.from_pretrained(config['hf_id'], **at), config['hf_id'], **at)
+    except OSError as error:
+        pytest.fail(f"the settings files of {config['hf_id']} at {config['revision']} are not in the cache: fetch them "
+                    f"with the command in README.md (a gated model needs its terms accepted and a token): {error}")
     network_class = getattr(live, config['model_class'])
     torch.manual_seed(0)
     network = network_class(_small(config['model_class'], settings)).to(getattr(torch, config['dtype'])).eval()
