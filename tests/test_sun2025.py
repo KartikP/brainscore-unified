@@ -195,3 +195,15 @@ def test_the_score_equals_the_old_implementation_to_the_last_digit():
                for g in (0, 1) for f in (1, 2, 3, 4)}
     score = brainscore.score(Reporter(answers.__getitem__), _design(human))
     assert float(score) == 4.255378301966291
+
+
+def test_a_number_outside_the_supported_range_is_an_invalid_answer():
+    assert parse_report('{"direction_deg": 10, "speed_px_per_frame": 1' + '0' * 400 + '}')[1]
+    assert parse_report('{"direction_deg": 10, "speed_px_per_frame": 1e400}')[1]
+    huge = '{"direction_deg": 0, "speed_px_per_frame": 1e308}'
+    benchmark = _design([[[1.0, 0.0]] * 3])
+    score = brainscore.score(Reporter(lambda sid: huge if sid == 'g0-f1' else NO_MOTION), benchmark)
+    reports = score.attrs['reports']
+    row = list(reports['stimulus_id'].values).index('g0-f1')
+    assert reports['response_state'].values[row] == 'invalid' and reports.values[row] == huge
+    assert score.attrs['n_invalid'] == 1 and score.attrs['result_validity'] == 'invalid'

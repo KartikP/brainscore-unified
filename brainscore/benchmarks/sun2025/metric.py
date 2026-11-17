@@ -10,6 +10,9 @@ import re
 import numpy as np
 
 _FENCE = chr(96) * 3
+# The largest speed the metric takes. The clip is 600 pixels wide, so a speed above this is not
+# a report of the clip; the limit also keeps every mean and norm far from overflow.
+MAX_SPEED_PX_PER_FRAME = 1e6
 
 
 def parse_report(reply) -> tuple[dict | None, str | None]:
@@ -33,12 +36,17 @@ def parse_report(reply) -> tuple[dict | None, str | None]:
     if not isinstance(value, dict) or set(value) != {'direction_deg', 'speed_px_per_frame'}:
         return None, 'expected exactly direction_deg and speed_px_per_frame'
     for name, number in value.items():
-        if isinstance(number, bool) or not isinstance(number, (int, float)) or not math.isfinite(number):
-            return None, f'{name} must be a finite number'
+        if isinstance(number, bool) or not isinstance(number, (int, float)):
+            return None, f'{name} must be a number'
+        try:
+            if not math.isfinite(number):
+                return None, f'{name} must be a finite number'
+        except OverflowError:       # an integer too large for a float
+            return None, f'{name} is too large'
     if not 0 <= value['direction_deg'] < 360:
         return None, 'direction_deg must be in [0, 360)'
-    if value['speed_px_per_frame'] < 0:
-        return None, 'speed_px_per_frame must not be negative'
+    if not 0 <= value['speed_px_per_frame'] <= MAX_SPEED_PX_PER_FRAME:
+        return None, f'speed_px_per_frame must be in [0, {MAX_SPEED_PX_PER_FRAME:g}]'
     return value, None
 
 

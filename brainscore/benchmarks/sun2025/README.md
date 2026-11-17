@@ -26,6 +26,8 @@ over the 280 groups and the three participants: displayed pixels per frame,
 is estimated. The reference is the three participants; `floor` is the error of the
 no-motion answer (speed 0 on every trial), computed from the reference.
 
+Supported range: `direction_deg` in [0, 360) and `speed_px_per_frame` in [0, 1e6]; both are
+JSON numbers. A number outside the range, not finite or too large for a float is `invalid`.
 A reply that is not one JSON object with the two numbers in range is `invalid`, kept
 with its raw text in `reports` and counted (`n_invalid`). Any invalid or missing
 trial makes the score NaN and `result_validity='invalid'`, so a hard group never
