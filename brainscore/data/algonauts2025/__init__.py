@@ -34,7 +34,7 @@ ALGONAUTS_ROOT = local.register(local.LocalAsset(
     obtain='The competition dataset via DataLad (~130 GB: 129 GB stimuli, ~1 GB '
            'fMRI per subject). Ubuntu 22.04 ships a git-annex too old for '
            'current DataLad; install it from conda-forge instead.',
-    prepare='python -m brainscore.data package algonauts2025',
+    prepare='python -m brainscore.data package algonauts2025 --output <the folder of algonauts2025-prepared>',
     used_by=_ALGONAUTS_IDENTIFIERS,
 ))
 
@@ -71,6 +71,7 @@ data_builder_registry['algonauts2025'] = lambda: DataBuilder(
            '(participant 1), the media of the six registered benchmarks. '
            'Use them: set BRAINSCORE_ALGONAUTS_PREPARED to the output folder.',
     build='python -m brainscore.data.algonauts2025.data_packaging.package --source {source} --out {output}',
+    source_asset='algonauts2025-root',
     requires=('fmri/sub-0*/func/*.h5', 'fmri/sub-0*/target_sample_number/*.npy',
               'stimuli/movies/friends', 'stimuli/movies/movie10', 'stimuli/movies/ood'),
 )

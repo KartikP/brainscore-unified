@@ -23,6 +23,7 @@ import brainscore
 import brainscore.data
 from brainscore import data_builder_registry
 from brainscore.data import DataBuilder, package_data
+from brainscore.data import local
 from brainscore.data.local import LocalDataMissing
 
 pytestmark = pytest.mark.unit
@@ -132,6 +133,8 @@ def offline(monkeypatch, tmp_path):
     for name, module in (('boto3', boto3), ('botocore', botocore), ('botocore.config', botocore_config)):
         monkeypatch.setitem(sys.modules, name, module)
     monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path / 'home'))
+    for asset in local.REGISTRY.values():          # every local asset folder is a temporary one
+        monkeypatch.setenv(asset.env_var, str(tmp_path / 'assets' / asset.name))
     return stand_ins
 
 
@@ -321,3 +324,23 @@ def test_algonauts_builds_every_file_the_registered_benchmarks_read(tmp_path, of
         films = brainscore.load_stimulus_set('Algonauts2025-friends', root=output)
         table = per_scan_stimuli(films, scans_per_stimulus(assembly), media, 'friends', participant, output)
         assert len(table) == assembly.sizes['presentation'] == 3
+
+
+@pytest.mark.skipif(__import__('shutil').which('ffmpeg') is None, reason='ffmpeg is needed')
+def test_the_algonauts_recovery_command_reads_the_folder_the_benchmark_names(tmp_path, offline):
+    import subprocess
+    from brainscore.data.__main__ import main
+    film = tmp_path / 'film.mkv'
+    subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc=duration=5:size=64x48:rate=25',
+                    '-f', 'lavfi', '-i', 'sine=duration=5:sample_rate=16000', '-shortest',
+                    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', str(film)], check=True)
+    # The competition files are where the benchmark's pre-check looks for them.
+    _algonauts_source(local.REGISTRY['algonauts2025-root'].resolved(), film=film.read_bytes())
+    prepared = local.REGISTRY['algonauts2025-prepared'].resolved()
+    with pytest.raises(LocalDataMissing) as missing:
+        local.check_benchmark_assets('Algonauts2025-friends-sub01')
+    # Run the command the message gives, as written, with the folder it names.
+    command = str(missing.value).split('Then convert it:')[1].split('\n')[1].strip()
+    assert main(command.replace('<this folder>', str(prepared)).split()[3:]) == 0
+    local.check_benchmark_assets('Algonauts2025-friends-sub01')
+    assert brainscore.load_dataset('Algonauts2025-friends-sub01', root=prepared).sizes['presentation'] == 3
