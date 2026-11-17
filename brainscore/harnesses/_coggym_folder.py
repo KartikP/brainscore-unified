@@ -25,6 +25,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -34,6 +35,8 @@ REPOSITORY = 'https://github.com/lance-ying/coggym.git'
 REQUIREMENTS = Path(__file__).with_name('coggym_requirements.txt')
 # The files of the checkout that the worker reads.
 _SUPERVISOR = Path(__file__).with_name('_supervise.py')
+# The record inside a temporary folder that this code made it.
+_CREATION_RECORD = '.brainscore-creation.json'
 _REQUIRED = ('evaluation/__init__.py', 'evaluation/providers.py', 'evaluation/cli.py',
              'evaluation/analyze.py', 'evaluation/public_manifest.json',
              'evaluation/trial_selection_map.json', 'EML')
@@ -120,6 +123,10 @@ def _make(identifier, folder):
     folder.parent.mkdir(parents=True, exist_ok=True)
     partial = Path(tempfile.mkdtemp(prefix=f'.{folder.name}.partial-', dir=folder.parent))
     try:
+        # The record that this code made this temporary folder: only such a folder is ever
+        # removed by a later creation (a name alone proves nothing).
+        (partial / _CREATION_RECORD).write_text(json.dumps({
+            'folder': str(folder), 'made_by': 'brainscore CogGym folder creation', 'pid': os.getpid()}))
         checkout, python = partial / 'checkout', environment_python(partial)
         # No checkout of the default branch, and no local hooks: only the pinned commit is checked out.
         _run(['git', 'clone', '--quiet', '--no-checkout', REPOSITORY, str(checkout)])
@@ -143,6 +150,7 @@ def _make(identifier, folder):
             'freeze': sorted(line for line in freeze.splitlines() if line.strip())}, indent=2) + '\n')
         # One step that never replaces: a folder that appeared meanwhile belongs to someone else.
         _rename_no_replace(partial, folder)
+        (folder / _CREATION_RECORD).unlink()          # published: the record has done its job
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         shutil.rmtree(partial, ignore_errors=True)
         detail = getattr(error, 'stderr', None) or ''
@@ -204,18 +212,32 @@ def _run(command) -> str:
 def _creation_lock(folder):
     """One creation of ``folder`` at a time, across threads and processes: a lock file next to it
     (``.<name>.lock``, kept), so every creator shares it whatever its temporary folder. While the
-    lock is held no other creation runs, so a temporary folder of an earlier attempt
-    (``.<name>.partial-*``) belongs to a creator that died, and it is removed."""
+    lock is held no other creation runs, so a temporary folder that an earlier attempt of this
+    code made (``_created_here``) belongs to a creator that died, and it is removed. Any other
+    sibling, whatever its name, is left alone."""
     import fcntl
     folder.parent.mkdir(parents=True, exist_ok=True)
     with open(folder.parent / f'.{folder.name}.lock', 'w') as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
         try:
             for abandoned in folder.parent.glob(f'.{folder.name}.partial-*'):
-                shutil.rmtree(abandoned, ignore_errors=True)
+                if _created_here(abandoned, folder):
+                    shutil.rmtree(abandoned, ignore_errors=True)
             yield
         finally:
             fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def _created_here(candidate: Path, folder: Path) -> bool:
+    """Whether ``candidate`` is a temporary folder this code made for ``folder``: a folder (not a
+    link) that holds a creation record (a regular file, not a link) naming ``folder``."""
+    try:
+        record = candidate / _CREATION_RECORD
+        if not (stat.S_ISDIR(os.lstat(candidate).st_mode) and stat.S_ISREG(os.lstat(record).st_mode)):
+            return False
+        return json.loads(record.read_text()).get('folder') == str(folder)
+    except (OSError, ValueError, AttributeError):
+        return False
 
 
 def _requirements_hash() -> str:

@@ -171,3 +171,14 @@ def test_a_read_only_place_is_one_clear_error(fresh, tmp_path, monkeypatch):
     message = str(refused.value)
     assert BENCHMARK in message and str(read_only / 'nested') in message
     assert 'BRAINSCORE_COGGYM_FOLDER' in message and fresh.calls == []
+
+
+def test_a_sibling_that_only_looks_like_a_temporary_folder_is_never_removed(fresh, tmp_path):
+    from .coggym_stand_in import default_place
+    folder = default_place(tmp_path / 'folders')
+    theirs = folder.parent / f'.{folder.name}.partial-user-not-a-creation'
+    theirs.mkdir(parents=True)
+    (theirs / 'my-research.txt').write_text('mine')
+    _load()
+    assert (theirs / 'my-research.txt').read_text() == 'mine'
+    assert (folder / 'ready.json').exists()
