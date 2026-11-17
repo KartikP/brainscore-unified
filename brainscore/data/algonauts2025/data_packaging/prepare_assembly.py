@@ -29,6 +29,10 @@ Output:
     {output_root}/algonauts2025_stim_friends.csv
     {output_root}/algonauts2025_stim_friends_s7.csv
     {output_root}/algonauts2025_stim_ood.csv
+
+A participant or split whose input is missing is skipped with a ``[skip]`` line, so
+this script can convert a part. ``python -m brainscore.data package algonauts2025``
+builds the complete set and fails when an input is missing.
 """
 from __future__ import annotations
 
@@ -418,7 +422,7 @@ def _build_held_out_stub(algonauts_root: Path, subject: int,
 # ── Main ──────────────────────────────────────────────────────────
 
 
-def main():
+def main(argv: Optional[List[str]] = None):
     parser = argparse.ArgumentParser()
     parser.add_argument('--algonauts-root', type=Path, required=True,
                         help='DataLad-installed dataset directory')
@@ -430,7 +434,7 @@ def main():
                         default=list(ALGONAUTS_SPLITS),
                         choices=ALGONAUTS_SPLITS)
     parser.add_argument('--overwrite', action='store_true')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     args.output_root.mkdir(parents=True, exist_ok=True)
     print(f'Algonauts root:  {args.algonauts_root}')

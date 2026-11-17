@@ -87,6 +87,10 @@ class _S3:
         raise AssertionError(f'package_data called S3 {name}: nothing may be uploaded')
 
 
+_NETWORK_PROGRAMS = {'git', 'aws', 'curl', 'wget', 'pip', 'hf', 'huggingface-cli', 'datalad', 'ssh',
+                     'scp', 'rsync', 'gsutil'}
+
+
 class _Offline:
     """Stand-ins a test fills: S3 objects, and programs other than ffmpeg (git, aws)."""
 
@@ -96,8 +100,8 @@ class _Offline:
 
 @pytest.fixture
 def offline(monkeypatch, tmp_path):
-    """No network: sockets fail, S3 is a stand-in whose uploads fail, and only ffmpeg,
-    ffprobe and the programs a test gives may run. The default source and output root
+    """No network: sockets fail, S3 is a stand-in whose uploads fail, and a program that
+    reaches the network (git, aws, ...) runs only as a stand-in the test gives. The default source and output root
     is a temporary folder."""
     import subprocess
     stand_ins = _Offline()
@@ -109,12 +113,12 @@ def offline(monkeypatch, tmp_path):
     real_run = subprocess.run
 
     def run(argv, *args, **kwargs):
-        program = pathlib.Path(str(argv[0])).name
-        if program in ('ffmpeg', 'ffprobe'):
-            return real_run(argv, *args, **kwargs)
+        program = pathlib.Path(str(argv[0] if isinstance(argv, (list, tuple)) else argv)).name
         if program in stand_ins.programs:
             return stand_ins.programs[program](list(map(str, argv)))
-        raise AssertionError(f'package_data ran {argv}')
+        if program in _NETWORK_PROGRAMS:
+            raise AssertionError(f'package_data ran {argv}')
+        return real_run(argv, *args, **kwargs)
     monkeypatch.setattr(subprocess, 'run', run)
     client = lambda *args, **kwargs: _S3(stand_ins.objects)
     boto3 = types.ModuleType('boto3')
@@ -268,3 +272,32 @@ def test_lahner_time_series_reads_the_source_and_never_changes_it(tmp_path, offl
         assert not built[0].exists()
     assert _tree(source) == before
     assert not list(tmp_path.glob('.brainscore-*'))
+
+
+def _algonauts_source(root, participants=(1, 2, 3, 5), film=b''):
+    """A tiny competition tree: one Friends film of 3 scans, one S7 and one OOD film."""
+    import h5py
+    for participant in participants:
+        sub = f'sub-{participant:02d}'
+        (root / 'fmri' / sub / 'func').mkdir(parents=True)
+        with h5py.File(root / 'fmri' / sub / 'func' / f'{sub}_task-friends_s1_bold.h5', 'w') as h5:
+            h5['ses-001_task-s01e01a'] = np.full((3, 1000), participant, dtype=np.float32)
+        counts = root / 'fmri' / sub / 'target_sample_number'
+        counts.mkdir()
+        np.save(counts / f'{sub}_friends-s7_fmri_samples.npy', {'s07e01a': 2})
+        np.save(counts / f'{sub}_ood_fmri_samples.npy', {'chaplin1': 2})
+    films = {'friends/s1/friends_s01e01a.mkv': film, 'friends/s7/friends_s07e01a.mkv': b'',
+             'ood/chaplin/task-chaplin1_video.mkv': b''}
+    for relative, content in films.items():
+        (root / 'stimuli/movies' / relative).parent.mkdir(parents=True, exist_ok=True)
+        (root / 'stimuli/movies' / relative).write_bytes(content)
+    (root / 'stimuli/movies/movie10').mkdir()
+
+
+def test_algonauts_fails_as_a_whole_when_a_participant_lacks_its_input(tmp_path, offline):
+    _algonauts_source(tmp_path / 'native', participants=(1, 3, 5))
+    with pytest.raises(LocalDataMissing) as missing:
+        package_data('algonauts2025', source=tmp_path / 'native', output=tmp_path / 'out')
+    assert 'algonauts2025_friends_sub02.nc' in str(missing.value)
+    assert data_builder_registry['algonauts2025']().access in str(missing.value)
+    assert not (tmp_path / 'out').exists()
