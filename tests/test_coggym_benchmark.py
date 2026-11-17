@@ -310,3 +310,25 @@ def test_a_text_answer_stored_as_missing_is_an_error_of_the_run(scored_reference
     run = json.loads((tmp_path / 'scored' / 'coggym' / 'run-001.json').read_text())
     errors = [str(trial.get('error')) for trial in run['trials'] if 'error' in trial]
     assert errors and all('no written answer on behavior:text (state missing' in error for error in errors)
+
+
+def test_an_evaluator_that_cannot_import_a_module_is_one_clear_load_error(reference):
+    root, _ = reference
+    (root / 'checkout/evaluation/providers.py').write_text('import a_package_the_folder_lacks\n')
+    with pytest.raises(LoadError) as refused:
+        brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root)
+    message = str(refused.value)
+    assert 'CogGym.Hu2023Fine.exp1' in message and 'a_package_the_folder_lacks' in message
+    assert str(root) in message
+
+
+@pytest.mark.parametrize('marker', ['[]', '{"revision": "a1cd9df1118fec80eba7463de237d1497d77e041"}', 'not json'])
+def test_a_folder_with_an_incomplete_readiness_record_is_one_clear_load_error(reference, marker):
+    root, _ = reference
+    if marker.startswith('{'):           # the right commit and requirements, but no package list
+        record = json.loads((root / 'ready.json').read_text())
+        del record['freeze']
+        marker = json.dumps(record)
+    (root / 'ready.json').write_text(marker)
+    with pytest.raises(LoadError, match='not a ready CogGym folder'):
+        brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root)

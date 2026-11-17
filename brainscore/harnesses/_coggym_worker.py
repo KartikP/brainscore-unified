@@ -74,16 +74,26 @@ class _Provider:
 
 def main(checkout):
     pipe = _Pipe()
-    # CogGym's evaluation package from the checkout; its providers module first, as CogGym's
-    # own client imports it (it needs the Google SDK even for a local model).
-    _load('evaluation', checkout / 'evaluation' / '__init__.py', package=True)
-    importlib.import_module('evaluation.providers')
-    cli = importlib.import_module('evaluation.cli')
-    analysis = importlib.import_module('evaluation.analyze')
-    validation = _load('_coggym_validation', Path(__file__).with_name('coggym_validation.py'))
+    try:
+        # CogGym's evaluation package from the checkout; its providers module first, as CogGym's
+        # own client imports it (it needs the Google SDK even for a local model).
+        _load('evaluation', checkout / 'evaluation' / '__init__.py', package=True)
+        importlib.import_module('evaluation.providers')
+        cli = importlib.import_module('evaluation.cli')
+        analysis = importlib.import_module('evaluation.analyze')
+        validation = _load('_coggym_validation', Path(__file__).with_name('coggym_validation.py'))
+        startup = None
+    except Exception as error:
+        # The evaluator cannot start (a missing package, a broken checkout): every command is
+        # answered with this error, so the parent reports it in full.
+        startup = {'type': type(error).__name__, 'message': str(error),
+                   'traceback': traceback.format_exc(), 'startup': True}
     experiment, trials = None, {}
     while True:
         command = pipe.receive()
+        if startup is not None:
+            pipe.send({'failed': startup})
+            continue
         try:
             if command['do'] == 'prepare':
                 experiment = cli.load_experiment(checkout / 'EML' / command['experiment'])

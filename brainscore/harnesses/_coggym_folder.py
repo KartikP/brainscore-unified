@@ -101,8 +101,10 @@ def _check_ready(identifier, folder):
     except (OSError, ValueError):
         marker = None
     expected = {'revision': REFERENCE_REVISION, 'requirements_sha256': _requirements_hash()}
-    if (marker is None or {key: marker.get(key) for key in expected} != expected
-            or not environment_python(folder).exists()):
+    complete = (isinstance(marker, dict) and {key: marker.get(key) for key in expected} == expected
+                and isinstance(marker.get('freeze'), list)
+                and all(isinstance(line, str) for line in marker['freeze']))
+    if not complete or not environment_python(folder).exists():
         raise LoadError(
             f'{identifier}: {folder} exists but is not a ready CogGym folder for commit '
             f'{REFERENCE_REVISION} and the pinned requirements (no matching ready.json, or no '

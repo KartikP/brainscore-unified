@@ -106,6 +106,19 @@ def _evaluator(folder: Path, log_directory: Path) -> ChildProcess:
                         log_directory=log_directory, idle_timeout_s=_EVALUATOR_SILENCE_S)
 
 
+def _refuse_start(identifier: str, folder: Path, error: ChildFailed) -> None:
+    """An evaluator that could not import a module becomes one load error with the next step."""
+    if error.error_type in ('ModuleNotFoundError', 'ImportError'):
+        from brainscore import LoadError
+        from brainscore.harnesses._coggym_folder import REQUIREMENTS
+        raise LoadError(
+            f"{identifier}: CogGym's evaluator could not start in {folder}: {error}. The folder's "
+            f'environment lacks a module that CogGym imports. Next step: remove {folder} and load '
+            f'the benchmark again with installs allowed (BS_INSTALL_DEPENDENCIES unset), so '
+            f'Brain-Score makes it anew; if the error comes back, the pinned list {REQUIREMENTS} '
+            f'lacks the package.') from error
+
+
 def _answer(adapter):
     """The parent's side of a model call: the adapter's reply, or the failure CogGym records."""
     def answer(call):
@@ -346,7 +359,11 @@ class CogGymRunner:
         # CogGym's trial selection and prompts, from its evaluator in its own environment.
         with tempfile.TemporaryDirectory(prefix='coggym-prepare-') as logs:
             with _evaluator(self.folder, Path(logs)) as child:
-                prepared = child.ask({'do': 'prepare', 'experiment': experiment, 'trial_ids': requested})
+                try:
+                    prepared = child.ask({'do': 'prepare', 'experiment': experiment, 'trial_ids': requested})
+                except ChildFailed as error:
+                    _refuse_start(f'CogGym.{experiment.replace("/", ".")}', self.folder, error)
+                    raise
         # The evaluator's environment, for the record of every run (the scoring environment's
         # fingerprint does not cover it).
         marker = json.loads((self.folder / 'ready.json').read_text())

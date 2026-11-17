@@ -82,11 +82,19 @@ def analyze(paths, eml, manifest, min_items=5):
         assert child.ask({'do': 'prepare', 'experiment': EXPERIMENT, 'trial_ids': ['trial-2']})['trials'][0]['id'] == 'trial-2'
 
 
-def test_a_child_that_exits_gives_a_clear_error_with_its_log(tmp_path):
+def test_a_worker_that_cannot_start_reports_its_error(tmp_path):
     with pytest.raises(ChildFailed) as failed:
         with _worker(tmp_path / 'no-checkout', tmp_path / 'log') as child:
             child.ask({'do': 'prepare', 'experiment': EXPERIMENT, 'trial_ids': None})
-    assert 'the child exited' in str(failed.value) and 'Error' in str(failed.value)
+    assert failed.value.error_type == 'FileNotFoundError'
+    assert child.process.poll() is not None
+
+
+def test_a_child_that_exits_gives_a_clear_error_with_its_log(tmp_path):
+    with pytest.raises(ChildFailed) as failed:
+        with _stand_in(tmp_path, 'sys.stderr.write("a fixture failure\\n"); sys.exit(3)\n') as child:
+            child.ask({'do': 'prepare'})
+    assert 'the child exited' in str(failed.value) and 'a fixture failure' in str(failed.value)
     assert child.process.poll() is not None
 
 
