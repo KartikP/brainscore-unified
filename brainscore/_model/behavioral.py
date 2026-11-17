@@ -491,15 +491,12 @@ class BehavioralReadout:
                     f"Subject '{owner.identifier}' cannot give {LOG_PROBABILITIES} for a "
                     "Segments task: its likelihood= part states no 'segment' layout "
                     "(likelihood={'continuation': ..., 'segment': ...}).", task_type=task.task_type)
-            # The segment part scores the row's parts only: nothing else can be shown.
-            shown = [name for name, on in (('an instruction', bool((task.instruction or '').strip())),
-                                           ('TaskContext.present', task.present is not None),
-                                           ('earlier trials', task.trial_memory != 'none'
-                                            or owner._memory == 'trial_history')) if on]
-            if shown:
+            # The segment part scores the row's parts only: earlier trials cannot be shown. The
+            # parts each trial shows are checked before any call (_segment_answers).
+            if task.trial_memory != 'none':
                 raise ExecutionNotFeasibleError(
                     f"Subject '{owner.identifier}' scores the parts of a Segments row only; it "
-                    f"cannot show {', '.join(shown)}.", task_type=task.task_type)
+                    "cannot show earlier trials (trial_memory='history').", task_type=task.task_type)
             return 'likelihood', None
         readout_wired = (owner._behavioral_readout_layer is not None
                          and bool(owner._extractors) and task.fitting_stimuli is not None)
@@ -783,9 +780,9 @@ class BehavioralReadout:
         if kinds - {('text',)} or len(widths) > 1:
             # ponytail: one assembly per answer; rows of different widths need one session each
             raise ExecutionNotFeasibleError(
-                f"Subject '{owner.identifier}' answers Segments rows that each show one text, with "
-                f"one number of parts in a session; got parts {sorted(kinds)} and widths "
-                f"{sorted(widths)}", task_type=self.task.task_type)
+                f"Subject '{owner.identifier}' answers Segments rows that each show one text (no "
+                f"instruction, no picture), with one number of parts in a session; got parts "
+                f"{sorted(kinds)} and widths {sorted(widths)}", task_type=self.task.task_type)
 
         def call(row, prompt):
             parts.note('likelihood', owner._segment_likelihood, serves=channels)
