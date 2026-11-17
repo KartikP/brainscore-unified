@@ -120,7 +120,7 @@ def _intervention(model, *parts):
 
 def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
                       vision: Tuple[str, str], language: Tuple[str, str], dtype: str, download_gb: float,
-                      pixels: Optional[Mapping[str, Any]] = None, video: bool = False,
+                      image_processor_kwargs: Optional[Mapping[str, Any]] = None, video: bool = False,
                       audio: Optional[Tuple[str, str, Any]] = None,
                       probabilities: Union[str, Tuple[str, str]] = 'readout',
                       device_map: Optional[Union[str, dict]] = None, revision: Optional[str] = None,
@@ -132,8 +132,8 @@ def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
     :param language: the same for the causal language model (recorded by ``TextWrapper``).
     :param dtype: the precision the weights load in (``'bfloat16'``, ``'float16'``, ``'float32'``).
     :param download_gb: the approximate checkpoint size, for the download check.
-    :param pixels: the settings of the processor's image part that give each picture whole as
-        ``(C, H, W)`` (``{}`` when its defaults do). Given, the vision module takes those pixels
+    :param image_processor_kwargs: the settings of the processor's image part that give each
+        picture as one whole image (``{}`` when its defaults do). Given, the vision module takes those pixels
         and ``PytorchWrapper`` with ``LayerPCA(1000)`` records it; left out, the module takes the
         processor's flattened patches (Qwen-VL layout) and ``VLMVisionWrapper`` records it.
     :param video: also record clips through the processor's video part (``VLMVideoWrapper``,
@@ -149,9 +149,9 @@ def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
         family whose parts' block lists start with the same name.
     :param provenance: the registration's own facts, added to the score's provenance.
     """
-    if pixels is not None and video:
+    if image_processor_kwargs is not None and video:
         raise ValueError('video=True records clips through the flattened-patch video processor '
-                         '(VLMVideoWrapper); no clip extractor fits a vision part given pixels=.')
+                         '(VLMVideoWrapper); no clip extractor fits a vision part given image_processor_kwargs=.')
     from brainscore import BrainScoreModel
     from brainscore.model_helpers.provenance import ProvenanceSubject
     from brainscore.model_helpers.replies import chat_parts
@@ -169,7 +169,7 @@ def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
         name=depth_layers(language_blocks, DEPTH_TABLE['language'])['language_system'],
         modality=('text', 'vision'))
 
-    if pixels is None:
+    if image_processor_kwargs is None:
         from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
         image = VLMVisionWrapper(model=vision_module, processor=processor, identifier=f'{identifier}-vision',
                                  device=_placed(vision_module))
@@ -183,7 +183,7 @@ def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
                              f'device in device_map.')
         image = PytorchWrapper(model=vision_module, identifier=f'{identifier}-vision', device=device,
                                preprocessing=partial(_whole_images, image_processor=processor.image_processor,
-                                                     settings=dict(pixels)))
+                                                     settings=dict(image_processor_kwargs)))
         # Every patch token is kept, too many features for PLS: reduce each layer to 1000.
         LayerPCA.hook(image, n_components=1000)
     extractor = {'vision': image, 'text': TextWrapper(

@@ -166,13 +166,13 @@ def test_the_registration_states_the_part_for_probabilities():
     assert _build()._subject.capability_config['behavior-sessions']['behavior:probabilities'] == 'readout'
 
 
-def test_pixels_record_the_vision_part_with_pca():
+def test_image_processor_kwargs_record_the_vision_part_with_pca():
     from brainscore_vision.model_helpers.activations.pca import LayerPCA
     from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
-    image = _build(pixels={'do_image_splitting': False})._subject.extractor['vision']
+    image = _build(image_processor_kwargs={'do_image_splitting': False})._subject.extractor['vision']
     assert isinstance(image, PytorchWrapper) and LayerPCA.is_hooked(image)
     with pytest.raises(ValueError, match='video'):
-        _build(pixels={}, video=True)
+        _build(image_processor_kwargs={}, video=True)
 
 
 def test_precision_and_device_map_reach_the_load():
@@ -188,7 +188,7 @@ def test_every_extractor_keeps_the_loaded_placement(monkeypatch):
     """A device map decides where each part is: no extractor moves a part to its own default device."""
     monkeypatch.setattr('brainscore.model_helpers._device.select_device',
                         lambda device=None: torch.device(device) if device else torch.device('meta'))
-    for settings in ({}, {'pixels': {}}):
+    for settings in ({}, {'image_processor_kwargs': {}}):
         inner = _build(device_map='auto', **settings)._subject
         for key in ('vision', 'text'):
             module = inner.extractor[key]._model
@@ -213,7 +213,7 @@ def test_a_part_left_on_meta_by_a_device_map_stays_there(monkeypatch):
     inner = build()._subject
     assert {p.device.type for p in inner.extractor['vision']._model.parameters()} == {'meta'}
     with pytest.raises(ValueError, match='one device'):
-        build(pixels={})
+        build(image_processor_kwargs={})
 
 
 def test_a_missing_class_is_named_before_the_download_check(monkeypatch):

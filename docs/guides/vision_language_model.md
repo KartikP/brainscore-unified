@@ -59,7 +59,7 @@ Find each value:
 | class | `architectures` in the Hub `config.json` (a mixture-of-experts model has its own class; its paths stay the same) |
 | `vision`, `language` | `print(model)` of the class built from its config on the meta device; the module path, then the path of the repeated blocks inside it |
 | `video` | `True` only when the vision part takes the processor's flattened patches (Qwen-VL, Qwen2.5-Omni, GLM-4.1V) |
-| `pixels` | for a vision part that takes `(B, C, H, W)`: the image-processor settings that give each picture whole, for example `{'do_image_splitting': False}` (SmolVLM), `{}` (Gemma 3) |
+| `image_processor_kwargs` | for a vision part that takes `(B, C, H, W)`: the image-processor settings that give each picture whole, for example `{'do_image_splitting': False}` (SmolVLM), `{}` (Gemma 3) |
 | `audio` | `(module path, block list path, extractor)` of an audio encoder |
 | `device_map` | `'auto'` for a model that does not fit one accelerator |
 

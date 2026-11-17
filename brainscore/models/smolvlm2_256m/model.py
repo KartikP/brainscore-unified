@@ -18,6 +18,6 @@ def get_model(identifier: str):
         language=('model.text_model', 'layers'),
         dtype='bfloat16',
         download_gb=1.0,                                  # the Hub files are float32
-        pixels={'do_image_splitting': False},             # whole pictures as (B, C, H, W)
+        image_processor_kwargs={'do_image_splitting': False},  # one whole image per picture
         probabilities='readout',                          # fitted on the task's fitting stimuli
     )
