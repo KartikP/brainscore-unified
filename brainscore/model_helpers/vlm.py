@@ -62,19 +62,15 @@ def _load(identifier: str, hf_id: str, model_class: str, dtype: str, download_gb
 def _pixel_extractor():
     """``PytorchWrapper`` that exports a bfloat16 activation as float32 (NumPy has no bfloat16);
     the network still computes in bfloat16, and every other dtype is exported as
-    ``PytorchWrapper`` exports it."""
-    import torch
+    ``PytorchWrapper`` exports it (``as_numpy``, through the extractors' one hook helper)."""
     from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
+    from brainscore.model_helpers._extractors import _hook, as_numpy
 
     class Float32Export(PytorchWrapper):
         def register_hook(self, layer, layer_name, target_dict):
-            def hook_function(_layer, _input, output, name=layer_name):
-                if isinstance(output, (tuple, list)):
-                    output = output[0]
-                if output.dtype == torch.bfloat16:
-                    output = output.float()
-                target_dict[name] = PytorchWrapper._tensor_to_numpy(output)
-            return layer.register_forward_hook(hook_function)
+            def keep(output, name=layer_name):
+                target_dict[name] = as_numpy(output)
+            return _hook(layer, layer_name, keep)
     return Float32Export
 
 
