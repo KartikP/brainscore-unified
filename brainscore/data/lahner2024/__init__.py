@@ -126,8 +126,8 @@ data_builder_registry['lahner2024-timeresolved'] = lambda: DataBuilder(
            'is read where it is and never changed.',
     needs='the `aws` command, nibabel and nilearn; about 20 GB of disk at a time (about 200 GB pass '
           'through); hours.',
-    writes=f'`assy_{TIMERESOLVED_ASSEMBLY_ID}.nc` and `{TIMERESOLVED_EVENTS_ID}.csv`. Use them: put each '
-           'at `$BRAINIO_HOME/<sha1>/<file name>`.',
+    writes=f'`assy_{TIMERESOLVED_ASSEMBLY_ID}.nc` and `{TIMERESOLVED_EVENTS_ID}.csv`. Use them: '
+           'only a file whose sha1 equals the registered one: put it at `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), where the loader reads it in place of the download.',
     build=f'python -m brainscore.data.lahner2024.data_packaging.prepare_timeresolved_assembly '
           f'--output-path {{output}}/assy_{TIMERESOLVED_ASSEMBLY_ID}.nc '
           f'--events-path {{output}}/{TIMERESOLVED_EVENTS_ID}.csv '
@@ -143,7 +143,8 @@ data_builder_registry['lahner2024-motion'] = lambda: DataBuilder(
     layout='none needed: the script lists and downloads the fMRIPrep confounds files itself into a '
            'private work folder (deleted after the build).',
     needs='boto3; a small download; minutes.',
-    writes=f'`{TIMERESOLVED_MOTION_ID}.csv`. Use it: put it at `$BRAINIO_HOME/<sha1>/<file name>`.',
+    writes=f'`{TIMERESOLVED_MOTION_ID}.csv`. Use it: '
+           'only a file whose sha1 equals the registered one: put it at `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), where the loader reads it in place of the download.',
     build=f'python -m brainscore.data.lahner2024.data_packaging.prepare_motion_sidecar '
           f'--output-path {{output}}/{TIMERESOLVED_MOTION_ID}.csv --cache-dir {{work}}',
     sha1={f'{TIMERESOLVED_MOTION_ID}.csv': TIMERESOLVED_MOTION_SHA1},

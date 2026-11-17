@@ -46,7 +46,7 @@ class DataBuilder:
     :param access: what access it needs: public, an account, a data-use agreement or private, and how to ask
     :param layout: the files ``package_data`` expects in the source folder
     :param needs: the tools, the disk space and the time
-    :param writes: the files written, and how they are used in place of a download
+    :param writes: the files written, and how the plugin's loader takes them (``Use ...``)
     :param build: the plugin's ``data_packaging`` script as a command line
         (``python -m <module> <arguments>``, optionally led by ``NAME=value`` words);
         ``{source}``, ``{output}`` and ``{work}`` (a private folder for downloads and
@@ -288,11 +288,11 @@ def _report(name: str, builder: DataBuilder, destination: Path, files: dict) -> 
         if registered is None:
             continue
         if registered == entry['sha1']:
-            print(f'    equals the registered sha1. To use it in place of the download, put it at '
-                  f'$BRAINIO_HOME/{registered}/{Path(relative).name} (BRAINIO_HOME defaults to ~/.brainio)')
+            print('    equals the registered sha1')
         else:
-            print(f'    differs from the registered sha1 {registered}: brainio refuses it in place of '
-                  'the download. Compare its values with the hosted file before you use it.')
+            print(f'    differs from the registered sha1 {registered}; a netCDF file can differ in bytes '
+                  'with equal values, so compare its values with the registered file before you use it')
+    # How the plugin's loader takes the files: stated by the plugin, apart from the comparison.
     print(builder.writes)
 
 

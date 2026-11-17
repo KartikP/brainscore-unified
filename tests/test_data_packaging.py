@@ -213,8 +213,9 @@ def _made_up_rajalingham():
                                  load_stimulus_set=lambda identifier: stimuli)
 
 
-def test_rajalingham_prints_sha1_and_counts_and_names_the_cache_path_when_equal(
+def test_rajalingham_prints_sha1_and_counts_and_names_the_files_its_tool_reads(
         tmp_path, monkeypatch, capsys, offline):
+    from brainscore.data.rajalingham2018_2afc import TRIALS_CSV
     monkeypatch.setitem(sys.modules, 'brainscore_vision', _made_up_rajalingham())
     first = package_data('rajalingham2018-2afc', output=tmp_path / 'first')
     printed = capsys.readouterr().out
@@ -222,13 +223,16 @@ def test_rajalingham_prints_sha1_and_counts_and_names_the_cache_path_when_equal(
         rows = len(pd.read_csv(first / file))
         assert re.search(rf'{file} .*sha1 {_sha1(first / file)} .*rows {rows}\)', printed)
     assert 'differs from the registered sha1' in printed          # made-up data is not the registered data
-    # A rebuild that equals the registered sha1 is told where brainio uses it with no download.
+    # An equal rebuild is told about the files the scoring tool reads, not a download cache.
     registered = _sha1(first / 'trials.csv')
     original = data_builder_registry['rajalingham2018-2afc']()
     monkeypatch.setitem(data_builder_registry, 'rajalingham-fixture',
                         lambda: dataclasses.replace(original, sha1={'trials.csv': registered}))
     package_data('rajalingham-fixture', output=tmp_path / 'second')
-    assert f'$BRAINIO_HOME/{registered}/trials.csv' in capsys.readouterr().out
+    printed = capsys.readouterr().out
+    assert 'equals the registered sha1' in printed
+    assert TRIALS_CSV.parent.relative_to(DATA.parents[1]).as_posix() in printed
+    assert 'BRAINIO_HOME' not in printed
 
 
 def _gifti(path, n_tr):

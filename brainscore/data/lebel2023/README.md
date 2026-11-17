@@ -62,5 +62,5 @@ has not yet been compared with the registered sha1.
 - Access: as the LITCoder release page states; the recordings themselves are public (CC0).
 - Needs: about 3 GB of disk for the pickle and more than 3 GB of memory; time not measured.
 - Command: `python -m brainscore.data package lebel2023` with the source in `~/brainscore-data/sources/lebel2023` (or `--source <folder>`): `assembly_lebel_uts03.pkl` (the UTS03 assembly pickle of the LITCoder release).
-- Writes: `assy_LeBel2023-UTS03.nc`, `stimulus_LeBel2023-UTS03.csv`, `stimulus_LeBel2023-UTS03-words.csv`, with the registered default settings. Use them: put each at `$BRAINIO_HOME/<sha1>/<file name>`.
+- Writes: `assy_LeBel2023-UTS03.nc`, `stimulus_LeBel2023-UTS03.csv`, `stimulus_LeBel2023-UTS03-words.csv`, with the registered default settings. Use them: only a file whose sha1 equals the registered one: put it at `$BRAINIO_HOME/<sha1>/<file name>` (`~/.brainio` by default), where the loader reads it in place of the download.
 - Check: sha1 of `assy_LeBel2023-UTS03.nc` is `e03fd25503004d82ea932e272dbbdcb867d99a92`; sha1 of `stimulus_LeBel2023-UTS03.csv` is `9ddf67c7f3f9702473248eb15a877377d11732e6`; sha1 of `stimulus_LeBel2023-UTS03-words.csv` is `ce3d1ba0dc7457d189547ca8cda2c87ebcc8d5c8`

@@ -19,8 +19,9 @@ data_builder_registry['rajalingham2018-2afc'] = lambda: DataBuilder(
     layout='none: the script loads the two vision datasets through brainscore_vision.',
     needs='brainscore_vision; a small download; under a minute.',
     writes='`trials.csv` (one row per test image and distractor) and `tokens.csv` (one token image per '
-           'object). Use them: they are the files of this plugin folder; a rebuild with the registered '
-           'sha1 is the same file.',
+           'object). Use them: the scoring tool reads only `trials.csv` and `tokens.csv` in the plugin folder '
+           '`brainscore/data/rajalingham2018_2afc/`; equal sha1 values mean the rebuilt files are those files, '
+           'so there is nothing to put elsewhere.',
     build='python -m brainscore.data.rajalingham2018_2afc.data_packaging.build_trials --out {output}',
     sha1={'trials.csv': '71d7317315c7eb310bf25489d81cdebfdd2cdafd',
           'tokens.csv': '18f219fd4aa96567377b196b8f165b5c6996bc59'},
