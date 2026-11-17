@@ -379,6 +379,11 @@ def test_a_missing_package_and_a_missing_class_are_named_before_any_download(mon
                          num_experts_per_tok=1, moe_intermediate_size=32),
         vision_config=dict(depth=3, hidden_size=32, num_heads=2, intermediate_size=32, out_hidden_size=64,
                            deepstack_visual_indexes=[0, 1]))),
+    ('Qwen2_5_VLForConditionalGeneration', lambda t: t.Qwen2_5_VLConfig(
+        text_config=dict(vocab_size=300, num_hidden_layers=2, hidden_size=64, intermediate_size=64, num_attention_heads=2,
+                         num_key_value_heads=1, rope_scaling={'type': 'mrope', 'mrope_section': [8, 8, 16]}),
+        vision_config=dict(depth=3, hidden_size=32, num_heads=2, intermediate_size=32, out_hidden_size=64,
+                           fullatt_block_indexes=[2]))),
     ('SmolVLMForConditionalGeneration', lambda t: t.SmolVLMConfig(
         text_config=dict(vocab_size=1000, pad_token_id=2, num_hidden_layers=3, hidden_size=64, intermediate_size=64,
                          num_attention_heads=2, num_key_value_heads=1),

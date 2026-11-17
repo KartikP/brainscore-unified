@@ -1,10 +1,14 @@
 # UMI development study: vision-language models
 
-Thirteen Hugging Face vision-language models (Qwen3-VL, SmolVLM2, Gemma 3, InternVL3), registered
+Fifteen Hugging Face vision-language models (Qwen3-VL, Qwen2.5-VL, SmolVLM2, Gemma 3, InternVL3), registered
 by one set of rules so that they compare with each other. Each identifier ends in `_UMI-dev`.
 Everything of the study is in this folder: `model_configs.json` holds the values of each model,
 `model.py` builds every one of them, `test.py` tests them, `requirements.txt` states the packages
 they need beyond the reference environment.
+
+Qwen2.5-VL 3B and 7B also exist outside the study (`qwen2.5-vl-3b`, `qwen2.5-vl-7b`), with layers
+chosen by hand. A score of the study version and a score of that registration are different
+measurements of the same weights.
 
 ## The rules every model follows
 
@@ -32,10 +36,10 @@ they need beyond the reference environment.
 |---|---|---|
 | neural V1, V2, V4, IT, VWFA | all | |
 | neural language_system, from text | all | |
-| neural language_system during an answer | SmolVLM, InternVL | Qwen3-VL and Gemma 3 refuse such a session before any compute; needs a general change (below) |
-| clips (`vision:video`), from the vision part | Qwen3-VL | the other processors give no flattened clip patches |
+| neural language_system during an answer | SmolVLM, InternVL, Qwen2.5-VL | Qwen3-VL and Gemma 3 refuse such a session before any compute; needs a general change (below) |
+| clips (`vision:video`), from the vision part | Qwen3-VL | the other processors give no flattened clip patches; Qwen2.5-VL's clip path is not checked yet |
 | behavior: choice, probabilities, log_probabilities, rating, rt, text | all | |
-| perturbation (lesion, stimulation, pharmacological) | Qwen3-VL | the other families record their vision layers as PCA components, and a lesion addresses the module's units |
+| perturbation (lesion, stimulation, pharmacological) | Qwen3-VL, Qwen2.5-VL | the other families record their vision layers as PCA components, and a lesion addresses the module's units |
 | motor (grid game), from the observation | all | |
 
 ## Needs a general change

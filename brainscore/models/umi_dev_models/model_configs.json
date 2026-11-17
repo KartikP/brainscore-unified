@@ -64,6 +64,32 @@
     "device_map": "auto",
     "extra_forward_inputs": ["visual_pos_masks"]
   },
+  "qwen2.5-vl-3b_UMI-dev": {
+    "hf_id": "Qwen/Qwen2.5-VL-3B-Instruct",
+    "revision": "not pinned",
+    "model_class": "Qwen2_5_VLForConditionalGeneration",
+    "vision": ["model.visual", "blocks"],
+    "language": ["model.language_model", "layers"],
+    "dtype": "bfloat16",
+    "download_gb": 7.6,
+    "image_processor_kwargs": null,
+    "video": false,
+    "device_map": null,
+    "extra_forward_inputs": []
+  },
+  "qwen2.5-vl-7b_UMI-dev": {
+    "hf_id": "Qwen/Qwen2.5-VL-7B-Instruct",
+    "revision": "not pinned",
+    "model_class": "Qwen2_5_VLForConditionalGeneration",
+    "vision": ["model.visual", "blocks"],
+    "language": ["model.language_model", "layers"],
+    "dtype": "bfloat16",
+    "download_gb": 16.6,
+    "image_processor_kwargs": null,
+    "video": false,
+    "device_map": null,
+    "extra_forward_inputs": []
+  },
   "smolvlm2-256m_UMI-dev": {
     "hf_id": "HuggingFaceTB/SmolVLM2-256M-Video-Instruct",
     "revision": "not pinned",
