@@ -303,12 +303,14 @@ def _trials_to_assembly(trials, stimuli, layer: str, region: str):
     """Stack the one-presentation recordings of ``layer`` into a NeuroidAssembly for ``region``.
 
     The neuroid and extra-axis coordinates come from the first trial, and every
-    presentation coordinate the extractor gave (a clip's path) is kept; the
+    presentation coordinate the extractor gave (a clip's path) is kept, as are the
+    stimulus columns that can be coordinates (not a column of per-row options); the
     extractor gives every trial of a session the same extra axis (a clip's clock).
     """
     import numpy as np
     import pandas as pd
     from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+    from .answers import _presentation
 
     trials = [trial.get(layer) for trial in trials]
     for index, trial in enumerate(trials):
@@ -332,8 +334,7 @@ def _trials_to_assembly(trials, stimuli, layer: str, region: str):
                          and (name != dim or not listed and dim != 'presentation')]
     coords = {name: ('neuroid', np.asarray(first[name].values)) for name in names('neuroid')}
     coords['region'] = ('neuroid', [region] * first.sizes['neuroid'])
-    for column in stimuli.columns:
-        coords[column] = ('presentation', list(stimuli[column].values))
+    coords.update(_presentation(stimuli))       # the stimulus columns that can be coordinates
     coords.update({name: ('presentation', [trial[name].values[0] for trial in trials])
                    for name in names('presentation') if name not in stimuli.columns})
     coords.update({name: (dim, np.asarray(first[name].values)) for dim in extra for name in names(dim)})

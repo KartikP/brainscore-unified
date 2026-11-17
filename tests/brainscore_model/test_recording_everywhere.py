@@ -102,6 +102,22 @@ def test_recording_during_likelihood_scoring_is_the_prompt_pass():
     np.testing.assert_array_equal(recorded.values, expected)
 
 
+def test_log_probabilities_of_per_row_options_and_a_region_in_one_session():
+    """Each row gives its own options (EWoK's form) and a region is recorded in the same pass:
+    the recording keeps the scalar stimulus columns; the options stay with the answer."""
+    stimuli = STIMULI.assign(options=[['cat', 'dog house'], ['dog', 'dog house'], ['cat', 'dog']])
+    stimuli.identifier = 'everywhere-options'
+    session = stimulus_session(stimuli, ['behavior:log_probabilities', 'neural:A'],
+                               task=TaskContext(response=Choice('options', verbatim=True)))
+    _model(Net()).participate(session)
+    recorded = session.collect('neural:A')
+    assert recorded.sizes['presentation'] == len(stimuli)
+    assert list(recorded['sentence'].values) == list(stimuli['sentence'])
+    log_probabilities = session.collect('behavior:log_probabilities')
+    assert log_probabilities.attrs['response']['method'] == 'likelihood'
+    assert set(log_probabilities['response_state'].values) == {'valid'}
+
+
 def test_a_reply_with_implied_probabilities_records_the_prompt_pass():
     net = Net()
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
