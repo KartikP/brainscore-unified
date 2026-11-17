@@ -205,10 +205,10 @@ class TestInspectModel:
     def test_vit_profile_provisional_map(self):
         p = inspect_model(make_vit(8), identifier='vit-tiny')
         pmap = p.provisional_region_layer_map()
-        # the depth hypothesis over 8 blocks: V1 at 0.10 * 7 -> 1, IT at 0.90 * 7 -> 6
-        assert {'V1', 'V2', 'V4', 'IT'} <= set(pmap)
-        assert pmap['V1'] == 'encoder.layers.1'
-        assert pmap['IT'] == 'encoder.layers.6'
+        # canonical vision regions, V1 shallow, IT at the last block
+        assert set(pmap) == {'V1', 'V2', 'V4', 'IT'}
+        assert pmap['V1'] == 'encoder.layers.0'
+        assert pmap['IT'] == 'encoder.layers.7'
 
     def test_resnet_stages_are_one_vision_backbone_not_multimodal(self):
         # ResNet layer1..layer4 are integer-indexed block stacks of ONE vision
@@ -308,24 +308,42 @@ class TestNestedBlockHeuristic:
 # ── space_layers ─────────────────────────────────────────────────────────────
 
 class TestSpaceLayers:
-    def test_stated_depths_of_each_part(self):
-        from brainscore.tools.auto_register import (
-            DEFAULT_AUDIO_REGIONS, DEFAULT_LANGUAGE_REGIONS, DEFAULT_VISION_REGIONS)
-        # A 32-block vision encoder and a 36-layer decoder (Qwen2.5-VL-3B sizes).
-        vision = space_layers([f'blocks.{i}' for i in range(32)], DEFAULT_VISION_REGIONS)
-        assert {r: vision[r] for r in ('V1', 'V2', 'V4', 'IT')} == {
-            'V1': 'blocks.3', 'V2': 'blocks.8', 'V4': 'blocks.16', 'IT': 'blocks.28'}
-        language = space_layers([f'layers.{i}' for i in range(36)], DEFAULT_LANGUAGE_REGIONS)
-        assert language['language_system'] == 'layers.23'
-        assert space_layers([f'layers.{i}' for i in range(12)], DEFAULT_AUDIO_REGIONS)['A1'] == 'layers.6'
+    def test_single_region_takes_last(self):
+        assert space_layers(['a', 'b', 'c'], ['IT']) == {'IT': 'c'}
 
-    def test_rounds_half_up(self):
-        # 0.10 * 25 = 2.5 -> 3 (not 2 by rounding half to even), 0.50 * 9 = 4.5 -> 5
-        assert space_layers([f'l{i}' for i in range(26)], {'V1': 0.10}) == {'V1': 'l3'}
-        assert space_layers([f'l{i}' for i in range(10)], {'V4': 0.50}) == {'V4': 'l5'}
+    def test_even_spacing_endpoints(self):
+        layers = [f'l{i}' for i in range(12)]
+        m = space_layers(layers, ['V1', 'V2', 'V4', 'IT'])
+        assert m['V1'] == 'l0'
+        assert m['IT'] == 'l11'
+        # monotonically deeper
+        idx = [int(m[r][1:]) for r in ('V1', 'V2', 'V4', 'IT')]
+        assert idx == sorted(idx)
 
     def test_empty(self):
-        assert space_layers([], {'IT': 0.9}) == {}
+        assert space_layers([], ['IT']) == {}
+
+
+class TestDepthLayers:
+    """The depth hypothesis a registration asks for by name; the provisional maps above stay even."""
+
+    def test_stated_depths_of_each_part(self):
+        from brainscore.tools.auto_register import DEPTH_TABLE, depth_layers
+        # A 32-block vision encoder and a 36-layer decoder (Qwen2.5-VL-3B sizes).
+        vision = depth_layers([f'blocks.{i}' for i in range(32)], DEPTH_TABLE['vision'])
+        assert {r: vision[r] for r in ('V1', 'V2', 'V4', 'IT')} == {
+            'V1': 'blocks.3', 'V2': 'blocks.8', 'V4': 'blocks.16', 'IT': 'blocks.28'}
+        assert vision['VWFA'] == vision['IT']
+        assert depth_layers([f'layers.{i}' for i in range(36)], DEPTH_TABLE['language']) == {
+            'language_system': 'layers.23'}
+        assert depth_layers([f'layers.{i}' for i in range(12)], DEPTH_TABLE['audio']) == {'A1': 'layers.6'}
+
+    def test_rounds_half_up(self):
+        from brainscore.tools.auto_register import depth_layers
+        # 0.10 * 25 = 2.5 -> 3 (not 2 by rounding half to even), 0.50 * 9 = 4.5 -> 5
+        assert depth_layers([f'l{i}' for i in range(26)], {'V1': 0.10}) == {'V1': 'l3'}
+        assert depth_layers([f'l{i}' for i in range(10)], {'V4': 0.50}) == {'V4': 'l5'}
+        assert depth_layers([], {'IT': 0.9}) == {}
 
 
 # ── scaffold ─────────────────────────────────────────────────────────────────
@@ -391,10 +409,9 @@ class TestAutoRegisterLive:
                                  preprocessing=preprocessing)
         from brainscore import BrainScoreModel
         assert isinstance(bs_model, BrainScoreModel)
-        # provisional vision map wired (two blocks: V1 at 0.10 -> 0, IT at 0.90 -> 1)
-        assert {'V1', 'V2', 'V4', 'IT'} <= set(bs_model._region_layer_map_dict)
+        # provisional vision map wired
+        assert set(bs_model._region_layer_map_dict) == {'V1', 'V2', 'V4', 'IT'}
         assert bs_model._region_layer_map_dict['V1'] == 'encoder.layers.0'
-        assert bs_model._region_layer_map_dict['IT'] == 'encoder.layers.1'
         assert 'vision:image' in bs_model.in_channels
 
     def test_vision_without_preprocessing_errors(self):

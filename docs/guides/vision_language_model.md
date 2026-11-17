@@ -4,7 +4,7 @@
 causal language model, and gives a subject: pictures (and clips) recorded from the
 vision part, text from the language model, written replies, option likelihoods and a
 fitted readout. The regions come from the stated depth hypothesis
-(`DEFAULT_*_REGIONS` in `brainscore/tools/auto_register.py`), not from a layer search;
+(`DEPTH_TABLE` in `brainscore/tools/auto_register.py`, asked for by the builder), not from a layer search;
 each score's provenance says so.
 
 A model plugin has the usual three files in `brainscore/models/<name>/`. The builder

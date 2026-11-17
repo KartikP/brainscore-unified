@@ -15,7 +15,7 @@ from functools import partial
 from typing import Any, Mapping, Optional, Tuple, Union
 
 from brainscore.tools.auto_register import (
-    DEFAULT_AUDIO_REGIONS, DEFAULT_LANGUAGE_REGIONS, DEFAULT_VISION_REGIONS, DEPTH_HYPOTHESIS, space_layers)
+    DEPTH_HYPOTHESIS, DEPTH_TABLE, depth_layers)
 
 # Share of each accelerator given over to weights under device_map='auto'; the rest holds activations.
 WEIGHT_FRACTION = 0.78
@@ -122,12 +122,12 @@ def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
     model, processor = _load(identifier, hf_id, model_class, dtype, download_gb, revision, device_map)
     vision_module, vision_blocks = _blocks(model, vision)
     language_module, language_blocks = _blocks(model, language)
-    region_layer_map = space_layers(vision_blocks, DEFAULT_VISION_REGIONS)
-    depths = dict(DEFAULT_VISION_REGIONS, **DEFAULT_LANGUAGE_REGIONS)
+    region_layer_map = depth_layers(vision_blocks, DEPTH_TABLE['vision'])
+    depths = dict(DEPTH_TABLE['vision'], **DEPTH_TABLE['language'])
     # The picture tokens enter the language model, so its layer is reached from text and
     # from a picture in an answering pass; the text extractor records it.
     region_layer_map['language_system'] = LayerSelector(
-        name=space_layers(language_blocks, DEFAULT_LANGUAGE_REGIONS)['language_system'],
+        name=depth_layers(language_blocks, DEPTH_TABLE['language'])['language_system'],
         modality=('text', 'vision'))
 
     if pixels is None:
@@ -149,9 +149,9 @@ def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
     if audio is not None:
         root, blocks, extractor['audio'] = audio
         _, audio_blocks = _blocks(model, (root, blocks))
-        depths.update(DEFAULT_AUDIO_REGIONS)
+        depths.update(DEPTH_TABLE['audio'])
         region_layer_map.update({region: LayerSelector(name=layer, modality='audio') for region, layer
-                                 in space_layers(audio_blocks, DEFAULT_AUDIO_REGIONS).items()})
+                                 in depth_layers(audio_blocks, DEPTH_TABLE['audio']).items()})
 
     parts = {'intervention': _intervention(model, vision, language, audio)} if intervention else {}
     reply, likelihood = chat_parts(model, processor, chat_template_kwargs=chat_template_kwargs)
