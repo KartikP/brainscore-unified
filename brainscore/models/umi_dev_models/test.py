@@ -497,6 +497,24 @@ def test_qualify_the_family(identifier, monkeypatch, tmp_path):
         assert study._whole_images([wide, wide], processor.image_processor, config['image_processor_kwargs']).shape[0] == 2
     else:
         assert len(processor.image_processor(images=[Image.open(wide)], return_tensors='pt')['image_grid_thw']) == 1
+    # The same picture when the model answers: one whole image, the pixels of the recording path.
+    if config['image_processor_kwargs'] is not None:
+        tall = str(tmp_path / 'tall.png')
+        Image.new('RGB', (1024, 256), (30, 160, 90)).save(tall)
+        reference = study._whole_images([tall], processor.image_processor, config['image_processor_kwargs'])
+        vision_module = network.get_submodule(config['vision'][0])
+        shown, forward = [], vision_module.forward
+
+        def seen(pixel_values, *args, **kwargs):
+            shown.append(pixel_values.detach().float().cpu().numpy())
+            return forward(pixel_values, *args, **kwargs)
+        monkeypatch.setattr(vision_module, 'forward', seen)
+        one = StimulusSet({'stimulus_id': ['tall'], 'image_file_name': [tall]})
+        one.identifier = 'umi-dev-qualify-tall'
+        _collect(subject, one, ['behavior:text'], TaskContext(response=Text(max_tokens=1)))
+        monkeypatch.setattr(vision_module, 'forward', forward)
+        answered = shown[0].reshape(-1, *reference.shape[1:])
+        assert answered.shape[0] == 1 and np.allclose(answered, reference.astype(answered.dtype), atol=0.05)
     # Each declared output through participate, exported as finite float32.
     pictures = _pictures(tmp_path, 4)
     fitting = _pictures(tmp_path / 'fit' if (tmp_path / 'fit').mkdir() is None else tmp_path, 4,

@@ -144,6 +144,21 @@ def _whole_images(paths, image_processor, settings):
     return np.concatenate(rows)
 
 
+class _StatedProcessor:
+    """The model's processor for the answering parts, called with the stated whole-image settings, so
+    that a model sees the same picture when it answers as when it is recorded (a parent processor can
+    have its own default, as InternVL's crop_to_patches). Everything else is the processor's own."""
+
+    def __init__(self, processor, settings):
+        self._processor, self._settings = processor, dict(settings)
+
+    def __getattr__(self, name):
+        return getattr(self._processor, name)
+
+    def __call__(self, *args, **kwargs):
+        return self._processor(*args, **{**self._settings, **kwargs})
+
+
 def _pixel_extractor():
     """``PytorchWrapper`` that exports a bfloat16 activation as float32 (NumPy has no bfloat16), through
     the extractors' own hook helper; the network computes in bfloat16, other dtypes export unchanged."""
@@ -225,7 +240,7 @@ def get_model(identifier: str):
     if config['video']:
         from brainscore.model_helpers.vlm_video_wrapper import VLMVideoWrapper
         extractor['video'] = VLMVideoWrapper(vision_module, processor, identifier=f'{identifier}-video')
-    reply, likelihood = chat_parts(model, processor)
+    reply, likelihood = chat_parts(model, processor if pixels is None else _StatedProcessor(processor, pixels))
     # A lesion addresses module units; a layer recorded as PCA components cannot select them.
     parts = {} if pixels is not None else {'intervention': _intervention(model, config['vision'], config['language'])}
     subject = BrainScoreModel(
