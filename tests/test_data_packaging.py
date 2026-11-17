@@ -11,6 +11,7 @@ import hashlib
 import importlib.util
 import pathlib
 import re
+import shlex
 import socket
 import sys
 import types
@@ -146,13 +147,12 @@ def _tree(folder):
 
 @pytest.mark.parametrize('folder', ['absent', 'empty'])
 def test_a_missing_source_says_what_to_get_and_where_to_put_it(tmp_path, offline, folder):
-    from brainscore.data.packaging import source_folder
     needs_source = [name for name, factory in data_builder_registry.items()
                     if factory().build and not factory().fetches]
     assert needs_source
     for name in needs_source:
         builder = data_builder_registry[name]()
-        source = source_folder(name)
+        source = tmp_path / 'home' / 'sources' / name      # the one rule, the same for every plugin
         if folder == 'empty':
             source.mkdir(parents=True, exist_ok=True)
         with pytest.raises(LocalDataMissing) as missing:
@@ -346,7 +346,7 @@ def test_the_algonauts_recovery_command_reads_the_folder_the_benchmark_names(tmp
         local.check_benchmark_assets('Algonauts2025-friends-sub01')
     # Run the command the message gives, as written, with the folder it names.
     command = str(missing.value).split('Then convert it:')[1].split('\n')[1].strip()
-    assert main(command.replace('<this folder>', str(prepared)).split()[3:]) == 0
+    assert main(shlex.split(command)[3:]) == 0
     local.check_benchmark_assets('Algonauts2025-friends-sub01')
     assert brainscore.load_dataset('Algonauts2025-friends-sub01', root=prepared).sizes['presentation'] == 3
 

@@ -31,7 +31,6 @@ import tempfile
 import warnings
 
 from brainscore import data_builder_registry
-from brainscore.data import local
 from brainscore.data.local import LocalDataMissing
 
 HOME_VARIABLE = 'BRAINSCORE_DATA_HOME'
@@ -57,8 +56,6 @@ class DataBuilder:
     :param requires: glob patterns under the source folder that must each match a file or
         folder (`` | `` separates alternatives); a source that lacks one gets the missing-source
         error. A source that is one file is matched by its name.
-    :param source_asset: the name of a local asset (``brainscore.data.local``) whose folder is
-        the source, when a benchmark also reads that folder: the one place of the source
     :param fetches: the script fetches its public source itself; no source folder is needed,
         and one that exists is only read
     """
@@ -72,7 +69,6 @@ class DataBuilder:
     sha1: dict = field(default_factory=dict)
     cannot: str = ''
     requires: tuple = ()
-    source_asset: str = ''
     fetches: bool = False
 
     def readme(self, name: str) -> str:
@@ -81,10 +77,6 @@ class DataBuilder:
             command = f'`python -m brainscore.data package {name}`'
             if self.fetches:
                 command += f'. Source folder: {self.layout}'
-            elif self.source_asset:
-                asset = local.REGISTRY[self.source_asset]
-                command += (f' with the source in `~/{asset.default_path}` (or `{asset.env_var}`, or '
-                            f'`--source <folder>`): {self.layout}')
             else:
                 command += (f' with the source in `~/brainscore-data/sources/{name}` '
                             f'(or `--source <folder>`): {self.layout}')
@@ -112,10 +104,9 @@ def data_home() -> Path:
 
 
 def source_folder(name: str) -> Path:
-    """Where the source of ``name`` is expected when no folder is given: the folder of its
-    local asset when it names one, else ``<data home>/sources/<name>``."""
-    asset = _builder(name).source_asset
-    return local.REGISTRY[asset].resolved() if asset else data_home() / 'sources' / name
+    """Where the source of ``name`` is expected when no folder is given (the same rule for
+    every plugin)."""
+    return data_home() / 'sources' / name
 
 
 def _builder(name: str) -> DataBuilder:
@@ -136,14 +127,9 @@ def _missing(name: str, builder: DataBuilder, source: Path, problem: str = '') -
         f'Put it in that folder, laid out as: {builder.layout}',
         f'Needs: {builder.needs}', '',
         f'Then run again:  python -m brainscore.data package {name}',
-        f'(or give another folder with --source, or set {_place_variable(name, builder)})',
+        f'(or give another folder with --source, or set {HOME_VARIABLE} so that '
+        f'{HOME_VARIABLE}/sources/{name} is the folder)',
     ])
-
-
-def _place_variable(name: str, builder: DataBuilder) -> str:
-    if builder.source_asset:
-        return f'{local.REGISTRY[builder.source_asset].env_var} to the folder'
-    return f'{HOME_VARIABLE} so that {HOME_VARIABLE}/sources/{name} is the folder'
 
 
 def _lacks(source: Path, patterns: tuple) -> str:

@@ -60,7 +60,8 @@ class LocalAsset:
     :param obtain: what to download, in a sentence
     :param prepare: shell command converting it into the benchmark's format,
         if conversion is needed. Downloads that are read directly leave this
-        empty.
+        empty. ``{<asset name>}`` stands for the folder of that asset, so the
+        command names the folders the benchmark reads.
     :param used_by: registered benchmark identifiers that need it; empty when
         only settings that no registered benchmark uses need it
     """
@@ -115,7 +116,11 @@ class LocalAsset:
             f'where it already is.',
         ]
         if self.prepare:
-            lines += ['', 'Then convert it:', f'    {self.prepare}']
+            import shlex
+            command = self.prepare
+            for name, asset in REGISTRY.items():      # {<asset name>}: that asset's folder
+                command = command.replace('{' + name + '}', shlex.quote(str(asset.resolved())))
+            lines += ['', 'Then convert it:', f'    {command}']
         if self.used_by:
             lines += ['', f'Needed by: {", ".join(self.used_by)}']
         return '\n'.join(lines)

@@ -33,7 +33,7 @@ CogGym's experiments, human results and scoring code come from the authors' repo
 
 ## Package a dataset from its source
 
-`package_data` builds a plugin's files from the original source, the way Brain-Score reads them. It looks for the source in one place: the `source` argument, else `$BRAINSCORE_DATA_HOME/sources/<name>`, else `~/brainscore-data/sources/<name>`.
+`package_data` builds a plugin's files from the original source, the way Brain-Score reads them. It looks for the source in one place, by the same rule for every plugin: the `source` argument, else `$BRAINSCORE_DATA_HOME/sources/<name>`, else `~/brainscore-data/sources/<name>`.
 
 ```python
 from brainscore.data import package_data
@@ -123,7 +123,7 @@ data_builder_registry['mystudy2026'] = lambda: DataBuilder(
 print(data_builder_registry['mystudy2026']().readme('mystudy2026'))
 ```
 
-`requires` names what the source folder must hold; a source that lacks it gets the error with the facts above. A script reads the source and never changes it: it writes into `{output}`, and downloads or intermediate files go into `{work}`, a private folder removed after the build. When a benchmark already reads the source from a local asset, `source_asset=` names that asset, so the source has one place. A dataset that cannot be rebuilt yet states `cannot=` (what is known, what a maintainer needs); one that is read as published leaves out `build`. `tests/test_data_packaging.py` fails a data plugin without a declaration or with a README that differs from it, and prints the block to paste.
+`requires` names what the source folder must hold; a source that lacks it gets the error with the facts above. A script reads the source and never changes it: it writes into `{output}`, and downloads or intermediate files go into `{work}`, a private folder removed after the build. A dataset that cannot be rebuilt yet states `cannot=` (what is known, what a maintainer needs); one that is read as published leaves out `build`. `tests/test_data_packaging.py` fails a data plugin without a declaration or with a README that differs from it, and prints the block to paste.
 
 Hosted files are fetched once, checked against a sha1 and cached (see `brainscore/data/lebel2023/hosted.py`). Data you may not redistribute stays local: declare it as a `LocalAsset` in your plugin's `__init__.py`, so users get instructions instead of a missing-file error, and `python -m brainscore.data` lists it. Name the command that prepares it in `prepare`. Read the location with `local.path(...)` when the data is needed, not at import. A second asset with the same name is refused.
 

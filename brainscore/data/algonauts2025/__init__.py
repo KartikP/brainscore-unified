@@ -23,6 +23,10 @@ _ALGONAUTS_IDENTIFIERS = (
     + ['Algonauts2025-friends-sub01-video',
        'Algonauts2025-friends-sub01-video-audio'])
 
+# Packages from the folder of the competition files into the folder the benchmarks read.
+_PACKAGE = ('python -m brainscore.data package algonauts2025 '
+            '--source {algonauts2025-root} --output {algonauts2025-prepared}')
+
 ALGONAUTS_ROOT = local.register(local.LocalAsset(
     name='algonauts2025-root',
     env_var='BRAINSCORE_ALGONAUTS_ROOT',
@@ -34,7 +38,7 @@ ALGONAUTS_ROOT = local.register(local.LocalAsset(
     obtain='The competition dataset via DataLad (~130 GB: 129 GB stimuli, ~1 GB '
            'fMRI per subject). Ubuntu 22.04 ships a git-annex too old for '
            'current DataLad; install it from conda-forge instead.',
-    prepare='python -m brainscore.data package algonauts2025 --output <the folder of algonauts2025-prepared>',
+    prepare=_PACKAGE,
     used_by=_ALGONAUTS_IDENTIFIERS,
 ))
 
@@ -51,7 +55,7 @@ ALGONAUTS_PREPARED = local.register(local.LocalAsset(
            'benchmarks read. Then cut the films into one file per scan with '
            'brainscore.data.algonauts2025.data_packaging.prepare_stimuli '
            '(see brainscore/data/algonauts2025/README.md).',
-    prepare='python -m brainscore.data package algonauts2025 --output <this folder>',
+    prepare=_PACKAGE,
     used_by=_ALGONAUTS_IDENTIFIERS,
 ))
 
@@ -71,7 +75,6 @@ data_builder_registry['algonauts2025'] = lambda: DataBuilder(
            '(participant 1), the media of the six registered benchmarks. '
            'Use them: set BRAINSCORE_ALGONAUTS_PREPARED to the output folder.',
     build='python -m brainscore.data.algonauts2025.data_packaging.package --source {source} --out {output}',
-    source_asset='algonauts2025-root',
     requires=('fmri/sub-0*/func/*.h5', 'fmri/sub-0*/target_sample_number/*.npy',
               'stimuli/movies/friends', 'stimuli/movies/movie10', 'stimuli/movies/ood'),
 )
