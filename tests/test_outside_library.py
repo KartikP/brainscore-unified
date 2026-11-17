@@ -8,6 +8,9 @@ environment and runs pip are recording stand-ins: nothing is cloned or installed
 import dataclasses
 import importlib.util
 import json
+import os
+import signal
+import time
 import re
 import sys
 from pathlib import Path
@@ -104,3 +107,24 @@ def test_a_python_that_is_absent_or_not_python_3_is_refused_before_anything_is_m
         module.ready_folder(dataclasses.replace(module.LANTERNFIELD, python=str(python)), 'Lanternfield.demo')
     assert 'Lanternfield.demo' in str(refused.value) and 'Python 3' in str(refused.value)
     assert commands.calls == [] and not (tmp_path / 'environments').exists()
+
+
+def test_a_helper_that_the_python_query_starts_does_not_outlive_the_query(lanternfield, tmp_path, monkeypatch):
+    """A launcher starts a helper, prints a Python 3 version and exits: the helper is stopped."""
+    module, _ = lanternfield
+    monkeypatch.setenv('BS_INSTALL_DEPENDENCIES', 'no')
+    launcher, pid_file = tmp_path / 'launcher', tmp_path / 'helper.pid'
+    launcher.write_text(f'#!/bin/sh\nsleep 60 >/dev/null 2>&1 &\necho $! > "{pid_file}"\necho 3.11.0\n')
+    launcher.chmod(0o755)
+    with pytest.raises(LoadError):
+        module.ready_folder(dataclasses.replace(module.LANTERNFIELD, python=str(launcher)), 'Lanternfield.demo')
+    helper = int(pid_file.read_text())
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        try:
+            os.kill(helper, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(0.05)
+    os.kill(helper, signal.SIGKILL)
+    pytest.fail('the helper outlived the Python query')

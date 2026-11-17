@@ -93,10 +93,11 @@ def python_version(library: Library) -> str:
     that is not found or is not Python 3 is refused (``ValueError``). Nothing is made here."""
     python = library.python or sys.executable
     try:
-        result = subprocess.run([python, '-c', 'import sys; print(*sys.version_info[:3], sep=".")'],
-                                capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL,
-                                env=_command_environment())
-        version = result.stdout.strip() if result.returncode == 0 else ''
+        # Under the supervisor, as every git and pip command: a helper the program starts is
+        # stopped with its process group.
+        version = _run([python, '-c', 'import sys; print(*sys.version_info[:3], sep=".")'])[:100].strip()
+    except subprocess.CalledProcessError:
+        version = ''
     except (OSError, subprocess.SubprocessError) as error:
         version = f'{type(error).__name__}: {error}'
     if not re.fullmatch(r'3\.\d+\.\d+', version):
