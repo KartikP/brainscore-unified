@@ -37,6 +37,8 @@ score = brainscore.score('clip-vit-b-32', 'MajajHong2015public.IT-pls')
 print(float(score), score.attrs.get('raw'))
 ```
 
+A score on behavior data that downloads no model weights: `brainscore.score('chance-baseline', 'Yeatman2021-lexical_decision-image')` downloads the ROAR stimuli and the human lexical decisions, and gives the chance floor of that benchmark. Compare a model with it.
+
 `score` accepts registered names or objects you built yourself. The random policy
 keeps its random state between runs, so build a new subject for a new score:
 

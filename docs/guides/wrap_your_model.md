@@ -273,6 +273,10 @@ print(session.collect('behavior:choice').values.tolist())   # [[1.0, 0.0], [1.0,
 print(session.collect('behavior:rt').values.tolist())       # [450.0, 450.0]
 ```
 
+## Which benchmarks fit
+
+`check_compatibility(model, benchmark)` (from `brainscore_core`) compares the declarations only and calls no method of the model. It returns the match (its `kind` is `'full'`, or `'partial'` when the model does not take some of the inputs) or raises `CompatibilityError` with the reason. `brainscore.list_benchmarks()` lists the identifiers; `brainscore.load_benchmark(identifier)` builds one, and building a benchmark can download its data. `brainscore.score` makes the same check first and returns N/A for a pair that does not fit.
+
 ## Register it (optional)
 
 You can always pass the object directly to `brainscore.score`. To load it by name, register a factory. In the Brain-Score repository: copy [templates/new_model](../../templates/new_model) into `brainscore/models`, and implement the factory and its test. In your own package: add the factory to `brainscore.model_registry` when the package is imported, and import the package before you load the model ([Your own package](your_own_package.md)).
