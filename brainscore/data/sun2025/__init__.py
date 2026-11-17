@@ -18,6 +18,7 @@ PREPARED = local.register(local.LocalAsset(
            'python -m brainscore.data.sun2025.data_packaging.fetch <new source directory>',
     prepare='python -m brainscore.data prepare Sun2025-second-order-motion '
             '--source <source directory> --output <new build directory>',
+    used_by=['Sun2025-motion-vector-error'],
 ))
 
 

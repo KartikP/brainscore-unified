@@ -3,7 +3,7 @@
 Registered dataset and stimulus set: **Sun2025-second-order-motion**.
 This plugin owns acquisition, source conversion, human responses, stimulus
 metadata and provenance.
-The registered Sun2025-motion-vector-error benchmark
+The registered [Sun2025-motion-vector-error benchmark](../../benchmarks/sun2025/README.md)
 consumes these data through the registries; it needs all 40 scenes unless a
 subset of scenes is named.
 
