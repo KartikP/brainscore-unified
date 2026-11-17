@@ -68,8 +68,10 @@ def input_device(model, device=None):
     if len(devices) != 1:
         raise ValueError(
             f'Cannot tell where the inputs of {type(model).__name__} go: its input parameters are on '
-            f'{sorted(map(str, devices)) or "meta only"}. State the input device: pass device=... '
-            f'to the wrapper (the model is not moved).')
+            f'{sorted(map(str, devices)) or "meta only"}. State the input device: an extractor wrapper '
+            f'takes device=... (the model is not moved); a reply, likelihood or clip pass takes the '
+            f'device of the module that the model names with get_input_embeddings(), so name one '
+            f'with parameters on one device.')
     return canonical_device(devices.pop())
 
 
