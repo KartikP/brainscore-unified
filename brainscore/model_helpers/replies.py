@@ -131,9 +131,12 @@ def _scores_alone(model, sequences, start: int) -> list:
     totals = []
     for sequence in sequences:
         ids = torch.tensor([sequence], device=device)
+        # The sum of the batched layout: every position gathered, the option's positions
+        # kept by a float32 mask, one sum over the row (the same order of terms as before).
+        scored = torch.tensor([[0] * start + [1] * (len(sequence) - start)], device=device)[:, 1:].float()
         with torch.no_grad():
-            logits = model(input_ids=ids, attention_mask=torch.ones_like(ids)).logits[0, start - 1:-1]
-        totals.append(float(logits.float().log_softmax(-1).gather(-1, ids[0, start:, None]).sum()))
+            logp = model(input_ids=ids, attention_mask=torch.ones_like(ids)).logits[:, :-1].float().log_softmax(-1)
+        totals.append(float((logp.gather(-1, ids[:, 1:, None])[..., 0] * scored).sum(1)[0]))
     return totals
 
 

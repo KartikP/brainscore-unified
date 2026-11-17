@@ -81,3 +81,91 @@ def test_implied_probabilities_keep_the_ratio_of_two_options_for_any_other_optio
     # The probabilities are float32 values of a softmax: rounding only (a batch of options moves
     # the ratio by about 0.02 here).
     np.testing.assert_allclose(ratios, [ratios[0]] * len(ratios), rtol=0, atol=1e-6)
+
+
+class _Characters:
+    """One token per character (its code), no start token; a chat template that shows the stimulus text."""
+    pad_token_id = eos_token_id = 0
+    pad_token = eos_token = '\x00'
+
+    def __call__(self, text, add_special_tokens=False, **kwargs):
+        return {'input_ids': [ord(c) for c in text], 'attention_mask': [1] * len(text)}
+
+    def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=True, **kwargs):
+        return ''.join(message['content'].split('\n\n')[0] + ' ' for message in messages)
+
+
+class _BatchIndependent(torch.nn.Module):
+    """Logits that depend only on the preceding token, never on the batch."""
+
+    def __init__(self, dtype):
+        super().__init__()
+        self.weight = torch.nn.Parameter(torch.zeros(1, dtype=dtype))
+
+    def forward(self, input_ids, attention_mask=None, **kwargs):
+        table = torch.linspace(-3, 3, 256, dtype=self.weight.dtype)
+        return types.SimpleNamespace(logits=torch.stack([torch.stack([torch.roll(table, int(token)) for token in row])
+                                                         for row in input_ids]))
+
+
+def _batched_layout(net, sequences, start):
+    """The values of the earlier batched layout: all options of a trial in one right-padded batch."""
+    width = max(len(sequence) for sequence in sequences)
+    ids = torch.tensor([sequence + [0] * (width - len(sequence)) for sequence in sequences])
+    mask = torch.tensor([[1] * len(sequence) + [0] * (width - len(sequence)) for sequence in sequences])
+    scored = torch.tensor([[0] * start + [1] * (len(sequence) - start) + [0] * (width - len(sequence))
+                           for sequence in sequences])[:, 1:].float()
+    with torch.no_grad():
+        logp = net(input_ids=ids, attention_mask=mask).logits[:, :-1].float().log_softmax(-1)
+    return (logp.gather(-1, ids[:, 1:, None])[..., 0] * scored).sum(1).tolist()
+
+
+CONTROL_TEXTS, CONTROL_OPTIONS = ['dogs', 'a cat'], ('a', 'long')
+
+
+@pytest.fixture
+def cpu(monkeypatch):
+    monkeypatch.setattr('brainscore.model_helpers._device.select_device', lambda device=None: 'cpu')
+
+
+def _control_stimuli():
+    stimuli = StimulusSet({'stimulus_id': ['c0', 'c1'], 'text': CONTROL_TEXTS,
+                           'options': [CONTROL_OPTIONS] * len(CONTROL_TEXTS)})
+    stimuli.identifier = 'options-alone-control'
+    return stimuli
+
+
+@pytest.mark.parametrize('dtype', [torch.float32, torch.float16])
+@pytest.mark.parametrize('kind', ['causal_lm', 'chat_parts'])
+def test_a_model_with_no_batch_effect_gives_the_values_of_the_batched_layout(cpu, kind, dtype):
+    """Scoring each option alone changes no value of a model whose output does not depend on the batch."""
+    net, tok = _BatchIndependent(dtype), _Characters()
+    session = stimulus_session(_control_stimuli(), ['behavior:log_probabilities'],
+                               TaskContext(response=Choice(labels='options', verbatim=True)))
+    _subject(kind, net, tok).participate(session)
+    found = session.collect('behavior:log_probabilities').transpose('presentation', 'choice').values
+    base = [_batched_layout(net, [tok(f'{text} {option}')['input_ids'] for option in CONTROL_OPTIONS],
+                            len(text)) for text in CONTROL_TEXTS]
+    assert found.tolist() == base
+
+
+@pytest.mark.parametrize('dtype', [torch.float32, torch.float16])
+def test_the_causal_helper_outside_verbatim_gives_the_values_of_the_batched_layout(cpu, dtype):
+    """The chat-template path of the causal-model helper: its implied probabilities equal those of a
+    likelihood that gives the batched layout's values."""
+    from brainscore import BrainScoreModel
+    net, tok = _BatchIndependent(dtype), _Characters()
+
+    def batched(prompt, candidates):
+        context = tok(tok.apply_chat_template([{'content': prompt.text()}]))['input_ids']
+        values = _batched_layout(net, [context + tok(c)['input_ids'] for c in candidates], len(context))
+        return dict(zip(candidates, values))
+    base = BrainScoreModel('batched-layout', in_channels={'text'}, likelihood=batched, capability_config={
+        'behavior-sessions': {'behavior:probabilities': ('likelihood', 'softmax')}})
+    tables = []
+    for model in (_subject('causal_lm', net, tok), base):
+        session = stimulus_session(_control_stimuli(), ['behavior:probabilities'],
+                                   TaskContext(response=Choice(labels='options')))
+        model.participate(session)
+        tables.append(session.collect('behavior:probabilities').values.tolist())
+    assert tables[0] == tables[1]
