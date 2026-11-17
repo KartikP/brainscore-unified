@@ -135,20 +135,23 @@ def _tree(folder):
     return {str(p.relative_to(folder)): _sha1(p) for p in sorted(folder.rglob('*')) if p.is_file()}
 
 
-def test_a_missing_source_says_what_to_get_and_where_to_put_it(tmp_path, monkeypatch, offline):
-    monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path / 'home'))
+@pytest.mark.parametrize('folder', ['absent', 'empty'])
+def test_a_missing_source_says_what_to_get_and_where_to_put_it(tmp_path, offline, folder):
+    from brainscore.data.packaging import source_folder
     needs_source = [name for name, factory in data_builder_registry.items()
                     if factory().build and not factory().fetches]
     assert needs_source
     for name in needs_source:
         builder = data_builder_registry[name]()
+        source = source_folder(name)
+        if folder == 'empty':
+            source.mkdir(parents=True, exist_ok=True)
         with pytest.raises(LocalDataMissing) as missing:
-            package_data(name)
+            package_data(name, output=tmp_path / 'out' / name)
         message = str(missing.value)
-        for fact in (builder.source, builder.access, builder.layout, builder.needs,
-                     str(tmp_path / 'home' / 'sources' / name)):
+        for fact in (builder.source, builder.access, builder.layout, builder.needs, str(source)):
             assert fact in message, f'{name}: the error lacks {fact!r}'
-        assert not (tmp_path / 'home' / 'packaged' / name).exists()
+        assert not (tmp_path / 'out' / name).exists()
 
 
 def test_a_plugin_with_no_builder_says_so(tmp_path):

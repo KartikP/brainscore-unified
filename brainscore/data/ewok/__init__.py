@@ -34,6 +34,7 @@ data_builder_registry['ewok'] = lambda: DataBuilder(
     writes='`items.json` (one item per contrast), `manifest.json` (counts and the items checksum), '
            '`build.json`. Use it: set BRAINSCORE_EWOK_ROOT to the output folder.',
     build='python -m brainscore.data.ewok.data_packaging.prepare {source} {output}',
+    requires=('**/*.csv | **/*.parquet | analyses/data.zip',),
 )
 
 

@@ -18,6 +18,7 @@ else ``~/brainscore-data/sources/<name>``; the output folder is ``output``, else
 ``.../packaged/<name>`` under the same root. Nothing is ever uploaded.
 """
 from dataclasses import dataclass, field
+import fnmatch
 import hashlib
 import json
 import os
@@ -52,6 +53,9 @@ class DataBuilder:
         source and never changes or deletes a file in it. Empty when there is no builder.
     :param sha1: file name to the sha1 the plugin registers for it
     :param cannot: when no builder exists yet: what is known and what a maintainer needs
+    :param requires: glob patterns under the source folder that must each match a file or
+        folder (`` | `` separates alternatives); a source that lacks one gets the missing-source
+        error. A source that is one file is matched by its name.
     :param fetches: the script fetches its public source itself; no source folder is needed,
         and one that exists is only read
     """
@@ -64,6 +68,7 @@ class DataBuilder:
     build: str = ''
     sha1: dict = field(default_factory=dict)
     cannot: str = ''
+    requires: tuple = ()
     fetches: bool = False
 
     def readme(self, name: str) -> str:
@@ -111,9 +116,11 @@ def _builder(name: str) -> DataBuilder:
     return factory()
 
 
-def _missing(name: str, builder: DataBuilder, source: Path) -> str:
+def _missing(name: str, builder: DataBuilder, source: Path, problem: str = '') -> str:
+    where = ([f'The source of {name} at', f'    {source}', f'is incomplete: {problem}'] if problem
+             else [f'The source of {name} is not at', f'    {source}'])
     return '\n'.join([
-        f'The source of {name} is not at', f'    {source}', '',
+        *where, '',
         f'Data needed: {builder.source}',
         f'Access: {builder.access}',
         f'Put it in that folder, laid out as: {builder.layout}',
@@ -122,6 +129,19 @@ def _missing(name: str, builder: DataBuilder, source: Path) -> str:
         f'(or give another folder with --source, or set {HOME_VARIABLE} so that '
         f'{HOME_VARIABLE}/sources/{name} is the folder)',
     ])
+
+
+def _lacks(source: Path, patterns: tuple) -> str:
+    """The first required pattern that matches nothing in ``source``, or ''."""
+    for pattern in patterns:
+        alternatives = [alternative.strip() for alternative in pattern.split('|')]
+        if source.is_file():
+            found = any(fnmatch.fnmatch(source.name, alternative.rsplit('/', 1)[-1]) for alternative in alternatives)
+        else:
+            found = any(next(source.glob(alternative), None) is not None for alternative in alternatives)
+        if not found:
+            return f'nothing matches {pattern}'
+    return ''
 
 
 def _run(command: str, source: Path, output: Path, work: Path) -> None:
@@ -195,8 +215,12 @@ def package_data(name: str, source: str | Path | None = None,
         print(f'{name}: nothing to package. {builder.writes}')
         return None
     native = Path(source).expanduser() if source is not None else source_folder(name)
-    if not builder.fetches and not native.exists():
-        raise LocalDataMissing(_missing(name, builder, native))
+    if not builder.fetches:
+        if not native.exists():
+            raise LocalDataMissing(_missing(name, builder, native))
+        lacks = _lacks(native, builder.requires)
+        if lacks:
+            raise LocalDataMissing(_missing(name, builder, native, lacks))
     destination = (Path(output).expanduser() if output is not None
                    else data_home() / 'packaged' / name).absolute()
     if destination.exists() or destination.is_symlink():
@@ -207,7 +231,13 @@ def package_data(name: str, source: str | Path | None = None,
     staging = Path(tempfile.mkdtemp(prefix='.brainscore-build-', dir=destination.parent))
     work = Path(tempfile.mkdtemp(prefix='.brainscore-work-', dir=destination.parent))
     try:
-        _run(builder.build, native, staging, work)
+        try:
+            _run(builder.build, native, staging, work)
+        except FileNotFoundError as missing:
+            if builder.fetches:
+                raise
+            # A required input the script did not find: the source is incomplete.
+            raise LocalDataMissing(_missing(name, builder, native, str(missing))) from missing
         files = {}
         for path in sorted(p for p in staging.rglob('*') if p.is_file()):
             if path.is_symlink():

@@ -71,6 +71,8 @@ data_builder_registry['algonauts2025'] = lambda: DataBuilder(
            '--participant 1 --media frames --prepared-root <output>` (see the README).',
     build='python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly '
           '--algonauts-root {source} --output-root {output}',
+    requires=('fmri/sub-0*/func/*.h5', 'fmri/sub-0*/target_sample_number/*.npy',
+              'stimuli/movies/friends', 'stimuli/movies/movie10', 'stimuli/movies/ood'),
 )
 
 

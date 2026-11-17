@@ -59,6 +59,7 @@ data_builder_registry['lebel2023'] = lambda: DataBuilder(
            'Use them: put each at `$BRAINIO_HOME/<sha1>/<file name>`.',
     build='BRAINSCORE_LEBEL_PICKLE={source}/assembly_lebel_uts03.pkl '
           'python -m brainscore.data.lebel2023.data_packaging.package_hosted --out {output}',
+    requires=('assembly_lebel_uts03.pkl',),
     sha1={f'assy_{hosted.ASSEMBLY_ID}.nc': hosted.SHA1['assembly'],
           f'stimulus_{hosted.TR_STIMULI_ID}.csv': hosted.SHA1['TR stimuli'],
           f'stimulus_{hosted.WORD_STIMULI_ID}.csv': hosted.SHA1['word stimuli']},
