@@ -1,6 +1,7 @@
 """The vision-language models of the UMI development study: one ``get_model`` for every entry of
 ``model_configs.json``, by the rules of ``README.md``. Everything of the study is in this folder."""
 import json
+import re
 from decimal import ROUND_HALF_UP, Decimal
 from functools import partial
 from pathlib import Path
@@ -8,6 +9,10 @@ from pathlib import Path
 from brainscore.model_helpers.provenance import ProvenanceSubject
 
 MODEL_CONFIGS = json.loads((Path(__file__).parent / 'model_configs.json').read_text())
+# The packages the study needs beyond the reference environment: stated once, in requirements.txt.
+REQUIREMENTS = [re.split(r'[<>=!~;\[ ]', line.strip())[0] for line in
+                (Path(__file__).parent / 'requirements.txt').read_text().splitlines()
+                if line.strip() and not line.startswith('#')]
 
 # The depth hypothesis: a region's layer is the block at f * (N - 1) of a part's N blocks,
 # rounded half up. No data chose these values; a change of a value takes a new version word.
@@ -29,7 +34,14 @@ def depth_layers(block_paths, depths):
 
 class _StudySubject(ProvenanceSubject):
     """The study's provenance on every response, and the one input the policy acts on: it reads the
-    observation's frame, so ``motor`` is answered from an observation only."""
+    observation's frame, so ``motor`` is answered from an observation only. A model whose language
+    model gets inputs v2's recording cannot read (``extra_forward_inputs``) refuses, before any
+    compute, a session that asks for the language layer together with an answer: the answering
+    pass is the one its recording would read."""
+
+    def __init__(self, subject, provenance, records_while_answering):
+        super().__init__(subject, provenance)
+        self._records_while_answering = records_while_answering
 
     @property
     def output_inputs(self):
@@ -38,15 +50,27 @@ class _StudySubject(ProvenanceSubject):
             inputs['motor'] = frozenset({'observation'})
         return inputs
 
+    def participate(self, session):
+        outputs = set(session.outputs or ())
+        if (not self._records_while_answering and 'neural:language_system' in outputs
+                and any(o.startswith('behavior') or o == 'motor' for o in outputs)):
+            from brainscore_core.compatibility import ExecutionNotFeasibleError
+            raise ExecutionNotFeasibleError(
+                f"'{self.identifier}' records neural:language_system in a session without an answer only: its "
+                f"language model gets {self._provenance['extra_forward_inputs']} in an answering pass, which "
+                f"the recording cannot read. Ask for the language layer in its own session.")
+        super().participate(session)
+
 
 def _refuse(identifier, config):
-    """A stated package that is missing, or a class this transformers lacks: named before any download."""
+    """A package of requirements.txt that is missing, or a class this transformers lacks: named before any
+    download."""
     import importlib
     import importlib.util
     import transformers
     from brainscore import LoadError
     utils = importlib.import_module('transformers.utils')
-    for package in config['requires']:
+    for package in REQUIREMENTS:
         # The check the processor itself makes (transformers.utils.is_<package>_available), else an import.
         available = getattr(utils, f'is_{package}_available', None)
         if not (available() if available else importlib.util.find_spec(package)):
@@ -59,12 +83,16 @@ def _refuse(identifier, config):
 
 
 def _load(identifier, config):
-    """The checkpoint and its processor (image part pinned), placed as ``device_map`` states."""
+    """The processor (image part pinned), then the checkpoint, placed as ``device_map`` states: a fault
+    of the processor shows before the large download."""
     import torch
     import transformers
     from brainscore_core.hf_compat import pin_image_processor
     from brainscore.models._downloads import hf_preflight
-    download = hf_preflight(identifier, config['hf_id'], config['download_gb'])
+    pinned = {} if config['revision'] == 'not pinned' else {'revision': config['revision']}
+    download = hf_preflight(identifier, config['hf_id'], config['download_gb'], **pinned)
+    processor = pin_image_processor(transformers.AutoProcessor.from_pretrained(config['hf_id'], **download),
+                                    config['hf_id'], **download)
     placement = {}
     if config['device_map'] is not None:
         placement['device_map'] = config['device_map']
@@ -76,8 +104,7 @@ def _load(identifier, config):
     if config['device_map'] is None:
         from brainscore.model_helpers._device import select_device
         model = model.to(select_device())
-    processor = transformers.AutoProcessor.from_pretrained(config['hf_id'], **download)
-    return model.eval(), pin_image_processor(processor, config['hf_id'], **download)
+    return model.eval(), processor
 
 
 def _one_device(identifier, module, part):
@@ -212,8 +239,10 @@ def get_model(identifier: str):
         **parts)
     depths = ', '.join(f'{region} {f:.2f}' for table in DEPTH_TABLE.values() for region, f in table.items())
     return _StudySubject(subject, {
-        'study': 'umi_dev_models', 'checkpoint': config['hf_id'], 'dtype': config['dtype'],
+        'study': 'umi_dev_models', 'checkpoint': config['hf_id'], 'revision': config['revision'],
+        'dtype': config['dtype'], 'extra_forward_inputs': config['extra_forward_inputs'],
         'device_map': config['device_map'],
         'region_layer_map_status': f'{DEPTH_HYPOTHESIS}: {depths}; no layer search',
         'readout_layer': f"{region_layer_map['IT']} (the IT layer of the vision part)",
-        'intervention': 'on' if parts else 'off: the vision layers are recorded as LayerPCA components'})
+        'intervention': 'on' if parts else 'off: the vision layers are recorded as LayerPCA components'},
+        records_while_answering=not config['extra_forward_inputs'])

@@ -41,8 +41,10 @@ class _Part(torch.nn.Module):
         parent.add_module(last, torch.nn.ModuleList(torch.nn.Linear(4, 4) for _ in range(4)))
         self._path = blocks
         self.embed = torch.nn.Embedding(len(WORDS), 4) if words else None
+        self.passes = 0
 
     def forward(self, pixel_values=None, input_ids=None, attention_mask=None, grid_thw=None, **_):
+        self.passes += 1
         x = self.embed(input_ids) if self.embed is not None else (
             pixel_values.reshape(len(pixel_values), -1)[:, :4].to(next(self.parameters()).dtype))
         for block in self.get_submodule(self._path):
@@ -227,6 +229,7 @@ def test_each_declared_output_comes_out_of_one_session(stand_in, identifier):
     provenance = subject._provenance
     assert provenance['region_layer_map_status'].startswith(study.DEPTH_HYPOTHESIS)
     assert provenance['readout_layer'].startswith(subject.region_layer_map['IT'])
+    assert provenance['revision'] == config['revision']
     assert {f'neural:{r}' for r in ('V1', 'V2', 'V4', 'IT', 'VWFA', 'language_system')} | {
         'behavior:choice', 'behavior:probabilities', 'behavior:log_probabilities', 'behavior:rating',
         'behavior:rt', 'behavior:text', 'motor'} <= subject.out_channels
@@ -295,6 +298,32 @@ def test_each_declared_output_comes_out_of_one_session(stand_in, identifier):
         assert np.array_equal(_collect(subject, pictures, ['neural:IT'], passive)['neural:IT'].values, intact)
 
 
+@pytest.mark.parametrize('identifier', IDENTIFIERS)
+def test_a_written_answer_with_the_language_layer_runs_or_is_refused_before_compute(stand_in, identifier):
+    """A trial of a picture and text, asking for a written answer and the language layer: the answering
+    pass is recorded where v2 can read it, else the session is refused before any forward pass. Pre-flight
+    cannot tell the two apart (it accepts the text input for the language layer)."""
+    from brainscore_core.compatibility import ExecutionNotFeasibleError, check_compatibility
+    config, subject = study.MODEL_CONFIGS[identifier], model_registry[identifier]()
+    pictures = _pictures(stand_in, 2)
+    trials = StimulusSet({'stimulus_id': ['p0', 'p1'], 'image_file_name': list(pictures['image_file_name']),
+                          'sentence': ['the cat', 'the dog']})
+    trials.identifier = 'umi-dev-picture-and-text'
+    outputs = ['behavior:text', 'neural:language_system']
+    assert check_compatibility(subject, SimpleNamespace(
+        identifier='picture-and-text', trial_memory='none', required_input_channels=frozenset({'vision:image', 'text'}),
+        requested_output_channels=frozenset(outputs))).kind == 'full'
+    task = TaskContext(response=Text(max_tokens=2), present=('image', 'text'))
+    network = subject._subject._model
+    vision = network.get_submodule(config['vision'][0])
+    if config['extra_forward_inputs']:
+        with pytest.raises(ExecutionNotFeasibleError, match='language_system'):
+            _collect(subject, trials, outputs, task)
+        assert vision.passes == 0
+    else:
+        assert _collect(subject, trials, outputs, task)['neural:language_system'].shape[0] == 2
+
+
 @pytest.mark.parametrize('processor, whole, tiled', [
     ('SmolVLMImageProcessor', {'do_image_splitting': False}, {'do_image_splitting': True}),
     ('Gemma3ImageProcessor', {'do_pan_and_scan': False}, {'do_pan_and_scan': True, 'pan_and_scan_min_crop_size': 8,
@@ -325,12 +354,15 @@ def test_a_part_offloaded_or_spread_is_refused():
 
 
 def test_a_missing_package_and_a_missing_class_are_named_before_any_download(monkeypatch):
+    """The one statement of a package is requirements.txt; a load without it says what to install."""
+    assert study.REQUIREMENTS == ['num2words']
     import transformers.utils
     from brainscore import LoadError
     monkeypatch.setattr(transformers.utils, 'is_num2words_available', lambda: False)
     monkeypatch.setattr(study, '_load', lambda *a: pytest.fail('no load before the refusal'))
     with pytest.raises(LoadError, match="needs the package 'num2words', which is not installed. Next step"):
         model_registry['smolvlm2-256m_UMI-dev']()
+    monkeypatch.setattr(transformers.utils, 'is_num2words_available', lambda: True)
     with pytest.raises(LoadError, match='NoSuchVLM'):
         study._refuse('m', dict(study.MODEL_CONFIGS['qwen3-vl-2b_UMI-dev'], model_class='NoSuchVLM'))
 
