@@ -70,7 +70,7 @@ def test_a_folder_that_appears_while_the_folder_is_made_is_never_replaced(fresh,
         _load()
     assert str(destination) in str(refused.value)
     assert destination.is_dir() and list(destination.iterdir()) == []      # untouched
-    assert [path.name for path in destination.parent.iterdir()] == [destination.name]   # no partial left
+    assert not list(destination.parent.glob('.*.partial-*'))      # no temporary folder left
 
 
 def test_a_folder_made_at_the_instant_of_publication_is_never_replaced(fresh, tmp_path, monkeypatch):
@@ -95,4 +95,4 @@ def test_a_folder_made_at_the_instant_of_publication_is_never_replaced(fresh, tm
     with pytest.raises(LoadError):
         _load()
     assert made and destination.stat().st_ino == made[0] and list(destination.iterdir()) == []
-    assert [path.name for path in destination.parent.iterdir()] == [destination.name]
+    assert not list(destination.parent.glob('.*.partial-*'))

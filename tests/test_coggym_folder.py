@@ -1,64 +1,51 @@
 """Brain-Score makes CogGym's folder (the pinned checkout and CogGym's own environment) at the
-first use, completely or not at all, and never changes the scoring environment.
+first load of a CogGym benchmark, completely or not at all.
 
-git, venv and pip are stand-ins that record their commands: nothing is cloned, made or installed.
+Every test loads a benchmark through ``brainscore.load_benchmark``. git and the Python that
+makes the environment and runs pip are recording stand-ins (``tests/coggym_commands.py``):
+nothing is cloned, made or installed.
 """
 import json
+import os
 import re
+import signal
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
 
+import brainscore
 from brainscore import LoadError
-from brainscore.harnesses import _coggym_folder
-from brainscore.harnesses._coggym_folder import ready_folder
 
-from .coggym_stand_in import write_checkout
+from .coggym_commands import PINNED_COMMIT, commands  # noqa: F401  (commands is a fixture)
 
 pytestmark = pytest.mark.unit
 
 BENCHMARK = 'CogGym.Hu2023Fine.exp1'
-# The commit the CogGym integration was checked against, written here on its own.
-PINNED_COMMIT = 'a1cd9df1118fec80eba7463de237d1497d77e041'
+REQUIREMENTS = Path(brainscore.__file__).parent / 'harnesses' / 'coggym_requirements.txt'
 
 
 @pytest.fixture
-def tools(monkeypatch, tmp_path):
-    """Stand-ins for git, venv and pip; ``tools.fail`` makes the command that contains it fail."""
-    calls, lock = [], threading.Lock()
-    state = type('Tools', (), {'calls': calls, 'fail': None, 'head': PINNED_COMMIT})()
-    real = subprocess.run
-
-    def run(command, *args, **kwargs):
-        if command[0] != 'git' and command[1:3] != ['-m', 'venv'] and 'pip' not in command:
-            return real(command, *args, **kwargs)
-        with lock:
-            calls.append(list(command))
-        if state.fail and state.fail in command:
-            raise subprocess.CalledProcessError(1, command, '', f'{state.fail} failed')
-        stdout = ''
-        if command[0] == 'git' and 'clone' in command:
-            write_checkout(command[-1])
-        elif command[0] == 'git' and 'rev-parse' in command:
-            stdout = state.head + '\n'
-        elif command[1:3] == ['-m', 'venv']:       # the environment's Python, where the folder expects it
-            python = _coggym_folder.environment_python(Path(command[-1]).parent)
-            python.parent.mkdir(parents=True)
-            python.write_text('#!/bin/sh\n')
-        elif 'freeze' in command:
-            stdout = 'google-genai==3.2.0\n'
-        return subprocess.CompletedProcess(command, 0, stdout, '')
-    monkeypatch.setattr(subprocess, 'run', run)
-    monkeypatch.setenv('BRAINSCORE_COGGYM_FOLDER', str(tmp_path / 'root'))
+def fresh(commands, tmp_path, monkeypatch):
+    """Installs allowed and an empty place for CogGym's folders."""
     monkeypatch.setenv('BS_INSTALL_DEPENDENCIES', 'yes')
-    return state
+    monkeypatch.setenv('BRAINSCORE_COGGYM_FOLDER', str(tmp_path / 'folders'))
+    return commands
+
+
+def _load(**configuration):
+    return brainscore.load_benchmark(BENCHMARK, reset=lambda repetition: None, **configuration)
+
+
+def _partials(root):
+    return list(Path(root).glob('.*.partial-*'))
 
 
 def test_the_requirements_pin_every_package():
-    lines = [line.split('#')[0].strip() for line in _coggym_folder.REQUIREMENTS.read_text().splitlines()]
+    lines = [line.split('#')[0].strip() for line in REQUIREMENTS.read_text().splitlines()]
     packages = [line for line in lines if line]
     assert packages
     floating = [line for line in packages if not re.fullmatch(r'[A-Za-z0-9_.\-]+==[^\s=*,<>;@]+', line)]
@@ -68,70 +55,104 @@ def test_the_requirements_pin_every_package():
     assert {'google-genai', 'python-dotenv', 'pillow'} <= names
 
 
-def test_a_fresh_machine_gets_the_folder_at_the_pinned_commit_with_its_own_environment(tools, tmp_path):
-    folder = ready_folder(BENCHMARK)
-    assert folder.parent == tmp_path / 'root' and PINNED_COMMIT in folder.name
+def test_a_fresh_machine_gets_the_folder_at_the_pinned_commit_with_its_own_environment(fresh, tmp_path):
+    _load()
+    (folder,) = [path for path in (tmp_path / 'folders').iterdir() if not path.name.startswith('.')]
+    assert PINNED_COMMIT in folder.name
     marker = json.loads((folder / 'ready.json').read_text())
     assert marker['revision'] == PINNED_COMMIT and 'google-genai==3.2.0' in marker['freeze']
-    clone = next(call for call in tools.calls if 'clone' in call)
-    assert 'https://github.com/lance-ying/coggym.git' in clone
-    assert any('checkout' in call and call[-1] == PINNED_COMMIT for call in tools.calls)
-    install = next(call for call in tools.calls if 'install' in call)
-    assert install[0].startswith(str(tmp_path / 'root'))       # the folder's own Python, not this one
-    assert '--no-deps' in install and str(_coggym_folder.REQUIREMENTS) in install
-    assert any('check' in call and 'pip' in call for call in tools.calls)
-    assert sorted(path.name for path in folder.parent.iterdir()) == [folder.name]   # no partial folder
-    # A second use finds the folder ready and runs nothing.
-    count = len(tools.calls)
-    assert ready_folder(BENCHMARK) == folder and len(tools.calls) == count
+    clone = next(call for call in fresh.of('git') if 'clone' in call['args'])
+    assert 'https://github.com/lance-ying/coggym.git' in clone['args']
+    assert any('checkout' in call['args'] and call['args'][-1] == PINNED_COMMIT for call in fresh.of('git'))
+    install = next(call for call in fresh.of('pip') if 'install' in call['args'])
+    assert install['executable'].startswith(str(tmp_path / 'folders'))     # the folder's Python, not this one
+    assert '--no-deps' in install['args'] and str(REQUIREMENTS) in install['args']
+    assert any('check' in call['args'] for call in fresh.of('pip'))
+    assert _partials(tmp_path / 'folders') == []
+    # A second load finds the folder ready: nothing is cloned or installed again.
+    count = len(fresh.of('pip')) + len(fresh.of('venv'))
+    _load()
+    assert len(fresh.of('pip')) + len(fresh.of('venv')) == count
+    assert sum('clone' in call['args'] for call in fresh.of('git')) == 1
 
 
-def test_with_installs_off_a_missing_folder_is_one_clear_error_and_nothing_runs(tools, tmp_path, monkeypatch):
+def test_with_installs_off_a_missing_folder_is_one_clear_error_and_nothing_runs(fresh, tmp_path, monkeypatch):
     monkeypatch.setenv('BS_INSTALL_DEPENDENCIES', 'no')
     with pytest.raises(LoadError) as missing:
-        ready_folder(BENCHMARK)
+        _load()
     message = str(missing.value)
-    assert BENCHMARK in message and str(tmp_path / 'root') in message and 'BS_INSTALL_DEPENDENCIES' in message
-    assert tools.calls == [] and not (tmp_path / 'root').exists()
+    assert BENCHMARK in message and str(tmp_path / 'folders') in message and 'BS_INSTALL_DEPENDENCIES' in message
+    assert fresh.calls == [] and not (tmp_path / 'folders').exists()
 
 
-@pytest.mark.parametrize('failing', ['clone', 'install', 'check'])
-def test_a_failed_creation_is_a_clear_error_and_leaves_nothing(tools, tmp_path, failing):
-    tools.fail = failing
+@pytest.mark.parametrize('failing', ['clone', 'venv', 'install', 'check'])
+def test_a_failed_creation_is_a_clear_error_and_leaves_no_folder(fresh, tmp_path, failing):
+    fresh.behave(fail=failing)
     with pytest.raises(LoadError) as failed:
-        ready_folder(BENCHMARK)
+        _load()
     assert BENCHMARK in str(failed.value) and 'Nothing was left' in str(failed.value)
-    assert list((tmp_path / 'root').iterdir()) == []
+    assert [path for path in (tmp_path / 'folders').iterdir() if not path.name.endswith('.lock')] == []
 
 
-def test_a_clone_at_another_commit_is_refused_and_leaves_nothing(tools, tmp_path):
-    tools.head = 'f' * 40
+def test_a_clone_at_another_commit_is_refused_and_leaves_no_folder(fresh, tmp_path):
+    fresh.behave(head='f' * 40)
     with pytest.raises(LoadError, match=PINNED_COMMIT):
-        ready_folder(BENCHMARK)
-    assert list((tmp_path / 'root').iterdir()) == []
+        _load()
+    assert [path for path in (tmp_path / 'folders').iterdir() if not path.name.endswith('.lock')] == []
 
 
-def test_a_folder_the_user_had_is_never_changed(tools, tmp_path):
+def test_a_folder_the_user_had_is_never_changed(fresh, tmp_path):
     folder = tmp_path / 'mine'
     folder.mkdir()
     (folder / 'notes.txt').write_text('my work')
     with pytest.raises(LoadError, match='not a ready CogGym folder'):
-        ready_folder(BENCHMARK, folder)
-    assert [path.name for path in folder.iterdir()] == ['notes.txt'] and tools.calls == []
+        _load(folder=folder)
+    assert [path.name for path in folder.iterdir()] == ['notes.txt'] and fresh.calls == []
 
 
-def test_two_first_uses_at_once_make_the_folder_once(tools):
-    folders, errors = [], []
+def test_two_first_loads_at_once_make_the_folder_once(fresh):
+    errors = []
 
-    def use():
+    def load():
         try:
-            folders.append(ready_folder(BENCHMARK))
-        except Exception as error:      # pragma: no cover - reported below
+            _load()
+        except Exception as error:      # reported below
             errors.append(error)
-    threads = [threading.Thread(target=use) for _ in range(2)]
+    threads = [threading.Thread(target=load) for _ in range(2)]
     for thread in threads:
         thread.start()
     for thread in threads:
         thread.join()
-    assert errors == [] and len(set(folders)) == 1
-    assert sum('clone' in call for call in tools.calls) == 1
+    assert errors == []
+    assert sum('clone' in call['args'] for call in fresh.of('git')) == 1
+
+
+def test_a_killed_creator_leaves_no_command_running_and_the_next_load_succeeds(fresh, tmp_path):
+    """The process that makes the folder is killed while git runs: git is stopped, and the next
+    load removes the abandoned temporary folder and makes the folder."""
+    fresh.behave(sleep='clone')
+    creator = subprocess.Popen([sys.executable, '-c', (
+        'import brainscore; '
+        f'brainscore.load_benchmark({BENCHMARK!r}, reset=lambda repetition: None)')],
+        env=dict(os.environ))
+    pid_file = Path(str(fresh.log) + '.pid')
+    deadline = time.monotonic() + 30
+    while not pid_file.exists() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    git = int(pid_file.read_text())
+    creator.send_signal(signal.SIGKILL)
+    creator.wait()
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        try:
+            os.kill(git, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.05)
+    else:
+        os.kill(git, signal.SIGKILL)
+        pytest.fail('git outlived the process that started it')
+    assert _partials(tmp_path / 'folders')            # the killed creator's temporary folder
+    fresh.behave()
+    _load()
+    assert _partials(tmp_path / 'folders') == []

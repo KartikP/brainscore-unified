@@ -30,6 +30,7 @@ REFERENCE_REVISION = 'a1cd9df1118fec80eba7463de237d1497d77e041'
 REPOSITORY = 'https://github.com/lance-ying/coggym.git'
 REQUIREMENTS = Path(__file__).with_name('coggym_requirements.txt')
 # The files of the checkout that the worker reads.
+_SUPERVISOR = Path(__file__).with_name('_supervise.py')
 _REQUIRED = ('evaluation/__init__.py', 'evaluation/providers.py', 'evaluation/cli.py',
              'evaluation/analyze.py', 'evaluation/public_manifest.json',
              'evaluation/trial_selection_map.json', 'EML')
@@ -169,18 +170,36 @@ def _rename_no_replace(source: Path, destination: Path) -> None:
 
 
 def _run(command) -> str:
-    return subprocess.run(command, check=True, capture_output=True, text=True,
-                          timeout=_COMMAND_TIMEOUT_S, env=_command_environment()).stdout
+    """Run one git or pip command under the supervisor and return its output.
+
+    The command and its descendants are killed when it takes longer than the time limit, when
+    this process stops waiting, and when this process dies (the supervisor sees its pipe close).
+    """
+    from brainscore.harnesses._child_process import ChildProcess
+    with tempfile.TemporaryDirectory(prefix='coggym-command-') as logs:
+        with ChildProcess([sys.executable, '-I', str(_SUPERVISOR), *command],
+                          env=_command_environment(), log_directory=Path(logs)) as child:
+            try:
+                child.wait(_COMMAND_TIMEOUT_S)
+            except subprocess.CalledProcessError as error:
+                raise subprocess.CalledProcessError(error.returncode, command,
+                                                    stderr=child.log_tail()) from None
+        return (Path(logs) / 'stdout.log').read_text()
 
 
 @contextlib.contextmanager
 def _creation_lock(folder):
-    """One creation of ``folder`` at a time, across threads and processes of this machine."""
+    """One creation of ``folder`` at a time, across threads and processes: a lock file next to it
+    (``.<name>.lock``, kept), so every creator shares it whatever its temporary folder. While the
+    lock is held no other creation runs, so a temporary folder of an earlier attempt
+    (``.<name>.partial-*``) belongs to a creator that died, and it is removed."""
     import fcntl
-    key = hashlib.sha256(str(folder.resolve()).encode()).hexdigest()[:16]
-    with open(Path(tempfile.gettempdir()) / f'brainscore-coggym-{key}.lock', 'w') as handle:
+    folder.parent.mkdir(parents=True, exist_ok=True)
+    with open(folder.parent / f'.{folder.name}.lock', 'w') as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
         try:
+            for abandoned in folder.parent.glob(f'.{folder.name}.partial-*'):
+                shutil.rmtree(abandoned, ignore_errors=True)
             yield
         finally:
             fcntl.flock(handle, fcntl.LOCK_UN)
