@@ -169,14 +169,18 @@ def conversion_errors(valid):
 def readout_probabilities(assembly, stimuli):
     """A readout's probabilities, one row per stimulus, for ``behavior:probabilities``: the
     readout's own values and float type (float64), its own presentation coordinates (the
-    extractor's) in their order, and the readout's record. These are the coordinates of the
-    readout's answer to an old probabilities task; the legacy facade adds the benchmark's
-    columns the answer lacks, in the benchmark's order, as it did on the bare channel."""
+    extractor's) and the readout's record. The coordinates have one order in every process:
+    first the columns of the stimulus table in the table's order, then every other
+    coordinate sorted by name (an extractor can give its coordinates in a hash-dependent
+    order). The legacy facade adds the benchmark's columns the answer lacks, in the
+    benchmark's order, as it did on the bare channel."""
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
     index = assembly.indexes.get('presentation')
-    names = [name for name in (getattr(index, 'names', None) or ()) if name and name != 'presentation']
-    names += [name for name, coord in assembly.coords.items()
-              if coord.dims == ('presentation',) and name != 'presentation' and name not in names]
+    present = {name for name in (getattr(index, 'names', None) or ()) if name and name != 'presentation'}
+    present |= {name for name, coord in assembly.coords.items()
+                if coord.dims == ('presentation',) and name != 'presentation'}
+    table = [name for name in stimuli.columns if name in present]
+    names = table + sorted(present - set(table))
     coords = {name: ('presentation', list(assembly[name].values)) for name in names}
     if 'stimulus_id' not in coords:   # the format matches rows by stimulus id
         coords = {'stimulus_id': ('presentation', list(stimuli['stimulus_id'])), **coords}
