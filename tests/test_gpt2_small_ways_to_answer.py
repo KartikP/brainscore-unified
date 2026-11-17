@@ -114,3 +114,12 @@ def test_ewok_log_probabilities_are_applicable_and_scored(gpt2_small, prepared, 
     value = brainscore.score(gpt2_small, benchmark, check_mem=False)
     assert value.attrs.get('status') != 'N/A'
     assert 0 <= float(value) <= 1
+
+
+def test_log_probabilities_of_a_choice_that_is_not_verbatim_are_refused_before_the_likelihood(monkeypatch):
+    """GPT-2 has no chat template: it gives log probabilities only for a verbatim choice."""
+    from brainscore_core.compatibility import ExecutionNotFeasibleError
+    session = stimulus_session(OPTIONS, ['behavior:log_probabilities'],
+                               TaskContext(instruction='Which?', response=Choice('options')))
+    with pytest.raises(ExecutionNotFeasibleError, match='verbatim'):
+        _load(monkeypatch, forbid='likelihood').participate(session)
