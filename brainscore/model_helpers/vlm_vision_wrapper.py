@@ -77,8 +77,14 @@ class VLMVisionWrapper(CachingExtractor):
         self._layer_aggregation = checked_aggregation(layer_aggregation, self.VALID_AGGREGATIONS)
         self._batch_size = batch_size
         from brainscore.model_helpers._device import select_device
-        self._device = select_device(device)
-        self._model = self._model.to(self._device)
+        from brainscore.model_helpers.text_wrapper import _input_device, _is_externally_placed
+        # A module already placed by a device map (on meta, or over several devices) stays where
+        # it is; inputs go to where its parameters are.
+        if _is_externally_placed(self._model):
+            self._device = _input_device(self._model)
+        else:
+            self._device = select_device(device)
+            self._model = self._model.to(self._device)
 
         self._identifier = identifier or model.__class__.__name__
 

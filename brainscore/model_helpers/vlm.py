@@ -59,6 +59,15 @@ def _load(identifier: str, hf_id: str, model_class: str, dtype: str, download_gb
     return model.eval(), pin_image_processor(processor, hf_id, **download)
 
 
+def _placed(module) -> Optional[str]:
+    """The one device where the loaded part's parameters are, so that its extractor keeps it there;
+    None when they are spread over devices or not loaded (the extractor then leaves them as placed)."""
+    devices = {parameter.device for parameter in module.parameters()}
+    if len(devices) != 1 or next(iter(devices)).type == 'meta':
+        return None
+    return str(next(iter(devices)))
+
+
 def _blocks(model, part: Tuple[str, str]):
     """``(the part's module, the paths of its blocks relative to that module)``."""
     root, blocks = part
@@ -138,17 +147,25 @@ def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
 
     if pixels is None:
         from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
-        image = VLMVisionWrapper(model=vision_module, processor=processor, identifier=f'{identifier}-vision')
+        image = VLMVisionWrapper(model=vision_module, processor=processor, identifier=f'{identifier}-vision',
+                                 device=_placed(vision_module))
     else:
         from brainscore_vision.model_helpers.activations.pca import LayerPCA
         from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
         from brainscore.models._shared import _load_preprocess_images
-        image = PytorchWrapper(model=vision_module, identifier=f'{identifier}-vision', preprocessing=partial(
-            _load_preprocess_images, processor=processor.image_processor, **pixels))
+        device = _placed(vision_module)
+        if device is None:
+            raise ValueError(f'{identifier!r}: the vision part is spread over devices (or not loaded), and '
+                             f'PytorchWrapper moves its module to one device; place the vision part on one '
+                             f'device in device_map.')
+        image = PytorchWrapper(model=vision_module, identifier=f'{identifier}-vision', device=device,
+                               preprocessing=partial(_load_preprocess_images, processor=processor.image_processor,
+                                                     **pixels))
         # Every patch token is kept, too many features for PLS: reduce each layer to 1000.
         LayerPCA.hook(image, n_components=1000)
     extractor = {'vision': image, 'text': TextWrapper(
-        model=language_module, tokenizer=processor.tokenizer, identifier=f'{identifier}-text')}
+        model=language_module, tokenizer=processor.tokenizer, identifier=f'{identifier}-text',
+        device=_placed(language_module))}
     if video:
         from brainscore.model_helpers.vlm_video_wrapper import VLMVideoWrapper
         extractor['video'] = VLMVideoWrapper(vision_module, processor, identifier=f'{identifier}-video')

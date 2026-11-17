@@ -184,6 +184,38 @@ def test_precision_and_device_map_reach_the_load():
     assert 'max_memory' in settings and settings['local_files_only'] is True
 
 
+def test_every_extractor_keeps_the_loaded_placement(monkeypatch):
+    """A device map decides where each part is: no extractor moves a part to its own default device."""
+    monkeypatch.setattr('brainscore.model_helpers._device.select_device',
+                        lambda device=None: torch.device(device) if device else torch.device('meta'))
+    for settings in ({}, {'pixels': {}}):
+        inner = _build(device_map='auto', **settings)._subject
+        for key in ('vision', 'text'):
+            module = inner.extractor[key]._model
+            assert {p.device.type for p in module.parameters()} == {'cpu'}, (settings, key)
+
+
+class _MetaVLM(TinyVLM):
+    """A checkpoint whose parts a device map left on meta (offloaded)."""
+
+    @classmethod
+    def from_pretrained(cls, hf_id, **settings):
+        return cls().to('meta')
+
+
+def test_a_part_left_on_meta_by_a_device_map_stays_there(monkeypatch):
+    monkeypatch.setattr(sys.modules['transformers'], 'MetaVLMForConditionalGeneration', _MetaVLM, raising=False)
+
+    def build(**settings):
+        return vlm.build_vlm_subject('meta-vlm', 'Org/Meta-VLM', 'MetaVLMForConditionalGeneration',
+                                     vision=('model.visual', 'blocks'), language=('model.language_model', 'layers'),
+                                     dtype='float32', download_gb=0.1, device_map='auto', **settings)
+    inner = build()._subject
+    assert {p.device.type for p in inner.extractor['vision']._model.parameters()} == {'meta'}
+    with pytest.raises(ValueError, match='one device'):
+        build(pixels={})
+
+
 def test_a_missing_class_is_named_before_the_download_check(monkeypatch):
     import brainscore.models._downloads as downloads
 
