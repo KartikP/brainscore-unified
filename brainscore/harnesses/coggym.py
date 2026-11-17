@@ -207,13 +207,21 @@ class _SubjectAdapter:
         self.prompt_trials = prompt_trials
         self.media_directory = context.directory / 'coggym-media'
         self.refusal = None
+        # How many calls of each prompt this repetition has made: several trials can share one
+        # prompt, and CogGym calls them in trial order, so the k-th call is the k-th such trial.
+        self.prompt_calls = {}
 
     def complete_with_metadata(self, system, messages, model, temperature, max_tokens):
         if self.refusal is not None:
             raise self.refusal      # an earlier trial was refused: no further trial runs
-        trial_ids = self.prompt_trials[_prompt_key(system, messages)]
+        key = _prompt_key(system, messages)
+        trial_ids = self.prompt_trials[key]
+        occurrence = self.prompt_calls.get(key, 0)
+        self.prompt_calls[key] = occurrence + 1
+        # A call beyond the trials of its prompt (a repeated call) keeps the last of them.
+        trial_id = trial_ids[min(occurrence, len(trial_ids) - 1)]
         row, present = _trial_row(messages, self.media_directory)
-        stimuli = StimulusSet(pd.DataFrame([{'stimulus_id': trial_ids[0], **row}]))
+        stimuli = StimulusSet(pd.DataFrame([{'stimulus_id': trial_id, **row}]))
         task = TaskContext(instruction=system, present=present, trial_memory='none',
                            response=Text(max_tokens=max_tokens, temperature=float(temperature)))
         record_repetition = f'{self.repetition}.{self.call_index}'
@@ -224,7 +232,7 @@ class _SubjectAdapter:
         except ExecutionNotFeasibleError as error:
             # CogGym keeps a failed trial and goes on; the run stops with this error instead.
             self.refusal = ExecutionNotFeasibleError(
-                f'CogGym trial {trial_ids[0]}: the subject cannot serve it: {error}',
+                f'CogGym trial {trial_id}: the subject cannot serve it: {error}',
                 channels=error.channels, task_type=error.task_type)
             raise self.refusal from error
         answers = [event for event in session.emitted if event.channel == 'behavior:text']
