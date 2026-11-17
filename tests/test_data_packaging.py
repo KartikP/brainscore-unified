@@ -137,7 +137,11 @@ def offline(monkeypatch, tmp_path):
     botocore.UNSIGNED = None
     botocore_config = types.ModuleType('botocore.config')
     botocore_config.Config = lambda **kwargs: None
-    for name, module in (('boto3', boto3), ('botocore', botocore), ('botocore.config', botocore_config)):
+    # The GIfTI reading of the Lahner time-series builder: nibabel.load(path).agg_data(), one array per TR.
+    nibabel = types.ModuleType('nibabel')
+    nibabel.load = lambda path: types.SimpleNamespace(agg_data=lambda: tuple(np.load(path)))
+    for name, module in (('boto3', boto3), ('botocore', botocore), ('botocore.config', botocore_config),
+                         ('nibabel', nibabel)):
         monkeypatch.setitem(sys.modules, name, module)
     monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path / 'home'))
     monkeypatch.setenv('BRAINIO_HOME', str(tmp_path / 'brainio'))
@@ -532,12 +536,11 @@ def test_a_file_with_no_expected_record_states_its_counts(tmp_path, monkeypatch,
 
 
 def _gifti(path, n_tr):
-    """A synthetic surface time series: ``n_tr`` arrays over a full fsaverage hemisphere."""
-    # nibabel writes the made-up run and the builder reads it; an environment without it skips.
-    nib = pytest.importorskip('nibabel', reason='the Lahner time-series builder reads GIfTI with nibabel')
-    arrays = [nib.gifti.GiftiDataArray(np.full(10242 + 5, t, dtype=np.float32)) for t in range(n_tr)]
+    """A made-up surface time series: ``n_tr`` arrays over a full fsaverage hemisphere, stored as the
+    nibabel stand-in of ``offline`` reads it."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    nib.save(nib.gifti.GiftiImage(darrays=arrays), str(path))
+    with path.open('wb') as handle:
+        np.save(handle, np.stack([np.full(10242 + 5, t, dtype=np.float32) for t in range(n_tr)]))
 
 
 def _lahner_source(source):
