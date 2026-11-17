@@ -16,6 +16,7 @@ failure removes only its own temporary folder; an existing folder is never chang
 from __future__ import annotations
 
 import contextlib
+import errno
 import hashlib
 import json
 import os
@@ -126,12 +127,14 @@ def _make(identifier, folder):
         (partial / 'ready.json').write_text(json.dumps({
             'revision': REFERENCE_REVISION, 'requirements_sha256': _requirements_hash(),
             'freeze': sorted(line for line in freeze.splitlines() if line.strip())}, indent=2) + '\n')
-        if folder.exists():
-            raise FileExistsError(f'{folder} appeared while it was being made')
-        os.rename(partial, folder)
+        # One step that never replaces: a folder that appeared meanwhile belongs to someone else.
+        _rename_no_replace(partial, folder)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         shutil.rmtree(partial, ignore_errors=True)
         detail = getattr(error, 'stderr', None) or ''
+        if isinstance(error, OSError) and error.errno in (errno.EEXIST, errno.ENOTEMPTY):
+            detail = (f'{folder} appeared while Brain-Score made the folder; it belongs to another '
+                      f'program or person and is not changed.')
         raise LoadError(
             f"{identifier}: Brain-Score could not make CogGym's folder {folder}: "
             f"{type(error).__name__}: {error}" + (f'\n{detail.strip()[-2000:]}' if detail else '')
@@ -146,6 +149,23 @@ def _command_environment() -> dict:
     environment.update(PIP_CONFIG_FILE=os.devnull, PIP_NO_INPUT='1', PIP_DISABLE_PIP_VERSION_CHECK='1',
                        PYTHONNOUSERSITE='1', GIT_TERMINAL_PROMPT='0', GIT_CONFIG_NOSYSTEM='1')
     return environment
+
+
+def _rename_no_replace(source: Path, destination: Path) -> None:
+    """Rename ``source`` to ``destination`` in one step that fails if ``destination`` exists
+    (Linux ``renameat2`` with ``RENAME_NOREPLACE``, macOS ``renamex_np`` with ``RENAME_EXCL``)."""
+    import ctypes
+    libc = ctypes.CDLL(None, use_errno=True)
+    names = os.fsencode(str(source)), os.fsencode(str(destination))
+    if sys.platform == 'darwin':
+        result = libc.renamex_np(*names, ctypes.c_uint(0x4))                 # RENAME_EXCL
+    elif sys.platform.startswith('linux') and hasattr(libc, 'renameat2'):
+        result = libc.renameat2(-100, names[0], -100, names[1], ctypes.c_uint(1))   # AT_FDCWD, NOREPLACE
+    else:
+        raise OSError(errno.ENOTSUP, 'no rename that refuses to replace on this platform', str(destination))
+    if result != 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code), str(destination))
 
 
 def _run(command) -> str:
