@@ -182,3 +182,26 @@ def test_a_sibling_that_only_looks_like_a_temporary_folder_is_never_removed(fres
     _load()
     assert (theirs / 'my-research.txt').read_text() == 'mine'
     assert (folder / 'ready.json').exists()
+
+
+def test_a_file_of_the_lock_name_keeps_its_content(fresh, tmp_path):
+    from .coggym_stand_in import default_place
+    folder = default_place(tmp_path / 'folders')
+    folder.parent.mkdir(parents=True)
+    theirs = folder.parent / f'.{folder.name}.lock'
+    theirs.write_text('my notes')
+    _load()
+    assert theirs.read_text() == 'my notes' and (folder / 'ready.json').exists()
+
+
+def test_a_link_at_the_lock_name_is_refused_and_its_target_kept(fresh, tmp_path):
+    from .coggym_stand_in import default_place
+    folder = default_place(tmp_path / 'folders')
+    folder.parent.mkdir(parents=True)
+    target = tmp_path / 'notes.txt'
+    target.write_text('my notes')
+    (folder.parent / f'.{folder.name}.lock').symlink_to(target)
+    with pytest.raises(LoadError) as refused:
+        _load()
+    assert BENCHMARK in str(refused.value) and target.read_text() == 'my notes'
+    assert not folder.exists()

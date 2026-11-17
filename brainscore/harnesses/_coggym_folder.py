@@ -217,7 +217,13 @@ def _creation_lock(folder):
     sibling, whatever its name, is left alone."""
     import fcntl
     folder.parent.mkdir(parents=True, exist_ok=True)
-    with open(folder.parent / f'.{folder.name}.lock', 'w') as handle:
+    lock = folder.parent / f'.{folder.name}.lock'
+    # Opened without truncation and without following a link; an existing regular file of this
+    # name keeps its content (a lock never writes), and anything else is refused.
+    handle = os.open(lock, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    try:
+        if not stat.S_ISREG(os.fstat(handle).st_mode):
+            raise OSError(errno.EEXIST, 'the lock is not a regular file', str(lock))
         fcntl.flock(handle, fcntl.LOCK_EX)
         try:
             for abandoned in folder.parent.glob(f'.{folder.name}.partial-*'):
@@ -226,6 +232,8 @@ def _creation_lock(folder):
             yield
         finally:
             fcntl.flock(handle, fcntl.LOCK_UN)
+    finally:
+        os.close(handle)
 
 
 def _created_here(candidate: Path, folder: Path) -> bool:
