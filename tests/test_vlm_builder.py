@@ -25,7 +25,7 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 pytestmark = pytest.mark.unit
 
-WORDS = ['[PAD]', '[UNK]', 'system', 'user', 'assistant', ':', '<image>', 'cat', 'dog', 'the', 'sat', 'Action', '1']
+WORDS = ['[PAD]', '[UNK]', 'system', 'user', 'assistant', ':', '<image>', 'cat', 'dog', 'the', 'sat', 'Action', '1', '9']
 REPLY = ['dog']    # the words every stand-in writes; a test may set another reply
 VISION_BLOCKS, LANGUAGE_LAYERS = 12, 4
 
@@ -519,9 +519,12 @@ class _Part(torch.nn.Module):
         self._path = blocks
         self.embed = torch.nn.Embedding(len(WORDS), 4) if words else None
 
+    def embed_dtype(self):
+        return next(self.parameters()).dtype
+
     def forward(self, pixel_values=None, input_ids=None, attention_mask=None, grid_thw=None, **_):
         x = self.embed(input_ids) if self.embed is not None else (
-            pixel_values.reshape(len(pixel_values), -1)[:, :4].float())
+            pixel_values.reshape(len(pixel_values), -1)[:, :4].to(self.embed_dtype()))
         for block in self.get_submodule(self._path):
             x = torch.tanh(block(x))
         return SimpleNamespace(last_hidden_state=x)
@@ -579,17 +582,23 @@ def _builder_registrations():
 WORKED = {'qwen3-vl-2b', 'smolvlm2-256m'}
 
 
-def _on_stand_ins(monkeypatch):
-    """Each registration made with the builder, built on a stand-in with its stated paths."""
+def _on_stand_ins(monkeypatch, folder):
+    """Each registration made with the builder, built on a stand-in with its stated paths, in the
+    registered precision. A pixel part's LayerPCA fits for real, with two components on four
+    pictures in place of the ImageNet corpus."""
     import importlib
-    from brainscore_vision.model_helpers.activations.pca import LayerPCA
-    monkeypatch.setattr(LayerPCA, 'hook', classmethod(lambda cls, extractor, n_components: None))  # no ImageNet fit
+    from brainscore_vision.model_helpers.activations import pca
+    corpus = list(_pictures(folder, n=4)['image_file_name'])
+    monkeypatch.setattr(pca, '_get_imagenet_val', lambda num_images: corpus)
+    hook = pca.LayerPCA.hook.__func__
+    monkeypatch.setattr(pca.LayerPCA, 'hook', classmethod(
+        lambda cls, extractor, n_components: hook(cls, extractor, n_components=2)))
     real = vlm.build_vlm_subject
 
     def on_stand_in(*args, **kwargs):
-        monkeypatch.setattr(vlm, '_load', lambda *a: (_StatedLayout(kwargs['vision'], kwargs['language']),
-                                                      FakeProcessor()))
-        return real(*args, **{**kwargs, 'dtype': 'float32'})
+        layout = _StatedLayout(kwargs['vision'], kwargs['language']).to(getattr(torch, kwargs['dtype']))
+        monkeypatch.setattr(vlm, '_load', lambda *a: (layout, FakeProcessor()))
+        return real(*args, **kwargs)
     identifiers = _builder_registrations()
     assert WORKED <= set(identifiers)
     for identifier in identifiers:
@@ -632,12 +641,49 @@ def _given(subject, channel, folder):
         'behavior:text': (sentences, TaskContext(response=Text(max_tokens=4))),
         'behavior:log_probabilities': (continuations, TaskContext(response=Choice(labels='options', verbatim=True))),
     }
+    def record(stimuli, output):
+        session = stimulus_session(stimuli, [output], TaskContext(task_type='passive'))
+        subject.participate(session)
+        return session.collect(output).values.copy()
+
     if channel == 'perturbation':
-        record = apply_state_change(subject, StateChange(
-            kind='ablation', target=Selection(layer=subject.region_layer_map['IT']),
-            perturbation=Perturbation(kind='zero')))
-        apply_state_change(subject, StateChange(kind='reset', handle_id=record.handle_id))
-        return int(record.handle_id is not None)
+        # The lesion changes exactly the selected units of the recorded layer, leaves the other
+        # units and the other part as they were, and is gone after its undo and after reset().
+        intact, language = record(pictures, 'neural:IT'), record(sentences, 'neural:language_system')
+        target = Selection(layer=subject.region_layer_map['IT'], indices=[0, 1])
+        lesion = apply_state_change(subject, StateChange(kind='ablation', target=target,
+                                                         perturbation=Perturbation(kind='zero')))
+        lesioned = record(pictures, 'neural:IT')
+        assert (lesioned[:, :2] == 0).all() and np.array_equal(lesioned[:, 2:], intact[:, 2:])
+        assert (intact[:, :2] != 0).any()
+        assert np.array_equal(record(sentences, 'neural:language_system'), language)
+        apply_state_change(subject, StateChange(kind='reset', handle_id=lesion.handle_id))
+        assert np.array_equal(record(pictures, 'neural:IT'), intact)
+        apply_state_change(subject, StateChange(kind='ablation', target=target,
+                                                perturbation=Perturbation(kind='drive', amount=2.0)))
+        assert not np.array_equal(record(pictures, 'neural:IT'), intact)
+        subject.reset()
+        assert np.array_equal(record(pictures, 'neural:IT'), intact)
+        return 1
+    if channel == 'behavior:rating':
+        # A rating on the scale is taken; one outside it is caught as invalid.
+        global REPLY
+        given, REPLY = REPLY, ['1']
+        try:
+            session = stimulus_session(sentences, [channel], tasks[channel][1])
+            subject.participate(session)
+            valid = session.collect(channel)
+            REPLY = ['9']
+            session = stimulus_session(sentences, [channel], tasks[channel][1])
+            subject.participate(session)
+            outside = session.collect(channel)
+        finally:
+            REPLY = given
+        assert list(valid.values) == [1.0, 1.0] and set(valid['response_state'].values) == {'valid'}
+        assert set(outside['response_state'].values) == {'invalid'}
+        return len(valid)
+    if channel == 'neural:A1':
+        raise AssertionError('no small sound session yet: add one to _given for a registration with audio')
     if channel == 'motor':
         return len(_one_game(subject)['actions'])
     if channel == 'vision:video':
@@ -651,14 +697,17 @@ def _given(subject, channel, folder):
         stimuli, task = tasks[channel]
     session = stimulus_session(stimuli, [channel], task)
     subject.participate(session)
-    return session.collect(channel).shape[0]
+    answer = session.collect(channel)
+    if channel.startswith('neural:') or channel in ('behavior:probabilities', 'behavior:log_probabilities'):
+        assert np.isfinite(np.asarray(answer.values, dtype=float)).all(), channel
+    return answer.shape[0]
 
 
 def test_every_builder_registration_gives_what_it_declares(monkeypatch, tmp_path):
     """Every output a registration made with the builder declares (and clips, when it takes
     them) comes out of one small session on its stand-in."""
     channel_of = {'vision': 'vision:image', 'video': 'vision:video', 'text': 'text', 'audio': 'audio'}
-    for identifier, subject in _on_stand_ins(monkeypatch):
+    for identifier, subject in _on_stand_ins(monkeypatch, tmp_path):
         inner = subject._subject
         assert subject.identifier == identifier
         assert subject._provenance['region_layer_map_status'].startswith(vlm.DEPTH_HYPOTHESIS), identifier
@@ -673,9 +722,10 @@ def test_every_builder_registration_gives_what_it_declares(monkeypatch, tmp_path
             assert lesions <= subject.in_channels and 'perturbation' in subject.out_channels, identifier
         else:
             assert not lesions & subject.in_channels and 'perturbation' not in subject.out_channels, identifier
+        # The registered precision is the stand-in's precision.
+        assert {str(p.dtype) for p in inner._model.parameters()} == {
+            f"torch.{subject._provenance['dtype']}"}, identifier
         for channel in sorted(subject.out_channels) + sorted({'vision:video'} & subject.in_channels):
-            if channel == 'neural:A1':
-                continue    # the audio extractor is the registration's own part; its test.py runs it
             assert _given(subject, channel, tmp_path) > 0, (identifier, channel)
         subject.reset()
 
