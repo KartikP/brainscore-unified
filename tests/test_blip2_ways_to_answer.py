@@ -4,7 +4,8 @@ The registry loader builds the registration with stand-in weights, processor, ``
 logits, and stand-in extractors; the sessions run through ``participate``. Every kind of answer
 it gave before keeps its part (the plain choice: the answer part; probabilities and the rating:
 the readout); written answers come from the reply and log probabilities from the likelihood.
-The base is the same registration built without the reply and likelihood parts.
+Each test checks the part that the stand-in network records as the caller and the collected
+answer with its response record.
 """
 import types
 
@@ -121,10 +122,10 @@ class _Extractor:
 
 @pytest.fixture
 def registered(monkeypatch):
-    """``build(base=False)``: the registration from its registry loader, every heavy part a stand-in.
+    """``build()``: the registration from its registry loader, every heavy part a stand-in.
 
-    ``base=True`` builds it without the reply and likelihood parts. ``replies[0]`` is the text
-    the stand-in network writes.
+    It returns the model, the record of calls and ``replies``: ``replies[0]`` is the text the
+    stand-in network writes.
     """
     import brainscore.model_helpers._device as device
     import brainscore.models._downloads as downloads
@@ -141,10 +142,8 @@ def registered(monkeypatch):
     monkeypatch.setattr(blip2, 'picture_extractor',
                         lambda model, processor, identifier: _Extractor(calls, identifier))
     monkeypatch.setattr(blip2, 'TextWrapper', lambda **kwargs: _Extractor(calls, kwargs['identifier']))
-    parts = blip2._make_parts
 
-    def build(base=False):
-        monkeypatch.setattr(blip2, '_make_parts', (lambda *args: (None, None)) if base else parts)
+    def build():
         model = model_registry[IDENTIFIER]()
         calls.clear()
         return model, calls, replies
@@ -176,55 +175,57 @@ def _run(model, stimuli, outputs, task):
     return {output: session.collect(output) for output in outputs}
 
 
-def _same_answers(new, base):
-    for output in base:
-        np.testing.assert_array_equal(new[output].values, base[output].values)
-        for coordinate in ('stimulus_id', 'choice', 'response_state'):
-            if coordinate in base[output].coords:
-                assert list(new[output][coordinate].values) == list(base[output][coordinate].values)
-        assert new[output].attrs.get('response') == base[output].attrs.get('response')
+def _settings(call):
+    return dict(call[2])
 
 
-def test_the_new_registration_only_adds_declarations(registered):
-    new, _, _ = registered()
-    base, _, _ = registered(base=True)
-    assert set(base.in_channels) <= set(new.in_channels)
-    assert set(base.out_channels) <= set(new.out_channels)
-    assert {'behavior:text', 'behavior:log_probabilities'} <= set(new.out_channels) - set(base.out_channels)
-    assert set(new.in_channels) == set(base.in_channels)       # BLIP-2 took the instruction already
+def test_the_registration_declares_each_way_to_answer(registered):
+    model, _, _ = registered()
+    assert {'instruction', 'text', 'vision:image'} <= set(model.in_channels)
+    assert {'behavior', 'behavior:choice', 'behavior:probabilities', 'behavior:rt', 'behavior:rating',
+            'behavior:text', 'behavior:log_probabilities'} <= set(model.out_channels)
 
 
-def test_a_roar_image_choice_keeps_the_answer_part(registered, tmp_path):
+def test_a_plain_choice_is_answered_by_the_answer_part(registered, tmp_path):
+    model, calls, _ = registered()
+    stimuli = _images(tmp_path, 's', 2)
     task = TaskContext(instruction='Is this a real word or a pseudo word?', response=Choice(LABELS),
                        fitting_stimuli=_images(tmp_path, 'f', 4))
-    answers = {}
-    for base in (True, False):
-        model, calls, _ = registered(base=base)
-        answers[base] = (_run(model, _images(tmp_path, 's', 2), ['behavior:choice'], task), list(calls))
-    _same_answers(answers[False][0], answers[True][0])
-    assert answers[False][1] == answers[True][1]
-    assert {call[:2] for call in answers[False][1]} == {('processor', answers[False][1][0][1]),
-                                                        ('generate', 'blip-2')}
+    choice = _run(model, stimuli, ['behavior:choice'], task)['behavior:choice']
+    assert choice.attrs['response']['method'] == 'generation'
+    # The stand-in writes "real": a valid choice of "real" in every row of the session's table.
+    assert list(choice['response_state'].values) == ['valid'] * len(stimuli)
+    assert [choice['choice'].values[row] for row in np.argmax(choice.values, axis=1)] == ['real'] * len(stimuli)
+    # The answer part is the caller: its own prompt names the options, and it writes at most
+    # eight tokens greedily; no extractor runs.
+    written = [call for call in calls if call[0] == 'generate']
+    assert len(written) == len(stimuli)
+    assert all(_settings(call)['max_new_tokens'] == 8 and _settings(call)['do_sample'] is False
+               for call in written)
+    shown = [call[1] for call in calls if call[0] == 'processor']
+    assert all('Choose from: real, pseudo. Answer:' in text for text in shown)
+    assert not any(call[0] == 'extract' for call in calls)
 
 
-def test_readout_probabilities_keep_the_readout(registered, tmp_path):
+def test_probabilities_come_from_the_readout(registered, tmp_path):
+    model, calls, _ = registered()
+    stimuli = _images(tmp_path, 's', 2)
     task = TaskContext(response=Choice(LABELS), fitting_stimuli=_images(tmp_path, 'f', 4))
-    answers = {}
-    for base in (True, False):
-        model, calls, _ = registered(base=base)
-        answers[base] = (_run(model, _images(tmp_path, 's', 2), ['behavior:probabilities'], task), list(calls))
-    _same_answers(answers[False][0], answers[True][0])
-    assert answers[False][1] == answers[True][1]
-    assert answers[False][0]['behavior:probabilities'].attrs['response']['method'] == 'readout'
-    assert {call[0] for call in answers[False][1]} == {'extract'}
+    probabilities = _run(model, stimuli, ['behavior:probabilities'], task)['behavior:probabilities']
+    assert probabilities.attrs['response']['method'] == 'readout'
+    assert probabilities.sizes['presentation'] == len(stimuli)
+    np.testing.assert_allclose(probabilities.sum('choice').values, 1.0)
+    assert {call[0] for call in calls} == {'extract'}
 
 
-def test_a_rating_keeps_the_readout(registered, tmp_path):
+def test_a_rating_comes_from_the_readout(registered, tmp_path):
+    model, calls, _ = registered()
+    stimuli = _images(tmp_path, 's', 2)
     task = TaskContext(instruction='How much?', response=Scale(1, 7),
                        fitting_stimuli=_images(tmp_path, 'f', 4, labels=[6.0, 2.0]))
-    model, calls, _ = registered()
-    rating = _run(model, _images(tmp_path, 's', 2), ['behavior:rating'], task)['behavior:rating']
+    rating = _run(model, stimuli, ['behavior:rating'], task)['behavior:rating']
     assert rating.attrs['response']['method'] == 'readout'
+    assert rating.sizes['presentation'] == len(stimuli)
     assert {call[0] for call in calls} == {'extract'}
 
 
@@ -292,24 +293,18 @@ def ewok(tmp_path):
 
 def test_ewok_log_probabilities_become_applicable_and_run(registered, ewok, tmp_path):
     benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=ewok, output_dir=tmp_path / 'run')
-    base, _, _ = registered(base=True)
-    assert brainscore.score(base, benchmark, check_mem=False).attrs['status'] == 'N/A'
     model, calls, _ = registered()
     score = brainscore.score(model, benchmark, check_mem=False)
-    assert np.isfinite(float(score)) and score.attrs['n_trials'] == 4
-    assert {call[0] for call in calls} == {'logits'}
+    assert score.attrs.get('status') != 'N/A' and np.isfinite(float(score))
+    assert score.attrs['n_trials'] == 2 * score.attrs['items']      # each item: two targets
+    assert {call[0] for call in calls} == {'logits'}                # the likelihood alone
 
 
 def test_the_ewok_choice_runs_by_writing(registered, ewok, tmp_path):
-    from brainscore_core.compatibility import ExecutionNotFeasibleError
-    def benchmark(name):
-        return brainscore.load_benchmark('EWoK-core-1.0-choice', root=ewok, output_dir=tmp_path / name)
-    base, _, _ = registered(base=True)
-    with pytest.raises(ExecutionNotFeasibleError):      # the answer part cannot show EWoK's text verbatim
-        brainscore.score(base, benchmark('base'), check_mem=False)
+    benchmark = brainscore.load_benchmark('EWoK-core-1.0-choice', root=ewok, output_dir=tmp_path / 'run')
     model, calls, replies = registered()
     replies[0] = '1'
-    score = brainscore.score(model, benchmark('new'), check_mem=False)
+    score = brainscore.score(model, benchmark, check_mem=False)
     assert float(score) == 0.5 and score.attrs['n_invalid'] == 0      # always "1": one of two right
     # EWoK's prompt as given: no question and no answer cue added.
     assert [call for call in calls if call[0] == 'generate'] and not any(
@@ -320,10 +315,9 @@ def test_a_coggym_experiment_becomes_applicable_and_runs(registered, scored_refe
     root, _ = scored_reference
     benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root, reset=lambda repetition: None,
                                           repetitions=1, max_tokens=7, output_dir=tmp_path / 'run')
-    base, _, _ = registered(base=True)
-    assert brainscore.score(base, benchmark, check_mem=False).attrs['status'] == 'N/A'
     model, calls, replies = registered()
     replies[0] = 'A written answer.'
     score = brainscore.score(model, benchmark, check_mem=False)
+    assert score.attrs.get('status') != 'N/A'
     assert score.attrs['n_valid'] == score.attrs['n_trials'] > 0
     assert all(('max_new_tokens', 7) in call[2] for call in calls if call[0] == 'generate')
