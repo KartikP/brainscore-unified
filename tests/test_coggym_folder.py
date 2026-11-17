@@ -63,6 +63,9 @@ def test_the_requirements_pin_every_package():
     assert packages
     floating = [line for line in packages if not re.fullmatch(r'[A-Za-z0-9_.\-]+==[^\s=*,<>;@]+', line)]
     assert floating == [], f'every package needs an exact version: {floating}'
+    # CogGym's own requirements at the pinned commit are in the list.
+    names = {line.split('==')[0].lower().replace('_', '-') for line in packages}
+    assert {'google-genai', 'python-dotenv', 'pillow'} <= names
 
 
 def test_a_fresh_machine_gets_the_folder_at_the_pinned_commit_with_its_own_environment(tools, tmp_path):
