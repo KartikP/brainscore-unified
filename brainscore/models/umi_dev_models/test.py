@@ -185,9 +185,9 @@ def _pictures(folder, n=2, labels=None):
 def _clip(folder):
     import cv2
     path = str(folder / 'clip.mp4')
-    writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*'mp4v'), 4, (8, 8))
+    writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*'mp4v'), 4, (64, 64))   # real video processors need 32 or more
     for frame in range(4):
-        writer.write(np.full((8, 8, 3), 60 * frame, np.uint8))
+        writer.write(np.full((64, 64, 3), 60 * frame, np.uint8))
     writer.release()
     stimuli = StimulusSet({'stimulus_id': ['c0'], 'video_path': [path]})
     stimuli.identifier = 'umi-dev-clip'
@@ -429,3 +429,122 @@ def test_the_real_model(identifier, tmp_path):
     assert probabilities.shape == (2, 2) and np.allclose(probabilities.values.sum(1), 1)
     assert _collect(subject, _pictures(tmp_path, 2), ['behavior:choice'],
                     TaskContext(response=Choice(['cat', 'dog'])))['behavior:choice'].shape[0] == 2
+
+
+# --- qualification: the real processor and a tiny model of the real class (no weights) --------
+#
+# Needs the family's settings files in the Hugging Face cache (the command is in README.md); no
+# weight file. Marked `qualification`: not part of the offline run of this file.
+
+def _small(model_class, config):
+    """The family's real configuration with few layers and a small width; the parts the processor
+    and the forward depend on (patch and merge sizes, rope sections, token ids, vocabulary) stay."""
+    text, vision = config.text_config, config.vision_config
+    for key, value in dict(num_hidden_layers=2, intermediate_size=64, num_attention_heads=2, num_key_value_heads=1).items():
+        setattr(text, key, value)
+    if model_class.startswith('Qwen3VL'):
+        text.hidden_size, text.head_dim = 64, 128                # rope sections sum to head_dim / 2
+        vision.depth, vision.hidden_size, vision.num_heads, vision.intermediate_size = 4, 64, 2, 64
+        vision.out_hidden_size, vision.deepstack_visual_indexes = 64, [1, 2]
+        if 'Moe' in model_class:
+            text.num_experts, text.num_experts_per_tok, text.moe_intermediate_size = 4, 2, 32
+    elif model_class.startswith('Qwen2_5_VL'):
+        text.hidden_size = 256                                   # 2 heads of 128: the rope sections
+        vision.depth, vision.hidden_size, vision.num_heads, vision.intermediate_size = 4, 64, 2, 64
+        vision.out_hidden_size, vision.fullatt_block_indexes = 256, [3]
+    else:                                                        # SmolVLM, Gemma 3, InternVL: SigLIP-like vision parts
+        text.hidden_size = 64
+        if hasattr(text, 'head_dim'):
+            text.head_dim = 32
+        vision.num_hidden_layers, vision.hidden_size, vision.intermediate_size, vision.num_attention_heads = 4, 32, 32, 2
+    return config
+
+
+QUALIFY = ['qwen3-vl-2b_UMI-dev', 'qwen3-vl-30b-a3b_UMI-dev', 'qwen2.5-vl-3b_UMI-dev', 'smolvlm2-256m_UMI-dev',
+           'gemma-3-4b_UMI-dev', 'internvl3-1b_UMI-dev']    # one model of each family (and the mixture of experts)
+
+
+@pytest.mark.qualification
+@pytest.mark.parametrize('identifier', QUALIFY)
+def test_qualify_the_family(identifier, monkeypatch, tmp_path):
+    from brainscore import LoadError
+    from brainscore_core.compatibility import ExecutionNotFeasibleError
+    from brainscore_core.hf_compat import pin_image_processor
+    from brainscore_vision.model_helpers.activations import pca
+    live = sys.modules['transformers']
+    config = study.MODEL_CONFIGS[identifier]
+    try:
+        settings = live.AutoConfig.from_pretrained(config['hf_id'], local_files_only=True)
+    except OSError:
+        pytest.skip(f"the settings files of {config['hf_id']} are not in the cache (README: Add a model)")
+    try:                    # the needed packages are present, or the clear message appears
+        study._refuse(identifier, config)
+    except LoadError as error:
+        assert 'which is not installed. Next step' in str(error)
+        # Go on as a machine with the folder's requirements would: a processor that imports a
+        # missing package then fails when it is built.
+        monkeypatch.setattr(study, 'REQUIREMENTS', [])
+    try:
+        processor = pin_image_processor(live.AutoProcessor.from_pretrained(config['hf_id'], local_files_only=True),
+                                        config['hf_id'], local_files_only=True)
+    except ImportError as error:
+        pytest.skip(f'{identifier}: the real processor cannot be built here: {error}')
+    network_class = getattr(live, config['model_class'])
+    torch.manual_seed(0)
+    network = network_class(_small(config['model_class'], settings)).to(getattr(torch, config['dtype'])).eval()
+    monkeypatch.setattr(study, '_load', lambda *a: (network, processor))
+    corpus = list(_pictures(tmp_path, 4)['image_file_name'])
+    monkeypatch.setattr(pca, '_get_imagenet_val', lambda num_images: corpus)
+    hook = pca.LayerPCA.hook.__func__
+    monkeypatch.setattr(pca.LayerPCA, 'hook', classmethod(lambda cls, extractor, n_components: hook(cls, extractor, 2)))
+    subject = model_registry[identifier]()
+
+    # The regions are the stated depths of the real blocks.
+    blocks = len(network.get_submodule('.'.join(config['vision'])))
+    expected = study.depth_layers([f"{config['vision'][1]}.{i}" for i in range(blocks)], study.DEPTH_TABLE['vision'])
+    assert {region: subject.region_layer_map[region] for region in expected} == expected
+    # One whole image for each picture, by the real processor.
+    from PIL import Image
+    wide = str(tmp_path / 'wide.png')
+    Image.new('RGB', (96, 48), (200, 40, 40)).save(wide)
+    if config['image_processor_kwargs'] is not None:
+        assert study._whole_images([wide, wide], processor.image_processor, config['image_processor_kwargs']).shape[0] == 2
+    else:
+        assert len(processor.image_processor(images=[Image.open(wide)], return_tensors='pt')['image_grid_thw']) == 1
+    # Each declared output through participate, exported as finite float32.
+    pictures = _pictures(tmp_path, 4)
+    fitting = _pictures(tmp_path / 'fit' if (tmp_path / 'fit').mkdir() is None else tmp_path, 4,
+                        labels=['cat', 'dog', 'cat', 'dog'])
+    sentences = StimulusSet({'stimulus_id': ['t0', 't1'], 'sentence': ['the cat sat', 'the dog sat']})
+    sentences.identifier = 'umi-dev-qualify-sentences'
+    passive = TaskContext(task_type='passive')
+    for channel in sorted(c for c in subject.out_channels if c.startswith('neural:')):
+        stimuli = sentences if channel == 'neural:language_system' else pictures
+        values = _collect(subject, stimuli, [channel], passive)[channel].values
+        assert values.dtype == np.float32 and np.isfinite(values).all() and values.shape[0] == len(stimuli), channel
+    choice = Choice(['cat', 'dog'])
+    for channel, stimuli, task in [
+            ('behavior:choice', pictures, TaskContext(response=choice)),
+            ('behavior:text', sentences, TaskContext(response=Text(max_tokens=4))),
+            ('behavior:rating', sentences, TaskContext(response=Scale(1, 7, 1))),
+            ('behavior:probabilities', pictures, TaskContext(response=choice, fitting_stimuli=fitting)),
+            ('behavior:rt', pictures, TaskContext(response=Choice(['cat', 'dog'], reaction_time='surprisal'),
+                                                  fitting_stimuli=fitting))]:
+        assert _collect(subject, stimuli, [channel], task)[channel].shape[0] == len(stimuli), channel
+    continuations = StimulusSet({'stimulus_id': ['t0'], 'sentence': ['the cat'], 'options': [('sat', 'ran')]})
+    continuations.identifier = 'umi-dev-qualify-continuations'
+    assert np.isfinite(_collect(subject, continuations, ['behavior:log_probabilities'], TaskContext(
+        response=Choice(labels='options', verbatim=True)))['behavior:log_probabilities'].values).all()
+    from brainscore.harnesses.grid_game import GridGameEnv, play_game
+    assert play_game(subject, GridGameEnv(size=5, seed=1, max_steps=2))['actions']
+    if config['video']:
+        assert _collect(subject, _clip(tmp_path), ['neural:IT'], passive)['neural:IT'].shape[0] == 1
+    # A written answer with the language layer, on a picture and text: recorded, or refused before compute.
+    trials = StimulusSet({'stimulus_id': ['p0'], 'image_file_name': [pictures['image_file_name'][0]], 'sentence': ['the cat']})
+    trials.identifier = 'umi-dev-qualify-mixed'
+    mixed = TaskContext(response=Text(max_tokens=2), present=('image', 'text'))
+    if config['extra_forward_inputs']:
+        with pytest.raises(ExecutionNotFeasibleError):
+            _collect(subject, trials, ['behavior:text', 'neural:language_system'], mixed)
+    else:
+        assert _collect(subject, trials, ['behavior:text', 'neural:language_system'], mixed)['neural:language_system'].shape[0] == 1

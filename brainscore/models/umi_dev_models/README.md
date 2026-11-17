@@ -80,9 +80,22 @@ Add one entry to `model_configs.json` and one registry line to `__init__.py`. Th
 - A package the processor imports beyond the reference environment goes in `requirements.txt`,
   the one statement; a load without it names it before any download.
 
-Then run `pytest brainscore/models/umi_dev_models/test.py -m "not slow"` here, and on a GPU machine
-`BRAINSCORE_SKIP_MODEL_DOWNLOAD_CHECK=1 pytest brainscore/models/umi_dev_models/test.py -m slow -k <name>`
-(the variable allows the first download).
+Then prove that the model complies, in three steps from the folder `unified`:
+
+1. Offline, on a stand-in of the stated layout:
+   `pytest brainscore/models/umi_dev_models/test.py -m "not slow and not qualification"`.
+2. The qualification of the family with no weights: the real processor from the real settings files
+   and a tiny random model of the real class, through the study's own `get_model`. Fetch the
+   settings files only (an allow-list, so no weight file can come; a gated model needs a token):
+
+   ```bash
+   python -c "from huggingface_hub import snapshot_download; snapshot_download('<hf_id>', allow_patterns=['config.json', 'generation_config.json', 'preprocessor_config.json', 'processor_config.json', 'video_preprocessor_config.json', 'tokenizer.json', 'tokenizer_config.json', 'special_tokens_map.json', 'chat_template.json', 'chat_template.jinja', 'vocab.json', 'merges.txt', 'tokenizer.model', 'added_tokens.json'])"
+   HF_HUB_OFFLINE=1 pytest brainscore/models/umi_dev_models/test.py -m qualification -k <name>
+   ```
+
+   Add the family's class to `_small` in `test.py` when its configuration needs other sizes.
+3. On a GPU machine, the real weights (the variable allows the first download):
+   `BRAINSCORE_SKIP_MODEL_DOWNLOAD_CHECK=1 pytest brainscore/models/umi_dev_models/test.py -m slow -k <name>`.
 
 ## What a model of this study must not do
 
