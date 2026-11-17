@@ -10,8 +10,11 @@ The default place is ``~/.brain-score/coggym/<commit>-<requirements hash>`` (the
 moved with ``BRAINSCORE_COGGYM_FOLDER``), so a changed pin gets a new folder. The folder is
 made at the first use when ``BS_INSTALL_DEPENDENCIES`` allows installs (``yes``, the default, or
 ``newenv``: the folder's environment is a new one either way): in a temporary
-sibling folder, checked, then renamed into place. Creation is serialized by a lock; a
-failure removes only its own temporary folder; an existing folder is never changed.
+sibling folder, checked, then published by a rename that never replaces (an existing folder
+is never changed). Creation is serialized by a lock file next to the folder. A failed step
+removes its own temporary folder. Each git and pip command runs under a supervisor with an
+allowlisted environment; if the creating process is killed, the command is stopped and the
+temporary folder stays until the next creation removes it. Linux and macOS only.
 """
 from __future__ import annotations
 

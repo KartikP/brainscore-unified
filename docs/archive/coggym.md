@@ -1,3 +1,8 @@
+> **Historical page.** These instructions describe the earlier CogGym integration, which ran
+> CogGym's evaluator inside the scoring process from a checkout you supplied. They no longer
+> apply: do not install CogGym's packages into the environment you score in. The current
+> page is [the CogGym README](../../brainscore/data/coggym/README.md).
+
 # Use UMI tools with CogGym
 
 CogGym supplies the prompts, questions, answer parser, and scoring. Brain-Score connects the model and tools while CogGym runs its own evaluator.

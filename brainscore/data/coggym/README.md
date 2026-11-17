@@ -4,7 +4,8 @@ CogGym's evaluator (its trial selection, prompts, answer parsing and scoring) ru
 in its own Python environment, in a separate process. Each model call comes back to
 your process as one request, and your model answers it there: the model, the
 recordings and the tools stay in your process. Nothing is installed into the
-environment you score in, so its environment fingerprint does not change.
+environment you score in, so its environment fingerprint does not change. This works on
+Linux and macOS (it needs POSIX process groups and pipes), not on Windows.
 
 ## 1. The folder Brain-Score makes
 
@@ -14,14 +15,28 @@ On a fresh machine, the first `load_benchmark("CogGym...")` makes one folder:
   commit `a1cd9df1118fec80eba7463de237d1497d77e041`;
 - `env/`: a virtual environment with only CogGym's packages, each at an exact
   version (`brainscore/harnesses/coggym_requirements.txt`, installed with
-  `--no-deps` and checked with `pip check`);
+  `--no-deps` and checked with `pip check`). The list is CogGym's own requirements
+  (google-genai, python-dotenv, Pillow) and their dependencies at the versions of the
+  earlier CogGym runs; `pip check` at creation is the test that it is complete on
+  your platform;
 - `ready.json`: the commit, the requirements' hash and the environment's package list.
 
 The folder is `~/.brain-score/coggym/<commit>-<requirements hash>`; set
 `BRAINSCORE_COGGYM_FOLDER` to put these folders somewhere else, or pass
-`folder=...` to `load_benchmark` to name one. Brain-Score makes the folder in a
-temporary folder next to it and renames it into place only when it is complete. A
-failed attempt leaves nothing, and Brain-Score never changes a folder it did not finish.
+`folder=...` to `load_benchmark` to name one.
+
+How the folder is made:
+- in a temporary folder next to it (`.<name>.partial-*`), published in one step only
+  when it is complete; a folder that exists, or appears meanwhile, is never replaced
+  or changed;
+- git and pip get only the variables they need (user, locale, temporary folder,
+  certificates, proxies, package index); no pip configuration file is read, and pip
+  refuses to run outside the folder's environment, so nothing is installed elsewhere;
+- a failed step (clone, environment, install, check) removes its temporary folder and
+  gives one error with the step's output;
+- if the process that makes the folder is killed, its git or pip command is stopped,
+  and its temporary folder stays until the next creation removes it;
+- a lock file next to the folder (`.<name>.lock`, kept) lets one creation run at a time.
 
 To switch this off, set `BS_INSTALL_DEPENDENCIES=no`. A CogGym load with no ready
 folder then stops before any compute, with one error that names the benchmark, the
