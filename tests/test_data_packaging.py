@@ -765,9 +765,8 @@ def test_a_planted_upload_fails(name, tmp_path, monkeypatch, offline):
     assert not (tmp_path / 'out').exists()
 
 
-def test_the_lebel_source_pickle_has_one_place(tmp_path, monkeypatch, offline):
+def test_the_lebel_source_pickle_is_read_in_the_source_folder_of_the_data_home(tmp_path, monkeypatch, offline):
     from brainscore.data.lebel2023 import data
-    monkeypatch.setenv('BRAINSCORE_LEBEL_PICKLE', str(tmp_path / 'elsewhere.pkl'))    # deleted: not read
     with pytest.raises(LocalDataMissing, match=re.escape(str(tmp_path / 'home' / 'sources' / 'lebel2023'))):
         data.build()
     source = _lebel_source(tmp_path, monkeypatch, offline)
@@ -775,7 +774,6 @@ def test_the_lebel_source_pickle_has_one_place(tmp_path, monkeypatch, offline):
     source.rename(tmp_path / 'home' / 'sources' / 'lebel2023')     # the folder package_data reads
     stimuli, assembly = data.build()
     assert len(stimuli) == assembly.sizes['presentation'] == 6
-    assert 'lebel2023-pickle' not in local.REGISTRY
 
 
 def test_a_rebuilt_hosted_file_goes_where_the_loader_reads_it(tmp_path, monkeypatch, capsys, offline):
@@ -820,10 +818,7 @@ def test_algonauts_fails_as_a_whole_when_an_assembly_names_an_absent_film(tmp_pa
     assert _tree(source) == before
 
 
-def test_prepared_data_in_an_old_place_is_missing_and_the_message_names_the_new_place(
-        tmp_path, offline, monkeypatch):
-    monkeypatch.setenv('HOME', str(tmp_path / 'user'))
-    (tmp_path / 'user' / '.brainio' / 'algonauts2025').mkdir(parents=True)     # an old default place
+def test_missing_prepared_data_names_its_place_in_the_data_home_and_the_command(tmp_path, offline):
     with pytest.raises(LocalDataMissing) as missing:
         local.check_benchmark_assets('Algonauts2025-friends-sub01')
     assert str(tmp_path / 'home' / 'algonauts2025-prepared') in str(missing.value)

@@ -196,3 +196,21 @@ def test_the_asset_list_needs_no_ml_import():
 def test_a_second_asset_with_the_same_name_is_refused(asset):
     with pytest.raises(ValueError, match='already declared'):
         local.register(asset)
+
+
+def test_no_distributed_text_names_a_deleted_location_variable():
+    """The pages under docs/archive are history and say so; every other text gives the data home."""
+    deleted = ('BRAINSCORE_HOME', 'BRAINSCORE_ALGONAUTS_PREPARED', 'BRAINSCORE_ALGONAUTS_ROOT',
+               'BRAINSCORE_EWOK_ROOT', 'BRAINSCORE_COGGYM_CHECKOUT', 'BRAINSCORE_LAHNER_FRAMES_DIR',
+               'BRAINSCORE_LAHNER_SOUND_DIR', 'BRAINSCORE_LANA_ATLAS', 'BRAINSCORE_LEBEL_CACHE',
+               'BRAINSCORE_LEBEL_PICKLE')
+    root = pathlib.Path(__file__).resolve().parents[1]
+    found = []
+    for path in root.rglob('*'):
+        relative = path.relative_to(root).as_posix()
+        if (not path.is_file() or path.suffix not in ('.py', '.md', '.ipynb', '.yml', '.yaml', '.toml', '.txt')
+                or relative.startswith(('docs/archive/', '.git/')) or path == pathlib.Path(__file__).resolve()):
+            continue
+        text = path.read_text(errors='ignore')
+        found += [f'{relative}: {name}' for name in deleted if name in text]
+    assert not found, found
