@@ -8,7 +8,7 @@ The reader is a person who registers a model.
 | Job | Helper | What it gives |
 | --- | --- | --- |
 | Record a layer from text | `text_wrapper.py`: `TextWrapper` | An extractor for an encoder or causal text model, with the layer aggregation you choose. |
-| Record a layer from pictures (flattened-patch form) | `vlm_vision_wrapper.py`: `VLMVisionWrapper` | An extractor for a vision encoder whose input is a patch list plus grid sizes (Qwen style). |
+| Record a layer from pictures (flattened-patch form) | `vlm_vision_wrapper.py`: `VLMVisionWrapper` | An extractor for a vision encoder whose input is a patch list plus grid sizes. |
 | Record a layer from clips | `video_wrapper.py`: `VideoWrapper` | An extractor for a model that takes a `(batch, T, C, H, W)` clip and gives activity over time. |
 | Record a layer from clips, with a vision-language processor | `vlm_video_wrapper.py`: `VLMVideoWrapper` | An extractor that hands the whole clip to the processor and gives one time bin per temporal patch. |
 | Record a layer from sound | `audio_wrapper.py`: `AudioWrapper` | An extractor for an audio backbone; `mean` or `sequence` aggregation. |
