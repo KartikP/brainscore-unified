@@ -880,3 +880,26 @@ def test_the_package_ships_each_data_plugin_readme_and_expected_record(tmp_path)
     wanted = [f'brainscore/data/{plugin.name}/README.md' for plugin in PLUGINS]
     wanted += [path.relative_to(DATA.parents[1]).as_posix() for path in DATA.glob('*/data_packaging/expected.json')]
     assert [name for name in wanted if name not in names] == []
+
+
+def test_a_printed_command_quotes_every_path(tmp_path, monkeypatch, offline):
+    # Folders with spaces: a command line that names one must quote it, or the message prints no command.
+    shared = tmp_path / 'shared data'
+    monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(shared / 'home'))
+    registered = b'x\n1.0\n'
+    source = _made_up_plugin(tmp_path, monkeypatch, {'table.csv': b'x\n1.00\n'},
+                             sha1={'table.csv': hashlib.sha1(registered).hexdigest()})
+    messages = []
+    with pytest.raises(ValueError) as failed:                     # a failed check
+        package_data('made-up', source=source, output=shared / 'out')
+    messages.append(str(failed.value))
+    with pytest.raises(LocalDataMissing) as missing:              # a missing source
+        package_data('ewok', source=shared / 'no source')
+    messages.append(str(missing.value))
+    for asset in local.REGISTRY.values():                         # a missing local asset
+        messages.append(asset.instructions())
+    for message in messages:
+        for line in message.splitlines():
+            if re.search(r'\b(python -m|rm|mv|cp|mkdir)\s', line):
+                for path in re.findall(rf"{re.escape(str(shared))}[^'\n]*", line):
+                    assert shlex.quote(path.rstrip('.')) in line, f'unquoted path in: {line}'
