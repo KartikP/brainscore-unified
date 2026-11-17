@@ -440,13 +440,13 @@ def package_data(name: str, source: str | Path | None = None,
             raise RuntimeError(f'The check of the built {name} files stopped: {failure}\n{kept}') from failure
         if problems:
             raise ValueError('\n'.join([f'The check of the built {name} files failed.', *problems, kept]))
+        keep = False            # the comparisons passed: a later failure keeps nothing
         (staging / 'build.json').write_text(json.dumps(
             {'schema_version': 4, 'name': name, 'source': builder.source, 'files': files},
             indent=2, allow_nan=False) + '\n')
         # Keep packaged data private by default: some sources forbid redistribution.
         for entry in [staging, *staging.rglob('*')]:
             entry.chmod(0o700 if entry.is_dir() else 0o600)
-        keep = False
         if destination.exists() or destination.is_symlink():
             raise FileExistsError('the output appeared during the build; nothing replaced')
         # Publish last, after the record and the permissions, so that little can fail after it. A hosted

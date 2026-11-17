@@ -527,6 +527,20 @@ def test_a_failed_check_keeps_the_build_and_a_new_run_builds_again(tmp_path, mon
     assert second != first and {path.name: path.read_bytes() for path in first.iterdir()} == before
 
 
+def test_a_failure_after_the_check_passed_keeps_no_build(tmp_path, monkeypatch, offline):
+    source = _made_up_plugin(tmp_path, monkeypatch, {'table.csv': b'x\n1\n'})
+    write_text = pathlib.Path.write_text
+
+    def refuse(self, *args, **kwargs):
+        if self.name == 'build.json':
+            raise OSError('the record cannot be written')
+        return write_text(self, *args, **kwargs)
+    monkeypatch.setattr(pathlib.Path, 'write_text', refuse)
+    with pytest.raises(OSError, match='the record cannot be written'):
+        package_data('made-up', source=source, output=tmp_path / 'out')
+    assert not list(tmp_path.glob('.brainscore-*')) and not (tmp_path / 'out').exists()
+
+
 def test_a_file_with_no_expected_record_states_its_counts(tmp_path, monkeypatch, capsys, offline):
     source = _made_up_plugin(tmp_path, monkeypatch, {'table.csv': b'x\n1\n2\n'})
     output = package_data('made-up', source=source, output=tmp_path / 'out')
