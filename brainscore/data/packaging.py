@@ -436,7 +436,10 @@ def package_data(name: str, source: str | Path | None = None,
                 entry['check'], problem = _check(builder, recorded.get(relative, {}), relative, entry, content)
                 if problem:
                     problems.append(f'  {relative}: {problem}')
-        except Exception as failure:
+        except BaseException as failure:
+            if not isinstance(failure, Exception):      # an interrupt stays an interrupt, with the kept path
+                failure.add_note(kept)
+                raise
             raise RuntimeError(f'The check of the built {name} files stopped: {failure}\n{kept}') from failure
         if problems:
             raise ValueError('\n'.join([f'The check of the built {name} files failed.', *problems, kept]))

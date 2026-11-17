@@ -541,6 +541,20 @@ def test_a_failure_after_the_check_passed_keeps_no_build(tmp_path, monkeypatch, 
     assert not list(tmp_path.glob('.brainscore-*')) and not (tmp_path / 'out').exists()
 
 
+def test_an_interrupt_during_the_check_names_the_kept_build(tmp_path, monkeypatch, offline):
+    from brainscore.data import packaging
+    source = _made_up_plugin(tmp_path, monkeypatch, {'table.csv': b'x\n1\n'})
+
+    def interrupt(path):
+        raise KeyboardInterrupt
+    monkeypatch.setattr(packaging, '_read', interrupt)
+    with pytest.raises(KeyboardInterrupt) as interrupted:
+        package_data('made-up', source=source, output=tmp_path / 'out')
+    kept, = tmp_path.glob('.brainscore-build-*')
+    assert str(kept) in '\n'.join(getattr(interrupted.value, '__notes__', []))
+    assert (kept / 'table.csv').exists() and not (tmp_path / 'out').exists()
+
+
 def test_a_file_with_no_expected_record_states_its_counts(tmp_path, monkeypatch, capsys, offline):
     source = _made_up_plugin(tmp_path, monkeypatch, {'table.csv': b'x\n1\n2\n'})
     output = package_data('made-up', source=source, output=tmp_path / 'out')
