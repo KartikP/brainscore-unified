@@ -16,7 +16,8 @@ def load_prepared(root: str | Path | None = None, *, verify_clips: bool = True) 
     from .data_packaging.prepare import checksum
     root = Path(root).expanduser() if root else local.path(PREPARED.name)
     if not (root / 'manifest.json').is_file():
-        raise local.LocalDataMissing(PREPARED.instructions())
+        raise local.LocalDataMissing(f'No prepared Sun2025 build at {root} (no manifest.json).\n\n'
+                                     + PREPARED.instructions())
     raw = (root / 'manifest.json').read_bytes()
     manifest = json.loads(raw)
     if manifest.get('dataset') != IDENTIFIER or manifest.get('schema_version') != 1:
@@ -24,6 +25,9 @@ def load_prepared(root: str | Path | None = None, *, verify_clips: bool = True) 
                          f'prepare it again: {PREPARED.prepare}')
     for name, expected in manifest['files'].items():
         if verify_clips or not name.startswith('clips/'):
+            if not (root / name).is_file():
+                raise local.LocalDataMissing(f'{root / name} is missing from the prepared build at {root}; '
+                                             f'prepare the build again: {PREPARED.prepare}')
             if checksum(root / name) != expected:
                 raise ValueError(f'Checksum of {name} changed; prepare the build again: {PREPARED.prepare}')
     manifest['build_id'] = hashlib.sha256(raw).hexdigest()[:16]

@@ -252,3 +252,15 @@ def test_the_registered_identifier_needs_the_full_design(build):
     (build / 'manifest.json').write_text(json.dumps(dict(manifest, complete=True)))
     with pytest.raises(ValueError, match='40 scenes'):
         brainscore.load_benchmark('Sun2025-motion-vector-error', root=build)
+
+
+def test_a_file_missing_inside_a_build_names_its_path_and_the_command(build, tmp_path):
+    clip = build / 'clips' / 'sun2025-s01-m1-v1-f1.avi'
+    clip.unlink()
+    with pytest.raises(local.LocalDataMissing) as missing:
+        brainscore.load_stimulus_set('Sun2025-second-order-motion', root=build)
+    assert str(clip) in str(missing.value) and 'python -m brainscore.data prepare' in str(missing.value)
+    empty = tmp_path / 'no-build'
+    empty.mkdir()
+    with pytest.raises(local.LocalDataMissing, match=str(empty)):
+        brainscore.load_dataset('Sun2025-second-order-motion', root=empty)
