@@ -16,8 +16,8 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def brainscore_home(tmp_path, monkeypatch):
-    """The example loader writes its images to the Brain-Score home: use a temporary one."""
-    monkeypatch.setenv('BRAINSCORE_HOME', str(tmp_path))
+    """The example loader writes its images to the data home: use a temporary one."""
+    monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path))
 
 
 def test_registered_under_both_ids():

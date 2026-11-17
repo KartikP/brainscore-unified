@@ -137,7 +137,7 @@ def install(monkeypatch, tmp_path, runs=None, bold=None, events=None, glm=None):
     # dependency; a stand-in module supplies a seeded atlas without it.
     atlas = np.random.default_rng(5)
     datasets = types.ModuleType('nilearn.datasets')
-    datasets.fetch_atlas_surf_destrieux = lambda: {
+    datasets.fetch_atlas_surf_destrieux = lambda **kwargs: {
         'map_left': atlas.integers(0, 76, 10242), 'map_right': atlas.integers(0, 76, 10242)}
     package = types.ModuleType('nilearn')
     package.datasets = datasets

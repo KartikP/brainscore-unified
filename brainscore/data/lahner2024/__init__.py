@@ -158,7 +158,8 @@ data_builder_registry['destrieux-atlas'] = lambda: DataBuilder(
     access='public, no account.',
     layout='none.',
     needs='nilearn; a download made by nilearn, size not measured.',
-    writes='Nilearn fetches the atlas on first use and the auditory-ROI benchmark reads it as published.',
+    writes='Nilearn fetches the atlas on first use into `$BRAINSCORE_DATA_HOME/destrieux-atlas`, where the '
+           'auditory-ROI benchmark reads it as published.',
 )
 
 

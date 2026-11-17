@@ -49,7 +49,7 @@ not interchangeable.
 - Access: public, no account.
 - Needs: nilearn; a download made by nilearn, size not measured.
 - Command: none: nothing to package.
-- Writes: Nilearn fetches the atlas on first use and the auditory-ROI benchmark reads it as published.
+- Writes: Nilearn fetches the atlas on first use into `$BRAINSCORE_DATA_HOME/destrieux-atlas`, where the auditory-ROI benchmark reads it as published.
 - Check: nothing to compare.
 
 ### lahner2024

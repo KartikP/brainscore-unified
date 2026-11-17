@@ -165,6 +165,22 @@ def test_a_region_no_shown_stream_answers_is_refused_before_any_compute(monkeypa
     assert subject.seen == []
 
 
+def test_the_auditory_atlas_is_fetched_into_its_place_in_the_data_home(tmp_path, monkeypatch):
+    import sys, types
+    from brainscore.benchmarks.lahner2024.auditory_roi import build_auditory_mask
+    calls = []
+    datasets = types.ModuleType('nilearn.datasets')
+    datasets.fetch_atlas_surf_destrieux = lambda **kwargs: calls.append(kwargs) or {
+        'map_left': np.zeros(10242, dtype=int), 'map_right': np.zeros(10242, dtype=int)}
+    package = types.ModuleType('nilearn')
+    package.datasets = datasets
+    monkeypatch.setitem(sys.modules, 'nilearn', package)
+    monkeypatch.setitem(sys.modules, 'nilearn.datasets', datasets)
+    monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path))
+    build_auditory_mask()
+    assert calls == [{'data_dir': str(tmp_path / 'destrieux-atlas')}]
+
+
 @pytest.mark.parametrize('build', [lambda: Lahner2024BOLDMoments(channels=AUDIOVISUAL, identifier='Lahner2024-fMRI-naturalistic'),
                                    lambda: _tr(channels=AUDIOVISUAL)], ids=['glm', 'tr'])
 def test_a_missing_sound_track_is_refused_before_the_visual_stream_is_recorded(monkeypatch, tmp_path, build):
