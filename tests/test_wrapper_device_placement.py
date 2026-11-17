@@ -243,3 +243,14 @@ def test_the_reply_path_sends_inputs_where_the_wrapper_does():
     network = _OffloadedFirst(_TextNet())
     parts = _CausalLMParts(network, _tokenizer())
     assert parts.device == TextWrapper(network, _tokenizer(), identifier='stand-in')._device == torch.device('cpu')
+
+
+@pytest.mark.parametrize('placed', [True, False])
+def test_a_stated_meta_device_is_refused_at_construction(placed):
+    for make in WRAPPERS:
+        model = _StandIn(offloaded=False)
+        if placed:
+            model.hf_device_map = {'': 'cpu'}
+        with pytest.raises(ValueError, match="'meta' holds no values"):
+            make(model, device='meta')
+        assert not model.moved_to

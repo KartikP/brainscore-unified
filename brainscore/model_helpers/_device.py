@@ -29,8 +29,10 @@ def place_model(model, device=None):
 
     Any other model is moved to ``select_device(device)``, which is also the
     device for its inputs, exactly as before this rule (so its cache key is
-    unchanged).
+    unchanged). A stated ``meta`` device is refused (``stated_device``).
     """
+    if device is not None:
+        stated_device(device)
     devices = set()
     for parameter in model.parameters():
         devices.add(parameter.device)
@@ -56,7 +58,7 @@ def input_device(model, device=None):
     """
     import torch
     if device is not None:
-        return canonical_device(device)
+        return canonical_device(stated_device(device))
     try:
         entry = model.get_input_embeddings()
     except (AttributeError, NotImplementedError):
@@ -69,6 +71,15 @@ def input_device(model, device=None):
             f'{sorted(map(str, devices)) or "meta only"}. State the input device: pass device=... '
             f'to the wrapper (the model is not moved).')
     return canonical_device(devices.pop())
+
+
+def stated_device(device):
+    """``device`` as a torch device; refuses ``meta``, which holds no values."""
+    import torch
+    device = torch.device(device)
+    if device.type == 'meta':
+        raise ValueError("The device 'meta' holds no values; state the device where the inputs go.")
+    return device
 
 
 def canonical_device(device):
