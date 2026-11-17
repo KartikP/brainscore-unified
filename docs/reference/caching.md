@@ -35,7 +35,7 @@ This also skips content hashing for these wrapper disk-cache lookups. Other prov
 
 ```sh
 export RESULTCACHING_HOME=/path/to/writable/cache
-python -m brainscore.doctor
+python -m brainscore.doctor     # checks that the folder is writable
 ```
 
 ## Early failures

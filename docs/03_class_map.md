@@ -85,6 +85,7 @@ from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidA
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
+# Extractor: one unit, the sentence length
 def word_lengths(stimuli, layers):
     values = np.array([[len(sentence)] for sentence in stimuli['sentence']], dtype=float)
     return NeuroidAssembly(values, dims=['presentation', 'neuroid'],
@@ -94,6 +95,7 @@ def word_lengths(stimuli, layers):
 
 model = BrainScoreModel(identifier='word-length', extractor={'text': word_lengths},
                         region_layer_map={'language': 'length'})
+# Record the region on two sentences
 sentences = StimulusSet(pd.DataFrame({'stimulus_id': ['s0', 's1'], 'sentence': ['a cat', 'the zebra']}))
 sentences.identifier = 'two-sentences'
 print(neural_response(model, sentences, ['neural:language']).values.tolist())   # [[5.0], [9.0]]
