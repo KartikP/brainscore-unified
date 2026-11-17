@@ -51,7 +51,7 @@ def main() -> None:
     native_request = InferenceRequest(
         video=Path(request['video']), transcript=Path(request['transcript']),
         run_dir=run_dir, checkpoint=checkpoint,
-        subject_idx=SUBJECTS.index(request['subject']), output=Path(request['output']),
+        subject_idx=SUBJECTS.index(request['participant']), output=Path(request['output']),
         device=request['device'], batch_size=request['batch_size'],
     )
     values = run_inference(native_request)
@@ -63,7 +63,7 @@ def main() -> None:
         'source_revision': revision, 'checkpoint_sha256': weights_sha256,
         'checkpoint_revision': 'b38a252c28e5416336423f4eda0c42d7e1df4e9c',
         'config_sha256': sha256(run_dir / 'config.yaml'), 'config': config,
-        'backbone_revision': backbone_revision, 'subject': request['subject'],
+        'backbone_revision': backbone_revision, 'participant': request['participant'],
         'device': request['device'], 'batch_size': request['batch_size'],
         'output_dtype': str(values.dtype), 'python': sys.version.split()[0],
         'packages': {name: importlib.metadata.version(name) for name in (

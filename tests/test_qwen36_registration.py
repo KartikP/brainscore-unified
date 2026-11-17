@@ -18,7 +18,7 @@ from brainscore_core.streaming_helpers import apply_state_change
 
 import brainscore.models._downloads as downloads
 import brainscore.model_helpers.text_wrapper as text_wrapper
-import brainscore.model_helpers.vision_wrapper as vision_wrapper
+import brainscore.model_helpers.vlm_vision_wrapper as vlm_vision_wrapper
 import brainscore_core.hf_compat as hf_compat
 from brainscore.models.qwen36_27b import model as registration
 
@@ -29,6 +29,9 @@ class FakeWrapper:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
         self.identifier = kwargs['identifier']
+
+    def layer_names(self):
+        return [name for name, _ in self.kwargs['model'].named_modules() if name]
 
     def __call__(self, stimuli, layers, stimuli_identifier=None, **kwargs):
         raise AssertionError('not called in wiring tests')
@@ -87,7 +90,7 @@ def built(monkeypatch):
         AutoProcessor=types.SimpleNamespace(from_pretrained=lambda *a, **k: processor)))
     monkeypatch.setattr(hf_compat, 'pin_image_processor', lambda p, *a, **k: p)
     monkeypatch.setattr(downloads, 'hf_preflight', lambda *a, **k: {})
-    monkeypatch.setattr(vision_wrapper, 'VisionWrapper', FakeWrapper)
+    monkeypatch.setattr(vlm_vision_wrapper, 'VLMVisionWrapper', FakeWrapper)
     monkeypatch.setattr(text_wrapper, 'TextWrapper', FakeWrapper)
     import brainscore.model_helpers.vlm_video_wrapper as vlm_video_wrapper
     monkeypatch.setattr(vlm_video_wrapper, 'VLMVideoWrapper',
@@ -98,13 +101,13 @@ def built(monkeypatch):
 def test_both_towers_are_wired(built):
     model, _ = built
     vision, text = model.extractor['vision'], model.extractor['text']
-    assert vision.kwargs['kind'] == 'vlm'
-    assert vision.kwargs['forward_kwargs_map'] == {'grid_thw': 'image_grid_thw'}
+    assert vision.kwargs['processor'] is not None
+    assert set(vision.kwargs) == {'model', 'processor', 'identifier'}
     assert isinstance(vision.kwargs['model'].blocks, torch.nn.ModuleList)
     assert len(text.kwargs['model'].layers) == 64
-    # Same identifier and cache key as the earlier text-only registration.
-    assert (text.identifier, text.kwargs['backbone_id']) == ('qwen3.6-27b-text', 'qwen3.6-27b')
-    assert {'vision', 'text'} <= set(model.available_modalities)
+    # Same identifier as the earlier text-only registration.
+    assert text.identifier == 'qwen3.6-27b-text'
+    assert 'text' in model.in_channels
     # Stills as images, clips as video, from the same vision tower.
     assert {'vision:image', 'vision:video'} <= model.in_channels
     assert model.extractor['video'].kwargs['model'] is vision.kwargs['model']
@@ -114,9 +117,13 @@ def test_both_towers_are_wired(built):
 def test_regions_route_to_their_tower(built):
     model, _ = built
     selectors = model.region_layer_selectors
-    assert (selectors['language_system'].name, selectors['language_system'].modality) == ('layers.40', 'text')
+    assert selectors['language_system'].name == 'layers.40'
+    # The language model also reads the picture tokens; the text extractor records it.
+    assert model.output_inputs['neural:language_system'] == {'text', 'vision:image'}
+    assert selectors['language_system'].modality == 'text'
+    assert model.region_layer_map['language_system'].modality == ('text', 'vision')
     for region in ('V1', 'V2', 'V4', 'IT'):
-        assert selectors[region].modality == 'vision'
+        assert model.output_inputs[f'neural:{region}'] == {'vision:image', 'vision:video'}
         assert int(selectors[region].name.split('.')[1]) < 27
 
 
@@ -141,10 +148,43 @@ def test_answer_sends_the_image_without_thinking(built, tmp_path):
     Image.new('RGB', (8, 8)).save(path)
     stimuli = StimulusSet([{'stimulus_id': 'w0', 'image_file_name': str(path)}])
     stimuli.identifier = 'qwen36-answer-wiring'
-    task = TaskContext(task_type='label', label_set=['real', 'pseudo'],
-                       instruction='Is this a real word?', prefer_path='generation')
-    session = stimulus_session(stimuli, ['behavior'], task_context=task)
+    from brainscore_core.responses import Choice
+    task = TaskContext(response=Choice(['real', 'pseudo']), instruction='Is this a real word?')
+    session = stimulus_session(stimuli, ['behavior'], task=task)
     model.participate(session)
     assert list(session.collect('behavior').values.ravel()) == [0.0, 1.0]   # one-hot over (real, pseudo)
     assert processor.template_kwargs['enable_thinking'] is False
     assert len(processor.images) == 1
+
+
+def test_vision_extractor_keeps_its_identifier_and_cache_key(monkeypatch):
+    """The registration builds VLMVisionWrapper itself; identifier and cache settings are unchanged."""
+    processor = FakeProcessor()
+    monkeypatch.setitem(sys.modules, 'transformers', types.SimpleNamespace(
+        Qwen3_5ForConditionalGeneration=FakeVLM,
+        AutoProcessor=types.SimpleNamespace(from_pretrained=lambda *a, **k: processor)))
+    monkeypatch.setattr(hf_compat, 'pin_image_processor', lambda p, *a, **k: p)
+    monkeypatch.setattr(downloads, 'hf_preflight', lambda *a, **k: {})
+    monkeypatch.setattr(text_wrapper, 'TextWrapper', FakeWrapper)
+    import brainscore.model_helpers.vlm_video_wrapper as vlm_video_wrapper
+    monkeypatch.setattr(vlm_video_wrapper, 'VLMVideoWrapper',
+                        lambda model, processor, identifier: FakeWrapper(model=model, identifier=identifier))
+    vision = registration.get_model('qwen3.6-27b').extractor['vision']
+    assert type(vision) is vlm_vision_wrapper.VLMVisionWrapper
+    assert vision.identifier == 'qwen3.6-27b-vision'
+    settings = vision.cache_config()['settings']
+    assert {key: settings[key] for key in ('_layer_aggregation', '_batch_size')} == {
+        '_layer_aggregation': 'mean', '_batch_size': 4}
+    assert settings['_processor'] is processor
+
+
+def test_a_transformers_without_the_class_names_the_model_and_both_versions(monkeypatch):
+    """The reference environment (transformers 4.57.6) has no Qwen3_5ForConditionalGeneration."""
+    monkeypatch.setitem(sys.modules, 'transformers', types.SimpleNamespace(
+        __version__='4.57.6', AutoProcessor=object()))
+    monkeypatch.setattr(downloads, 'hf_preflight', lambda *a, **k: {})
+    with pytest.raises(ImportError) as refused:
+        registration.get_model('qwen3.6-27b')
+    message = str(refused.value)
+    assert "'qwen3.6-27b'" in message and 'transformers 5 or later' in message
+    assert 'installed transformers is 4.57.6' in message

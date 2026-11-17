@@ -16,7 +16,7 @@ from unittest.mock import patch
 import numpy as np
 import torch
 
-from brainscore.experiments import Experiment, SessionProtocol, TorchInstrumentation
+from brainscore.experiments import Experiment, SessionProtocol, Tool, TorchInstrumentation
 from brainscore.model_helpers.text_wrapper import TextWrapper
 from brainscore.run_record import RunRecord
 from brainscore.tools import attach_tools, load_tool
@@ -65,16 +65,18 @@ def check_close(observed: Any, expected: Any, label: str, *, exact: bool = False
     return float(np.max(np.abs(observed - expected)))
 
 
-class Calls:
+class Calls(Tool):
+    """Count the sessions the subject took part in, from the session events."""
+    name = 'session_counter'
+
     def __init__(self) -> None:
         self.started, self.completed = 0, 0
 
-    def on_start(self, call: Any) -> None:
-        require(call.method == 'participate', 'explicitly observed participate')
-        self.started += 1
-
-    def on_result(self, call: Any, result: Any) -> None:
-        self.completed += 1
+    def on_event(self, event: Any) -> None:
+        if event['kind'] == 'repetition_start':
+            self.started += 1
+        elif event['kind'] == 'repetition_end' and not event['payload']['failed']:
+            self.completed += 1
 
 
 def check_model(directory: Path, model: Any, tokenizer: Any, layer: str, provenance: dict) -> dict:
@@ -92,11 +94,11 @@ def check_model(directory: Path, model: Any, tokenizer: Any, layer: str, provena
     # Placement is a qualification control, not a change to the wrapper defaults.
     with patch('brainscore.model_helpers._device.select_device', return_value=torch.device('cpu')):
         extractor = TextWrapper(model, tokenizer, identifier='qualification',
-                                layer_aggregation='last_token', batch_size=64, max_length=64)
+                                layer_aggregation='last', batch_size=64, max_length=64)
     subject = BrainScoreModel(identifier='interpretability-qualification', extractor={'text': extractor},
                               region_layer_map={'population': layer})
     site = model.get_submodule(layer)
-    provider = TorchInstrumentation({layer: site})
+    instrumentation = TorchInstrumentation({layer: site})
     weights, rng = weights_digest(model), torch.random.get_rng_state().clone()
     training, labels, testing, test_labels = sentences()
     require(not set(training) & set(testing), 'disjoint discovery and evaluation inputs')
@@ -152,8 +154,8 @@ def check_model(directory: Path, model: Any, tokenizer: Any, layer: str, provena
 
     result = Experiment(subject=subject,
         protocol=SessionProtocol('trained-tool-mechanics', factory, conditions=CONDITIONS,
-                                 input_channels=['text'], output_channels=['neural:population']),
-        tools=[load_tool('record-io'), load_tool('observe-calls', observer=calls, methods=['participate']),
+                                 required_input_channels=['text'], requested_output_channels=['neural:population']),
+        tools=[load_tool('record-io'), calls,
                load_tool('record-reasoning'),
                load_tool('record-activity', targets=[layer], name='before', when='before'),
                load_tool('linear-probe', artifact=directory / 'linear-probe.json', name='probe_before', when='before'),
@@ -169,7 +171,7 @@ def check_model(directory: Path, model: Any, tokenizer: Any, layer: str, provena
                load_tool('leace', artifact=directory / 'leace.json', conditions=['erased']),
                load_tool('record-activity', targets=[layer], name='after'),
                load_tool('linear-probe', artifact=directory / 'linear-probe.json', name='probe_after')],
-        instrumentation=provider, output_dir=directory / 'experiment', metadata={'provenance': provenance}).run()
+        instrumentation=instrumentation, output_dir=directory / 'experiment', metadata={'provenance': provenance}).run()
     events = list(result.record.events())  # Validates persisted checksums while reading.
     for condition, output in zip(CONDITIONS, result.value):
         expected = native.clone()
@@ -198,7 +200,6 @@ def check_model(directory: Path, model: Any, tokenizer: Any, layer: str, provena
         errors[f'{condition}_response'] = check_close(output.values, pool(expected.numpy()),
             f'{condition}/response', exact=condition != 'erased')
     require(calls.started == calls.completed == len(CONDITIONS), 'observer call counts')
-    require('participate' not in vars(subject), 'observer restores instance method state')
     probes = [e for e in events if e['kind'] == 'probe']
     require(len(probes) == 2 * len(CONDITIONS), 'both probes execute in every condition')
     for event in probes:
@@ -212,12 +213,12 @@ def check_model(directory: Path, model: Any, tokenizer: Any, layer: str, provena
     donor_texts = [t.replace('red', 'TEMP').replace('blue', 'red').replace('TEMP', 'blue') for t in testing]
     donor_tokens = tokenizer(donor_texts, padding=True, truncation=True, max_length=64, return_tensors='pt')
     require(torch.equal(tokens['attention_mask'], donor_tokens['attention_mask']), 'explicit donor token alignment')
-    analysis = provider.attribute([layer], reference_call=lambda: model(**donor_tokens),
+    analysis = instrumentation.attribute([layer], reference_call=lambda: model(**donor_tokens),
         comparison_call=lambda: model(**tokens), objective=lambda out: out.last_hidden_state[..., 0].sum(),
         normalize=False)
     with attach_tools(subject, tools=[load_tool('record-io'),
                       load_tool('patch-activity', targets=[layer], reference=analysis['reference'])],
-                      instrumentation=provider, output_dir=directory / 'patch'):
+                      instrumentation=instrumentation, output_dir=directory / 'patch'):
         patched = evaluate(testing)
     errors['exact_patch'] = check_close(patched.values, pool(analysis['reference']['values'][layer]),
                                        'donor patch', exact=True)
@@ -230,7 +231,7 @@ def check_model(directory: Path, model: Any, tokenizer: Any, layer: str, provena
         try:
             with attach_tools(subject, tools=[load_tool('record-io'),
                               load_tool('contrastive-steering', artifact=directory / 'contrastive-steering.json')],
-                              instrumentation=provider, output_dir=directory / 'interrupted'):
+                              instrumentation=instrumentation, output_dir=directory / 'interrupted'):
                 evaluate(testing)
                 raise RuntimeError('intentional qualification interruption')
         except RuntimeError as error:

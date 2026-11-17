@@ -8,7 +8,7 @@ import pytest
 
 from brainscore import BrainScoreModel, LayerSelector
 from brainscore._model.behavior import ProbabilitiesClassifier
-from brainscore._model.perturbation import PerturbationManager
+from brainscore._model.intervention import Interventions
 
 pytestmark = pytest.mark.unit
 
@@ -65,7 +65,7 @@ def test_maintained_sources_use_the_unified_implementation():
     assert not failures, '\n'.join(failures)
 
 
-@pytest.mark.parametrize('definition', [ProbabilitiesClassifier, PerturbationManager, LayerSelector])
+@pytest.mark.parametrize('definition', [ProbabilitiesClassifier, Interventions, LayerSelector])
 def test_moved_classes_pickle_to_the_unified_definition(definition):
     assert definition.__module__.startswith('brainscore.')
     assert pickle.loads(pickle.dumps(definition)) is definition
@@ -78,18 +78,14 @@ def test_selector_instance_pickle_round_trip():
     assert restored == selector
 
 
-def test_builtin_columns_match_the_constructor_map():
-    from brainscore_core.io_catalog import BUILTIN_STIMULUS_COLUMNS
-
-    assert isinstance(BrainScoreModel.COLUMN_TO_MODALITY, dict)
-    assert BrainScoreModel.COLUMN_TO_MODALITY == dict(BUILTIN_STIMULUS_COLUMNS)
-
-
-def test_concrete_subject_keeps_typed_dispatch_order():
-    assert [(kind.__name__, handler) for kind, handler in BrainScoreModel._INPUT_HANDLERS] == [
-        ('StateChange', '_dispatch_state_change'),
-        ('Mapping', '_handle_row'),
-    ]
+def test_built_in_capabilities_are_the_session_parts():
+    """The registry holds one session part per answering part; they come after
+    any added capability (default order 1000)."""
+    from brainscore.capabilities import Capability, capability_registry
+    built_in = {'neural-sessions', 'behavior-sessions', 'motor-sessions', 'intervention-sessions'}
+    assert built_in <= set(capability_registry)
+    assert {capability_registry[i].order for i in built_in} == {10000}
+    assert Capability.order == 1000
 
 
 @pytest.mark.parametrize('source', [

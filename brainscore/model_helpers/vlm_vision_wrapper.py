@@ -1,5 +1,5 @@
 """
-VLMVisionWrapper — activations_model for VLM vision encoders with
+VLMVisionWrapper — extractor for VLM vision encoders with
 flattened-patch layouts.
 
 Symmetric with PytorchWrapper and TextWrapper. Handles VLMs whose vision
@@ -12,171 +12,102 @@ Usage (Qwen2.5-VL):
         model=qwen_model.model.visual,
         processor=qwen_processor,
         identifier='qwen2.5-vl-3b-vision',
-        forward_kwargs_map={'grid_thw': 'image_grid_thw'},
-        patch_count_fn=lambda out: [int(t*h*w) for t, h, w in out['image_grid_thw']],
     )
     assembly = wrapper(stimulus_set, layers=['blocks.28'])
 """
 
 import logging
 from collections import OrderedDict
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
-import pandas as pd
 from PIL import Image
-from tqdm.auto import tqdm
 
-from brainscore_core.assembly_builder import (
-    concat_neuroid_assemblies,
-    make_assembly,
-    make_layer_neuroid_coords,
-)
+from brainscore_core.assembly_builder import concat_neuroid_assemblies, make_layer_neuroid_coords
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
-from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-from brainscore_core.extraction_cache import (
-    store_xarray, extraction_fingerprint, wrapper_config, file_inputs,
+from brainscore_core.extraction_cache import store_xarray
+from brainscore.model_helpers._extractors import (
+    CachingExtractor, LiveRecording, as_float32, catalog_columns, catalog_paths, checked_aggregation,
+    layer_assembly, run_batches,
 )
 
 
 logger = logging.getLogger(__name__)
 
+class VLMVisionWrapper(CachingExtractor):
+    """Extractor for VLM vision encoders with flattened-patch layouts.
 
-class VLMVisionWrapper:
-    """Activations_model for VLM vision encoders with flattened-patch layouts.
+    The layout is the Qwen-VL one: the encoder takes the processor's
+    ``pixel_values``; when the processor also gives ``image_grid_thw``, it is
+    passed as ``grid_thw`` and segments the flattened patches per image
+    (``t * h * w`` patches each). Without ``image_grid_thw`` each output row is
+    one image. Another layout is a subclass that overrides ``_forward`` and
+    ``_patch_counts`` (with its own ``_VERSION``).
 
     Args:
         model: The vision sub-module of a VLM (e.g., qwen_model.model.visual).
         processor: A HuggingFace AutoProcessor (or equivalent) whose output
             contains the input tensor and any auxiliary grouping metadata.
-        identifier: Human-readable model identifier; also the cache key when
-            ``backbone_id`` is omitted.
-        backbone_id: Optional cache key shared by registrations backed by the
-            same vision weights.
-        image_input_key: Key in processor output for the main pixel tensor.
-            Defaults to 'pixel_values'.
-        forward_kwargs_map: Optional dict mapping model forward-kwarg name ->
-            processor output key. E.g., {'grid_thw': 'image_grid_thw'} for Qwen.
-            Values are moved to device and passed by name to the model.
-        patch_count_fn: Callable(processor_output) -> list of patches per image.
-            Required for per-image aggregation when the model output is
-            patch-flattened. E.g., for Qwen:
-                lambda out: [int(t*h*w) for t, h, w in out['image_grid_thw']]
-            If None, assumes hook output is already (n_images, ...) shape.
+        identifier: Human-readable model identifier (the ``model``
+            coordinate); not part of the cache key.
         layer_aggregation: How to reduce per-image patches to one vector.
-            'mean_patches' (default), 'first_patch' (CLS-style), or 'none'.
+            'mean' (default), 'first' (CLS-style), or 'sequence' (every patch kept,
+            flattened into the features).
         batch_size: Number of images per forward pass.
     """
 
+    # The version of what this class extracts: a part of the activation cache key
+    # (``_extractors.cache_config``), read from this class body only. Raise it by
+    # hand when a change can move the extracted values, also through code it calls.
+    _VERSION = 1
+
+    # Recording several layers in one call gives, for each layer, exactly what a
+    # call for that layer alone gives, so the regions of one session share one
+    # call (brainscore._model.channels).
+    independent_layers = True
+
+    VALID_AGGREGATIONS = ('mean', 'first', 'sequence')
+
     def __init__(self, model, processor, identifier: Optional[str] = None,
-                 backbone_id: Optional[str] = None,
-                 image_input_key: str = 'pixel_values',
-                 forward_kwargs_map: Optional[Dict[str, str]] = None,
-                 patch_count_fn: Optional[Callable] = None,
-                 layer_aggregation: str = 'mean_patches',
+                 layer_aggregation: str = 'mean',
                  batch_size: int = 4, device: Optional[str] = None):
         import torch
         self._model = model
         self._processor = processor
-        self._image_input_key = image_input_key
-        self._forward_kwargs_map = forward_kwargs_map or {}
-        self._patch_count_fn = patch_count_fn
-        self._layer_aggregation = layer_aggregation
+        self._layer_aggregation = checked_aggregation(layer_aggregation, self.VALID_AGGREGATIONS)
         self._batch_size = batch_size
         from brainscore.model_helpers._device import select_device
         self._device = select_device(device)
         self._model = self._model.to(self._device)
 
         self._identifier = identifier or model.__class__.__name__
-        # When two VLMs share the same visual backbone (e.g. ViT-G across
-        # BLIP-2 and a future InstructBLIP registration) set the same
-        # backbone_id so the @store_xarray cache is reused. Default = the
-        # model's own identifier for backwards compatibility.
-        self._backbone_id = backbone_id or self._identifier
 
-    @property
-    def identifier(self) -> str:
-        return self._identifier
+    def _table_inputs(self, stimulus_set) -> List[str]:
+        return self._extract_paths(stimulus_set)
 
-    @identifier.setter
-    def identifier(self, value: str) -> None:
-        self._identifier = value
-
-    @property
-    def backbone_id(self) -> str:
-        return self._backbone_id
-
-    def __call__(self, stimuli, layers, stimuli_identifier=None, **kwargs):
-        """Extract activations from image stimuli.
-
-        Args:
-            stimuli: StimulusSet with 'image_file_name' (or 'image_path') column,
-                or list of image paths.
-            layers: List of layer name strings to extract from.
-            stimuli_identifier: Identifier for caching. None to use stimulus_set.identifier.
-
-        Returns:
-            NeuroidAssembly with dims (presentation, neuroid).
-        """
-        if isinstance(stimuli, StimulusSet):
-            return self._from_stimulus_set(stimuli, layers, stimuli_identifier)
-        return self._from_paths(stimuli, layers, stimuli_identifier)
-
-    def _from_stimulus_set(self, stimulus_set, layers, stimuli_identifier=None):
-        if stimuli_identifier is None and hasattr(stimulus_set, 'identifier'):
-            stimuli_identifier = stimulus_set.identifier
-
-        paths = self._extract_paths(stimulus_set)
-        activations = self._from_paths_cached(paths, layers, stimuli_identifier)
-        activations = self._attach_stimulus_set_meta(activations, stimulus_set)
-        return activations
+    def _columns(self, assembly, stimulus_set):
+        return self._attach_stimulus_set_meta(assembly, stimulus_set)
 
     def _extract_paths(self, stimulus_set) -> List[str]:
         if hasattr(stimulus_set, 'stimulus_paths'):
             stimulus_ids = list(stimulus_set['stimulus_id'].values)
             return [str(stimulus_set.get_stimulus(sid)) for sid in stimulus_ids]
-        if 'image_file_name' in stimulus_set.columns:
-            return list(stimulus_set['image_file_name'].values)
-        if 'image_path' in stimulus_set.columns:
-            return list(stimulus_set['image_path'].values)
-        raise ValueError(
-            f"No image column found in stimulus set. "
-            f"Columns: {list(stimulus_set.columns)}")
+        paths = catalog_paths(stimulus_set, 'vision:image')
+        if paths is None:
+            raise ValueError(f"No image column found in stimulus set: expected one of "
+                             f"{catalog_columns('vision:image')} (or stimulus_paths); "
+                             f"got {list(stimulus_set.columns)}.")
+        return paths
 
     CACHE_FIELDS = (
         '_processor',
-        '_image_input_key',
-        '_forward_kwargs_map',
-        '_patch_count_fn',
         '_layer_aggregation',
         '_batch_size',
     )
 
-    def cache_config(self):
-        return wrapper_config(self, self.CACHE_FIELDS)
-
-    def _from_paths_cached(self, paths, layers, stimuli_identifier=None):
-        if self._backbone_id and stimuli_identifier:
-            signature = extraction_fingerprint(
-                {"configuration": self.cache_config(), "inputs": file_inputs(paths)},
-                cache_identifier=(f'{type(self).__module__}.{type(self).__name__}'
-                                  f'._from_paths_stored/identifier={self._backbone_id}'),
-            )
-            if signature is None:
-                return self._from_paths(paths, layers, stimuli_identifier)
-            return self._from_paths_stored(
-                identifier=self._backbone_id,
-                stimuli_identifier=stimuli_identifier,
-                layers=layers,
-                paths=paths,
-                extraction_fingerprint=signature,
-            )
-        return self._from_paths(paths, layers, stimuli_identifier)
-
     @store_xarray(identifier_ignore=['paths', 'layers'],
                   combine_fields={'layers': 'layer'})
-    def _from_paths_stored(self, identifier, layers, stimuli_identifier, paths,
-                           extraction_fingerprint):
+    def _from_paths_stored(self, layers, stimuli_identifier, paths, extraction_fingerprint):
         return self._from_paths(paths, layers, stimuli_identifier)
 
     def _from_paths(self, paths, layers, stimuli_identifier=None):
@@ -190,28 +121,8 @@ class VLMVisionWrapper:
 
     def _get_activations_batched(self, paths, layers):
         """Process images in batches, accumulate per-image activations per layer."""
-        layer_activations: Optional[OrderedDict] = None
-        total = len(paths)
-
-        for batch_start in tqdm(range(0, total, self._batch_size),
-                                unit_scale=self._batch_size,
-                                desc="vlm vision activations"):
-            batch_end = min(batch_start + self._batch_size, total)
-            batch_paths = paths[batch_start:batch_end]
-
-            batch_activations = self.get_activations(batch_paths, layers)
-
-            if layer_activations is None:
-                layer_activations = OrderedDict()
-                for layer_name, layer_output in batch_activations.items():
-                    final_shape = (total,) + layer_output.shape[1:]
-                    layer_activations[layer_name] = np.empty(
-                        final_shape, dtype=layer_output.dtype)
-
-            for layer_name, layer_output in batch_activations.items():
-                layer_activations[layer_name][batch_start:batch_end] = layer_output
-
-        return layer_activations
+        return run_batches(paths, self._batch_size, lambda batch: self.get_activations(batch, layers),
+                           'vlm vision activations')
 
     def get_activations(self, image_paths: List[str], layer_names: List[str]) -> OrderedDict:
         """Run forward pass on a batch of images, extract per-image layer activations.
@@ -234,33 +145,23 @@ class VLMVisionWrapper:
         processed = {k: (v.to(self._device) if torch.is_tensor(v) else v)
                      for k, v in processed.items()}
 
-        layer_results: OrderedDict = OrderedDict()
-        hooks = []
-        try:
-            for layer_name in layer_names:
-                layer = self._get_layer(layer_name)
-                hook = self._register_hook(layer, layer_name, layer_results)
-                hooks.append(hook)
+        self._model.eval()
+        with LiveRecording(self._model, self._model, layer_names, as_float32) as recording, torch.no_grad():
+            self._forward(processed)
+            layer_results, _ = recording.take()
+        return self._per_image(layer_results, len(images), self._patch_counts(processed))
 
-            self._model.eval()
-            with torch.no_grad():
-                self._forward(processed)
+    def _patch_counts(self, processed) -> Optional[List[int]]:
+        """Patches per image from the processor's ``image_grid_thw``; None (each output row is an
+        image) without it."""
+        grid = processed.get('image_grid_thw')
+        return None if grid is None else [int(t * h * w) for t, h, w in grid]
 
-        finally:
-            for hook in hooks:
-                hook.remove()
-
-        # Segment patches into per-image activations and aggregate
-        n_images = len(images)
-        if self._patch_count_fn is not None:
-            patch_counts = self._patch_count_fn(processed)
-        else:
-            patch_counts = None
-
+    def _per_image(self, layer_results, n_images, patch_counts):
+        """Segment each layer's patches into per-image activations and aggregate them."""
         for layer_name in layer_results:
             layer_results[layer_name] = self._aggregate_per_image(
                 layer_results[layer_name], n_images, patch_counts)
-
         return layer_results
 
     def _processor_call(self, images: List[Image.Image]) -> Dict[str, Any]:
@@ -285,19 +186,15 @@ class VLMVisionWrapper:
 
     def _forward(self, processed: Dict[str, Any]) -> None:
         """Run the vision encoder forward pass with auxiliary kwargs."""
-        image_input = processed[self._image_input_key]
+        image_input = processed['pixel_values']
 
         # Match input dtype to model dtype (FP16 VLMs)
         model_dtype = next(self._model.parameters()).dtype
         if image_input.dtype != model_dtype:
             image_input = image_input.to(model_dtype)
 
-        forward_kwargs = {}
-        for model_arg, proc_key in self._forward_kwargs_map.items():
-            if proc_key in processed:
-                forward_kwargs[model_arg] = processed[proc_key]
-
-        self._model(image_input, **forward_kwargs)
+        grid = processed.get('image_grid_thw')
+        self._model(image_input, **({} if grid is None else {'grid_thw': grid}))
 
     def _aggregate_per_image(self, activations: np.ndarray, n_images: int,
                              patch_counts: Optional[List[int]]) -> np.ndarray:
@@ -339,139 +236,66 @@ class VLMVisionWrapper:
 
     def _reduce_axis(self, arr: np.ndarray, axis: int) -> np.ndarray:
         """Reduce one axis per self._layer_aggregation."""
-        if self._layer_aggregation == 'mean_patches':
+        if self._layer_aggregation == 'mean':
             return arr.mean(axis=axis)
-        if self._layer_aggregation == 'first_patch':
+        if self._layer_aggregation == 'first':
             return np.take(arr, 0, axis=axis)
-        if self._layer_aggregation == 'none':
-            return arr
-        raise ValueError(f"Unknown layer_aggregation: {self._layer_aggregation}")
+        return arr                                     # 'sequence'
 
-    def record(self, layers):
+    def record(self, layers, stimuli=None):
         """Record ``layers`` while another caller runs the model (e.g. generation).
 
-        Returns a context manager; its ``take()`` gives the first forward pass
-        since the previous take, averaged over each image's patches as
-        ``__call__`` averages one image. A pass over several images (a trial
-        showing a sequence) gives one step per image: ``(presentation, part,
-        neuroid)``, in the order the images were shown.
+        Returns a ``LiveRecording``; its ``take()`` gives ``{layer: assembly}`` for
+        the first forward pass since the previous take, segmented and aggregated
+        per image by the functions of ``__call__``: the ``grid_thw`` the pass
+        received gives the patches of each image. One image gives ``(presentation, neuroid)``; a pass over several images (a
+        trial showing a sequence) gives one step per image, ``(presentation, part,
+        neuroid)``, in the order shown. A pass without ``grid_thw`` gives one output
+        row per image when its input keeps images apart (more than two axes); a
+        pass of flattened patches (two axes) without ``grid_thw`` is refused before
+        it runs, as is a later pass of the same presentation with other images.
         """
-        from contextlib import contextmanager
-        for layer in layers:
-            self._get_layer(layer)          # unknown layers fail before any compute
+        def inputs(args, kwargs):
+            counts = self._patch_counts({'image_grid_thw': kwargs.get('grid_thw')})
+            if counts is not None:
+                return [int(c) for c in counts], len(counts)
+            shown = args[0] if args else kwargs['pixel_values']
+            if shown.ndim == 2:
+                raise ValueError(f'This pass shows flattened patches {tuple(shown.shape)} without grid_thw '
+                                 f'(the image_grid_thw of the processor), so the patches of each image are '
+                                 f'unknown; give the encoder grid_thw.')
+            return None, shown.shape[0]
 
-        @contextmanager
-        def recording():
-            import numpy as np
-            state = {'grid': None, 'captured': {}}
+        def package(activity, read, _row):
+            per_image = self._per_image(activity, read[1], read[0])
+            if read[1] == 1:
+                return self._layers(per_image, [None])
+            return {layer: self._package_parts(layer, values) for layer, values in per_image.items()}
 
-            def grid_hook(_module, args, kwargs):
-                if state['grid'] is None:
-                    state['grid'] = kwargs.get('grid_thw', args[1] if len(args) > 1 else None)
+        return LiveRecording(self._model, self._model, layers, as_float32, package, inputs, one_input=True)
 
-            def keep(layer):
-                def hook(_module, _inputs, output):
-                    if layer in state['captured']:
-                        return              # a later pass: keep the first
-                    if isinstance(output, (tuple, list)):
-                        output = output[0]
-                    state['captured'][layer] = output.detach().float().cpu().numpy()
-                return hook
-
-            handles = [self._model.register_forward_pre_hook(grid_hook, with_kwargs=True)]
-            handles += [self._get_layer(layer).register_forward_hook(keep(layer)) for layer in layers]
-
-            class Recording:
-                @staticmethod
-                def take():
-                    missing = [layer for layer in layers if layer not in state['captured']]
-                    if missing:
-                        raise ValueError(f'No forward pass reached {missing} since the last presentation.')
-                    grid = state['grid']
-                    counts = ([int(t * h * w) for t, h, w in np.asarray(grid.cpu() if hasattr(grid, 'cpu') else grid)]
-                              if grid is not None else None)
-                    per_image = {}
-                    for layer in layers:
-                        activity = state['captured'][layer]
-                        if activity.ndim == 2:      # flattened patches, Qwen-style
-                            image_counts = counts or [activity.shape[0]]
-                            per_image[layer] = self._aggregate_per_image(
-                                activity, len(image_counts), image_counts).reshape(len(image_counts), -1)
-                        else:
-                            per_image[layer] = self._aggregate_per_image(activity, 1, None).reshape(1, -1)
-                    state['captured'].clear()
-                    state['grid'] = None
-                    n_images = per_image[layers[0]].shape[0]
-                    if n_images == 1:
-                        return self._package(per_image, [None])
-                    return self._package_parts(per_image)
-            try:
-                yield Recording()
-            finally:
-                for handle in handles:
-                    handle.remove()
-        return recording()
-
-    def _package_parts(self, per_image):
-        """One trial's images as ``(presentation=1, part, neuroid)``, in the order shown."""
-        import numpy as np
-        layers = list(per_image)
-        values = np.concatenate([per_image[layer] for layer in layers], axis=1)[None]
-        neuroid_layers = [layer for layer in layers for _ in range(per_image[layer].shape[1])]
-        units = [unit for layer in layers for unit in range(per_image[layer].shape[1])]
-        return NeuroidAssembly(values, dims=['presentation', 'part', 'neuroid'], coords={
-            'stimulus_id': ('presentation', ['?']),
-            'part_index': ('part', list(range(values.shape[1]))),
-            'neuroid_id': ('neuroid', [f'{self._identifier}.{layer}.{unit}'
-                                       for layer, unit in zip(neuroid_layers, units)]),
-            'layer': ('neuroid', neuroid_layers)})
+    def _package_parts(self, layer, values):
+        """One trial's images of ``layer`` as ``(presentation=1, part, neuroid)``, in the order shown."""
+        values = values.reshape(values.shape[0], -1)
+        return NeuroidAssembly(values[None], dims=['presentation', 'part', 'neuroid'], coords={
+            'stimulus_id': ('presentation', ['?']), 'part_index': ('part', list(range(values.shape[0]))),
+            **make_layer_neuroid_coords(self._identifier, layer, values.shape[1])})
 
     def layer_names(self):
         """Layer paths this extractor can record, relative to the module it wraps."""
         return [name for name, _ in self._model.named_modules(remove_duplicate=False) if name]
 
-    def _get_layer(self, layer_name: str):
-        module = self._model
-        for part in layer_name.split('.'):
-            module = getattr(module, part, None)
-            if module is None:
-                raise ValueError(
-                    f"Layer '{layer_name}' not found at part '{part}'")
-        return module
-
-    def _register_hook(self, layer, layer_name: str, target_dict: OrderedDict):
-        def hook_fn(_module, _input, output, name=layer_name):
-            if isinstance(output, (tuple, list)):
-                output = output[0]
-            target_dict[name] = output.detach().cpu().float().numpy()
-        return layer.register_forward_hook(hook_fn)
-
     def _package(self, layer_activations: OrderedDict, paths: List[str]) -> NeuroidAssembly:
-        """Package layer activations into NeuroidAssembly."""
-        layer_assemblies = []
-        n_stimuli = len(paths)
-
-        for layer_name, activations in layer_activations.items():
-            # Flatten any remaining feature dims
-            flat = activations.reshape(n_stimuli, -1)
-            n_features = flat.shape[1]
-            coords = {
-                'stimulus_id': ('presentation', list(range(n_stimuli))),
-                **make_layer_neuroid_coords(
-                    self._identifier, layer_name, n_features,
-                    include=('neuroid_id', 'neuroid_num', 'model', 'layer')),
-            }
-            assembly = make_assembly(
-                flat,
-                coords=coords,
-                dims=['presentation', 'neuroid'],
-            )
-            layer_assemblies.append(assembly)
-
+        """Package layer activations into NeuroidAssembly; extra feature axes are flattened."""
+        layer_assemblies = list(self._layers(layer_activations, paths).values())
         if len(layer_assemblies) == 1:
             return layer_assemblies[0]
-
         return concat_neuroid_assemblies(layer_assemblies, strategy='manual')
+
+    def _layers(self, layer_activations, paths) -> OrderedDict:
+        """One ``(presentation, neuroid)`` assembly per layer, in order."""
+        return OrderedDict((layer, layer_assembly(self._identifier, layer, activations.reshape(len(paths), -1)))
+                           for layer, activations in layer_activations.items())
 
     def _attach_stimulus_set_meta(self, assembly, stimulus_set) -> NeuroidAssembly:
         """Attach stimulus set metadata as coordinates on the presentation dim."""
@@ -484,3 +308,4 @@ class VLMVisionWrapper:
             assembly = assembly.assign_coords(
                 {column: ('presentation', list(stimulus_set[column].values))})
         return assembly
+

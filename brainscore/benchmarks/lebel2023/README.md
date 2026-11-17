@@ -5,7 +5,7 @@ spoken stories. No anatomical mask is applied: every vertex is a target, includi
 majority that are not language-responsive.
 
 Source: [LeBel et al. 2023, *Scientific Data*](https://doi.org/10.1038/s41597-023-02437-z),
-supplied as a per-subject pickle from the Huth-lab `encoding` package (as redistributed by
+supplied as a per-participant pickle from the Huth-lab `encoding` package (as redistributed by
 LITCoder).
 
 ## Registered identifiers
@@ -56,10 +56,13 @@ concatenated, letting each vertex learn its own hemodynamic lag rather than assu
 fixed HRF. Cross-validation holds out whole stories, because adjacent TRs within a story
 are correlated enough that a random split leaks. The ridge penalty is selected per fold on
 *held-out stories*, not a random row subset. A random inner split picks a penalty about an
-order of magnitude too small.
+order of magnitude too small. The features are centred on the training rows, no intercept
+is fitted, and the solve is in float32 (in the dual form when features outnumber rows).
+The fit is `brainscore/metrics/encoding.py`; `_encoding_fit` in `benchmark.py` gives its
+settings.
 
 Reported value: median held-out Pearson r across vertices. The value is raw, not ceiling-normalised.
-Each story is heard once, so no noise ceiling is estimable. Compare against the nulls
+The assembly holds one presentation of each story, so no noise ceiling is estimable from it. Compare against the nulls
 below, not against ceiling-normalised benchmarks such as MajajHong or Pereira.
 
 ## Results
@@ -232,20 +235,17 @@ mostly measuring story onsets. Those TRs are now excluded rather than padded
 ## Known limits
 
 - One participant. Nothing here separates this brain from brains in general.
-- No noise ceiling. Needs the repeated stories from LeBel's design to become
-  normalisable.
+- No noise ceiling. It needs repeated presentations, which this assembly does not hold.
 - No anatomy attached. The pickle carries no vertex-to-region mapping, so vertices are
   identified by index only. The space itself is settled: the LITcoder paper states its
-  whole-surface LeBel analyses are fsaverage5, ~22k vertices, subject UTS03, which is this data.
+  whole-surface LeBel analyses are fsaverage5, ~22k vertices, participant UTS03, which is this data.
   Adding a region coord needs an atlas projected to that surface, not a resolution of any
   ambiguity.
-- Per-target ridge penalties do not help here. Fitting one penalty per vertex, as
-  reference pipelines do by default, scored 31% *below* a single shared penalty, and
-  nesting the selection over four inner folds barely recovered it. Broken down by
-  signal strength it only breaks even on the best-predicted 5% and loses elsewhere:
-  selecting a penalty per target needs per-target signal-to-noise high enough to select
-  on, which whole-cortex data at this SNR does not have. Available as
-  `per_voxel_alpha=True`; off by default.
+- Per-target ridge penalties are not validated here. Earlier measurements (not stored in
+  the repository) found one penalty per vertex, the reference pipelines' default, below a
+  single shared penalty; the notes disagree on the size of the loss and on whether nesting
+  the choice over four inner folds recovers it. Available as `per_voxel_alpha=True`; off by
+  default.
 - Registered layers are chosen elsewhere, on purpose. GPT-2 is read at `h.11`, the
   block its mapping benchmark (Pereira2018) selects. This benchmark's own best block is
   `h.7` (0.1124 against 0.1013), and reading it there because it wins here would be

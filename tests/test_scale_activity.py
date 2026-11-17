@@ -33,7 +33,7 @@ def test_intervention_validation_names_the_selected_tool(tool_class, invalid):
         protocol=CallableProtocol('external-evaluation', lambda subject, context: None),
     )
     message = (
-        f'{tool_class.__name__} requires an instrumentation provider'
+        f'{tool_class.__name__} requires an instrumentation'
         if invalid == 'instrumentation'
         else f'{tool_class.__name__} {invalid} must belong to the protocol'
     )
@@ -64,7 +64,8 @@ def test_selected_units_conditions_and_recording_order(tmp_path):
     subject = Model()
     result = Experiment(
         subject=subject,
-        protocol=SessionProtocol('scale', factory, conditions=['baseline', 'damped', 'restored']),
+        protocol=SessionProtocol('scale', factory, conditions=['baseline', 'damped', 'restored'],
+                                 required_input_channels=['observation'], requested_output_channels=['behavior']),
         tools=[
             RecordInputsOutputs(),
             RecordActivity(['layer'], when='before', name='before'),

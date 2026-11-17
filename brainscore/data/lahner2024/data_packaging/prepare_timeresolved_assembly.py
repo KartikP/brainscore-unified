@@ -3,8 +3,8 @@ One-time data-prep script for the Lahner2024 TR-resolved fMRI assembly.
 
 DESIGN: continuous-time encoding on fsaverage5 cortical surface.
 
-Each (subject, run) produces one TR-resolved BOLD time-series. The assembly
-treats each (subject, run) as a "presentation" — same xarray container as
+Each (participant, run) produces one TR-resolved BOLD time-series. The assembly
+treats each (participant, run) as a "presentation" — same xarray container as
 the per-clip GLM-beta variant, but the presentation axis indexes runs (not
 trials) and the time_bin axis spans the full run (not a per-trial window).
 
@@ -18,7 +18,7 @@ Friends/Sherlock benchmarks) use, and it's what TRIBEv2 was designed for.
     (time_bin = N_TR_per_run_max,  neuroid = 20484,  presentation = 520)
 
 where:
-    - presentation = 520 = 10 subjects × 52 task-test/train runs per subject
+    - presentation = 520 = 10 participants × 52 task-test/train runs per participant
     - neuroid = 20484 fsaverage5 cortical vertices (10242 × 2 hemispheres)
     - time_bin = max number of TRs across runs (shorter runs padded with NaN)
 
@@ -50,15 +50,15 @@ model's per-stimulus features.
 - Tasks: 'train' (1000 stimuli × 3 reps) + 'test' (102 stimuli × 10 reps)
 - Stimulus design: 3 s clip + 1 s ISI = 4 s SOA, 113 trials per run
 - Some 'oddball' trials (stim_file='n/a', trial_type='oddball') — exclude from analysis
-- 52 total task-test/train runs per subject across multiple sessions
-- 10 subjects (sub-01 … sub-10)
+- 52 total task-test/train runs per participant across multiple sessions
+- 10 participants (sub-01 … sub-10)
 - fmriprep outputs in derivatives/versionB/fmriprep/<sub>/<ses>/func/
     - format: hemi-L/R_space-fsaverage_bold.func.gii (~190 MB per hemi per run)
     - resolution: full fsaverage (~163k vertices/hemi) — must downsample to fsaverage5
 
 ## Total download estimate
 
-52 runs × 10 subjects × 2 hemis × ~190 MB = ~200 GB raw download.
+52 runs × 10 participants × 2 hemis × ~190 MB = ~200 GB raw download.
 After per-run downsample to fsaverage5 + per-run aggregation, intermediate
 on-disk footprint stays under ~5 GB. The final .nc artifact is ~5-10 GB.
 
@@ -91,7 +91,7 @@ import xarray as xr
 OPENNEURO_BASE = 's3://openneuro.org/ds005165'
 
 # Full BOLDMoments cohort
-SUBJECTS = [f'sub-{i:02d}' for i in range(1, 11)]   # sub-01 … sub-10
+PARTICIPANTS = [f'sub-{i:02d}' for i in range(1, 11)]   # sub-01 … sub-10
 
 # Tasks we actually care about
 TASKS = ('test', 'train')                # NOT localizer or rest
@@ -101,14 +101,14 @@ TR_SEC = 1.75
 SOA_SEC = 4.0                            # stimulus onset asynchrony
 CLIP_DURATION_SEC = 3.0
 N_TRIALS_PER_RUN = 113                   # before oddball exclusion
-N_RUNS_PER_SUBJECT_TOTAL = 52            # train + test combined
+N_RUNS_PER_PARTICIPANT_TOTAL = 52            # train + test combined
 
 # Surface space (matches existing GLM-beta assembly)
 N_VERTICES_PER_HEMI = 10242              # fsaverage5 standard
 N_VERTICES_TOTAL    = 2 * N_VERTICES_PER_HEMI    # 20484
 
 # Padding policy: assume runs vary by ~5 TRs around the median.
-# We compute max actual TR count after first subject's data is read,
+# We compute max actual TR count after first participant's data is read,
 # then pad shorter runs with NaN. n_valid_TR coord tracks per-run length.
 
 # Source-space derivatives path on OpenNeuro S3
@@ -127,7 +127,7 @@ def main():
     parser.add_argument('--data-cache', type=Path,
                         default=Path('/tmp/ds005165_cache'),
                         help='Where to cache downloaded OpenNeuro files.')
-    parser.add_argument('--subjects', nargs='+', default=SUBJECTS)
+    parser.add_argument('--participants', nargs='+', default=PARTICIPANTS)
     parser.add_argument('--tasks', nargs='+', default=list(TASKS),
                         help="Which task names to include (default: test + train).")
     parser.add_argument('--upload-to-s3', action='store_true')
@@ -145,10 +145,10 @@ def main():
                         default='Lahner2024-fMRI-timeresolved-events.csv')
     args = parser.parse_args()
 
-    # 1. For each subject: extract all runs for all requested tasks, then DELETE
-    #    the per-subject gii cache before moving to the next subject. Per-subject
+    # 1. For each participant: extract all runs for all requested tasks, then DELETE
+    #    the per-participant gii cache before moving to the next participant. Per-participant
     #    cache footprint is ~20GB (52 runs × ~380MB L+R each); without cleanup
-    #    the full 10-subject run would need ~200GB free.
+    #    the full 10-participant run would need ~200GB free.
     import shutil
     import pickle
     if args.from_checkpoint and args.checkpoint_path.exists():
@@ -158,16 +158,16 @@ def main():
         print(f"  loaded {len(run_records)} runs", flush=True)
     else:
         run_records = []
-        for subject in args.subjects:
-            subj_cache = args.data_cache / 'derivatives' / 'versionB' / 'fmriprep' / subject
+        for participant in args.participants:
+            participant_cache = args.data_cache / 'derivatives' / 'versionB' / 'fmriprep' / participant
             for task in args.tasks:
-                run_records.extend(extract_subject_task_runs(
-                    subject=subject, task=task, data_cache=args.data_cache))
-            # Purge giis for this subject — extracted time-series already in records[].
+                run_records.extend(extract_participant_task_runs(
+                    participant=participant, task=task, data_cache=args.data_cache))
+            # Purge giis for this participant — extracted time-series already in records[].
             # Keep events.tsv files (small) under the raw cache path.
-            if subj_cache.exists():
-                print(f"  cleanup: removing {subj_cache} (~20GB)", flush=True)
-                shutil.rmtree(subj_cache, ignore_errors=True)
+            if participant_cache.exists():
+                print(f"  cleanup: removing {participant_cache} (~20GB)", flush=True)
+                shutil.rmtree(participant_cache, ignore_errors=True)
         # Persist run_records so a downstream failure does not require re-downloading.
         args.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
         with open(args.checkpoint_path, 'wb') as f:
@@ -176,7 +176,7 @@ def main():
               f"({args.checkpoint_path.stat().st_size/1e9:.2f} GB)", flush=True)
 
     if not run_records:
-        raise SystemExit(f"No runs extracted for subjects={args.subjects} tasks={args.tasks}.")
+        raise SystemExit(f"No runs extracted for participants={args.participants} tasks={args.tasks}.")
 
     # 2. Build the assembly + events DataFrame.
     assembly = build_assembly(run_records)
@@ -209,14 +209,14 @@ def main():
         print(f"timeresolved events sha1: {sha1_events}")
 
 
-# ── Per-(subject, task) extraction ────────────────────────────────────
+# ── Per-(participant, task) extraction ────────────────────────────────────
 
-def extract_subject_task_runs(
-    subject: str,
+def extract_participant_task_runs(
+    participant: str,
     task: str,
     data_cache: Path,
 ) -> List[dict]:
-    """Per (subject, task), iterate runs across sessions; for each run download
+    """Per (participant, task), iterate runs across sessions; for each run download
     fsaverage L+R surface BOLD + events.tsv, downsample to fsaverage5, package
     a single record.
 
@@ -233,8 +233,8 @@ def extract_subject_task_runs(
 
     data_cache.mkdir(parents=True, exist_ok=True)
 
-    # 1. List sessions for this subject under fmriprep derivatives
-    fmriprep_root = f'{OPENNEURO_BASE}/{FMRIPREP_PREFIX}/{subject}'
+    # 1. List sessions for this participant under fmriprep derivatives
+    fmriprep_root = f'{OPENNEURO_BASE}/{FMRIPREP_PREFIX}/{participant}'
     cp = subprocess.run(
         ['aws', 's3', 'ls', '--no-sign-request', '--recursive', f'{fmriprep_root}/'],
         capture_output=True, text=True, check=True,
@@ -247,7 +247,7 @@ def extract_subject_task_runs(
         path = line.strip().split()[-1]
         if pattern_L in path and pattern_L_suffix in path:
             run_keys_L.append(path)
-    print(f"  ({subject}, {task}): found {len(run_keys_L)} runs", flush=True)
+    print(f"  ({participant}, {task}): found {len(run_keys_L)} runs", flush=True)
 
     records = []
     for L_key in sorted(run_keys_L):
@@ -260,8 +260,8 @@ def extract_subject_task_runs(
         R_key = L_key.replace('_hemi-L_', '_hemi-R_')
 
         # 2. Find the matching raw events.tsv — under raw BIDS (NOT derivatives)
-        events_key = (f'ds005165/{subject}/{session}/func/'
-                      f'{subject}_{session}_task-{task}_{run}_events.tsv')
+        events_key = (f'ds005165/{participant}/{session}/func/'
+                      f'{participant}_{session}_task-{task}_{run}_events.tsv')
 
         # 3. Download all three (cached locally).
         L_local = _s3_download(L_key, data_cache)
@@ -296,7 +296,7 @@ def extract_subject_task_runs(
         events_df = events_df[events_df['stimulus_id'].notna()].reset_index(drop=True)
 
         records.append({
-            'subject':     subject,
+            'subject':     participant,
             'session':     session,
             'run':         run,
             'task':        task,
@@ -304,7 +304,7 @@ def extract_subject_task_runs(
             'events':      events_df,
             'n_TR':        ts_LR.shape[0],
         })
-        print(f"    {subject}/{session}/{task}/{run}: "
+        print(f"    {participant}/{session}/{task}/{run}: "
               f"{ts_LR.shape[0]} TRs, {len(events_df)} non-oddball trials", flush=True)
 
     return records
@@ -414,7 +414,7 @@ def build_assembly(run_records: List[dict]) -> xr.DataArray:
 
 
 def build_events_table(run_records: List[dict]) -> pd.DataFrame:
-    """Long-format CSV: one row per (subject, session, run, trial)."""
+    """Long-format CSV: one row per (participant, session, run, trial)."""
     rows = []
     for r in run_records:
         events = r['events']

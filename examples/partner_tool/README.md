@@ -18,8 +18,11 @@ python -I -m umi_partner_tool --out ./channel-example
 ```
 
 [The capability](src/umi_partner_tool/__init__.py) accepts a three-value signal
-and returns its amplitude. The example registers its channels, attaches an
-observer, records the response, reads it back, and checks reset. Copy the package
+and returns its amplitude. It is a session capability: `supports_session` claims
+the output channel and `participate` answers each signal. Each capability method
+takes the model as its first argument, named `subject`. The example registers its
+channels, attaches an observer, records the response, reads it back, and checks
+reset. Copy the package
 under your own distribution/module name and replace the calculation and validators.
 
 ## Combine tools across five cases
@@ -64,5 +67,3 @@ Run this from the Unified repository after installing the package. The tests
 check installed imports, the five examples, invalid input, record/replay,
 intervention recovery, and cleanup after failure. The environment conformance
 tests also show how to check your own observation/action declarations.
-
-These maintainer-built examples do not replace the [independent user trial](../../docs/archive/partner_trial.md).

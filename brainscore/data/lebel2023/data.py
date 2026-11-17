@@ -23,6 +23,7 @@ import pickle
 from pathlib import Path
 
 from .. import local
+from . import LEBEL_PICKLE
 
 import numpy as np
 import pandas as pd
@@ -47,7 +48,7 @@ IDENTIFIER = 'LeBel2023-UTS03'
 
 def _pickle_path() -> Path:
     """Where the source pickle lives; override with BRAINSCORE_LEBEL_PICKLE."""
-    return local.LEBEL_PICKLE.resolved()
+    return LEBEL_PICKLE.resolved()
 
 
 def _cache_dir() -> Path:
@@ -118,7 +119,7 @@ def build(pickle_path=None, context_window_tr: int = DEFAULT_CONTEXT_TR):
         if not path.exists():
             raise local.LocalDataMissing(f'LeBel pickle not found at {path}')
     else:
-        path = local.path(local.LEBEL_PICKLE.name)
+        path = local.path(LEBEL_PICKLE.name)
     source = _read_pickle(path)
     context_sec = context_window_tr * TR_SEC
 
@@ -241,7 +242,7 @@ def build_word_level(pickle_path=None, context_words: int = DEFAULT_CONTEXT_WORD
         if not path.exists():
             raise local.LocalDataMissing(f'LeBel pickle not found at {path}')
     else:
-        path = local.path(local.LEBEL_PICKLE.name)
+        path = local.path(LEBEL_PICKLE.name)
     source = _read_pickle(path)
 
     rows, blocks, tr_times_by_story = [], [], {}

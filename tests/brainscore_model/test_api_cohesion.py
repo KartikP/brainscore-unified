@@ -28,7 +28,7 @@ class Extractor:
 def test_composite_mapping_round_trip_preserves_units_and_routing():
     selector = CompositeSelector(layers=(('first', (1,)), ('second', (2,))), modality='text')
     model = BrainScoreModel(identifier='roundtrip', region_layer_map={'language': selector},
-                            activations_model={'text': Extractor()})
+                            extractor={'text': Extractor()})
     model.region_layer_map = model.region_layer_map
     assert model.region_layer_map['language'] == selector
     model.start_recording('language')
@@ -39,15 +39,16 @@ def test_composite_mapping_round_trip_preserves_units_and_routing():
 
 
 def test_mapping_replacement_drops_removed_routes_and_is_atomic():
-    model = BrainScoreModel(identifier='routes', region_layer_map={'IT': 'x'},
-                            region_modality_map={'IT': 'vision'},
-                            activations_model={'vision': Extractor()})
+    model = BrainScoreModel(identifier='routes',
+                            region_layer_map={'IT': LayerSelector(name='x', modality='vision')},
+                            extractor={'vision': Extractor()})
     before = model.region_layer_map
-    with pytest.raises(ValueError, match='no preprocessor or extractor'):
+    with pytest.raises(ValueError, match='no extractor'):
         model.region_layer_map = {'A1': LayerSelector(name='x', modality='audio')}
     assert model.region_layer_map == before
     model.region_layer_map = {'V4': 'y'}
-    assert model._region_modality_map == {}
+    assert dict(model.region_layer_map) == {'V4': 'y'}
+    assert model.region_layer_selectors['V4'].modality is None
 
 
 @pytest.mark.parametrize('modality,column', [('vision', 'image_path'), ('text', 'sentence'),
@@ -55,7 +56,7 @@ def test_mapping_replacement_drops_removed_routes_and_is_atomic():
 def test_every_modality_uses_same_extractor_signature(modality, column):
     extractor = Extractor()
     model = BrainScoreModel(identifier='same-api', region_layer_map={'region': 'layer'},
-                            activations_model={modality: extractor})
+                            extractor={modality: extractor})
     model.start_recording('region')
     assert model.process(StimulusSet({column: ['input']})).sizes['neuroid'] == 4
     assert extractor.calls == [['layer']]
@@ -65,7 +66,7 @@ def test_two_towers_with_same_relative_layer_route_by_selector():
     model = BrainScoreModel(identifier='towers', region_layer_map={
         'IT': LayerSelector(name='encoder.1', modality='vision'),
         'language': LayerSelector(name='encoder.1', modality='text'),
-    }, activations_model={'vision': Extractor(1), 'text': Extractor(2)})
+    }, extractor={'vision': Extractor(1), 'text': Extractor(2)})
     model.start_recording(['IT', 'language'])
     result = model.process(StimulusSet({'image_path': ['image'], 'sentence': ['text']}), multi_modality=True)
     assert result.sel(neuroid=result.region == 'IT').values.tolist() == [[1] * 4]
@@ -74,7 +75,7 @@ def test_two_towers_with_same_relative_layer_route_by_selector():
 
 @pytest.mark.parametrize('target', ['raw', ['raw']])
 def test_raw_layer_has_same_meaning_alone_or_in_list(target):
-    model = BrainScoreModel(identifier='raw', activations_model={'text': Extractor()})
+    model = BrainScoreModel(identifier='raw', extractor={'text': Extractor()})
     with pytest.warns(UserWarning, match='raw layer'):
         model.start_recording(target)
     assert model.process(StimulusSet({'sentence': ['x']})).layer.values.tolist() == ['raw'] * 4
@@ -82,23 +83,25 @@ def test_raw_layer_has_same_meaning_alone_or_in_list(target):
 
 def test_common_session_collects_neural_output_without_helper_class():
     model = BrainScoreModel(identifier='session', region_layer_map={'IT': 'x'},
-                            activations_model={'vision': Extractor()})
+                            extractor={'vision': Extractor()})
     session = stimulus_session(StimulusSet({'image_path': ['x']}), ('neural:IT',))
     model.participate(session)
     assert session.collect().shape == (1, 4)
 
 
-def test_common_session_keeps_custom_events():
+def test_common_session_keeps_catalog_events_and_refuses_unknown_channels():
     session = Session([StreamEvent('text', 'hello', 0)])
-    session.respond(StreamEvent('custom', 7, 0))
+    session.respond(StreamEvent('motor', 7, 0))          # a harness-defined payload
     assert session.collect()[0].payload == 7
+    with pytest.raises(ValueError, match='failed the channel catalog'):
+        session.respond(StreamEvent('custom', 7, 0))     # not in the catalog
 
 
 def test_explicit_source_is_independent_of_behavioral_task_configuration():
-    from brainscore_core.model_interface import TaskContext
+    from brainscore_core.contract import TaskContext
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
     seen = []
-    def generate(model, stimuli, task_context):
+    def generate(model, stimuli, task):
         seen.extend(stimuli.sentence)
         return BehavioralAssembly(np.ones((len(stimuli),)), dims=['presentation'],
                                   coords={'stimulus_id': ('presentation', list(stimuli.stimulus_id))})
@@ -106,12 +109,12 @@ def test_explicit_source_is_independent_of_behavioral_task_configuration():
                        metadata={'stimulus_set': StimulusSet({'sentence': ['wrong']})})
     explicit = StimulusSet({'sentence': ['actual'], 'stimulus_id': ['1']})
     # Check the driver directly, so this test isolates task/source composition.
-    from brainscore_core.streaming_helpers import _drive_behavior_session_via_process
+    from brainscore_core.streaming_helpers import drive_behavior_session
     from types import SimpleNamespace
     subject = SimpleNamespace(start_task=lambda context: None,
                               process=lambda stimuli: generate(None, stimuli, task))
-    session = stimulus_session(explicit, ['behavior'], task_context=task)
-    _drive_behavior_session_via_process(subject, session)
+    session = stimulus_session(explicit, ['behavior'], task=task)
+    drive_behavior_session(subject, session)
     assert seen == ['actual']
     assert session.collect().shape == (1,)
 
@@ -120,7 +123,7 @@ def test_shared_extractor_resets_once_across_modalities():
     extractor = Extractor()
     resets = []
     extractor.reset = lambda: resets.append(True)
-    model = BrainScoreModel(identifier='shared', activations_model={'vision': extractor, 'text': extractor})
+    model = BrainScoreModel(identifier='shared', extractor={'vision': extractor, 'text': extractor})
     model.reset()
     assert resets == [True]
 
@@ -129,7 +132,7 @@ def test_variadic_legacy_wrapper_is_normalized_without_identifier_discovery():
     class Wrapper:
         def __call__(self, *args, **kwargs):
             return Extractor()(*args, **kwargs)
-    model = BrainScoreModel(identifier='compatibility', preprocessors={'vision': Wrapper()},
+    model = BrainScoreModel(identifier='compatibility', extractor={'vision': Wrapper()},
                             region_layer_map={'IT': 'layer'})
     model.start_recording('IT')
     assert model.process(StimulusSet({'image_path': ['x']})).shape == (1, 4)
@@ -137,24 +140,23 @@ def test_variadic_legacy_wrapper_is_normalized_without_identifier_discovery():
 
 def test_neural_events_work_without_a_stimulus_table():
     model = BrainScoreModel(identifier='events', region_layer_map={'language': 'x'},
-                            activations_model={'text': Extractor()})
+                            extractor={'text': Extractor()})
     session = Session([StreamEvent(channel='text', payload='hello', t_ms=0)], ['neural:language'])
     model.participate(session)
     assert session.collect().shape == (1, 4)
 
 
 def test_generation_declares_instruction_input_for_replay():
-    model = BrainScoreModel(identifier='answers', generation_fn=lambda *args: 'yes')
+    model = BrainScoreModel(identifier='answers', answer=lambda *args: 'yes')
     assert 'instruction' in model.in_channels
 
 
 @pytest.mark.parametrize('streaming', [False, True])
 def test_common_session_collects_batch_and_streamed_assemblies(streaming):
     model = BrainScoreModel(identifier='delivery', region_layer_map={'language': 'x'},
-                            activations_model={'text': Extractor()})
+                            extractor={'text': Extractor()})
     session = stimulus_session(StimulusSet({'sentence': ['one', 'two'], 'stimulus_id': ['1', '2']}),
-                            ['neural:language'])
-    session.streaming = streaming
+                            ['neural:language'], streaming=streaming)
     model.participate(session)
     assert session.collect().shape == (2, 4)
 
@@ -163,6 +165,8 @@ def test_common_session_collects_batch_and_streamed_assemblies(streaming):
 def test_external_selector_routing_does_not_require_a_dataclass():
     from brainscore import UnitSelector
     class ExternalSelector(UnitSelector):
+        modality = 'text'
+
         @property
         def layer_path(self):
             return 'custom.layer'
@@ -170,95 +174,74 @@ def test_external_selector_routing_does_not_require_a_dataclass():
     model = BrainScoreModel(
         identifier='external',
         region_layer_map={'region': selector},
-        region_modality_map={'region': 'text'},
-        activations_model={'text': Extractor()},
+        extractor={'text': Extractor(), 'vision': Extractor()},
     )
-    assert selector.modality is None
     assert isinstance(model.region_layer_map['region'], ExternalSelector)
     model.region_layer_map = model.region_layer_map
-    assert model._region_modality_map == {'region': 'text'}
+    assert model.region_layer_selectors['region'].modality == 'text'
+    assert model.output_inputs == {'neural:region': frozenset({'text'})}
     model.start_recording('region')
     assert model.process(StimulusSet({'sentence': ['x']})).shape == (1, 4)
 
 
 def test_generation_inputs_need_no_placeholder_extractors():
-    from brainscore_core.model_interface import TaskContext
+    from brainscore_core.contract import TaskContext
     model = BrainScoreModel(
-        identifier='output-only', supported_modalities={'text'},
-        generation_fn=lambda stimulus_row, instruction, label_set: label_set[0],
+        identifier='output-only', in_channels={'text'},
+        answer=lambda stimulus_row, instruction, label_set: label_set[0],
     )
-    assert model.supported_modalities == {'text'}
+    assert model.in_channels == {'text', 'instruction', 'control'}
     assert model.region_layer_map == {}
-    model.start_task(TaskContext(
-        task_type='probabilities', instruction='Choose yes.', label_set=['yes'],
-        prefer_path='generation',
-    ))
-    result = model.process(StimulusSet({'stimulus_id': ['s0'], 'sentence': ['hello']}))
-    assert result.values.tolist() == [[1.0]]
-    model.reset()
+    from brainscore_core.streaming_helpers import behavioral_response
+    stimuli = StimulusSet({'stimulus_id': ['s0'], 'sentence': ['hello']})
+    stimuli.identifier = 'output-only'
+    from brainscore_core.responses import Choice
+    result = behavioral_response(model, stimuli, TaskContext(instruction='Choose yes.',
+                                                             response=Choice(['yes', 'no'])))
+    assert result.values.tolist() == [[1.0, 0.0]]
+    # Without a session, process() has no extractor to answer with.
     with pytest.raises(NotImplementedError, match='no activation extractor'):
         model.process(StimulusSet({'stimulus_id': ['s0'], 'sentence': ['hello']}))
 
 
-@pytest.mark.parametrize('prefer_path', ['auto', 'generation', 'readout'])
-def test_behavioral_path_choice_is_explicit_or_warns(monkeypatch, prefer_path):
+@pytest.mark.parametrize('parts', ['answer and readout', 'readout'])
+def test_the_model_parts_choose_the_behavioral_path(monkeypatch, parts):
+    """The path is a property of the model: a model built without answer= uses its readout."""
     import warnings
-    from brainscore_core.model_interface import TaskContext
+    from brainscore_core.contract import TaskContext
+    from brainscore_core.responses import Choice
+    answer = {'answer': lambda **kwargs: 'yes'} if parts == 'answer and readout' else {}
     model = BrainScoreModel(
-        identifier='dual-path', supported_modalities={'text'},
-        generation_fn=lambda **kwargs: 'yes', behavioral_readout_layer='layer',
-        activations_model={'text': Extractor()},
+        identifier='dual-path', in_channels={'text'}, behavioral_readout_layer='layer',
+        extractor={'text': Extractor()}, **answer,
+        capability_config={'behavior-sessions': {} if answer
+                           else {'behavior:choice': ('readout', 'argmax')}},
     )
     fitted = []
-    monkeypatch.setattr(model, '_fit_behavioral_readout', lambda stimuli: fitted.append(stimuli))
+    monkeypatch.setattr(model._behavioral, 'fit_behavioral_readout', lambda stimuli: fitted.append(stimuli))
     stimuli = StimulusSet({'sentence': ['hello']})
     with warnings.catch_warnings(record=True) as notices:
         warnings.simplefilter('always')
-        model.start_task(TaskContext(
-            task_type='probabilities', instruction='Choose yes.', label_set=['yes'],
-            fitting_stimuli=stimuli, prefer_path=prefer_path,
-        ))
-    assert len(notices) == (1 if prefer_path == 'auto' else 0)
-    if notices:
-        assert 'does not fit' in str(notices[0].message)
-    assert bool(fitted) == (prefer_path == 'readout')
-    assert model._use_generation_for_task == (prefer_path != 'readout')
+        model.start_task(TaskContext(instruction='Choose yes.', response=Choice(['yes', 'no']),
+                                     fitting_stimuli=stimuli))
+    assert not notices   # the stated owner answers; no warning (rule 4.11)
+    assert fitted        # a direct start_task fits the readout, which gives the probabilities in both
+    assert model._behavioral.response_path == ('generation' if answer else 'readout')
 
 
 def test_named_readout_layer_without_extractor_is_not_a_second_path():
     import warnings
-    from brainscore_core.model_interface import TaskContext
+    from brainscore_core.contract import TaskContext
+    from brainscore_core.responses import Choice
     model = BrainScoreModel(
-        identifier='answer-only', supported_modalities={'text'},
-        generation_fn=lambda **kwargs: 'yes', behavioral_readout_layer='features',
+        identifier='answer-only', in_channels={'text'},
+        answer=lambda **kwargs: 'yes', behavioral_readout_layer='features',
     )
     with warnings.catch_warnings():
         warnings.simplefilter('error', UserWarning)
-        model.start_task(TaskContext(
-            task_type='probabilities', instruction='Choose yes.', label_set=['yes'],
-            fitting_stimuli=StimulusSet({'sentence': ['hello']}),
-        ))
-    assert model._use_generation_for_task is True
-
-
-def test_single_layer_compatibility_callback_rejects_multiple_layers():
-    calls = []
-    def old_extract(model, stimuli, recording_layer):
-        calls.append(recording_layer)
-        return Extractor()(stimuli, layers=[recording_layer])
-    with pytest.warns(DeprecationWarning, match='Extraction callbacks'):
-        model = BrainScoreModel(
-            identifier='old-callback', preprocessors={'text': old_extract},
-            region_layer_map={'A': 'first', 'B': 'second'},
-        )
-    stimuli = StimulusSet({'sentence': ['hello']})
-    model.start_recording('A')
-    model.process(stimuli)
-    assert calls == ['first']
-    model.start_recording(['A', 'B'])
-    with pytest.raises(ValueError, match='accepts one layer'):
-        model.process(stimuli)
-    assert calls == ['first']
+        model.start_task(TaskContext(instruction='Choose yes.', response=Choice(['yes', 'no']),
+                                     fitting_stimuli=StimulusSet({'sentence': ['hello']})))
+    assert model._behavioral.response_path == 'generation'
 
 
 def test_channel_registration_policy_differs_only_for_exploration():
@@ -269,16 +252,7 @@ def test_channel_registration_policy_differs_only_for_exploration():
         validate_channels({'custom_signal'}, 'input', 'experiment', allow_unregistered=True)
     with pytest.raises(CompatibilityError, match='unknown channel'):
         validate_channels({'custom_signal'}, 'input', 'benchmark')
-    with pytest.raises(CompatibilityError, match='registry marks'):
+    with pytest.raises(ValueError, match='registry marks'):
         validate_channels({'behavior'}, 'input', 'experiment', allow_unregistered=True)
 
 
-def test_deprecated_input_handler_remains_usable():
-    class CustomModel(BrainScoreModel):
-        def custom(self, event):
-            return 'handled'
-    class Event:
-        pass
-    with pytest.warns(DeprecationWarning, match='Capability'):
-        CustomModel.register_input_handler(Event, 'custom')
-    assert CustomModel(identifier='compatibility').process(Event()) == 'handled'

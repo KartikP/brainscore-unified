@@ -30,7 +30,7 @@ def run(directory: Path) -> None:
 
     result = Experiment(subject=subject,
         protocol=SessionProtocol('leace-demo', factory, conditions=['baseline', 'erased', 'restored'],
-                                 input_channels=['text'], output_channels=['neural:population']),
+                                 required_input_channels=['text'], requested_output_channels=['neural:population']),
         tools=[load_tool('record-io'),
                load_tool('linear-probe', artifact=directory / 'probe.json', name='before', when='before'),
                load_tool('leace', artifact=directory / 'eraser.json', conditions=['erased']),

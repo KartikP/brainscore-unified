@@ -26,6 +26,7 @@ Every policy response carries the run's provenance in its metadata, and the
 SmolVLM policy also keeps its generated answer and whether it parsed.
 """
 import argparse
+import re
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import replace
@@ -39,10 +40,6 @@ from brainscore.experiments import (
     TorchInstrumentation,
 )
 from brainscore.harnesses.grid_game import GridGameEnv, GridGameEnvironment
-from brainscore.model_helpers.local_vlm_policy import (
-    parse_directional_action, response_for_answer, visual_policy,
-)
-from brainscore.model_helpers.policy_wrapper import PolicyWrapper
 from brainscore_core.events import Selection
 from brainscore import BrainScoreModel
 from brainscore_core.streaming import Session, StreamEvent
@@ -65,6 +62,75 @@ LAYER = 'model.text_model.layers.0.mlp.up_proj'
 UNPARSED_ACTION = 0
 
 
+WORD_TO_ACTION = {'up': 0, 'down': 1, 'left': 2, 'right': 3}
+
+VISUAL_PROMPT = (
+    "This is a grid game. The BLUE square is the player; the GREEN square is the "
+    "goal. Row 0 is the top row; column 0 is the left column.\n"
+    "Think step by step:\n"
+    "1. State the (row, column) of the BLUE square.\n"
+    "2. State the (row, column) of the GREEN square.\n"
+    "3. Decide the single move that reduces the distance: 'up' decreases the "
+    "row, 'down' increases the row, 'left' decreases the column, 'right' "
+    "increases the column.\n"
+    "End your reply with a line exactly: Action: <up|down|left|right>"
+)
+
+
+def parse_directional_action(text, prefer_last=False):
+    """Extract a directional action (0..3) from model output. Prefer an
+    explicit 'Action: <word>'; else the first (or last) direction word.
+    Returns -1 if none found."""
+    m = re.search(r'action\s*[:\-]\s*(up|down|left|right)', text, re.IGNORECASE)
+    if m:
+        return WORD_TO_ACTION[m.group(1).lower()]
+    words = re.findall(r'\b(up|down|left|right)\b', text, re.IGNORECASE)
+    if words:
+        return WORD_TO_ACTION[(words[-1] if prefer_last else words[0]).lower()]
+    return -1
+
+
+def response_for_answer(answer, action, fallback, stats=None):
+    """Keep the answer and whether it parsed; a parser miss (-1) plays fallback()."""
+    valid = action >= 0
+    if not valid:
+        action = fallback()
+        if stats is not None:
+            stats['parse_miss'] += 1
+    return StreamEvent('motor', action, None, {
+        'answer': answer, 'valid': valid,
+        'parse_error': None if valid else 'the answer names no action',
+        'fallback_action': None if valid else action,
+    })
+
+
+def visual_policy(model, processor, *, fallback, prompt=VISUAL_PROMPT, max_new_tokens=200):
+    """Grid-game policy over a loaded image-text model; returns (policy, stats).
+
+    fallback() picks the action for an answer that names no direction.
+    """
+    from PIL import Image
+
+    stats = {'parse_miss': 0, 'calls': 0}
+
+    def policy(row):
+        stats['calls'] += 1
+        img = Image.fromarray(row['observation']['frame']).resize((320, 320), Image.NEAREST)
+        messages = [{'role': 'user', 'content': [
+            {'type': 'image'}, {'type': 'text', 'text': prompt}]}]
+        text = processor.apply_chat_template(messages, tokenize=False,
+                                             add_generation_prompt=True)
+        inputs = processor(text=[text], images=[img], return_tensors='pt').to(model.device)
+        with torch.no_grad():
+            out = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
+        ans = processor.decode(out[0][inputs['input_ids'].shape[1]:],
+                               skip_special_tokens=True)
+        return {'motor': response_for_answer(ans, parse_directional_action(ans, prefer_last=True),
+                                             fallback, stats)}
+
+    return policy, stats
+
+
 def answer_response(answer: str) -> StreamEvent:
     """Turn a generated answer into an action, keeping the answer and the parse result."""
     return response_for_answer(answer, parse_directional_action(answer, prefer_last=True),
@@ -72,18 +138,18 @@ def answer_response(answer: str) -> StreamEvent:
 
 
 def with_provenance(policy: Callable, *, provenance: dict[str, Any]) -> Callable:
-    """Wrap a policy so every response carries provenance in its metadata.
+    """Wrap a policy so every motor response carries provenance in its metadata.
 
-    The policy may return a motor ``StreamEvent`` or a bare action.
+    The policy returns ``{'motor': action}``; the action may be a ``StreamEvent``.
     """
-    def respond(observation, history) -> StreamEvent:
-        result = policy(observation, history)
+    def respond(row) -> dict:
+        result = policy(row)['motor']
         if not isinstance(result, StreamEvent):
             result = StreamEvent('motor', result, None)
-        return replace(result, meta={
+        return {'motor': replace(result, meta={
             **result.meta,
             'provenance': deepcopy({**result.meta.get('provenance', {}), **provenance}),
-        })
+        })}
 
     return respond
 
@@ -92,7 +158,7 @@ def load_smolvlm_policy(model_path: Path, max_new_tokens: int) -> tuple[Callable
     """Return (policy, torch model) for a local SmolVLM snapshot.
 
     The model is loaded here so its files are local and it can be hooked; the
-    prompt, generation and answer parsing are the shared visual_policy.
+    prompt, generation and answer parsing are visual_policy above.
     """
     from transformers import AutoProcessor, Idefics3ForConditionalGeneration
 
@@ -121,13 +187,13 @@ class _LoggedGrid(GridGameEnvironment):
 def direct_episode(policy: Callable, seed: int, *, size: int, max_steps: int) -> dict:
     """Reference loop: no session, subject, recorder or hooks.
 
-    The policy may return a motor ``StreamEvent`` or a bare action.
+    The policy returns ``{'motor': action}``; the action may be a ``StreamEvent``.
     """
     env = GridGameEnv(size=size, seed=seed, max_steps=max_steps)
     observation = env.reset(seed=seed)
     actions, total = [], 0.
     for _ in range(max_steps):
-        result = policy(observation, ())
+        result = policy({'observation': observation})['motor']
         action = int(result.payload if isinstance(result, StreamEvent) else result)
         observation, reward, done, _ = env.step(action)
         actions.append(action)
@@ -186,11 +252,10 @@ def qualify(output_dir: Path, load: Callable[[], tuple], *, asset_dir: Path | No
                     yield session
 
             result = Experiment(
-                subject=BrainScoreModel(identifier=identifier,
-                                        policy=PolicyWrapper(policy, max_history=0)),
+                subject=BrainScoreModel(identifier=identifier, policy=policy),
                 protocol=SessionProtocol(
                     identifier='grid-game', session_factory=factory, repetitions=seeds,
-                    input_channels={'observation'}, output_channels={'motor'},
+                    required_input_channels={'observation'}, requested_output_channels={'motor'},
                     collect_outputs=False,
                 ),
                 tools=tools,

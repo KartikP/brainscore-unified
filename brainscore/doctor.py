@@ -11,7 +11,10 @@ The interpreter path is printed first for that reason: knowing *which* env
 answered is usually the whole question.
 """
 
+import platform
+import re
 import sys
+from pathlib import Path
 
 
 def _dependency_rows():
@@ -34,6 +37,83 @@ def _import_rows():
         except Exception as error:      # ImportError, or an ABI error raised during import
             rows.append((name, f'{type(error).__name__}: {error}'.splitlines()[0]))
     return rows
+
+
+# The platforms with a full lock (every package at one version): (sys.platform, machine,
+# Python major.minor) -> the lock file in unified/install. Elsewhere only the bounds apply.
+LOCKS = {('linux', 'x86_64', '3.11'): 'lock-linux-py311-cu124.txt'}
+# Installed from their checkouts, not from the lock. pip, setuptools and wheel are locked
+# like every other distribution: the environment fingerprint counts them.
+_NOT_LOCKED = {'brainscore', 'brainscore-core', 'brainscore-vision', 'brainscore-language'}
+
+
+def _normalized(name):
+    return re.sub(r'[-_.]+', '-', name).lower()
+
+
+def read_lock(path):
+    """``{normalized name: version}`` of a lock file; None as the version of a package
+    pinned to a git commit (``name @ git+...@<commit>``). Option and comment lines are skipped."""
+    lock = {}
+    for line in Path(path).read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith(('#', '-')):
+            continue
+        if ' @ ' in line:
+            lock[_normalized(line.split(' @ ', 1)[0])] = None
+        else:
+            name, version = line.split('==', 1)
+            lock[_normalized(name)] = version
+    return lock
+
+
+def read_lock_python(path):
+    """The Python of a lock file, from its line ``# python==<three numbers>``; None if absent."""
+    match = re.search(r'^# python==(\d+\.\d+\.\d+)$', Path(path).read_text(), re.MULTILINE)
+    return match.group(1) if match else None
+
+
+def python_difference(lock_python, installed_python):
+    """The report line for a Python other than the lock's, or None."""
+    if lock_python is None:
+        return f'{"python":<28s} the lock names no Python'
+    if installed_python != lock_python:
+        return f'{"python":<28s} {installed_python:<20s} lock {lock_python}'
+    return None
+
+
+def lock_differences(lock, installed):
+    """One line for each package that differs from the lock: absent, another version, or not
+    in the lock. ``installed`` is ``{normalized name: version}``."""
+    lines = []
+    for name in sorted(set(lock) | set(installed)):
+        if name in _NOT_LOCKED:
+            continue
+        if name not in installed:
+            lines.append(f'{name:<28s} not installed        lock {lock[name] or "(git commit)"}')
+        elif name not in lock:
+            lines.append(f'{name:<28s} {installed[name]:<20s} not in the lock')
+        elif lock[name] is not None and installed[name] != lock[name]:
+            lines.append(f'{name:<28s} {installed[name]:<20s} lock {lock[name]}')
+    return lines
+
+
+def _lock_file():
+    """The lock of this platform in the unified checkout, or None (no lock for the platform,
+    or an install without the checkout's install folder)."""
+    key = (sys.platform, platform.machine(), f'{sys.version_info[0]}.{sys.version_info[1]}')
+    name = LOCKS.get(key)
+    if name is None:
+        return None
+    import brainscore
+    path = Path(brainscore.__file__).resolve().parents[1] / 'install' / name
+    return path if path.is_file() else None
+
+
+def _installed_distributions():
+    """``{normalized name: version}``: the fingerprint's inventory (startup entries, first one counts)."""
+    from brainscore_core.environment_check import environment_distributions
+    return {name: version for name, (version, _distribution) in environment_distributions().items()}
 
 
 def _asset_rows():
@@ -73,6 +153,28 @@ def report():
             lines.append(f'  XX {package:<14s} {error}')
             problems += 1
 
+    from brainscore_core.environment_check import math_threads, environment_fingerprint
+    lines.append('')
+    # The value every score's software carries: scores compare bit for bit only when it is equal.
+    lines.append(f'environment fingerprint  {environment_fingerprint()}')
+    # Also in every score's software: the threads change the last digits, so they must be equal too.
+    lines.append(f'math threads             {math_threads()}')
+
+    lock = _lock_file()
+    lines.append('')
+    if lock is None:
+        lines.append('full lock    none for this platform; the bounds above apply '
+                     f'(locked platforms: {", ".join(" ".join(key) for key in LOCKS)})')
+    else:
+        differences = lock_differences(read_lock(lock), _installed_distributions())
+        python = python_difference(read_lock_python(lock), platform.python_version())
+        if python:
+            differences.insert(0, python)
+        lines.append(f'full lock    {lock.name}: {len(differences)} package(s) differ')
+        for difference in differences:
+            lines.append(f'  XX {difference}')
+        problems += len(differences)
+
     lines.append('')
     lines.append('user-supplied data (benchmarks needing it will say so)')
     for row in _asset_rows():
@@ -94,7 +196,11 @@ def report():
         lines.append(f'{problems} environment problem(s). Resolve the errors above before scoring.')
         if dependency_problems:
             lines.append('Dependency mismatches can make scoring wrong rather than merely broken: '
-                         'install the pinned environment (environment-unified.yml).')
+                         'install with the pinned versions (unified/install/setup.sh, or pip install '
+                         'with -c unified/install/v2-constraints.txt; see the unified README).')
+        if lock is not None:
+            lines.append('On this platform `bash setup.sh --lock` installs every package at the '
+                         'version of the full lock (unified/install/SETUP.md).')
     else:
         lines.append('Dependencies are within bounds. Missing data assets above '
                      'are only needed by the benchmarks that name them; run '

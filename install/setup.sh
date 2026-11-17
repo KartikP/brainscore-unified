@@ -2,8 +2,26 @@
 set -euo pipefail
 
 # Brain-Score Unified Model Interface local bootstrap.
-# Usage: bash setup.sh
+# Usage: bash setup.sh            the pinned environment (environment-unified.yml)
+#        bash setup.sh --lock     the exact scoring platform (Linux x86_64, Python 3.11,
+#                                 CUDA 12.4): the Python and every package (pip,
+#                                 setuptools and wheel included) at the version of
+#                                 unified/install/lock-linux-py311-cu124.txt
 # Optional: UMI_ENV_NAME=my-env bash setup.sh
+# Both create the environment from conda-forge only, so a fresh miniconda does not stop
+# at the terms of service of Anaconda's default channels.
+
+LOCK=0
+case "${1:-}" in
+    "") ;;
+    --lock) LOCK=1 ;;
+    *) echo "Usage: bash setup.sh [--lock]" >&2; exit 2 ;;
+esac
+if [[ "$LOCK" == 1 && ( "$(uname -s)" != "Linux" || "$(uname -m)" != "x86_64" ) ]]; then
+    echo "Error: --lock installs the Linux x86_64 scoring platform; this is $(uname -s) $(uname -m)." >&2
+    echo "Run bash setup.sh without --lock here." >&2
+    exit 2
+fi
 
 WORKDIR="$(cd "$(dirname "$0")" && pwd)"
 BRANCH="unified-model-interface-v2"
@@ -121,30 +139,46 @@ if conda env list | awk '{print $1}' | grep -Fxq "$ENV_NAME"; then
     exit 1
 fi
 
-# Recent conda (>=24.x) gates environment creation behind the Anaconda channels'
-# Terms of Service, which a fresh install has not accepted -- `conda env create`
-# then fails with CondaToSNonInteractiveError. Accept it non-interactively when
-# the subcommand exists (older conda has no `tos`); harmless if already accepted.
-if conda tos --help >/dev/null 2>&1; then
-    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main >/dev/null 2>&1 || true
-    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r    >/dev/null 2>&1 || true
-fi
-
+# Only conda-forge is used: the environment file lists it with `nodefaults`, and the lock
+# path passes --override-channels. Anaconda's default channels, whose terms of service a
+# fresh miniconda asks to accept, are never contacted; nothing is accepted on your behalf.
 cd "$WORKDIR"
-conda env create --name "$ENV_NAME" --file "$ENV_FILE"
+if [[ "$LOCK" == 1 ]]; then
+    LOCK_FILE="$WORKDIR/unified/install/lock-linux-py311-cu124.txt"
+    # The lock names the Python (line "# python==3.11.15"); the same line is read by the doctor.
+    LOCK_PYTHON="$(sed -n 's/^# python==\([0-9.]*\)$/\1/p' "$LOCK_FILE")"
+    if [[ -z "$LOCK_PYTHON" ]]; then
+        echo "Error: $LOCK_FILE names no Python (a line '# python==3.11.15')." >&2
+        exit 1
+    fi
+    conda create --yes --name "$ENV_NAME" --override-channels --channel conda-forge "python==$LOCK_PYTHON" pip
+    # The lock also names pip, setuptools and wheel, so the next step ends with those versions.
+    echo "Installing every package at the version of $LOCK_FILE"
+    conda run --name "$ENV_NAME" python -m pip install -r "$LOCK_FILE"
+    echo "Installing the four repositories from this checkout (their dependencies are in the lock)"
+    conda run --name "$ENV_NAME" python -m pip install --no-deps \
+        -e "$WORKDIR/core" \
+        -e "$WORKDIR/vision" \
+        -e "$WORKDIR/language" \
+        -e "$WORKDIR/unified"
+else
+    conda env create --name "$ENV_NAME" --file "$ENV_FILE"
 
-echo "Refreshing editable installs from this checkout"
-conda run --name "$ENV_NAME" python -m pip install \
-    -c "$WORKDIR/unified/install/v2-constraints.txt" \
-    -e "$WORKDIR/core" \
-    -e "$WORKDIR/vision" \
-    -e "$WORKDIR/language" \
-    -e "$WORKDIR/unified[notebooks]"
+    echo "Refreshing editable installs from this checkout"
+    conda run --name "$ENV_NAME" python -m pip install \
+        -c "$WORKDIR/unified/install/v2-constraints.txt" \
+        -e "$WORKDIR/core" \
+        -e "$WORKDIR/vision" \
+        -e "$WORKDIR/language" \
+        -e "$WORKDIR/unified[notebooks]"
+fi
 
 echo "Verifying package consistency"
 conda run --name "$ENV_NAME" python -m pip check
 conda run --name "$ENV_NAME" python -c "import brainscore, brainscore_core, brainscore_vision, brainscore_language; print('Brain-Score imports: OK')"
-conda run --name "$ENV_NAME" python -c "from transformers import DynamicCache; assert hasattr(DynamicCache(), 'to_legacy_cache'); print('Transformers cache API: OK')"
+# Check the cache operation the code uses (slice_kv_cache), not one transformers
+# version's method: transformers 5 removed to_legacy_cache, and both are supported.
+conda run --name "$ENV_NAME" python -c "import torch; from transformers import DynamicCache; from brainscore_language.model_helpers.huggingface import slice_kv_cache; cache = DynamicCache(); kv = torch.zeros(1, 1, 3, 2); cache.update(kv, kv, 0); assert slice_kv_cache(cache, 2).get_seq_length() == 2; print('Transformers cache API: OK')"
 conda run --name "$ENV_NAME" python -c "import numpy, sklearn, transformers, xarray; print('numpy', numpy.__version__); print('xarray', xarray.__version__); print('scikit-learn', sklearn.__version__); print('transformers', transformers.__version__)"
 # Same check the user is told to run, so a fresh install is verified by the tool
 # they will actually use rather than by a one-off snippet that can drift from it.

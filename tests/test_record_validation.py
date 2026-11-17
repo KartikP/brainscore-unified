@@ -1,6 +1,8 @@
 """Reject damaged or incompatible recordings before downstream analysis."""
+import contextlib
 import hashlib
 import json
+import tracemalloc
 from pathlib import Path
 
 import numpy as np
@@ -219,7 +221,21 @@ def test_open_record_reads_validated_prefix_and_stays_unscorable(tmp_path):
         record.evaluate(lambda actual, target: actual, None)
 
 
-def test_closed_log_changed_during_iteration_is_rejected(tmp_path):
+@pytest.fixture(params=['filesystem clock', 'coarse clock'])
+def clock(request, monkeypatch):
+    """'coarse clock' drops mtime and ctime from every status the reader takes.
+
+    This is the worst case of a coarse filesystem clock (Linux ext4 stamps files from a
+    clock that ticks every few milliseconds): every change lands in the same tick, so
+    the times never show it. The reader must still refuse each change.
+    """
+    if request.param == 'coarse clock':
+        from brainscore import run_record
+        stamp = run_record._stamp
+        monkeypatch.setattr(run_record, '_stamp', lambda handle: stamp(handle)[:3])
+
+
+def test_closed_log_changed_during_iteration_is_rejected(tmp_path, clock):
     directory = long_recording(tmp_path / 'record', 3)
     events = RunRecord(directory).outputs()
     assert next(events) == [0, '']
@@ -229,7 +245,7 @@ def test_closed_log_changed_during_iteration_is_rejected(tmp_path):
         next(events)
 
 
-def test_restored_mtime_edit_is_rejected_before_affected_output(tmp_path):
+def test_restored_mtime_edit_is_rejected_before_affected_output(tmp_path, clock):
     """Restoring mtime with utime still changes ctime, which the reader checks before each yield."""
     import os
     directory = long_recording(tmp_path / 'record', 3)
@@ -257,7 +273,7 @@ def test_restored_mtime_edit_is_rejected_before_affected_output(tmp_path):
     (2, 'changed while reading'),  # between validation and iteration
     (3, 'changed while reading'),  # after decoding, immediately before the first yield
 ])
-def test_ordinary_write_at_each_stamp_is_rejected(tmp_path, monkeypatch, call, message):
+def test_ordinary_write_at_each_stamp_is_rejected(tmp_path, monkeypatch, clock, call, message):
     from brainscore import run_record
     directory = long_recording(tmp_path / 'record', 1)
     path = directory / 'events.jsonl'
@@ -276,8 +292,8 @@ def test_ordinary_write_at_each_stamp_is_rejected(tmp_path, monkeypatch, call, m
     assert yielded == []
 
 
-def test_replaced_closed_log_fails_closed(tmp_path):
-    """Rename-over drops a link from the open inode, changing its ctime."""
+def test_replaced_closed_log_fails_closed(tmp_path, clock):
+    """After a rename-over the path no longer names the open file."""
     import os
     directory = long_recording(tmp_path / 'record', 3)
     events = RunRecord(directory).outputs()
@@ -289,27 +305,76 @@ def test_replaced_closed_log_fails_closed(tmp_path):
         next(events)
 
 
+def test_change_in_a_later_block_is_refused_before_its_events(tmp_path, clock):
+    """The second pass verifies each block of the log before it yields an event from it."""
+    directory = long_recording(tmp_path / 'record', 10, width=20000)  # several blocks
+    path = directory / 'events.jsonl'
+    events = RunRecord(directory).outputs()
+    yielded = [next(events)[0]]
+    blob = path.read_bytes()
+    with path.open('r+b') as handle:  # same size, in place, in a block not yet read
+        handle.seek(blob.index(b'[8, '))
+        handle.write(b'[7, ')
+    with pytest.raises(ValueError, match='changed while reading'):
+        for output in events:
+            yielded.append(output[0])
+    assert yielded == list(range(len(yielded))) and len(yielded) <= 8, yielded  # never the edit
+
+
+@contextlib.contextmanager
+def _tracing():
+    """Trace allocations in the block, and stop only a trace this block started (a
+    failed assertion must not leave tracing on for later tests)."""
+    started = not tracemalloc.is_tracing()
+    if started:
+        tracemalloc.start()
+    try:
+        yield
+    finally:
+        if started:
+            tracemalloc.stop()
+
+
 def test_finalize_and_read_memory_do_not_scale_with_log_length(tmp_path):
-    import tracemalloc
     peaks = {}
     for count in (200, 20000):
         directory = tmp_path / str(count)
         recorder = RunRecorder(directory, metadata={})
         for index in range(count):
             recorder.record('output', [index, 'x' * 500])
-        tracemalloc.start()
-        recorder.close()
-        close_peak = tracemalloc.get_traced_memory()[1]
-        tracemalloc.reset_peak()
-        assert sum(1 for _ in RunRecord(directory).events()) == count
-        peaks[count] = (close_peak, tracemalloc.get_traced_memory()[1])
-        tracemalloc.stop()
+        with _tracing():
+            recorder.close()
+            close_peak = tracemalloc.get_traced_memory()[1]
+            tracemalloc.reset_peak()
+            assert sum(1 for _ in RunRecord(directory).events()) == count
+            peaks[count] = (close_peak, tracemalloc.get_traced_memory()[1])
     size = (tmp_path / '20000' / 'events.jsonl').stat().st_size
     assert size > 10_000_000
     for small, large in zip(peaks[200], peaks[20000]):
         assert large < 2 * small + 100_000, peaks
         assert large < size / 20, peaks
     print(f'log bytes={size} peaks(close, read)={peaks}')
+
+
+def test_reader_index_grows_at_most_32_bytes_per_64_kib(tmp_path):
+    """While events are read, the reader keeps a constant plus one 32-byte digest per
+    64 KiB block of log (the index of its first pass); nothing per block beyond that."""
+    import math
+    held, digests, blocks = {}, {}, {}
+    for count in (200, 20000):
+        directory = long_recording(tmp_path / str(count), count, width=500)
+        blocks[count] = math.ceil((directory / 'events.jsonl').stat().st_size / 65536)
+        with _tracing():
+            events = RunRecord(directory).events()
+            next(events)  # suspended in the second pass, with the whole index built
+            held[count] = tracemalloc.get_traced_memory()[0]
+            index = events.gi_frame.f_locals.get('index')
+            digests[count] = len(index) if isinstance(index, bytearray) else None
+            events.close()
+    allowed = 32 * (blocks[20000] - blocks[200]) + 8192  # the index plus allocator slack
+    assert held[20000] - held[200] <= allowed, (held, blocks)
+    assert digests == {count: 32 * blocks[count] for count in blocks}, digests
+    print(f'blocks={blocks} index bytes={digests} held bytes={held}')
 
 
 def recorded_size(directory):
@@ -612,11 +677,11 @@ def experiment_child(directory):
         from types import SimpleNamespace
         def evaluate(subject, context):
             for index in range(3):
-                subject.process(index)
+                subject.infer(index)
             ready.touch()
             time.sleep(60)
-        Experiment(subject=SimpleNamespace(process=lambda x: x * 10),
-                   protocol=CallableProtocol('fixture', evaluate),
+        Experiment(subject=SimpleNamespace(infer=lambda x: x * 10),
+                   protocol=CallableProtocol('fixture', evaluate, methods=['infer']),
                    tools=[RecordInputsOutputs()], output_dir={str(directory)!r}).run()
     '''
 
@@ -639,8 +704,9 @@ def test_running_experiment_with_complete_child_record_is_incomplete(tmp_path):
     from types import SimpleNamespace
     from brainscore.experiments import CallableProtocol, Experiment, RecordInputsOutputs
     directory = tmp_path / 'run'
-    Experiment(subject=SimpleNamespace(process=lambda x: x),
-               protocol=CallableProtocol('fixture', lambda subject, context: subject.process(1)),
+    Experiment(subject=SimpleNamespace(infer=lambda x: x),
+               protocol=CallableProtocol('fixture', lambda subject, context: subject.infer(1),
+                                         methods=['infer']),
                tools=[RecordInputsOutputs()], output_dir=directory).run()
     assert RunRecord.inspect(directory)['status'] == 'complete'
     # Death after the recorder closed but before the experiment manifest was finalized.
@@ -782,22 +848,20 @@ def test_inspect_rejects_unknown_schemas(tmp_path, recording):
 
 
 def test_inspect_and_prefix_memory_do_not_scale_with_log_length(tmp_path):
-    import tracemalloc
     peaks = {}
     for count in (200, 20000):
         directory = tmp_path / str(count)
         recorder = RunRecorder(directory, metadata={})
         for index in range(count):
             recorder.record('output', [index, 'x' * 500])
-        tracemalloc.start()
-        assert RunRecord.inspect(directory)['valid_events'] == count
-        inspect_peak = tracemalloc.get_traced_memory()[1]
-        tracemalloc.reset_peak()
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', RuntimeWarning)
-            assert sum(1 for _ in RunRecord(directory).unverified_prefix()) == count
-        peaks[count] = (inspect_peak, tracemalloc.get_traced_memory()[1])
-        tracemalloc.stop()
+        with _tracing():
+            assert RunRecord.inspect(directory)['valid_events'] == count
+            inspect_peak = tracemalloc.get_traced_memory()[1]
+            tracemalloc.reset_peak()
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', RuntimeWarning)
+                assert sum(1 for _ in RunRecord(directory).unverified_prefix()) == count
+            peaks[count] = (inspect_peak, tracemalloc.get_traced_memory()[1])
     size = (tmp_path / '20000' / 'events.jsonl').stat().st_size
     for small, large in zip(peaks[200], peaks[20000]):
         assert large < 2 * small + 100_000, peaks
@@ -897,7 +961,7 @@ def test_closed_manifest_without_checks_or_with_unknown_status_is_refused(record
     assert RunRecord.inspect(recording)['status'] == 'corrupt'
 
 
-def test_evaluate_reads_to_end_before_scoring(tmp_path, monkeypatch):
+def test_evaluate_reads_to_end_before_scoring(tmp_path, monkeypatch, clock):
     from brainscore import run_record
     directory = long_recording(tmp_path / 'record', 3)
     path = directory / 'events.jsonl'
@@ -935,3 +999,27 @@ def test_evaluate_final_digest_check_holds_with_unchanging_stamp(tmp_path, monke
     with pytest.raises(ValueError, match='changed while reading'):
         RunRecord(directory).evaluate(lambda actual, target: scored.append(actual), None)
     assert scored == []
+
+
+@pytest.mark.parametrize('labels, recorded', [(['real', 'out'], True), ([1, 7], True),
+                                              ([b'real', b'out'], False)],
+                         ids=['str', 'int', 'bytes'])
+def test_an_old_models_label_answer_is_recorded_unless_its_labels_are_bytes(tmp_path, labels,
+                                                                             recorded):
+    """The stored answer of an old model's label task keeps the old values as its raw answer.
+    Text and integers encode and decode equal; a recorder refuses bytes with the codec's
+    present error (a stated limit: scoring works, only recording fails)."""
+    from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
+    from brainscore_vision.compat.unified_adapter import _choice_from_labels
+    from brainscore.run_record import PayloadCodec
+    answer = BehavioralAssembly([labels], dims=['choice', 'presentation'], coords={
+        'stimulus_id': ('presentation', ['a', 'b']), 'image_label': ('presentation', ['x', 'y'])})
+    stored = _choice_from_labels(answer, ['real', 'pseudo'])
+    codec = PayloadCodec(tmp_path)
+    if not recorded:
+        with pytest.raises(TypeError, match='Unsupported record payload: builtins.bytes'):
+            codec.encode(stored)
+        return
+    decoded = codec.decode(codec.encode(stored))
+    assert list(decoded['raw_answer'].values) == labels
+    assert decoded.attrs == stored.attrs

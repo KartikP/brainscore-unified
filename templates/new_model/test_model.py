@@ -1,9 +1,10 @@
 """Tests are the spec. A model should: register + load by identifier, declare the right
-modalities, accept a recording target, and actually return an assembly from process().
+channels, accept a recording target, and actually return an assembly from a session.
 
-That last one matters. Registration and modality checks pass even when the model cannot
-run — they never touch the backbone. The process() smoke below is what catches a
-registration that is wired up wrong. Keep it as you swap in your own model.
+That last one matters. Registration and channel checks pass even when the model cannot
+run — they never touch the backbone. The session smoke below (the path every benchmark
+takes, through participate) is what catches a registration that is wired up wrong.
+Keep it as you swap in your own model.
 """
 import os
 
@@ -14,7 +15,6 @@ import os
 # FileNotFoundError that has nothing to do with the model being registered.
 os.environ.setdefault('RESULTCACHING_DISABLE', '1')
 
-import tempfile
 
 import numpy as np
 import pytest
@@ -22,19 +22,19 @@ from PIL import Image
 
 
 @pytest.fixture(scope='module')
-def tiny_stimuli():
+def tiny_stimuli(tmp_path_factory):
     """Four small images on disk, as a StimulusSet. Replace with your own stimuli."""
     from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-    directory = tempfile.mkdtemp(prefix='your_model_test_')
+    directory = str(tmp_path_factory.mktemp('your_model_test'))   # pytest removes old runs
     rows, paths = [], {}
     for i in range(4):
         sid = f'stim{i}'
         p = os.path.join(directory, f'{sid}.png')
         rng = np.random.RandomState(i)
         Image.fromarray(rng.randint(0, 255, (64, 64, 3), dtype=np.uint8)).save(p)
-        # 'image_file_name' is load-bearing: dispatch picks the modality by looking for
+        # 'image_path' is load-bearing: dispatch picks the modality by looking for
         # a RECOGNIZED column name. stimulus_paths alone is not enough.
-        rows.append({'stimulus_id': sid, 'image_file_name': p})
+        rows.append({'stimulus_id': sid, 'image_path': p})
         paths[sid] = p
     stimuli = StimulusSet(rows)
     stimuli.stimulus_paths = paths
@@ -49,30 +49,30 @@ def test_registered_and_loads():
     assert model.identifier == 'your-model'
 
 
-def test_supported_modalities():
+def test_in_channels():
     import brainscore
     model = brainscore.load_model('your-model')
-    # supported_modalities is derived from the extractor mapping.
-    assert 'vision' in model.supported_modalities   # TODO: match your extractor mapping
+    # in_channels is derived from the extractor mapping.
+    assert 'vision:image' in model.in_channels   # TODO: match your extractor mapping
 
 
 def test_start_recording_accepts_known_region():
     import brainscore
     model = brainscore.load_model('your-model')
     model.start_recording('IT')                      # TODO: a region in your region_layer_map
-    # Unknown names are raw layer paths, with the same rule for strings and lists.
+    # A name that is neither a region nor a layer of the extractor is refused before any
+    # compute, with the same rule for strings and lists.
     for target in ('NotARegion', ['NotARegion']):
-        with pytest.warns(UserWarning, match='raw layer path'):
+        with pytest.raises(ValueError, match='not a region in region_layer_map'):
             model.start_recording(target)
 
 
-
-def test_process_returns_an_assembly(tiny_stimuli):
+def test_session_returns_an_assembly(tiny_stimuli):
     """The one test that proves the registration actually works end to end."""
     import brainscore
+    from brainscore_core.streaming_helpers import neural_response
     model = brainscore.load_model('your-model')
-    model.start_recording('IT')
-    assembly = model.process(tiny_stimuli)
+    assembly = neural_response(model, tiny_stimuli, ['neural:IT'])   # TODO: your region
 
     assert 'presentation' in assembly.dims and 'neuroid' in assembly.dims
     assert assembly.sizes['presentation'] == len(tiny_stimuli)
@@ -81,7 +81,7 @@ def test_process_returns_an_assembly(tiny_stimuli):
 
 
 def test_multi_region_carries_provenance(tiny_stimuli):
-    """Recording several regions at once tags every unit with where it came from.
+    """Several regions recorded in one session each arrive on their own channel.
 
     Only meaningful once region_layer_map has more than one entry; skipped otherwise.
     """
@@ -90,7 +90,10 @@ def test_multi_region_carries_provenance(tiny_stimuli):
     regions = list(model.region_layer_map)
     if len(regions) < 2:
         pytest.skip('add a second region to region_layer_map to exercise this')
-    model.start_recording(regions[:2])
-    assembly = model.process(tiny_stimuli)
-    tagged = set(np.asarray(assembly['region'].values).astype(str))
-    assert set(regions[:2]) <= tagged
+    from brainscore_core.streaming_helpers import stimulus_session
+    session = stimulus_session(tiny_stimuli, [f'neural:{region}' for region in regions[:2]])
+    model.participate(session)
+    for region in regions[:2]:   # each region arrives on its own channel, with its layer
+        assembly = session.collect(f'neural:{region}')
+        assert assembly.sizes['neuroid'] > 0
+        assert len(set(np.asarray(assembly['layer'].values).astype(str))) >= 1

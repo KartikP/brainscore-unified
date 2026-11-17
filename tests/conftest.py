@@ -18,6 +18,23 @@ Run tiers:
   pytest -m "unit or integration" # CI tier (offline, no big models)
   pytest -m slow                  # on demand (AWS creds + model downloads)
 """
+import os
+
+# Cap the math-library threads before numpy loads: on a shared machine, one thread per core in every
+# test process slows small matrix tests by orders of magnitude. A value you set yourself stays.
+# Covered: a plain `pytest` run (this file) and the workspace launcher (`brainscore/validation/workspace.py`,
+# which sets the same defaults in the environment of its pytest subprocess). Not covered when started on their own:
+# `install/run_candidate.sh`, `brainscore/validation/installed.py` and CI; export the variables there.
+for _variable in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS',
+                  'VECLIB_MAXIMUM_THREADS', 'NUMEXPR_NUM_THREADS'):
+    os.environ.setdefault(_variable, '4')
+
+# The activation store is off unless a run says otherwise: a plain `pytest` must never write to the
+# shared store. The store reads its folder when a wrapper class is imported, so this comes before any
+# import of a wrapper. An explicit value wins; a test that needs the store on sets it and points the
+# wrapper's storage object at its own folder (see tests/test_score_provenance.py).
+os.environ.setdefault('RESULTCACHING_DISABLE', '1')
+
 import pytest
 
 pytest_plugins = ['brainscore.validation.cpu_profile']
@@ -40,6 +57,7 @@ QUALIFICATION_TESTS = {
     'test_contrastive_steering_tool.py::test_documented_steering_example_runs',
     'test_leace_tool.py::test_documented_leace_example_runs',
     'test_linear_probe_tool.py::test_documented_cpu_example_runs_without_downloads',
+    'test_extension_templates.py::test_documented_code_blocks_run',
     'test_notebook_validation.py::test_execution_retains_failure_without_changing_source',
 }
 

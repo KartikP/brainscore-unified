@@ -2,7 +2,7 @@
 
 There are two kinds of notebook.
 
-- **Lessons** teach the concepts in order and download nothing. Lessons 1, 2 and 9 use tiny synthetic models; lessons 3-8, 10 and 11 use bundled SqueezeNet weights and CIFAR-10 images. Each runs on a laptop CPU in under two minutes.
+- **Lessons** teach the concepts in order, download nothing and need no credentials. Lessons 1, 2 and 9 use tiny synthetic models; lessons 3-8, 10 and 11 use bundled SqueezeNet weights and CIFAR-10 images. Each runs on a laptop CPU in under two minutes.
 - **Experiments** use those concepts to answer one scientific question each, written as a short lab report: question, background, hypothesis, method, results, conclusion and limits.
 
 Start with the lessons. Read the [manual](../docs/README.md) alongside them when a term is new.
@@ -44,7 +44,7 @@ If the result cache points to an unmounted drive, set `RESULTCACHING_HOME` to a 
 | 9 | [Does silencing one residual branch change ResNet-18's predictions?](experiments/09_recording_and_silencing_resnet18.ipynb) | 7, 10 | CPU, ResNet-18 weights (45 MB) |
 | 10 | [How well do GPT-2 features predict fMRI during story listening, and does timing matter?](experiments/10_story_listening_fmri.ipynb) | 2, 5 | GPU recommended; LeBel 2023 data (750 MB, downloaded on first use), GPT-2 weights |
 | 13 | [Do messages passed around a loop of language models forget where they started?](experiments/13_passing_outputs_between_subjects.ipynb) | 1, 9 | CPU or GPU, GPT-2 and DistilGPT-2 weights (850 MB) |
-| 14 | [Does a vision-language model read instructions and words like a reading-study participant?](experiments/14_reading_instructions_and_words.ipynb) | 6, 7, 8, 10 | One 24 GB GPU, Qwen2.5-VL-7B weights (16.6 GB), about 45 minutes |
+| 14 | [Does a vision-language model read instructions and words like a reading-study participant?](experiments/14_reading_instructions_and_words.ipynb) | 6, 7, 8, 10 | One 24 GB GPU, Qwen2.5-VL-7B weights (16.6 GB), 36 minutes on one A10G after the download |
 
 Results from saved runs, synthetic data or untrained networks demonstrate a procedure. Each notebook's "Conclusion and limits" section says what its result does and does not establish.
 

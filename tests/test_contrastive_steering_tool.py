@@ -87,7 +87,7 @@ def test_signed_protocol_conditions_and_multiple_tools_restore(tmp_path):
     result = Experiment(subject=subject,
         protocol=SessionProtocol('steering', factory,
             conditions=['baseline', 'positive', 'negative', 'restored'],
-            input_channels=['observation'], output_channels=['behavior']),
+            required_input_channels=['observation'], requested_output_channels=['behavior']),
         tools=[load_tool('record-io'),
                load_tool('contrastive-steering', artifact=path, strength=1., name='plus', conditions=['positive']),
                load_tool('contrastive-steering', artifact=path, strength=-1., name='minus', conditions=['negative']),
@@ -227,6 +227,7 @@ def test_dose_cannot_be_changed_to_a_nonfinite_value():
 
 
 def test_saved_maps_load_and_apply_without_fitting_or_tensor_libraries(tmp_path):
+    pytest.importorskip('concept_erasure', reason='concept-erasure is not installed; install brainscore[test] (or brainscore[interpretability])')   # fits LEACE
     features, labels = discovery()
     fitted().save(tmp_path / 'steering.json')
     load_tool('leace', target='population').fit(features, labels).save(tmp_path / 'leace.json')

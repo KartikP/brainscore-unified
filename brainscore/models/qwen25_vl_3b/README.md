@@ -52,4 +52,4 @@ The registration run peaked at 21.03 GiB under a 32 GiB physical-footprint guard
 the earlier focused diagnostic's larger peak was about 28 GiB. All model
 processes were released afterward. The 126 targeted unit/lab checks passed;
 two HTTP checks required rerunning with loopback socket permission. Existing
-scikit-learn environment drift remains outside this generated-reply check.
+scikit-learn environment drift remains outside this check of generated replies.

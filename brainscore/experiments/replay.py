@@ -66,20 +66,26 @@ def replay_sessions(directory):
         from copy import deepcopy
         key = (repetition.condition, repetition.identifier)
         saved = deepcopy(inputs[key])
-        session = Session(saved)
-        for name, value in deepcopy(settings[key]).items():
+        context = deepcopy(settings[key])
+        # The source decides the delivery: a recorded stream replays as one.
+        session = Session(iter(saved) if context.pop('streaming', False) else saved)
+        for name, value in context.items():
             setattr(session, name, value)
-        if 'requested_output_channels' not in settings[key] and trial_outputs[key]:
+        if 'outputs' not in settings[key] and trial_outputs[key]:
             # Older records have no request metadata. Keep the observed channel
             # names scoped to this repetition rather than mixing different repetitions.
-            session.requested_output_channels = tuple(sorted(trial_outputs[key]))
-        # SessionProtocol collects results after the final observation.
-        session.collect = lambda: [event.payload for event in session.emitted]
+            session.outputs = tuple(sorted(trial_outputs[key]))
+        if 'outputs' not in settings[key]:
+            # The recorded session requested no outputs, so its collect() gave its events;
+            # the replay does the same. A channel is collected as in any session.
+            collect = session.collect
+            session.collect = lambda channel=None: (list(session.emitted) if channel is None
+                                                    else collect(channel))
         yield session
     return SessionProtocol('saved-session-inputs', factory, conditions=conditions, repetitions=repetitions,
-        input_channels={e.channel for group in inputs.values() for e in group
+        required_input_channels={e.channel for group in inputs.values() for e in group
                         if e.channel != CONTROL_CHANNEL},
-        output_channels=outputs,
+        requested_output_channels=outputs,
         metadata={**_source(directory), 'mode': 'open_loop_saved_inputs'})
 
 
@@ -87,7 +93,7 @@ def replay_calls(directory, *, methods, reset):
     """Replay explicit allowlisted methods with caller-supplied reset behavior.
 
     reset(subject) runs before and after the saved call sequence. Use a no-op
-    only for a known stateless provider. Restart remote policy RNG separately
+    only for a known stateless subject. Restart remote policy RNG separately
     when its API offers no reset. Never infer reset behavior from a method name.
     """
     events = read_events(directory)
@@ -113,13 +119,20 @@ def replay_calls(directory, *, methods, reset):
                   'reset_policy': 'caller supplied; before and after sequence'})
 
 
+def _without_attrs(array):
+    bare = array.copy(deep=False)
+    bare.attrs = {}
+    return bare
+
+
 def _equal(left, right):
     if isinstance(left, StreamEvent) and isinstance(right, StreamEvent):
         return (left.channel == right.channel and left.t_ms == right.t_ms
                 and _equal(left.meta, right.meta) and _equal(left.payload, right.payload))
     if isinstance(left, xr.DataArray) or isinstance(right, xr.DataArray):
+        # Values and coordinates by xarray; the attributes, which can hold arrays, by this function.
         return (type(left) is type(right) and left.dtype == right.dtype
-                and left.identical(right))
+                and _without_attrs(left).identical(_without_attrs(right)) and _equal(left.attrs, right.attrs))
     if isinstance(left, np.ndarray) or isinstance(right, np.ndarray):
         return (isinstance(left, np.ndarray) and isinstance(right, np.ndarray)
                 and left.dtype == right.dtype and np.array_equal(
@@ -130,6 +143,8 @@ def _equal(left, right):
         return left.keys() == right.keys() and all(_equal(left[k], right[k]) for k in left)
     if isinstance(left, (tuple, list)):
         return len(left) == len(right) and all(_equal(a, b) for a, b in zip(left, right))
+    if isinstance(left, (float, np.floating)) and np.isnan(left) and np.isnan(right):
+        return True             # as the array branch: NaN equals NaN (equal_nan)
     result = left == right
     if not isinstance(result, (bool, np.bool_)):
         raise TypeError('Supply a domain metric for unsupported comparison payloads')

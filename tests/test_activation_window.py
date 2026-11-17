@@ -11,7 +11,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from brainscore.activation_window import ActivationWindow, _first_tensor_out
+from brainscore.activation_window import ActivationWindow, first_tensor_out
 
 
 class _Stack(nn.Module):
@@ -75,14 +75,10 @@ class TestCapture:
 
 @pytest.mark.unit
 class TestOutputHandling:
-    def test_first_tensor_out_tuple(self):
-        t = torch.randn(2, 4)
-        assert _first_tensor_out((t, None)) is t
-
     def test_first_tensor_out_hf_object(self):
         class O:
             last_hidden_state = torch.randn(1, 3, 4)
-        assert _first_tensor_out(O()).shape == (1, 3, 4)
+        assert first_tensor_out(O()).shape == (1, 3, 4)
 
     def test_captures_from_tuple_returning_module(self):
         m = _TupleBlock()

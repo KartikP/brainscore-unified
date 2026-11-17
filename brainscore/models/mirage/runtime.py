@@ -12,7 +12,7 @@ import tempfile
 
 import numpy as np
 
-from .model import Clip, Prediction, SUBJECTS
+from .model import Clip, Prediction, PARTICIPANTS
 
 
 class MirageRuntimeError(RuntimeError):
@@ -33,13 +33,13 @@ class MirageRuntime:
         source_dir: Path,
         run_dir: Path,
         work_dir: Path,
-        subject: str = 'sub-01',
+        participant: str = 'sub-01',
         device: str = 'cuda',
         batch_size: int = 1,
         timeout_s: float = 1200.0,
     ) -> None:
-        if subject not in SUBJECTS:
-            raise ValueError(f'subject must be one of {SUBJECTS}')
+        if participant not in PARTICIPANTS:
+            raise ValueError(f'participant must be one of {PARTICIPANTS}')
         if type(batch_size) is not int or batch_size < 1:
             raise ValueError('batch_size must be a positive integer')
         if not math.isfinite(timeout_s) or timeout_s <= 0:
@@ -48,7 +48,7 @@ class MirageRuntime:
         self.source_dir = Path(source_dir).resolve()
         self.run_dir = Path(run_dir).resolve()
         self.work_dir = Path(work_dir).resolve()
-        self.subject = subject
+        self.participant = participant
         self.device = device
         self.batch_size = batch_size
         self.timeout_s = timeout_s
@@ -64,7 +64,7 @@ class MirageRuntime:
             transcript.write_text(json.dumps(clip.transcript, allow_nan=False))
             request = {
                 'video': str(video), 'transcript': str(transcript),
-                'run_dir': str(self.run_dir), 'subject': self.subject,
+                'run_dir': str(self.run_dir), 'participant': self.participant,
                 'device': self.device, 'batch_size': self.batch_size,
                 'output': str(root / 'prediction.npy'),
                 'provenance': str(root / 'provenance.json'),

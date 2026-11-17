@@ -31,13 +31,13 @@ Requirements files sometimes list Python's own modules (`imp`, `collections`); t
 
 ## Translating a registration
 
-Translate only if you want features the classic interface lacks (several input types, perturbations, closed-loop control). The parts map one to one:
+Translate only if you want features the classic interface lacks (several input types, interventions, closed-loop control). The parts map one to one:
 
 | Classic | `BrainScoreModel` |
 | --- | --- |
-| `PytorchWrapper(identifier, model, preprocessing)` | `extractor={'vision': VisionWrapper(identifier, model, preprocessing)}` |
+| `PytorchWrapper(identifier, model, preprocessing)` | `extractor={'vision': PytorchWrapper(identifier=..., model=..., preprocessing=...)}` |
 | `ModelCommitment(..., region_layer_map={'IT': 'layer4'})` | `region_layer_map={'IT': 'layer4'}` |
-| `behavioral_readout_layer='fc'` | `behavioral_readout_layer='fc'` |
+| `behavioral_readout_layer='fc'` | `behavioral_readout_layer='fc'`, and `capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}` if the model answers a choice (the readout gives probabilities; its choice is the most probable option) |
 | `visual_degrees=8` | `visual_degrees=8` |
 | `HuggingfaceSubject(model_id, region_layer_mapping)` | `extractor={'text': TextWrapper(model, tokenizer)}` plus `region_layer_map` |
 | `look_at(stimuli)`, `digest_text(text)` | `participate(session)` |

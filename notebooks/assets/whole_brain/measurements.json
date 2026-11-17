@@ -1,6 +1,6 @@
 {
   "measured": true,
-  "model": "gpt2",
+  "model": "gpt2-small",
   "layer": "h.11",
   "benchmark": "LeBel2023-UTS03-encoding",
   "subject": "UTS03",

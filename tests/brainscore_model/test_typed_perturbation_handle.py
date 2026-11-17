@@ -12,24 +12,24 @@ from brainscore_core.streaming_helpers import apply_state_change
 class _Benchmark:
     identifier = 'applies-a-lesion'
     version = 1
-    required_input_channels = {'text'}
+    required_input_channels = {'text', 'lesion'}   # a lesion record answers the lesion it sends
     requested_output_channels = {'perturbation'}
 
     def __init__(self, undo):
         self.undo = undo
 
-    def __call__(self, candidate):
-        applied = apply_state_change(candidate, StateChange(
+    def __call__(self, subject):
+        applied = apply_state_change(subject, StateChange(
             kind='ablation', target=Selection(layer='x'), perturbation=Perturbation(kind='zero')))
         if self.undo:
-            apply_state_change(candidate, StateChange(kind='reset', handle_id=applied.handle_id))
+            apply_state_change(subject, StateChange(kind='reset', handle_id=applied.handle_id))
         return Score(1.0)
 
 
 class _TypedLesionSubject(Subject):
     """Answers a perturbation session with a typed payload and default metadata."""
     identifier = 'typed-lesion'
-    in_channels = {'text'}
+    in_channels = {'text', 'lesion'}
     out_channels = {'perturbation'}
 
     def participate(self, session):
@@ -39,6 +39,6 @@ class _TypedLesionSubject(Subject):
 
 
 def test_a_typed_response_without_metadata_still_counts_as_left_active():
-    with pytest.raises(RuntimeError, match='left perturbation handle'):
+    with pytest.raises(RuntimeError, match='left intervention handle'):
         score(_TypedLesionSubject(), _Benchmark(undo=False), check_mem=False)
     score(_TypedLesionSubject(), _Benchmark(undo=True), check_mem=False)

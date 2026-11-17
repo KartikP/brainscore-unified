@@ -33,13 +33,13 @@ def _counts(build, order):
     stimuli.identifier = f'stream-memory-{order}'
     model = BrainScoreModel('counts', extractor={'text': Counter()}, memory='trial_history',
                             region_layer_map={'A': LayerSelector('late', modality='text')})
-    session = build(stimuli, record='A')
+    session = build(stimuli, region='A')
     model.participate(session)
     return [float(v) for v in session.collect('neural:A').values.ravel()]
 
 
 @pytest.mark.parametrize('order', [[0, 1, 2], [2, 0, 1]])
 def test_independent_trials_start_at_zero_in_both_sessions(order):
-    table = _counts(lambda s, record: stimulus_session(s, [f'neural:{record}']), order)
-    lazy = _counts(lambda s, record: stimulus_session(s, [f'neural:{record}'], streaming=True), order)
+    table = _counts(lambda s, region: stimulus_session(s, [f'neural:{region}']), order)
+    lazy = _counts(lambda s, region: stimulus_session(s, [f'neural:{region}'], streaming=True), order)
     assert table == lazy == [0.0] * 3

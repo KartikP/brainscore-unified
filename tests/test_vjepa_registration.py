@@ -12,7 +12,6 @@ Full end-to-end scoring on Lahner2024 is run on EC2 (not in unit tests).
 import numpy as np
 import pytest
 
-import brainscore
 from brainscore.models.vjepa.model import (
     REGION_LAYER_MAP,
     NUM_INPUT_FRAMES,
@@ -20,10 +19,6 @@ from brainscore.models.vjepa.model import (
     NUM_SPATIAL_PATCHES,
     _vjepa_post_hook,
 )
-
-
-def test_vjepa_registered():
-    assert 'vjepa2-vitl' in brainscore.model_registry
 
 
 def test_vjepa_constants():
@@ -63,7 +58,9 @@ def test_post_hook_preserves_temporal_order():
     """Two videos with permuted temporal content must produce different outputs."""
     B, H = 1, 16
     shape = (B, NUM_TEMPORAL_STEPS, NUM_SPATIAL_PATCHES, H)
-    a = np.random.randn(*shape).astype(np.float32)
+    # A fixed draw: the 'not equal' below depends on it (time steps whose spatial means
+    # differ; with seed 0 they differ by far more than allclose's tolerance).
+    a = np.random.default_rng(0).standard_normal(shape).astype(np.float32)
     b = a[:, ::-1, :, :].copy()  # reverse time
     out_a = _vjepa_post_hook(a.reshape(B, -1, H))
     out_b = _vjepa_post_hook(b.reshape(B, -1, H))

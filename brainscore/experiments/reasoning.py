@@ -8,14 +8,10 @@ from .runner import Tool
 from .tools import RecordInputsOutputs
 
 
-def _trace_reasoning(output):
-    """Read the explicit reasoning field; never infer it from answer text."""
-    if isinstance(output, StreamEvent) and output.channel == 'response_trace':
-        if 'stream' in output.payload:
-            values = [raw['reasoning'] for raw in output.payload['stream']
-                      if raw.get('reasoning') is not None]
-            return [block for value in values for block in _blocks(value)] if values else None
-        return output.payload['raw'].get('reasoning')
+def _answer_reasoning(output):
+    """Read the reasoning in the extra data of an answer event; never infer it from answer text."""
+    if isinstance(output, StreamEvent) and isinstance(output.meta, dict):
+        return output.meta.get('reasoning')
     return None
 
 
@@ -26,6 +22,11 @@ def _blocks(value):
     values = value if isinstance(value, list) else [value]
     result = []
     for item in values:
+        if item is None:
+            continue   # a trial of a multi-trial answer that gave no reasoning
+        if isinstance(item, list):
+            result.extend(_blocks(item))   # the blocks of one trial, in order
+            continue
         if isinstance(item, str):
             block = {'text': item}
         elif isinstance(item, dict):
@@ -48,13 +49,15 @@ class RecordReasoning(Tool):
     """Save explicitly exposed reasoning with its original response and context.
 
     Requires RecordInputsOutputs for the linked input and complete experiment log.
-    By default reads response_trace.payload['raw']['reasoning']. An optional
-    extract(output) callback adapts another response format. It returns text,
-    a block, a list of blocks, or None when no reasoning is exposed.
+    By default reads ``meta['reasoning']``, the extra data of each answer event
+    (the place the common channels keep reasoning text, Contract Rule 3.9). An
+    optional extract(output) callback adapts another response format. It
+    returns text, a block, a list of blocks, or None when no reasoning is exposed.
 
     Blocks contain text, optional kind (e.g. chain_of_thought or summary), and
-    format (complete, delta, snapshot). Stream fragments are saved separately;
-    this tool neither initiates token streaming nor reconstructs hidden reasoning.
+    format (complete, delta, snapshot). A subject that answers in several
+    events (fragments) has each one saved separately; this tool neither
+    initiates token streaming nor reconstructs hidden reasoning.
     Read the dedicated reasoning directory through the existing RunRecord API.
     """
     name = 'reasoning'
@@ -68,7 +71,7 @@ class RecordReasoning(Tool):
                 or name in {'.', '..', 'inputs_outputs', 'arrays', 'files', 'experiment.json', 'result.json'}):
             raise ValueError('Tool name must be a nonempty, unreserved directory name')
         self.name = name
-        self.extract = _trace_reasoning if extract is None else extract
+        self.extract = _answer_reasoning if extract is None else extract
 
     def describe(self):
         name = getattr(self.extract, '__qualname__', type(self.extract).__qualname__)
@@ -100,7 +103,9 @@ class RecordReasoning(Tool):
                     value = self.extract(event['payload'])
                     # Serialize immediately: later model mutations cannot change the record.
                     saved = dict(event)
-                    saved['reasoning_available'] = value is not None
+                    # A multi-trial answer holds one value per trial; None where a trial gave none.
+                    saved['reasoning_available'] = value is not None and not (
+                        isinstance(value, list) and value and all(item is None for item in value))
                     saved['reasoning'] = _blocks(value)
                     recorder.record('output', saved)
 

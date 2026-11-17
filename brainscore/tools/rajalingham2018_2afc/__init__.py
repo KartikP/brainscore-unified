@@ -1,0 +1,21 @@
+"""Faithful Rajalingham2018 2-AFC — the model makes the actual side-by-side
+match-to-sample choice, scored as a subject against the human pool.
+
+The original ``Rajalingham2018-i2n`` reconstructs the binary task from a global
+24-way classifier softmax; this variant presents the sample plus two object
+choice tokens and scores whichever per-trial choice the model makes (generation,
+similarity, or chance; ``score_2afc.py`` has no readout path) through the same
+i1/i2n d-prime pipeline.
+
+Public surface:
+  - ``benchmark.score_choices`` / ``benchmark.score_all`` — score a choices DataFrame
+  - ``benchmark.load_trials`` / ``benchmark.load_tokens`` / ``benchmark.human_trials_subset``
+  - ``montage.compose_montage`` — render one trial (what the model sees)
+
+NOTE: this is a scoring *library* (a tool), not a ``load_benchmark`` target.
+The model makes its own per-trial choices (it isn't driven by a single
+``benchmark(subject)`` call), so this subpackage registers nothing and is not
+imported by ``brainscore.tools``. Its two CSV files are in the data plugin
+``brainscore/data/rajalingham2018_2afc``. Score via the functions above.
+"""
+from . import benchmark, montage  # noqa: F401

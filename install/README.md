@@ -8,11 +8,11 @@ consistency check.
 ## One-liner (no prior checkout)
 
 ~~~bash
-mkdir brainscore-umi && cd brainscore-umi
+mkdir brainscore-umi && cd brainscore-umi    # empty folder for the four repositories
 base=https://raw.githubusercontent.com/KartikP/brainscore-unified/unified-model-interface-v2/install
 curl -fsSLO "$base/setup.sh"
 curl -fsSLO "$base/environment-unified.yml"
-bash setup.sh          # clones the four repos here + builds the env
+bash setup.sh          # clones the four repositories, builds the environment
 conda activate brainscore-unified
 ~~~
 
@@ -22,12 +22,13 @@ already exists.
 ## With the four repositories already present
 
 `setup.sh` and the environment file are for a machine with no checkout. If `core/`,
-`vision/`, `language/` and `unified/` already sit side by side, skip both. The pins live
-in the packages, so pip alone is enough:
+`vision/`, `language/` and `unified/` already sit side by side, skip both. The packages
+declare only broad bounds; `v2-constraints.txt` holds the tested versions, so keep the
+`-c` option:
 
 ~~~bash
-cd <workspace-root>
-conda create -y -n brainscore-unified python=3.11
+cd <workspace-root>           # holds core/, vision/, language/, unified/
+conda create -y -n brainscore-unified --override-channels -c conda-forge python=3.11
 conda activate brainscore-unified
 python -m pip install -c unified/install/v2-constraints.txt -e ./core -e ./vision -e ./language -e "./unified[notebooks,test]"
 python -m pip check
@@ -47,6 +48,23 @@ Invoking conda from the workspace root does not help. The file itself has to be 
 `setup.sh` downloads it to the workspace root, which is why the bootstrap never hits
 this. To use the file directly, `cp` it beside the repositories first.
 
+### The full lock with checkouts that `setup.sh --lock` refuses
+
+`setup.sh --lock` accepts only git checkouts: unified on `unified-model-interface-v2`, and
+core, vision and language on that branch or at the commits of `peer-revisions.json`. For
+other code (archives, a branch in work), run its three lock steps from the workspace root:
+
+~~~bash
+LOCK=unified/install/lock-linux-py311-cu124.txt
+conda create -y -n brainscore-unified --override-channels -c conda-forge "python==$(sed -n 's/^# python==\([0-9.]*\)$/\1/p' $LOCK)" pip
+conda run -n brainscore-unified python -m pip install -r $LOCK
+conda run -n brainscore-unified python -m pip install --no-deps -e ./core -e ./vision -e ./language -e ./unified
+~~~
+
+Code without `.git` (an archive) names its commit in a file `COMMIT` in each repository's
+folder (`git rev-parse HEAD > COMMIT` when the archive is made); a score then records it in
+`code_commits`, else None.
+
 ## Common mistakes
 
 | Symptom | Cause |
@@ -57,8 +75,15 @@ this. To use the file directly, `cp` it beside the repositories first.
 
 ## Requirements
 
-- `conda` (miniconda or miniforge). On a fresh miniconda, `setup.sh` accepts the
-  Anaconda-channel Terms of Service; miniforge does not require this step.
+- `conda` (miniforge or miniconda). `setup.sh` uses conda-forge only: it never contacts
+  Anaconda's default channels and accepts no terms of service on your behalf. Without conda,
+  install Miniforge (Linux or macOS):
+
+  ~~~bash
+  curl -fsSLO "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+  bash "Miniforge3-$(uname)-$(uname -m).sh" -b -p "$HOME/miniforge3"   # -b: no questions
+  eval "$("$HOME/miniforge3/bin/conda" shell.bash hook)"            # conda in this shell
+  ~~~
 - `git`, outbound HTTPS to GitHub, ~10 GB free disk.
 
 ## After installing
@@ -77,12 +102,14 @@ repositories in one pip operation, as above, or build all four wheels before
 installing them together. An isolated install of unified alone cannot resolve
 these candidate dependencies from PyPI.
 
-`peer-revisions.json` records the exact core, vision, and language commits used
-by integration CI for this unified revision. For a fresh workspace, first clone
+`peer-revisions.json` records the core, vision, and language commits that integration
+CI uses for this unified revision. It names the last pinned set: a branch in work can
+need later peer commits than the ones it names. For a fresh workspace, first clone
 unified at the revision you want to evaluate, then run from the workspace root:
 
 ```bash
 git clone --branch unified-model-interface-v2 https://github.com/KartikP/brainscore-unified.git unified
+# Clone core, vision, language at the pinned commits
 python3.11 - <<'PYTHON'
 import json, subprocess
 from pathlib import Path
@@ -135,6 +162,7 @@ of them. Give a local checkout path or `[owner/repo@]ref` for each repository
 that changes; the other peers use the pins in `peer-revisions.json`:
 
 ```bash
+# Each repository: a local checkout or owner/repo@ref
 unified/install/run_candidate.sh --work ~/umi-candidate --venv ~/umi-candidate/venvs \
   --core ~/src/core --vision brain-score/vision@my-branch \
   --language ~/src/language --unified ~/src/unified all
@@ -149,14 +177,17 @@ paths are only read. They must lie outside `--work` and `--venv`, and must not
 contain symlinks that lead outside them; `--venv` must be a folder inside
 `--work`. `--work` must not exist or must be empty, so give each run a new
 folder. Use the script on copies (for example an rsync of a worktree to EC2),
-never on the only copy of uncommitted work. Git hooks never run. Fetching the private unified repository needs Git credentials.
+never on the only copy of uncommitted work. Git hooks never run.
 To run the same set on GitHub, start the offline workflow manually with the
 `core_revision`, `vision_revision` and `language_revision` inputs (full SHAs).
 
 ## Check that the pins agree
 
 `check_pins.py` reads the core pin and the unified pin at every site and fails
-when they disagree:
+when they disagree. It also fails when the vision or language commit named in
+`peer-revisions.json` has other code than the vision or language source it reads;
+only the peer's pin files (`requirements-v2.txt`, `.github/workflows/umi-v2.yml`)
+may differ:
 
 ```bash
 python unified/install/check_pins.py --root /path/to/siblings

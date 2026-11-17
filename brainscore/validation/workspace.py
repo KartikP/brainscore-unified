@@ -29,11 +29,9 @@ SUITES = {
         'tests/test_io_catalog_preflight.py',
         'tests/test_channel_registry.py',
         'tests/test_contract_drift.py',
-        'tests/test_output_event.py',
         'tests/test_native_subject.py',
         'tests/test_participate_contract.py',
         'tests/test_legacy_facade.py',
-        'tests/test_typed_convenience.py',
         'tests/test_session_view.py',
         'tests/test_subject_channels.py',
         'tests/test_subject_rename.py',
@@ -50,8 +48,6 @@ SUITES = {
         'tests/test_hf_compat.py',
         'tests/test_memory.py',
         'tests/test_metrics/test___init__.py',
-        'tests/test_multimodal.py',
-        'tests/test_nulls.py',
         'tests/test_numeric.py',
         'tests/test_plugin_management/test_benchmarks.py',
         'tests/test_plugin_management/test_parse_plugin_changes.py',
@@ -61,18 +57,17 @@ SUITES = {
         'tests/test_streaming_perception.py',
         'tests/test_streaming_windowed.py',
         'tests/test_stream_rows_once.py',
+        'tests/test_text_settings.py',
     ],
     'vision': [
         'tests/test_package_contents.py',
         'tests/test_unified_adapter.py',
         'tests/test_legacy_facade_scoring.py',
         'tests/test_preflight.py',
-        'tests/test_subject_conformance.py',
         'tests/test_hmax_runtime.py',
         'tests/test_activation_cache_key.py',
         'tests/test_activation_cache_integrity.py',
         'tests/test_activation_assembly_builder.py',
-        'tests/test_layer_mapping_explorer.py::TestImports',
         'tests/test_layer_mapping_explorer.py::TestSuggestMapping',
         'tests/test_layer_mapping_explorer.py::TestSaveOutputs',
         'tests/test_metric_helpers/test_temporal.py',
@@ -91,7 +86,6 @@ SUITES = {
     'language': [
         'tests/test_unified_adapter.py',
         'tests/test_preflight.py',
-        'tests/test_subject_conformance.py',
         'tests/test_kv_cache.py',
         'tests/test_kv_cache_slicing.py',
         'tests/test_pereira2018_registry.py',
@@ -119,7 +113,8 @@ def suite_arguments(repo, suite):
     """
     suite = list(suite)
     if repo == 'unified' and '-m' in suite and os.environ.get('UMI_FULL') != '1':
-        suite[suite.index('-m') + 1] += ' and not qualification'
+        marks = suite.index('-m') + 1
+        suite[marks] = f'({suite[marks]}) and not qualification'
     if repo in PARALLEL:
         suite += ['-n', os.environ.get('UMI_PYTEST_WORKERS', WORKERS), '--dist', 'loadgroup']
     return suite
@@ -127,12 +122,13 @@ def suite_arguments(repo, suite):
 
 def stage_tests(checkout: Path, destination: Path) -> None:
     """Copy test inputs without making repository packages importable."""
-    for name in ('tests', 'examples', 'notebooks', 'templates', 'install', '.github'):
+    for name in ('tests', 'examples', 'notebooks', 'templates', 'docs', 'install', '.github'):
         source = checkout / name
         if source.is_dir():
             shutil.copytree(source, destination / name,
                             ignore=shutil.ignore_patterns('__pycache__', '.pytest_cache', '*.pyc'))
-    for name in ('pyproject.toml', 'pytest.ini', 'setup.cfg'):
+    # The documentation pages are test inputs: their code blocks run as tests.
+    for name in ('pyproject.toml', 'pytest.ini', 'setup.cfg', 'README.md', 'EXTENDING.md'):
         source = checkout / name
         if source.is_file():
             shutil.copy2(source, destination / name)
@@ -177,6 +173,9 @@ def qualify(root, out, *, mode='source', wheels=None):
     env = dict(os.environ, PYTHONPATH=os.pathsep.join(str(root/repo) for repo in SUITES),
         RESULTCACHING_DISABLE='1', HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1',
         BS_INSTALL_DEPENDENCIES='no')
+    for variable in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS',   # as tests/conftest.py:
+                     'VECLIB_MAXIMUM_THREADS', 'NUMEXPR_NUM_THREADS'):               # a value you set stays
+        env.setdefault(variable, '4')
     if mode == 'installed':
         for key in ('PYTHONPATH', 'PYTHONHOME', 'PYTEST_ADDOPTS', 'PYTEST_PLUGINS'):
             env.pop(key, None)

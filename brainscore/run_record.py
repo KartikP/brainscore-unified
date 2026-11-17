@@ -4,6 +4,11 @@ No pickle or dynamic class imports. Unknown payload types fail explicitly.
 Callers provide model/checkpoint, protocol, environment and tool provenance in
 metadata. A record preserves observations; it does not promise deterministic
 re-execution of a model or environment.
+
+Memory of RunRecord.events() (and outputs(), evaluate()): a constant (one 64 KiB
+verification block, the largest event line, one decoded event) plus an index of
+32 bytes per 64 KiB of log, 1/2048 of the log size (5 MB for a 10 GB log). The
+index is what lets the second pass refuse a block that changed after the first.
 """
 
 from contextlib import contextmanager
@@ -33,8 +38,16 @@ def _event_types():
     return {t.__name__: t for t in [*types, TaskContext, StreamEvent, Choice, Scale, Text, Prompt]}
 
 
+# RunRecord.events() verifies the log in fixed blocks of this many bytes (the last one
+# shorter) before it yields any event that ends in a block. The first pass keeps one
+# SHA-256 digest per block, back to back in one bytearray: _DIGEST bytes per block.
+_VERIFY_BLOCK = 1 << 16
+_DIGEST = 32
+
+
 def _stamp(handle):
     # ctime changes on any write, link change or utime call, and cannot be set by the writer.
+    # On a coarse filesystem clock two changes can share one stamp, so it is one signal only.
     status = os.fstat(handle.fileno())
     return (status.st_dev, status.st_ino, status.st_size, status.st_mtime_ns,
             status.st_ctime_ns)
@@ -534,8 +547,9 @@ class RunRecord:
     def events(self):
         """Yield events after the whole log passes checksum, JSON, count and order checks.
 
-        Two passes over one open file: memory is bounded by the largest event line,
-        not by log length. Callers that collect events into a list are not bounded.
+        Two passes over one open file. Memory: a constant (one verification block, the
+        largest event line) plus 32 bytes per 64 KiB of log (see the module docstring).
+        Callers that collect events into a list are not bounded.
         """
         expected = self.manifest.get('events_sha256')
         status = self.manifest.get('status')
@@ -545,23 +559,44 @@ class RunRecord:
                 raise ValueError(invalid)
         elif status != 'open':
             raise ValueError(f'Unknown run-record status: {status!r}')
-        with (self.directory / 'events.jsonl').open('rb') as handle:
-            # Concurrency limit: no lock or snapshot copy. For a closed record, the file's
-            # identity, size, mtime and ctime are taken before validation and rechecked after
-            # it and before each yield, so any write the filesystem timestamps fails closed.
-            # This does not defend against a writer who can forge ctime (clock or root
-            # access) or whose write lands within the filesystem's timestamp resolution of
-            # the previous change. Open records are read as an unchecked diagnostic prefix.
+        path = self.directory / 'events.jsonl'
+        with path.open('rb') as handle:
+            # Concurrency limit: no lock or snapshot copy. For a closed record the checks below
+            # do not depend on the filesystem clock: the second pass verifies each block of
+            # bytes against the first pass before it yields an event from it; before each
+            # yield the path must still name the open file, at the validated size, and the
+            # event's bytes are read again and compared. A change to bytes already yielded is
+            # seen only through the stamp (mtime, ctime), which a coarse clock can miss; such
+            # a change cannot alter what was yielded. Open records are an unchecked prefix.
             initial = _stamp(handle) if expected else None
+            identity = os.fstat(handle.fileno()) if expected else None
 
             def check_unchanged():
-                if initial and _stamp(handle) != initial:
+                if not initial:
+                    return
+                try:
+                    named = os.stat(path)
+                except OSError:
+                    named = None
+                if (_stamp(handle) != initial or named is None
+                        or (named.st_dev, named.st_ino) != (identity.st_dev, identity.st_ino)
+                        or os.fstat(handle.fileno()).st_size != size):
                     raise ValueError('Run event log changed while reading')
 
             digest, size, count, parse_error, order_error = hashlib.sha256(), 0, 0, None, None
+            index, block, filled = bytearray(), hashlib.sha256(), 0  # one digest per block
             for chunk in iter(handle.readline, b''):
                 digest.update(chunk)
                 size += len(chunk)
+                rest = memoryview(chunk)
+                while rest:
+                    taken = rest[:_VERIFY_BLOCK - filled]
+                    block.update(taken)
+                    filled += len(taken)
+                    rest = rest[len(taken):]
+                    if filled == _VERIFY_BLOCK:
+                        index += block.digest()
+                        block, filled = hashlib.sha256(), 0
                 for line in chunk.splitlines():
                     if parse_error is None:
                         try:
@@ -584,33 +619,46 @@ class RunRecord:
                 raise ValueError('Run event count mismatch')
             if order_error is not None:
                 raise order_error
+            if filled:
+                index += block.digest()
             check_unchanged()
             handle.seek(0)
-            digest, index = hashlib.sha256(), 0
-            while size:
-                chunk = handle.readline(size)
-                if not chunk:
-                    break
-                size -= len(chunk)
-                digest.update(chunk)
-                for line in chunk.splitlines():
-                    row = json.loads(line)
-                    if row['sequence'] != index:
-                        raise ValueError('Run event log changed while reading')
-                    index += 1
-                    for key in ('args', 'kwargs', 'payload'):
-                        if key in row:
-                            row[key] = self.codec.decode(row[key])
-                    if self.experiment_manifest is not None:
-                        # Experiment records carry lifecycle and condition metadata in an envelope.
-                        # Standalone RunRecord callers retain their original representation.
-                        envelope = row['payload']
-                        if not isinstance(envelope, dict) or 'kind' not in envelope:
-                            raise ValueError('Invalid experiment event envelope')
-                        row = envelope
-                    check_unchanged()
-                    yield row
-            if index != count or digest.hexdigest() != verified:
+            digest, sequence, offset, carry, carry_start = hashlib.sha256(), 0, 0, b'', 0
+            for position in range(0, len(index), _DIGEST):
+                data = handle.read(min(_VERIFY_BLOCK, size - offset))
+                if (len(data) != min(_VERIFY_BLOCK, size - offset) or expected
+                        and hashlib.sha256(data).digest() != index[position:position + _DIGEST]):
+                    raise ValueError('Run event log changed while reading')
+                offset += len(data)
+                digest.update(data)
+                # Only lines that end in a verified block are yielded; a partial line waits.
+                *pieces, carry = (carry + data).split(b'\n')
+                chunks = [piece + b'\n' for piece in pieces]
+                if offset == size and carry:
+                    chunks.append(carry)  # a final line without a newline, as readline reads it
+                    carry = b''
+                for chunk in chunks:
+                    start, carry_start = carry_start, carry_start + len(chunk)
+                    for line in chunk.splitlines():
+                        row = json.loads(line)
+                        if row['sequence'] != sequence:
+                            raise ValueError('Run event log changed while reading')
+                        sequence += 1
+                        for key in ('args', 'kwargs', 'payload'):
+                            if key in row:
+                                row[key] = self.codec.decode(row[key])
+                        if self.experiment_manifest is not None:
+                            # Experiment records carry lifecycle and condition metadata in an
+                            # envelope. Standalone RunRecord callers retain their original form.
+                            envelope = row['payload']
+                            if not isinstance(envelope, dict) or 'kind' not in envelope:
+                                raise ValueError('Invalid experiment event envelope')
+                            row = envelope
+                        check_unchanged()
+                        if initial and os.pread(handle.fileno(), len(chunk), start) != chunk:
+                            raise ValueError('Run event log changed while reading')
+                        yield row
+            if sequence != count or digest.hexdigest() != verified:
                 raise ValueError('Run event log changed while reading')
 
     def outputs(self):

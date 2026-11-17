@@ -1,6 +1,6 @@
 """Unit tests for the embodied grid-game benchmark.
 
-Pure CPU, no model weights: the candidates are the oracle / random / a fixed
+Pure CPU, no model weights: the subjects are the oracle / random / a fixed
 greedy policy wrapped as action_fn models — the same shape a real VLM policy
 takes. Verifies ceiling, floor, the success-rate metric, and registration.
 """
@@ -45,6 +45,49 @@ def test_same_boards_every_candidate(bench):
     a = bench(policy_model(random_action_policy(3), 'a')).attrs['success_rate']
     b = bench(policy_model(random_action_policy(3), 'b')).attrs['success_rate']
     assert a == b
+
+
+def test_a_seeded_null_gives_one_score_each_time():
+    """The registered settings: one subject scored twice, and a new subject with
+    the same seed, give the first score; the first score is the measured floor."""
+    import brainscore
+    bench = brainscore.load_benchmark('GridGame-reach-5x5')
+    subject = policy_model(random_action_policy(0), 'random')
+    scores = [float(bench(subject)) for _ in range(2)]
+    scores.append(float(bench(policy_model(random_action_policy(0), 'random-again'))))
+    assert scores == [scores[0]] * 3
+    assert scores[0] * float(bench.ceiling) == bench._random_floor == pytest.approx(8 / 15)
+
+
+def test_a_seeded_null_gives_an_episode_the_same_actions_after_any_other_episode():
+    from brainscore.harnesses.grid_game import GridGameEnv, play_game
+
+    def episode(seed):
+        return GridGameEnv(size=5, seed=seed, max_steps=20)
+
+    def actions(subject, seed):
+        return play_game(subject, episode(seed))['actions']
+
+    alone = actions(policy_model(random_action_policy(0), 'b-alone'), 501)
+    subject = policy_model(random_action_policy(0), 'a-then-b')
+    actions(subject, 500)
+    a_then_b = actions(subject, 501)
+    subject = policy_model(random_action_policy(0), 'b-then-a')
+    b_then_a = actions(subject, 501)
+    actions(subject, 500)
+    subject.reset()
+    after_reset = actions(subject, 501)
+    assert alone == a_then_b == b_then_a == after_reset
+    assert actions(policy_model(random_action_policy(1), 'other-seed'), 501) != alone
+
+
+def test_a_seeded_null_still_draws_new_actions_across_steps_and_episodes():
+    from brainscore.harnesses.grid_game import GridGameEnv, play_game
+    subject = policy_model(random_action_policy(0), 'random')
+    actions = [play_game(subject, GridGameEnv(size=5, seed=500 + i, max_steps=20))['actions']
+               for i in range(3)]
+    assert all(len(set(episode)) > 1 for episode in actions)
+    assert len({tuple(episode[:5]) for episode in actions}) == 3
 
 
 def test_registered():

@@ -9,7 +9,7 @@ from PIL import Image
 
 from brainscore import BrainScoreModel
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-from brainscore.model_helpers.vision_wrapper import VisionWrapper
+from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
 
 
 class Net(torch.nn.Module):
@@ -38,7 +38,7 @@ def _images(tmp_path):
 
 def test_own_images_need_only_an_image_path_column(tmp_path):
     net = Net().eval()
-    wrapper = VisionWrapper(net, _preprocess, identifier='mine', device='cpu')
+    wrapper = PytorchWrapper(net, _preprocess, identifier='mine', device='cpu')
     model = BrainScoreModel('mine', extractor={'vision': wrapper}, region_layer_map={'IT': 'conv'})
     stimuli = StimulusSet(pd.DataFrame({'stimulus_id': ['a', 'b', 'c'], 'image_path': _images(tmp_path)}))
     stimuli.identifier = 'own-images'
@@ -50,7 +50,7 @@ def test_own_images_need_only_an_image_path_column(tmp_path):
 def test_sub_module_wrapping_validates_relative_layer_paths():
     outer = torch.nn.Module()
     outer.vision_model = Net()
-    wrapper = VisionWrapper(outer.vision_model, _preprocess, identifier='sub', device='cpu')
+    wrapper = PytorchWrapper(outer.vision_model, _preprocess, identifier='sub', device='cpu')
     BrainScoreModel('sub', model=outer, extractor={'vision': wrapper}, region_layer_map={'IT': 'conv'})
     with pytest.raises(ValueError, match=r"'vision_model.conv'.*Close matches: \['conv'\]"):
         BrainScoreModel('sub', model=outer, extractor={'vision': wrapper},

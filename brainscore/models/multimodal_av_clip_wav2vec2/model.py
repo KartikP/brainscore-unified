@@ -8,7 +8,7 @@ This is the "capable VLM" complement to the V-JEPA-class native-video
 combos — it lets us check whether a contrastive image-text encoder
 trained on web data carries comparable brain-prediction signal to
 representation-reconstruction video models, when both are paired with
-the same audio tower.
+the same audio extractor.
 
 Four signal/null permutations registered:
 - clip-wav2vec2                  signal vision + signal audio
@@ -17,17 +17,10 @@ Four signal/null permutations registered:
 - random-clip-random-wav2vec2    null vision   + null audio
 """
 
-import functools
-
-import numpy as np
-import torch
-from PIL import Image
-
 from brainscore import BrainScoreModel, LayerSelector
-
+from brainscore.models._shared import build_audio_wrapper
 
 from ._ids import SUPPORTED_IDENTIFIERS
-from brainscore_core.hf_compat import pin_image_processor
 
 REGION_LAYER_MAP = {
     # Vision tower (CLIP ViT-B/32 vision_model — paths relative to
@@ -49,45 +42,15 @@ REGION_MODALITY_MAP = {
 }
 
 
-def _load_preprocess_images(image_filepaths, processor, image_size=224):
-    images = []
-    for path in image_filepaths:
-        with Image.open(path) as img:
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            images.append(img.copy())
-    processed = processor(images=images, return_tensors='pt')
-    return processed['pixel_values'].numpy()
-
-
 def _build_vision_wrapper(combo_identifier: str, random_init: bool = False):
-    """CLIP vision_model wrapped via PytorchWrapper."""
-    from transformers import CLIPModel, CLIPProcessor
-    from brainscore_vision.model_helpers.activations.pytorch import (
-        PytorchWrapper)
-
-# Pin the image-processor implementation: transformers 5 rebinds the class
-    # names, moving the default from PIL to torchvision and shifting pixels.
-    processor = CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')
-    processor = pin_image_processor(processor, 'openai/clip-vit-base-patch32')
-    clip_model = CLIPModel.from_pretrained('openai/clip-vit-base-patch32')
-    if random_init:
-        torch.manual_seed(0)
-        for p in clip_model.vision_model.parameters():
-            p.data.normal_(mean=0.0, std=0.02)
-
-    preprocessing = functools.partial(
-        _load_preprocess_images, processor=processor, image_size=224)
-    backbone_id = ('random-clip-vit-b-32' if random_init
-                   else 'clip-vit-b-32')
-    activations_model = PytorchWrapper(
-        identifier=f'{combo_identifier}-vision',
-        model=clip_model.vision_model,
-        preprocessing=preprocessing,
-    )
-    activations_model.image_size = 224
-    activations_model._extractor.identifier = backbone_id
-    return preprocessing, activations_model
+    """The picture extractor of ``clip-vit-b-32`` (or of ``random-vit-b-32`` with ``random_init``)."""
+    from brainscore.models.clip_vit_b_32.model import load_clip, picture_extractor
+    clip_model, processor = load_clip(random_init=random_init)
+    # The activations carry the backbone's name; the cache key is the combo's.
+    vision_wrapper = picture_extractor(clip_model, processor,
+                                   'random-clip-vit-b-32' if random_init else 'clip-vit-b-32',
+                                   backbone_id=f'{combo_identifier}-vision')
+    return vision_wrapper
 
 
 def get_model(identifier: str) -> BrainScoreModel:
@@ -98,24 +61,19 @@ def get_model(identifier: str) -> BrainScoreModel:
     random_vision = identifier.startswith('random-clip')
     random_audio = 'random-wav2vec2' in identifier
 
-    from brainscore.models._multimodal_av_shared import build_audio_wrapper
-
-    preprocessing, activations_model = _build_vision_wrapper(
+    vision_wrapper = _build_vision_wrapper(
         identifier, random_init=random_vision)
     audio_wrapper, _ = build_audio_wrapper(
         identifier, random_init=random_audio)
 
     return BrainScoreModel(
         identifier=identifier,
-        model=None,
         region_layer_map={
             region: LayerSelector(name=layer, modality=REGION_MODALITY_MAP.get(region))
             for region, layer in REGION_LAYER_MAP.items()
         },
         extractor={
-            'vision': activations_model,
+            'vision': vision_wrapper,
             'audio': audio_wrapper,
         },
-        required_modalities={'vision', 'audio'},
-        visual_degrees=8,
     )

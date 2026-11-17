@@ -18,9 +18,9 @@ import pytest
 
 from brainscore_core import io_catalog
 from brainscore.capabilities import capability_registry
-from brainscore_core.compatibility import check_compatibility
+from brainscore_core.compatibility import check_compatibility, ExecutionNotFeasibleError
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import Subject
+from brainscore_core.contract import Subject
 from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.streaming_helpers import neural_response
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
@@ -35,6 +35,23 @@ def _load(relative, name):
     spec = importlib.util.spec_from_file_location(name, TEMPLATES / relative)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    return module
+
+
+def _load_package(folder, name):
+    """Import a template folder as a package, so its relative imports resolve."""
+    import sys
+    spec = importlib.util.spec_from_file_location(name, TEMPLATES / folder / '__init__.py',
+                                                  submodule_search_locations=[str(TEMPLATES / folder)])
+    module = importlib.util.module_from_spec(spec)
+    for loaded in [key for key in sys.modules if key.startswith(name + '.')]:
+        del sys.modules[loaded]                        # run the submodules again, too
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        del sys.modules[name]
+        raise
     return module
 
 
@@ -86,7 +103,7 @@ def test_capability_runs_through_participate_with_state_and_reset(capability):
 def test_capability_is_opt_in_per_model(capability):
     plain = BrainScoreModel(identifier='plain')
     assert not {capability.REQUEST, capability.RESULT} & (plain.in_channels | plain.out_channels)
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ExecutionNotFeasibleError, match='does not produce'):
         plain.check_session_support({capability.RESULT})
     opted = capability.build_model()
     assert capability.REQUEST in opted.in_channels and capability.RESULT in opted.out_channels
@@ -103,10 +120,6 @@ def test_capability_rejects_invalid_request_fields_before_compute(capability, te
     request = capability.WordRequest(text=text)
     with pytest.raises(ValueError, match='channel catalog'):
         Session([StreamEvent(channel=capability.REQUEST, payload=request, t_ms=0.0)], [capability.RESULT])
-    subject = capability.build_model()
-    with pytest.raises(ValueError, match='shape_validator'):
-        subject.process(StreamEvent(channel=capability.REQUEST, payload=request, t_ms=0.0))
-    assert capability.IDENTIFIER not in subject._capability_state   # nothing was set up or counted
 
 
 @pytest.mark.parametrize('words,words_so_far', [(-1, 0), (2, 1), (True, 1), (1.0, 1), (1, None)])
@@ -119,11 +132,10 @@ def test_capability_model_refuses_an_invalid_result(capability):
     for valid in (capability.WordCount(words=0, words_so_far=0), capability.WordCount(words=2, words_so_far=5)):
         assert not io_catalog.validate(capability.RESULT, valid, io_catalog.OUTPUT)
     subject = capability.build_model()
-    request = StreamEvent(channel=capability.REQUEST, payload=capability.WordRequest(text='a b'), t_ms=0.0)
-    subject.process(request)
+    subject.participate(Session(_requests(capability, 'a b'), [capability.RESULT]))
     subject.capability_state(capability.IDENTIFIER)['words_so_far'] = -10   # corrupt the running total
-    with pytest.raises(ValueError, match='shape_validator'):
-        subject.process(request)
+    with pytest.raises(ValueError, match='shape_validator'):   # the session checks each answer
+        subject.participate(Session(_requests(capability, 'a b'), [capability.RESULT]))
 
 
 @pytest.mark.parametrize('settings', [{'min_length': True}, {'min_length': False}, {'min_length': None},
@@ -135,8 +147,6 @@ def test_capability_checks_settings_in_setup_before_compute(capability, settings
     with pytest.raises(ValueError, match='min_length'):
         subject.participate(session)
     assert session.next_input() is not None and session.emitted == []   # nothing consumed or answered
-    with pytest.raises(ValueError, match='min_length'):
-        subject.process(_requests(capability, 'one two')[0])
 
 
 @pytest.mark.parametrize('min_length', [True, 0, None, 2.0])
@@ -164,15 +174,76 @@ def test_capability_readme_example_runs():
     assert response == {'motor': 0}
 
 
+# --- every code block of the user documents ----------------------------------------
+
+DOCUMENTS = Path(__file__).parents[1]
+# Blocks that need weights, data or a GPU, by (page, index of its python block).
+NEEDS_DOWNLOADS = {
+    ('docs/guides/score_a_model.md', 1): 'CLIP weights and the MajajHong2015 data',
+    ('docs/guides/existing_models.md', 0): 'alexnet weights and the MajajHong2015 data',
+    ('docs/guides/data.md', 0): 'the hosted LeBel2023 assembly',
+    ('docs/guides/behavior.md', 7): 'a Hugging Face chat model and its processor',
+    ('docs/guides/wrap_your_model.md', 6): 'CLIP and its image and text wrappers',
+    ('docs/guides/new_output.md', 3): 'a Hugging Face vision-language model and its processor',
+}
+
+
+def _documented_pages():
+    pages = [DOCUMENTS / 'README.md', DOCUMENTS / 'EXTENDING.md']
+    for folder in ('docs', 'docs/guides', 'docs/reference'):
+        pages += sorted((DOCUMENTS / folder).glob('*.md'))
+    pages += sorted(TEMPLATES.glob('**/README.md'))
+    return [page for page in pages
+            if re.search(r'^```python', page.read_text(encoding='utf-8'), flags=re.M)]
+
+
+def test_new_output_episode_ends_as_documented():
+    """The screen task of the new-output guide ends with a click on its third step."""
+    text = (DOCUMENTS / 'docs/guides/new_output.md').read_text(encoding='utf-8')
+    blocks = re.findall(r'^```python[^\n]*\n(.*?)^```', text, flags=re.S | re.M)
+    namespace = {}
+    exec(compile('\n'.join(blocks[:3]), 'new_output.md', 'exec'), namespace)
+    assert namespace['reason'] == 'terminal'
+    assert [namespace['KINDS'][step['kind']] for step in namespace['actions']] == ['run', 'run', 'click']
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize('page', _documented_pages(),
+                         ids=lambda page: str(page.relative_to(DOCUMENTS)))
+def test_documented_code_blocks_run(page, tmp_path):
+    """Each page's python blocks run in order, as written, in a fresh interpreter.
+
+    The template READMEs and EXTENDING.md import the templates by folder name, so they
+    run from templates/; every other page runs in an empty folder. Blocks that need a
+    download are left out (NEEDS_DOWNLOADS, with the reason).
+    """
+    import os
+    import subprocess
+    import sys
+    relative = str(page.relative_to(DOCUMENTS))
+    blocks = re.findall(r'^```python[^\n]*\n(.*?)^```', page.read_text(encoding='utf-8'),
+                        flags=re.S | re.M)
+    code = '\n'.join(block for index, block in enumerate(blocks)
+                     if (relative, index) not in NEEDS_DOWNLOADS)
+    in_templates = relative.startswith('templates/') or relative == 'EXTENDING.md'
+    environment = dict(os.environ, RESULTCACHING_DISABLE='1', MPLBACKEND='Agg')
+    result = subprocess.run([sys.executable, '-'], input=code, capture_output=True, text=True,
+                            cwd=TEMPLATES if in_templates else tmp_path, env=environment,
+                            timeout=600)
+    assert result.returncode == 0, result.stderr[-3000:]
+
+
 # --- new_benchmark -----------------------------------------------------------------
 
 @pytest.fixture
-def benchmark(monkeypatch):
+def benchmark():
     import brainscore
-    # Restores the registry afterwards; the template registers 'your-benchmark' on import.
-    monkeypatch.setitem(brainscore.benchmark_registry, 'your-benchmark', None)
-    _load('new_benchmark/benchmark.py', 'umi_template_benchmark')
-    return brainscore.benchmark_registry['your-benchmark']()
+    # The template registers 'your-benchmark' on import; remove it afterwards.
+    _load_package('new_benchmark', 'umi_template_benchmark')
+    try:
+        yield brainscore.benchmark_registry['your-benchmark']()
+    finally:
+        del brainscore.benchmark_registry['your-benchmark']
 
 
 class ParticipateOnlySubject(Subject):
@@ -215,19 +286,21 @@ class StimulusExtractor:
 
 
 def test_benchmark_keeps_its_identity_and_scores_a_participate_only_subject(benchmark):
-    assert (benchmark.identifier, benchmark.version, float(benchmark.ceiling)) == ('your-benchmark', 1, 1.0)
+    assert (benchmark.identifier, benchmark.version) == ('your-benchmark', 1)
+    assert benchmark.ceiling.attrs['status'] == 'not_estimated'
     assert benchmark.parent == 'neural'
-    assert len(benchmark._stimulus_set) == 32
+    assert len(benchmark.stimulus_set) == 32
     subject = ParticipateOnlySubject()
     assert not hasattr(subject, 'process') and not hasattr(subject, 'start_recording')
     check_compatibility(subject, benchmark)
-    responses = neural_response(subject=subject, stimulus_set=benchmark._stimulus_set,
-                                record='IT', time_bins=[(70, 170)])
+    responses = neural_response(subject=subject, stimuli=benchmark.stimulus_set,
+                                outputs=['neural:IT'], time_bins=[(70, 170)])
     assert dict(responses.sizes) == {'presentation': 32, 'neuroid': 16}
-    assert list(responses['stimulus_id'].values) == list(benchmark._stimulus_set['stimulus_id'])
+    assert list(responses['stimulus_id'].values) == list(benchmark.stimulus_set['stimulus_id'])
     score = benchmark(subject)
     assert np.isfinite(float(score))
-    assert float(score.attrs['ceiling']) == 1.0 and 'raw' in score.attrs
+    assert score.attrs['ceiling'] is benchmark.ceiling and 'raw' in score.attrs
+    assert score.attrs['normalized'] is False and float(score) == float(score.attrs['raw'])
     assert float(score) == float(benchmark(ParticipateOnlySubject()))   # deterministic
 
 
@@ -238,21 +311,115 @@ def test_benchmark_scores_a_model_as_the_earlier_template_did(benchmark):
                                extractor={'vision': StimulusExtractor()})
     earlier = subject()
     earlier.start_recording('IT', time_bins=[(70, 170)])
-    expected = benchmark._metric(earlier.process(benchmark._stimulus_set), benchmark._assembly)
+    expected = benchmark._metric(earlier.process(benchmark.stimulus_set), benchmark._assembly)
 
     current = subject()
     check_compatibility(current, benchmark)
     score = benchmark(current)
-    assert float(score) == float(expected) / float(benchmark.ceiling)
+    assert float(score) == float(expected)   # the ceiling is not estimated: the score is raw
     np.testing.assert_array_equal(score.attrs['raw'].values, expected.values)
     extractor = current._extractors['vision']
-    assert extractor.calls == [(list(benchmark._stimulus_set['stimulus_id']), ['layer2'])]
-    assert current._recorder.time_bins == [(70, 170)]
+    assert extractor.calls == [(list(benchmark.stimulus_set['stimulus_id']), ['layer2'])]
+    assert current._recording_request.time_bins == [(70, 170)]
 
 
 def test_benchmark_template_dummy_candidate_is_scorable(benchmark):
     template_tests = _load('new_benchmark/test_benchmark.py', 'umi_template_benchmark_tests')
-    candidate = template_tests.DummyCandidate()
-    score = benchmark(candidate)
+    subject = template_tests.DummySubject()
+    score = benchmark(subject)
     assert np.isfinite(float(score))
-    assert candidate.requested == ('neural:IT',)
+    assert subject.requested == ('neural:IT',)
+
+
+# --- new_data ----------------------------------------------------------------------
+
+def test_data_template_check_accepts_a_text_stimulus_set():
+    """A language data plugin (only a `sentence` column) passes the template's check."""
+    import pandas as pd
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    template_tests = _load('new_data/test_data.py', 'umi_template_data_tests')
+    stimuli = StimulusSet(pd.DataFrame({'stimulus_id': ['s0', 's1'], 'sentence': ['a cat', 'a dog']}))
+    template_tests.check_dispatchable(stimuli)
+    with pytest.raises(AssertionError, match='empty'):
+        template_tests.check_dispatchable(
+            StimulusSet(pd.DataFrame({'stimulus_id': ['s0'], 'sentence': ['  ']})))
+
+
+def test_data_template_choices_are_one_row_per_participant_and_trial():
+    data = _load('new_data/data.py', 'umi_template_data')
+    choices = data.load_choices()
+    assert choices.dims == ('presentation',)
+    assert choices.sizes['presentation'] == data.N_STIMULI * data.N_SUBJECTS
+    assert set(np.unique(choices.values)) <= set(data.CATEGORIES)
+
+
+# --- new_tool ----------------------------------------------------------------------
+
+def test_tool_template_tests_pass():
+    """The template's own tests, run in place."""
+    from brainscore.tools import _registry
+    template_tests = _load('new_tool/test_tool.py', 'umi_template_tool_tests')
+    try:
+        template_tests.test_loads_by_identifier()
+        template_tests.test_mean_equals_a_direct_recording(template_tests.tiny_subject_and_stimuli())
+    finally:
+        _registry._TOOLS.pop('your-tool', None)   # the template registers itself for the test
+
+
+def test_the_benchmark_template_writes_its_stimuli_once_to_one_folder(tmp_path, monkeypatch):
+    """Every load reuses one folder in the Brain-Score home; the images are the seeded ones."""
+    import io
+    from PIL import Image
+    import brainscore
+    monkeypatch.setenv('BRAINSCORE_HOME', str(tmp_path))
+    module = _load('new_benchmark/standin_data.py', 'umi_template_benchmark_stimuli')
+    if 'your-benchmark' in brainscore.benchmark_registry:      # the import registers it
+        del brainscore.benchmark_registry['your-benchmark']
+    first = module.load_assembly().stimulus_set.stimulus_paths
+    second = module.load_assembly().stimulus_set.stimulus_paths
+    assert first == second
+    assert [path.name for path in tmp_path.iterdir()] == ['your_benchmark_stimuli']
+    folder = tmp_path / 'your_benchmark_stimuli'
+    assert sorted(p.name for p in folder.iterdir()) == sorted(f'{sid}.png' for sid in first)
+    for i, sid in enumerate(sorted(first)):
+        expected = io.BytesIO()
+        Image.fromarray(np.random.RandomState(i).randint(0, 255, (64, 64, 3), dtype=np.uint8)) \
+            .save(expected, format='PNG')
+        assert (folder / f'{sid}.png').read_bytes() == expected.getvalue()
+
+
+@pytest.mark.parametrize('template, folder, load', [
+    ('new_benchmark/standin_data.py', 'your_benchmark_stimuli', 'load_assembly'),
+    ('new_data/data.py', 'your_data_stimuli', '_build_example_files'),
+])
+def test_a_template_refuses_a_link_where_a_stimulus_goes(tmp_path, monkeypatch, template, folder, load):
+    import brainscore
+    monkeypatch.setenv('BRAINSCORE_HOME', str(tmp_path))
+    module = _load(template, 'umi_template_link_' + folder)
+    if 'your-benchmark' in brainscore.benchmark_registry:      # the import registers it
+        del brainscore.benchmark_registry['your-benchmark']
+    target = tmp_path / 'elsewhere.txt'
+    target.write_text('not a stimulus')
+    (tmp_path / folder).mkdir()
+    (tmp_path / folder / 'stim000.png').symlink_to(target)
+    with pytest.raises(ValueError, match='is a link'):
+        getattr(module, load)()
+    assert target.read_text() == 'not a stimulus'
+
+
+@pytest.mark.parametrize('template, folder, load', [
+    ('new_benchmark/standin_data.py', 'your_benchmark_stimuli', 'load_assembly'),
+    ('new_data/data.py', 'your_data_stimuli', '_build_example_files'),
+])
+def test_two_threads_write_the_template_stimuli_at_once(tmp_path, monkeypatch, template, folder, load):
+    import brainscore
+    from concurrent.futures import ThreadPoolExecutor
+    monkeypatch.setenv('BRAINSCORE_HOME', str(tmp_path))
+    module = _load(template, 'umi_template_threads_' + folder)
+    if 'your-benchmark' in brainscore.benchmark_registry:
+        del brainscore.benchmark_registry['your-benchmark']
+    with ThreadPoolExecutor(2) as pool:
+        results = [pool.submit(getattr(module, load)) for _ in range(2)]
+        [result.result() for result in results]                  # both succeed
+    written = sorted(p.name for p in (tmp_path / folder).iterdir())
+    assert written == [f'stim{i:03d}.png' for i in range(module.N_STIMULI)]   # no staging file left

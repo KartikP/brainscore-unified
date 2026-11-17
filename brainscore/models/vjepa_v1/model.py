@@ -48,6 +48,7 @@ Lahner2024 only exercises IT today (encoder.layer.23 analog = blocks.23).
 import os
 import hashlib
 from pathlib import Path
+import functools
 from typing import List
 
 import numpy as np
@@ -55,6 +56,7 @@ import torch
 import torch.nn as nn
 
 from brainscore import BrainScoreModel
+from brainscore.models._shared import fit_frames, tubelet_spatial_mean
 
 
 # --- V-JEPA v1 ViT-L/16 pretrained config (matches vitl16.pth.tar) ---
@@ -73,9 +75,8 @@ REGION_LAYER_MAP = {
     'V1': 'backbone.blocks.4',
     'V2': 'backbone.blocks.9',
     'V4': 'backbone.blocks.15',
-    # IT → blocks.16 based on 2026-04-24 per-voxel layer sweep on Lahner2024:
-    # blocks.16 peaks at 0.611 ROI r; blocks.23 drops to 0.536 (we were
-    # defaulting to the last layer, costing ~0.08 raw r).
+    # IT → blocks.16 from a per-voxel layer sweep on Lahner2024: blocks.16
+    # predicted the visual ROI better than the last layer (blocks.23).
     'IT': 'backbone.blocks.16',
 }
 
@@ -173,15 +174,7 @@ def _make_preprocessing():
     IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
     def preprocess(frames: List[np.ndarray]):
-        frames = list(frames)
-        if len(frames) == 0:
-            raise ValueError("V-JEPA v1 preprocess received empty frame list")
-        if len(frames) < NUM_INPUT_FRAMES:
-            frames = frames + [frames[-1]] * (NUM_INPUT_FRAMES - len(frames))
-        elif len(frames) > NUM_INPUT_FRAMES:
-            idxs = [int(round(i * (len(frames) - 1) / (NUM_INPUT_FRAMES - 1)))
-                    for i in range(NUM_INPUT_FRAMES)]
-            frames = [frames[i] for i in idxs]
+        frames = fit_frames(frames, NUM_INPUT_FRAMES)
 
         # Resize and normalize
         out = np.empty((NUM_INPUT_FRAMES, 3, IMG_SIZE, IMG_SIZE), dtype=np.float32)
@@ -195,46 +188,39 @@ def _make_preprocessing():
     return preprocess
 
 
-def _vjepa_v1_post_hook(arr: np.ndarray) -> np.ndarray:
-    """Reshape V-JEPA v1 block output from (B, T*S, H) to (B, T, H).
+# Token order is all spatial patches at t=0, then t=1, ... (as VideoMAE / V-JEPA v2).
+_vjepa_v1_post_hook = functools.partial(tubelet_spatial_mean, temporal_steps=NUM_TEMPORAL_STEPS,
+                                        spatial_patches=NUM_SPATIAL_PATCHES)
 
-    Token order is all spatial patches at t=0, then t=1, ... (same as
-    VideoMAE / V-JEPA v2). Reshape and spatial-mean.
+
+def load_backbone(identifier: str):
+    """The V-JEPA v1 ViT-L/16 backbone from its checkpoint: the one load of the family.
+
+    ``identifier`` names the registration in the download message.
     """
-    B, seq_len, hidden = arr.shape
-    if seq_len == NUM_TEMPORAL_STEPS * NUM_SPATIAL_PATCHES:
-        t_steps, s_steps = NUM_TEMPORAL_STEPS, NUM_SPATIAL_PATCHES
-    elif seq_len % NUM_SPATIAL_PATCHES == 0:
-        t_steps, s_steps = seq_len // NUM_SPATIAL_PATCHES, NUM_SPATIAL_PATCHES
-    elif seq_len % NUM_TEMPORAL_STEPS == 0:
-        t_steps, s_steps = NUM_TEMPORAL_STEPS, seq_len // NUM_TEMPORAL_STEPS
-    else:
-        raise ValueError(
-            f"V-JEPA v1 post-hook: unable to infer (T, S) from seq_len={seq_len}.")
-    return arr.reshape(B, t_steps, s_steps, hidden).mean(axis=2)
+    ckpt = _download_checkpoint(CHECKPOINT_URL, _default_cache_dir() / 'vitl16.pth.tar', identifier)
+    return _load_vjepa_v1_vitl(ckpt).eval()
 
 
-def get_model(identifier: str) -> BrainScoreModel:
-    assert identifier == 'vjepa1-vitl'
-
+def video_extractor(backbone, identifier: str):
+    """The video extractor of every V-JEPA v1 registration, and the network it wraps."""
     from brainscore.model_helpers.video_wrapper import VideoWrapper
-
-    cache = _default_cache_dir()
-    ckpt = _download_checkpoint(CHECKPOINT_URL, cache / 'vitl16.pth.tar')
-    backbone = _load_vjepa_v1_vitl(ckpt).eval()
     model = _BCTPermuteAdapter(backbone).eval()
-
-    preprocessing = _make_preprocessing()
-
     video_wrapper = VideoWrapper(
         model=model,
-        preprocessing=preprocessing,
+        preprocessing=_make_preprocessing(),
         identifier=identifier,
         num_frames=NUM_INPUT_FRAMES,
         post_hook_fn=_vjepa_v1_post_hook,
         # Same 16-frame budget as VideoMAE → batch 4 fits on A10G 24GB.
         batch_size=4,
     )
+    return video_wrapper, model
+
+
+def get_model(identifier: str) -> BrainScoreModel:
+    assert identifier == 'vjepa1-vitl'
+    video_wrapper, model = video_extractor(load_backbone(identifier), identifier)
 
     return BrainScoreModel(
         identifier=identifier,
@@ -243,6 +229,4 @@ def get_model(identifier: str) -> BrainScoreModel:
         extractor={
             'video': video_wrapper,
         },
-        required_modalities={'video'},
-        visual_degrees=8,
     )

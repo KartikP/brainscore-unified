@@ -1,23 +1,70 @@
 # Score a model
 
+## A first score, with no download
+
+`GridGame-reach-5x5` is a closed-loop benchmark: the subject moves on a 5 x 5 grid to
+reach a goal, on 15 boards that the benchmark generates from fixed seeds. It needs no
+data file and no model weights, so it runs on any machine in a few seconds. It has no
+measured brain or behavior data: the score is the success rate divided by that of a
+greedy oracle (the ceiling). It shows the scoring path, not alignment with the brain.
+
+A subject that moves at random is the floor of this benchmark:
+
+```python
+import brainscore
+from brainscore import BrainScoreModel
+from brainscore.harnesses.grid_game import random_action_policy
+
+# Subject with a random-move policy
+subject = BrainScoreModel(identifier='random-moves', policy=random_action_policy(seed=0))
+score = brainscore.score(subject, 'GridGame-reach-5x5')
+print(float(score), score.attrs['success_rate'], score.attrs['random_floor'])
+# 0.5333333333333333 0.5333333333333333 0.5333333333333333
+```
+
+The random subject reaches the goal on 8 of the 15 boards, the same rate as the floor
+that the benchmark measures with its own random policy. A subject with no `policy` part,
+such as `chance-baseline`, does not give the `motor` output, so this pair is N/A.
+
+## A model on brain data
+
+This example downloads the CLIP weights and the public MajajHong2015 data (no credentials
+needed), and a full run is slow on a laptop:
+
 ```python
 import brainscore
 
-score = brainscore.score('clip-vit-b-32', 'MajajHong2015public.IT-pls-unified')
+score = brainscore.score('clip-vit-b-32', 'MajajHong2015public.IT-pls')  # macaque IT recordings
 print(float(score), score.attrs.get('raw'))
 ```
 
-`score` accepts registered names or objects you built yourself:
+A score on behavior data that downloads no model weights: `brainscore.score('chance-baseline', 'Yeatman2021-lexical_decision-image')` downloads the ROAR stimuli and the human lexical decisions, and gives the chance floor of that benchmark. These files are not public: the pair needs AWS credentials ([Downloads and runtime](#downloads-and-runtime)).
+
+`score` accepts registered names or objects you built yourself. The random policy
+keeps its random state between runs, so build a new subject for a new score:
 
 ```python
-score = brainscore.score(my_model, my_benchmark)
+benchmark = brainscore.load_benchmark('GridGame-reach-5x5')
+subject = BrainScoreModel(identifier='random-moves', policy=random_action_policy(seed=0))  # a new subject
+score = brainscore.score(subject, benchmark)
 ```
+
+The two arguments also have names: `brainscore.score(model_identifier=..., benchmark_identifier=...)`
+takes the same registered names or objects.
 
 What happens:
 
-1. **Compatibility check.** The subject's declared channels are compared with what the benchmark provides and requests. An incompatible pair raises `CompatibilityError` and is reported as N/A, not zero. See [Core concepts, section 6](../02_core_concepts.md#6-compatibility).
-2. **Memory check.** One stimulus is run to estimate the memory the full benchmark needs. Pass `check_mem=False` to skip it.
-3. **The benchmark runs** the subject through sessions and returns a `Score`. If the benchmark leaves a perturbation active on the subject, `score` fails.
+1. **Compatibility check.** The subject's declared channels are compared with what the benchmark provides and requests. For an incompatible pair, known from the declarations, `score` returns the N/A result before any compute: the value is NaN (never zero), `attrs['status']` is `'N/A'`, `attrs['reason']` says why and `attrs['missing_channels']` names the channels. When a `BrainScoreModel` has a wired part that derives a missing answer format, the reason also names the registration line to write (for example `capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}`). See [Core concepts, section 6](../02_core_concepts.md#6-compatibility).
+2. **Memory check.** One stimulus is run to estimate the memory the full benchmark needs. Pass `check_mem=False` to skip it. When no neural region is available for that probe (the benchmark names no `neural:<region>` output and no `region`, and no feature width is declared), the estimate is not made: one line says so and that memory is not guarded for the run. To estimate anyway, declare the width: `expected_feature_dim` on the benchmark or `feature_dim` on the model.
+3. **The benchmark runs** the subject through sessions and returns a `Score`. A subject that refuses a session when it starts (it cannot answer the requested outputs together, or has no part for the task) raises `ExecutionNotFeasibleError`: the pair passed the declared check, so the declarations do not yet express that limit, and there is no result. A malformed declaration also raises (`ValueError`). If the benchmark leaves an intervention active on the subject, `score` fails.
+
+Every unified benchmark score carries the same attributes: `raw` (the metric value before any ceiling normalization), `ceiling` (the reference, a `Score`), `normalized` (whether the score is `raw` divided by a measured ceiling; when it is `False` the score is the raw value, and the ceiling is NaN with `attrs['status'] == 'not_estimated'`), `metric`, `benchmark_version`, `benchmark_identifier` and `compatibility`. A raw score and a normalized score are not on one scale.
+
+Every score from `score` also records how it was produced: `delivery` (`'listed'` when the sessions sent a list known up front, `'stream'` when they sent one event at a time, both as a tuple, or None when no session answered), `regions_per_pass` (the `BRAINSCORE_REGIONS_PER_PASS` setting the sessions ran under), `software` (the versions of python, numpy, torch, transformers, scikit-learn, xarray and the four Brain-Score packages; `environment_fingerprint`, a hash of the Python version, the platform and each installed package an import uses (the `sys.path` entries known at start: the `PYTHONPATH` entries, the site-packages folders, the user site and the folders their `.pth` files name; the first entry of a name counts) with its version and, where the installer recorded it, its repository commit or editable location, or `'unavailable: <reason>'` when package metadata cannot be read; `accelerator`, the device torch can use; and `math_threads`, the thread counts of torch and of each BLAS or OpenMP pool that `threadpoolctl` reports, as a sorted string such as `'openblas=16,openmp=8,torch=8'`, with `'not stated'` for a part that cannot be read) and `code_commits` (the commit of each imported Brain-Score package's checkout, from git or from a `COMMIT` file in an archive, or None). These settings can change the last digits of a score.
+
+`provenance` lists, for each subject that took part, the parts its sessions used and what each part states about itself (settings fingerprint, where its parameters are, their dtypes, batch size; `'not stated'` where a part cannot say), and the activation store state. A subject that states no parts has `parts: 'not stated'`.
+
+**Comparing two scores.** Two scores may be compared bit for bit only when their `environment_fingerprint` values are equal and not unavailable, their `accelerator` values are equal and stated, their `math_threads` records are equal and stated (the default follows the CPU count, and the count changes the last digits of a score), and every entry of `code_commits` is known (not None) and equal. Otherwise they are compared within the benchmark's stated tolerance; a missing commit is never equality. Equal fingerprints are necessary for a bit-for-bit comparison, not a proof that every imported file is equal: a module with no package metadata that shadows an installed package is not in the fingerprint.
 
 ## Find models and benchmarks
 
@@ -30,10 +77,10 @@ These list every identifier `load_model` and `load_benchmark` can find, across t
 
 ## Downloads and runtime
 
-The first run downloads model weights and benchmark data. Large checkpoints stop before downloading and report their size; set `BRAINSCORE_SKIP_MODEL_DOWNLOAD_CHECK=1` to allow them. Full benchmark runs of large models need a GPU machine.
+The first run downloads model weights and benchmark data. Hosted data comes from Amazon S3: Brain-Score first tries your AWS credentials, from the places boto3 reads (`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, or `aws configure`), then an anonymous request. Public files (for example `MajajHong2015public`) need no credentials. Other files in the bucket `brainscore-storage` (for example `Yeatman2021`) need credentials of an AWS account with read access to that bucket; without them the load fails with `ClientError('An error occurred (403) when calling the HeadObject operation: Forbidden')`. Large checkpoints stop before downloading and report their size; set `BRAINSCORE_SKIP_MODEL_DOWNLOAD_CHECK=1` to allow them. Full benchmark runs of large models need a GPU machine.
 
 ## Reading a score
 
 - **Raw** is the metric value. **Ceiled** divides by the benchmark's ceiling and can exceed 1.
-- Compare a model with a **null baseline** (chance, or the same architecture with random weights) before interpreting it. [Lesson 5](../../notebooks/lessons/05_layers_and_regions.ipynb) shows why.
-- The score's `attrs` record provenance: compatibility result, behavioral path, model and benchmark identifiers, the subject's traits (`subject_traits`) and the trial memory (`trial_memory`).
+- Compare a model with a **null baseline** that fits the benchmark before interpreting it: a random policy for a closed-loop benchmark (above), `random-vit-b-32` (CLIP ViT-B/32 with random weights; it downloads the CLIP configuration and processor) for image or text benchmarks, `chance-baseline` for a choice task (`behavior`, `behavior:choice`, `behavior:probabilities`). [Lesson 5](../../notebooks/lessons/05_layers_and_regions.ipynb) shows why.
+- The score's `attrs` record provenance: compatibility result, behavioral path, model and benchmark identifiers, the subject's traits (`subject_traits`) and the trial memory (`trial_memory`). `requested_outputs` names the outputs the benchmark requested (a subject's `out_channels` are the outputs it can give), `subject_identifier` the scored subject and `entry_point` the `score()` that made the score (`'brainscore'`, `'brainscore_vision'` or `'brainscore_language'`).

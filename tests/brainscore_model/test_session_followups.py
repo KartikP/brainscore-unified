@@ -70,7 +70,7 @@ def positional_concat(assemblies):
 
 @pytest.mark.parametrize('strategy', ['manual', 'xarray'])
 def test_same_physical_clock_requires_actual_value_alignment(strategy):
-    """Codex v6 probe: rows [a, b] and [b, a] with matching clocks pair by stimulus."""
+    """Rows [a, b] and [b, a] with matching clocks pair by stimulus."""
     a = clock_block(['a', 'b'], [1, 2], 'early')
     b = clock_block(['b', 'a'], [20, 10], 'late')
     try:
@@ -141,29 +141,31 @@ class Incomplete(ToyExtractor):
         return super().__call__(stimuli, [l for l in layers if l != 'early'], **kwargs)
 
     @contextmanager
-    def record(self, layers):
+    def record(self, layers, stimuli=None):
         with super().record([l for l in layers if l != 'early']) as rec:
             yield rec
 
 
-def task_model(net, extractor_type, regions):
+def task_model(net, extractor_type, regions, readout=False):
+    """A model with an answer part and a readout; with ``readout`` the readout owns the choice."""
     def answer(stimulus_row, instruction, label_set):
         net.forward(stimulus_row['stimulus_id'], prompt=instruction)
         return label_set[0]
+    owners = {'behavior:choice': ('readout', 'argmax')} if readout else {}
     return BrainScoreModel('task-layers', extractor={'text': extractor_type(net)}, region_layer_map=regions,
-                           behavioral_readout_layer='late', answer=answer)
+                           behavioral_readout_layer='late', answer=answer,
+                           capability_config={'behavior-sessions': owners})
 
 
-READOUT = TaskContext(task_type='probabilities', label_set=['cat', 'dog'], fitting_stimuli=STIMULI,
-                      prefer_path='readout')
+READOUT = TaskContext(response=Choice(['cat', 'dog']), fitting_stimuli=STIMULI)
 TASKS = {'readout': READOUT, 'generation': GENERATE}
 MIX = {'mix': CompositeSelector((('early', None), ('late', None)), modality='text')}
 
 
 @pytest.mark.parametrize('mode', ['readout', 'generation'])
 def test_task_composite_refuses_missing_selected_layer(mode):
-    """Codex v6 probe: readout and generation refuse it, like the neural session path."""
-    m = task_model(ToyNet(), Incomplete, MIX)
+    """Readout and generation refuse it, like the neural session path."""
+    m = task_model(ToyNet(), Incomplete, MIX, readout=mode == 'readout')
     with pytest.raises(ValueError, match='layer|neuroid|activity'):
         _run(m, TASKS[mode], ['neural:mix'])
 
@@ -175,7 +177,7 @@ def test_neural_session_refuses_the_same_missing_layer():
 
 
 def test_readout_refuses_a_plain_region_whose_layer_is_missing():
-    m = task_model(ToyNet(), Incomplete, {'E': LayerSelector('early', modality='text')})
+    m = task_model(ToyNet(), Incomplete, {'E': LayerSelector('early', modality='text')}, readout=True)
     with pytest.raises(ValueError, match='every selected layer'):
         _run(m, READOUT, ['behavior', 'neural:E'])
 
@@ -184,10 +186,10 @@ def test_readout_refuses_a_plain_region_whose_layer_is_missing():
 def test_task_accepts_an_absent_layer_whose_unit_subset_is_empty(mode):
     """A composite layer with no selected units is not required (required_layers)."""
     regions = {'mix': CompositeSelector((('early', ()), ('late', None)), modality='text')}
-    session = _run(task_model(ToyNet(), Incomplete, regions), TASKS[mode], ['behavior', 'neural:mix'])
+    session = _run(task_model(ToyNet(), Incomplete, regions, readout=mode == 'readout'), TASKS[mode], ['behavior', 'neural:mix'])
     mix = session.collect('neural:mix')
     assert set(mix['layer'].values) == {'late'}
-    complete = _run(task_model(ToyNet(), ToyExtractor, regions), TASKS[mode], ['behavior', 'neural:mix'])
+    complete = _run(task_model(ToyNet(), ToyExtractor, regions, readout=mode == 'readout'), TASKS[mode], ['behavior', 'neural:mix'])
     np.testing.assert_array_equal(mix.values, complete.collect('neural:mix').values)
 
 
@@ -195,14 +197,14 @@ def test_task_accepts_an_absent_layer_whose_unit_subset_is_empty(mode):
 def test_task_refuses_a_composite_that_selects_no_units(mode):
     regions = {'mix': CompositeSelector((('early', ()), ('late', ())), modality='text')}
     with pytest.raises(ValueError, match='no neuroids'):
-        _run(task_model(ToyNet(), ToyExtractor, regions), TASKS[mode], ['behavior', 'neural:mix'])
+        _run(task_model(ToyNet(), ToyExtractor, regions, readout=mode == 'readout'), TASKS[mode], ['behavior', 'neural:mix'])
 
 
 @pytest.mark.parametrize('mode', ['readout', 'generation'])
 def test_complete_composite_keeps_its_pass_count_and_values(mode):
     behavior_net, joint_net = ToyNet(), ToyNet()
-    _run(task_model(behavior_net, ToyExtractor, MIX), TASKS[mode], ['behavior'])
-    joint = _run(task_model(joint_net, ToyExtractor, MIX), TASKS[mode], ['behavior', 'neural:mix'])
+    _run(task_model(behavior_net, ToyExtractor, MIX, readout=mode == 'readout'), TASKS[mode], ['behavior'])
+    joint = _run(task_model(joint_net, ToyExtractor, MIX, readout=mode == 'readout'), TASKS[mode], ['behavior', 'neural:mix'])
     assert joint_net.passes == behavior_net.passes          # recording adds no forward pass
     if mode == 'generation':
         assert joint_net.passes == len(STIMULI)
@@ -214,16 +216,17 @@ def conditional_extractor(pattern):
     """Records 'early' on no trial, every trial, or trials a and c only."""
     class Conditional(ToyExtractor):
         @contextmanager
-        def record(self, layers):
+        def record(self, layers, stimuli=None):
             captured, count = [], [0]
             recording = type('Recording', (), {})()
 
-            def take():
+            def take(_row):
                 row = captured[0]
                 captured.clear()
                 count[0] += 1
                 keep_early = pattern == 'always' or (pattern == 'sometimes' and count[0] % 2)
-                return _assembly([row], ['?'], [l for l in layers if l != 'early' or keep_early])
+                return {layer: _assembly([row], ['?'], [layer])
+                        for layer in layers if layer != 'early' or keep_early}
             recording.take = take
             self.net.hooks.append(captured.append)
             try:
@@ -233,8 +236,7 @@ def conditional_extractor(pattern):
     return Conditional
 
 
-GENERATION_FORMS = {'answer': GENERATE,
-                    'choice': replace(GENERATE, task_type=None, label_set=None, response=Choice(('cat', 'dog')))}
+GENERATION_FORMS = {'choice': GENERATE}
 
 
 @pytest.mark.parametrize('form', sorted(GENERATION_FORMS))
@@ -312,7 +314,7 @@ def paused_first_session(extract_hook=None):
 
 
 def test_concurrent_sessions_on_one_model_keep_native_outputs():
-    """Codex v6 probe on the per-channel default: the second session is refused
+    """On the per-channel default: the second session is refused
     clearly, and the first keeps exactly its standalone outputs."""
     m, first, release, results, errors = paused_first_session()
     try:
@@ -389,11 +391,12 @@ def test_an_interrupt_just_after_the_reservation_releases_the_model():
     reserve = start + next(i for i, line in enumerate(lines) if '_active_sessions[key] = token' in line)
     m = model()
     reached = []
+    tracer_before = sys.gettrace()      # a coverage tool or a debugger: it must be active again after this test
 
     def interrupt(frame, event, arg):
         if frame.f_code is guard.__code__ and event == 'line' and frame.f_lineno > reserve:
             reached.append(id(m) in module._active_sessions)
-            sys.settrace(None)
+            sys.settrace(tracer_before)
             raise KeyboardInterrupt('just after the reservation')
         return interrupt
     try:
@@ -401,7 +404,7 @@ def test_an_interrupt_just_after_the_reservation_releases_the_model():
         with pytest.raises(KeyboardInterrupt, match='just after the reservation'):
             run(m, ['A'])
     finally:
-        sys.settrace(None)
+        sys.settrace(tracer_before)
     assert reached == [True]                # the interrupt arrived while the model was reserved
     assert id(m) not in module._active_sessions
     assert_same_output(run(m, ['A']).collect('neural:A'), alone('A'))

@@ -1,4 +1,4 @@
-"""Connect a caller-supplied OpenPI-style policy to the UMI action provider."""
+"""Connect a caller-supplied OpenPI-style policy to the UMI policy part."""
 import numpy as np
 
 from brainscore_core.streaming import StreamEvent
@@ -10,7 +10,7 @@ class DroidPolicy:
 
     A row carries named cameras on ``vision:image`` (``exterior_1``,
     ``exterior_2``, ``wrist``), body state on ``proprioception`` and the task text
-    on ``instruction``; construct the model with ``policy_inputs=DroidPolicy.inputs``.
+    on ``instruction``; construct the model with ``policy_in_channels=DroidPolicy.inputs``.
     The model calls ``reset()`` when an episode begins.
 
     No weights, network client, hardware, or image transforms are created here.

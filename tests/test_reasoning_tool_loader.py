@@ -6,13 +6,13 @@ import pytest
 from brainscore.experiments import Experiment, RecordReasoning, compare_outputs
 from brainscore.run_record import RunRecord
 from brainscore.tools import attach_tools, load_tool
-from tests.test_reasoning_recorder import StreamingSubject, protocol, trace_subject
+from tests.test_reasoning_recorder import StreamingSubject, answering, protocol
 
 pytestmark = pytest.mark.unit
 
 
 def test_loaded_reasoning_matches_existing_class_and_record(tmp_path):
-    subject = trace_subject({'text': '42', 'reasoning': {'text': '6 times 7.', 'kind': 'summary'}})
+    subject = answering(reasoning={'text': '6 times 7.', 'kind': 'summary'})
     loaded = load_tool('record-reasoning')
     assert type(loaded) is RecordReasoning and loaded.name == 'reasoning'
     assert loaded.describe() == RecordReasoning().describe()
@@ -26,10 +26,10 @@ def test_loaded_reasoning_matches_existing_class_and_record(tmp_path):
 
 
 def test_two_named_extractors_keep_distinct_records_and_input_links(tmp_path):
-    subject = trace_subject({'text': '42', 'reasoning': 'Exposed reasoning.', 'summary': 'Short summary.'})
+    subject = answering(reasoning='Exposed reasoning.', summary='Short summary.')
     result = Experiment(subject=subject, protocol=protocol(), tools=[load_tool('record-io'),
         load_tool('record-reasoning', name='exposed'),
-        load_tool('record-reasoning', name='summaries', extract=lambda output: output.payload['raw']['summary'])],
+        load_tool('record-reasoning', name='summaries', extract=lambda output: output.meta['summary'])],
         output_dir=tmp_path / 'run').run()
     inputs = {e['event_id'] for e in result.record.events() if e['kind'] == 'input'}
     for name, text in [('exposed', 'Exposed reasoning.'), ('summaries', 'Short summary.')]:
@@ -46,7 +46,7 @@ def test_streamed_formats_and_unavailable_reasoning_are_not_reinterpreted(tmp_pa
     records = list(RunRecord(result.directory / 'reasoning').outputs())
     assert [r['reasoning'][0]['format'] for r in records[:3]] == ['delta', 'delta', 'snapshot']
     assert records[3]['reasoning_available'] is False
-    assert records[3]['reasoning'] == [] and records[3]['payload'].payload['answer'] == 42
+    assert records[3]['reasoning'] == [] and records[3]['payload'].payload == '42'
 
 
 def test_extractor_failure_fails_both_records_and_unsubscribes(tmp_path):
@@ -55,12 +55,12 @@ def test_extractor_failure_fails_both_records_and_unsubscribes(tmp_path):
     def broken(output):
         raise RuntimeError('extractor failed')
 
-    subject = trace_subject({'text': '42'})
+    subject = answering()
     with pytest.raises(RuntimeError, match='extractor failed'):
         with attach_tools(subject, tools=[load_tool('record-io'),
                           load_tool('record-reasoning', extract=broken)],
                           output_dir=tmp_path / 'run') as context:
-            context.publish('output', StreamEvent('response_trace', {'raw': {'text': '42'}}, None))
+            context.publish('output', StreamEvent('behavior:text', '42', None))
     assert context.listeners == []
     assert RunRecord(tmp_path / 'run').manifest['status'] == 'failed'
     assert RunRecord(tmp_path / 'run' / 'reasoning').manifest['status'] == 'failed'
@@ -68,7 +68,7 @@ def test_extractor_failure_fails_both_records_and_unsubscribes(tmp_path):
 
 def test_missing_shared_writer_fails_before_creating_output(tmp_path):
     with pytest.raises(ValueError, match='RecordInputsOutputs'):
-        with attach_tools(trace_subject({'text': '42'}), tools=[load_tool('record-reasoning')],
+        with attach_tools(answering(), tools=[load_tool('record-reasoning')],
                           output_dir=tmp_path / 'run'):
             pytest.fail('missing writer entered scope')
     assert not (tmp_path / 'run').exists()
@@ -86,7 +86,7 @@ def test_partial_observer_attachment_marks_earlier_records_failed(tmp_path):
             yield
 
     with pytest.raises(RuntimeError, match='attachment failed'):
-        with attach_tools(trace_subject({'text': '42'}),
+        with attach_tools(answering(),
                           tools=[load_tool('record-io'), load_tool('record-reasoning'), Broken()],
                           output_dir=tmp_path / 'run'):
             pytest.fail('broken observer entered scope')

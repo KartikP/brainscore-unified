@@ -23,6 +23,7 @@ import pathlib
 import numpy as np
 
 from ...data import local
+from ...data.lebel2023 import LANA_ATLAS
 
 FSAVERAGE5_PER_HEMISPHERE = 10242
 DEFAULT_TOP_FRACTION = 0.10          # the fraction the reference pipeline masks at
@@ -30,7 +31,7 @@ _HEMISPHERES = ('LH', 'RH')
 
 
 def _atlas_dir():
-    return local.LANA_ATLAS.resolved()
+    return LANA_ATLAS.resolved()
 
 
 def lana_probabilities(atlas_dir=None):
@@ -45,7 +46,7 @@ def lana_probabilities(atlas_dir=None):
     for hemisphere in _HEMISPHERES:
         path = directory / f'{hemisphere}_LanA_n804.nii.gz'
         if not path.exists():
-            raise local.LocalDataMissing(local.LANA_ATLAS.instructions())
+            raise local.LocalDataMissing(LANA_ATLAS.instructions())
         values = np.asarray(nib.load(path).dataobj).squeeze()
         # fsaverage5 is the leading ico5 block of the fsaverage7 mesh.
         hemispheres.append(values[:FSAVERAGE5_PER_HEMISPHERE])

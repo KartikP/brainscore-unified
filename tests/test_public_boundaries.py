@@ -20,11 +20,11 @@ PACKAGES = ('brainscore_core', 'brainscore_vision', 'brainscore_language', 'brai
 MAINTAINED = [
     ('brainscore_vision', 'compat'),
     ('brainscore_vision', 'benchmark_helpers/test_db_contract.py'),
-    ('brainscore_vision', 'models/clip_vit_b_32_unified/model.py'),
-    ('brainscore_vision', 'models/qwen25_vl_3b_unified/model.py'),
     ('brainscore_language', 'compat'),
     ('brainscore', ''),
 ]
+
+ALLOWED = set()
 
 
 def _private(name):
@@ -77,7 +77,8 @@ def _maintained_files():
 def test_maintained_extension_code_imports_no_private_names():
     offenders = [f'{path}:{line} {what}'
                  for package, path in _maintained_files()
-                 for line, what in private_uses(path.read_text(encoding='utf-8'), package)]
+                 for line, what in private_uses(path.read_text(encoding='utf-8'), package)
+                 if (path.as_posix().split(f'/{package}/', 1)[-1], what) not in ALLOWED]
     assert not offenders, 'private cross-package names:\n' + '\n'.join(offenders)
 
 

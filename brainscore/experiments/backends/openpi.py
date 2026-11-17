@@ -2,7 +2,7 @@
 
 OpenPI has no intermediate-value hook API. We insert three probes into its
 verified sampling function, retaining its loop, RNG and numerical operations.
-This module imports JAX/OpenPI only when a provider is constructed.
+This module imports JAX/OpenPI only when an instrumentation is constructed.
 """
 import ast
 from contextlib import contextmanager
@@ -145,7 +145,7 @@ class OpenPIInstrumentation:
             raise RuntimeError('OpenPI instrumentation requires serial scopes and inference')
         if not self._scopes:
             if getattr(self.policy, '_umi_instrumentation_owner', None) is not None:
-                raise RuntimeError('This policy already has an instrumentation provider attached')
+                raise RuntimeError('This policy already has an instrumentation attached')
             self.policy._umi_instrumentation_owner = self
             self._owner = owner
             self._original = self.policy._sample_actions

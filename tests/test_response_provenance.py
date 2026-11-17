@@ -28,7 +28,7 @@ def test_declared_subject_records_neural_outputs_with_separate_provenance():
         assert getattr(subject, name) == getattr(raw, name)
     stimuli = StimulusSet([{'stimulus_id': 'a', 'sentence': 'test'}])
     task = TaskContext(task_type='passive')
-    session = stimulus_session(stimuli, ['neural:IT'], task_context=task)
+    session = stimulus_session(stimuli, ['neural:IT'], task=task)
     subject.participate(session)
     result = session.collect('neural:IT')
     np.testing.assert_array_equal(result, np.ones((1, 2)))
@@ -41,12 +41,12 @@ def test_declared_subject_records_neural_outputs_with_separate_provenance():
 
 def test_text_task_and_reset_delegate_without_discovering_model_abilities():
     prompts = []
-    raw = BrainScoreModel('reply-fixture', supported_modalities={'text'},
+    raw = BrainScoreModel('reply-fixture', in_channels={'text'},
                          reply=lambda prompt: prompts.append(prompt) or 'Yes')
     subject = ProvenanceSubject(raw, {'dtype': 'bfloat16'})
     stimuli = StimulusSet([{'stimulus_id': 'a', 'sentence': 'red?'}])
     def run():
-        session = stimulus_session(stimuli, ['behavior:text'], task_context=TaskContext(response=Text()))
+        session = stimulus_session(stimuli, ['behavior:text'], task=TaskContext(response=Text()))
         subject.participate(session)
         return session.collect('behavior:text')
     first = run()
@@ -89,3 +89,41 @@ def test_failure_and_reset_are_not_swallowed():
         subject.participate(Session(()))
     subject.reset()
     assert raw.reset_called
+
+
+class _Declared:
+    """A stand-in subject with every declaration a caller reads through the wrapper."""
+    identifier = 'declared'
+    in_channels = {'vision:image', 'text'}
+    out_channels = {'neural:IT', 'behavior:text'}
+    required_channels = {'vision:image'}
+    output_inputs = {'behavior:text': frozenset({'text'})}
+    traits = {'memory:trial_history'}
+    region_layer_map = {'IT': 'layer.3'}
+    probe_safe_regions = ['IT']
+
+    def visual_degrees(self):
+        return 8
+
+
+def test_every_declaration_of_the_subject_reads_the_same_through_the_wrapper():
+    from brainscore_core.legacy_facade import declared_visual_degrees
+    subject = _Declared()
+    wrapped = ProvenanceSubject(subject, {'source': 'test'})
+    for name in ('identifier', 'in_channels', 'out_channels', 'required_channels', 'output_inputs',
+                 'traits', 'region_layer_map', 'probe_safe_regions'):
+        assert getattr(wrapped, name) == getattr(subject, name), name
+    assert declared_visual_degrees(wrapped) == 8
+
+
+def test_a_subject_with_no_visual_field_has_none_through_the_wrapper():
+    from brainscore_core.legacy_facade import LegacyBenchmarkFacade, declared_visual_degrees
+    class NoField:
+        identifier, in_channels, out_channels = 'no-field', {'vision:image'}, {'neural:IT'}
+    wrapped = ProvenanceSubject(NoField(), {'source': 'test'})
+    assert declared_visual_degrees(wrapped) is None
+    assert not hasattr(wrapped, 'region_layer_map') and not hasattr(wrapped, 'probe_safe_regions')
+    with pytest.raises(NotImplementedError, match='declares no visual field'):
+        LegacyBenchmarkFacade(wrapped, visual_degrees=declared_visual_degrees(wrapped)).visual_degrees()
+    with pytest.raises(AttributeError):
+        wrapped._answer            # private names of the subject stay hidden

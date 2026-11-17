@@ -13,6 +13,7 @@ from torch import nn
 
 from brainscore import BrainScoreModel
 from brainscore_core import io_catalog
+from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.streaming import FixedSource, Session
 from brainscore_core.streaming_helpers import EnvironmentSource, run_environment
 
@@ -23,7 +24,7 @@ pytestmark = pytest.mark.unit
 def speech_channel(monkeypatch):
     """An extension output family: a policy that answers in words, not on 'motor'."""
     monkeypatch.setattr(io_catalog, '_CATALOG', dict(io_catalog._CATALOG))
-    io_catalog.register(io_catalog.CatalogEntry(
+    io_catalog.register_channel(io_catalog.CatalogEntry(
         'speech', io_catalog.OUTPUT, 'a policy answer', 'a str the policy said',
         'the test environment', payload_type=str))
 
@@ -62,8 +63,9 @@ def test_replay_from_a_fixed_source_reproduces_the_live_responses():
 
 
 def _network():
-    torch.manual_seed(0)
-    return nn.Sequential(nn.Linear(3, 4), nn.ReLU(), nn.Linear(4, 2)).eval()
+    with torch.random.fork_rng():
+        torch.manual_seed(0)
+        return nn.Sequential(nn.Linear(3, 4), nn.ReLU(), nn.Linear(4, 2)).eval()
 
 
 class _Extractor:
@@ -83,7 +85,7 @@ def _recording_model(net, forward_calls):
         return {'motor': int(scores.argmax())}
 
     return BrainScoreModel('recording-policy', model=net, region_layer_map={'V4': '0'},
-                           preprocessors={'vision': _Extractor()}, policy=policy)
+                           extractor={'vision': _Extractor()}, policy=policy)
 
 
 def test_one_session_yields_motor_and_neural_from_one_forward_pass():
@@ -100,15 +102,37 @@ def test_one_session_yields_motor_and_neural_from_one_forward_pass():
     np.testing.assert_allclose(np.asarray(neural.values).reshape(4, -1), expected, atol=1e-6)
 
 
-def test_a_policy_without_an_extractor_is_not_applicable_to_neural_outputs():
+class _ClockedEnvironment(CountingEnvironment):
+    """The same steps, on a simulation clock of 40 ms per step."""
+
+    def clock(self):
+        return {'t_ms': 40.0 * self.n, 'time_source': 'simulation', 'time_inferred': False}
+
+
+@pytest.mark.parametrize('environment', [CountingEnvironment, _ClockedEnvironment])
+def test_a_recording_during_a_policy_step_carries_the_time_of_the_step(environment):
+    """Rule 4.2: the time of the step's action, or None without a clock; never the step counter."""
+    model = _recording_model(_network(), [])
+    session = Session(EnvironmentSource(environment(3)), ('motor', 'neural:V4'))
+    model.participate(session)
+    actions = {event.meta['step_num']: event.t_ms for event in session.emitted if event.channel == 'motor'}
+    recorded = [event for event in session.emitted if event.channel == 'neural:V4']
+    assert recorded
+    for event in recorded:
+        assert event.t_ms == actions[event.meta['step_num']]
+        if environment is CountingEnvironment:
+            assert event.t_ms is None
+
+
+def test_a_policy_without_an_extractor_is_refused_for_neural_outputs():
     model = BrainScoreModel('no-extractor', policy=lambda row: {'motor': 0})
-    with pytest.raises(NotImplementedError, match='No session handler'):
+    with pytest.raises(ExecutionNotFeasibleError, match=r"does not produce \['neural:V4'\]"):
         model.participate(Session(EnvironmentSource(CountingEnvironment()), ('motor', 'neural:V4')))
 
 
 def test_a_policy_may_answer_on_a_non_motor_channel_with_no_new_class(speech_channel):
     model = BrainScoreModel('talker', policy=lambda row: {'speech': f"x={row['observation']['x'][0]}"},
-                            policy_outputs=('speech',))
+                            policy_out_channels=('speech',))
     env = CountingEnvironment(2)
     session = Session(EnvironmentSource(env, action_channel='speech'), ('speech',))
     model.participate(session)
@@ -116,14 +140,40 @@ def test_a_policy_may_answer_on_a_non_motor_channel_with_no_new_class(speech_cha
     assert [event.payload for event in session.collect('speech')] == env.actions
 
 
-def test_run_environment_helper_takes_the_requested_outputs(speech_channel):
-    model = BrainScoreModel('talker', policy=lambda row: {'speech': 'hi'}, policy_outputs=('speech',))
+def test_a_policy_output_must_be_a_registered_output_channel(monkeypatch):
+    """An unregistered output is refused when the model is built; once registered, it runs."""
+    from brainscore_core.extensions import CatalogEntry, register_channel
+    monkeypatch.setattr(io_catalog, '_CATALOG', dict(io_catalog._CATALOG))
+    policy = lambda row: {'cursor': 7}
+    with pytest.raises(ValueError, match=r"'cursor'.*register_channel"):
+        BrainScoreModel('pointer', policy=policy, policy_out_channels=('cursor',))
+    register_channel(CatalogEntry('cursor', 'output', 'a policy answer', 'a pointer target', 'test'))
+    model = BrainScoreModel('pointer', policy=policy, policy_out_channels=('cursor',))
+    environment = CountingEnvironment(2)
+    run_environment(model, environment, action_channel='cursor')
+    assert environment.actions == [7, 7]
+
+
+def test_run_environment_helper_takes_the_outputs(speech_channel):
+    model = BrainScoreModel('talker', policy=lambda row: {'speech': 'hi'}, policy_out_channels=('speech',))
     assert run_environment(model, CountingEnvironment(2), action_channel='speech') == ['hi', 'hi']
 
 
 def test_a_stateful_policy_is_cleared_when_an_episode_begins():
-    from brainscore.model_helpers.policy_wrapper import PolicyWrapper
-    model = BrainScoreModel('stateful', policy=PolicyWrapper(lambda obs, history: len(history)))
+    class Counting:
+        """Answers with the number of steps it remembers; reset() forgets them."""
+        def __init__(self):
+            self.history = []
+
+        def reset(self):
+            self.history.clear()
+
+        def __call__(self, row):
+            action = len(self.history)
+            self.history.append((row['observation'], action))
+            return {'motor': action}
+
+    model = BrainScoreModel('stateful', policy=Counting())
     first = run_environment(model, CountingEnvironment(3))
     second = run_environment(model, CountingEnvironment(3))   # no model.reset() in between
     assert first == second == [0, 1, 2]

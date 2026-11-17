@@ -8,13 +8,19 @@ import pytest
 # check_root_hygiene is a maintainer tool that scans the workspace root for stray
 # secrets; it is deliberately not part of the distributed package. Skip rather than
 # fail collection wherever it is absent.
+# The scripts folder is on sys.path only for this import, so it cannot hide an
+# installed module of the same name from later tests.
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
+_added = str(SCRIPTS_DIR) not in sys.path
+if _added:
     sys.path.insert(0, str(SCRIPTS_DIR))
-
-_mod = pytest.importorskip(
-    "check_root_hygiene",
-    reason="root-hygiene checker is a maintainer tool, not part of the package")
+try:
+    _mod = pytest.importorskip(
+        "check_root_hygiene",
+        reason="root-hygiene checker is a maintainer tool, not part of the package")
+finally:
+    if _added:
+        sys.path.remove(str(SCRIPTS_DIR))
 check_root_hygiene = _mod.check_root_hygiene
 format_findings = _mod.format_findings
 

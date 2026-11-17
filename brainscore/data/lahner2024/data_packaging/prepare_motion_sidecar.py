@@ -1,6 +1,6 @@
 """Build a motion-confound sidecar CSV for the TR-resolved Lahner2024 benchmark.
 
-For each (subject, session, task, run) in ds005165 versionB, fetch the fmriprep
+For each (participant, session, task, run) in ds005165 versionB, fetch the fmriprep
 confounds.tsv and extract the 9 standard nuisance regressors:
 
     trans_x, trans_y, trans_z, rot_x, rot_y, rot_z, framewise_displacement,
@@ -27,7 +27,7 @@ import boto3
 import pandas as pd
 
 # Match the assembly-prep constants
-SUBJECTS = [f'sub-{i:02d}' for i in range(1, 11)]
+PARTICIPANTS = [f'sub-{i:02d}' for i in range(1, 11)]
 TASKS = ('test', 'train')
 FMRIPREP_PREFIX = 'derivatives/versionB/fmriprep'
 DS_BUCKET = 'openneuro.org'
@@ -41,9 +41,9 @@ MOTION_COLS = [
 ]
 
 
-def list_runs(subject: str, task: str, s3) -> List[dict]:
-    """List all (session, run) pairs for a (subject, task) under fmriprep."""
-    prefix = f'{DS_KEY_PREFIX}/{FMRIPREP_PREFIX}/{subject}/'
+def list_runs(participant: str, task: str, s3) -> List[dict]:
+    """List all (session, run) pairs for a (participant, task) under fmriprep."""
+    prefix = f'{DS_KEY_PREFIX}/{FMRIPREP_PREFIX}/{participant}/'
     runs = []
     paginator = s3.get_paginator('list_objects_v2')
     for page in paginator.paginate(Bucket=DS_BUCKET, Prefix=prefix):
@@ -77,7 +77,7 @@ def main():
     parser.add_argument('--output-path', type=Path, required=True)
     parser.add_argument('--cache-dir', type=Path,
                         default=Path('/tmp/ds005165_motion_cache'))
-    parser.add_argument('--subjects', nargs='+', default=SUBJECTS)
+    parser.add_argument('--participants', nargs='+', default=PARTICIPANTS)
     parser.add_argument('--tasks', nargs='+', default=list(TASKS))
     parser.add_argument('--upload-to-s3', action='store_true')
     parser.add_argument('--s3-bucket', type=str,
@@ -97,10 +97,10 @@ def main():
     s3_anon = boto3.client('s3', config=Config(signature_version=UNSIGNED))
 
     rows = []
-    for subject in args.subjects:
+    for participant in args.participants:
         for task in args.tasks:
-            runs = list_runs(subject, task, s3_anon)
-            print(f'  ({subject}, {task}): {len(runs)} runs', flush=True)
+            runs = list_runs(participant, task, s3_anon)
+            print(f'  ({participant}, {task}): {len(runs)} runs', flush=True)
             for run_info in runs:
                 df = fetch_confounds(run_info['key'], s3_anon, args.cache_dir)
                 missing = [c for c in MOTION_COLS if c not in df.columns]
@@ -111,7 +111,7 @@ def main():
                 for c in missing:
                     df[c] = 0.0
                 sub_df = df[MOTION_COLS].copy()
-                sub_df['subject'] = subject
+                sub_df['subject'] = participant
                 sub_df['session'] = run_info['session']
                 sub_df['task']    = task
                 sub_df['run']     = run_info['run']

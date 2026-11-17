@@ -13,7 +13,6 @@ import pytest
 import torch
 import torch.nn as nn
 
-import brainscore
 from brainscore.models.vjepa_v1.model import (
     REGION_LAYER_MAP,
     NUM_INPUT_FRAMES,
@@ -25,10 +24,6 @@ from brainscore.models.vjepa_v1.model import (
     _make_preprocessing,
     _BCTPermuteAdapter,
 )
-
-
-def test_vjepa_v1_registered():
-    assert 'vjepa1-vitl' in brainscore.model_registry
 
 
 def test_constants_match_vitl16():
@@ -65,7 +60,9 @@ def test_post_hook_spatial_mean_semantics():
 def test_post_hook_preserves_temporal_order():
     B, H = 1, 16
     shape = (B, NUM_TEMPORAL_STEPS, NUM_SPATIAL_PATCHES, H)
-    a = np.random.randn(*shape).astype(np.float32)
+    # A fixed draw: the 'not equal' below depends on it (time steps whose spatial means
+    # differ; with seed 0 they differ by far more than allclose's tolerance).
+    a = np.random.default_rng(0).standard_normal(shape).astype(np.float32)
     b = a[:, ::-1, :, :].copy()
     out_a = _vjepa_v1_post_hook(a.reshape(B, -1, H))
     out_b = _vjepa_v1_post_hook(b.reshape(B, -1, H))

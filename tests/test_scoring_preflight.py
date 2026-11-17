@@ -55,6 +55,8 @@ def test_doctor_reports_invalid_cache(monkeypatch, tmp_path):
     monkeypatch.setenv('RESULTCACHING_DISABLE', '0')
     monkeypatch.setattr(doctor, '_dependency_rows', lambda: [])
     monkeypatch.setattr(doctor, '_asset_rows', lambda: [])
+    monkeypatch.setattr(doctor, '_import_rows', lambda: [])
+    monkeypatch.setattr(doctor, '_lock_file', lambda: None)  # the cache is the only problem
     text, problems = doctor.report()
     assert problems == 1
     assert 'Result cache is not writable' in text
@@ -102,8 +104,9 @@ def test_each_scoring_call_gets_a_fresh_weight_scope(module_name, monkeypatch):
             assert cache.fingerprint(tensor) == keys[-1]
             return Score(0.5)
     model = SimpleNamespace(
-        identifier='test-model', available_modalities={'text'}, required_modalities={'text'},
+        identifier='test-model',
         in_channels={'text'}, required_channels={'text'}, out_channels={'behavior'}, region_layer_map={},
+        output_inputs={},
     )
     monkeypatch.setattr(module, 'load_model', lambda _: model)
     monkeypatch.setattr(module, 'load_benchmark', lambda _: Benchmark())

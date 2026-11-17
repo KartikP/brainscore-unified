@@ -2,10 +2,9 @@
 Qwen2.5-VL-3B registered as a BrainScoreModel -- a true VLM where the vision
 encoder feeds into a causal language model.
 
-Uses the VisionWrapper facade with kind='vlm' for the vision path (it delegates
-to VLMVisionWrapper, which handles Qwen's flattened-patch layout with
-image_grid_thw metadata) and TextWrapper for the text path
-(causal mode with last_token aggregation). Both are class-based, cached via
+Uses VLMVisionWrapper for the vision path (it handles Qwen's flattened-patch
+layout with image_grid_thw metadata) and TextWrapper for the text path
+(causal mode with last aggregation). Both are class-based, cached via
 @store_xarray, and symmetric in their calling convention.
 
 Architecture:
@@ -17,22 +16,22 @@ Region layer paths are relative to each wrapper's sub-model root:
   language paths  → relative to qwen_model.model.language_model
 """
 
-import re
 import hashlib
 import json
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import torch
 from PIL import Image
 
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import Subject
+from brainscore_core.contract import Subject
+from brainscore_core.responses import Choice
 from brainscore_core.hf_compat import pin_image_processor
 
 
 REGION_LAYER_MAP = {
-    # Vision regions -- relative to model.visual (VisionWrapper/vlm root)
+    # Vision regions -- relative to model.visual (VLMVisionWrapper root)
     'V1': 'blocks.2',
     'V2': 'blocks.6',
     'V4': 'blocks.14',
@@ -55,6 +54,9 @@ SIZES = {
 }
 VARIANTS = {f'{size}-vwfa': size for size in SIZES}
 BF16_IDENTIFIER = 'qwen2.5-vl-3b-bf16'
+# The statement of behavior:probabilities for each choice of the builder: the readout gives
+# them natively; the likelihood derives them by softmax.
+PROBABILITY_PARTS = {'readout': 'readout', 'likelihood': ('likelihood', 'softmax')}
 BF16_REVISION = '66285546d2b821cf421d4f5eb2576359d3770cd3'
 
 
@@ -85,30 +87,33 @@ def _bf16_provenance(model, processor, download):
     }
 
 
-def _make_generation_fn(qwen_model, qwen_processor, max_new_tokens: int = 8):
+def _make_answer(qwen_model, qwen_processor, max_new_tokens: int = 8):
     """Create a generation callable for instruction-following behavioral
     tasks. Used by BrainScoreModel when TaskContext carries an
     ``instruction`` (not just fitting_stimuli).
 
-    Signature (matches BrainScoreModel._generate_predictions contract):
-        fn(stimulus_row, instruction, label_set) -> predicted_label
+    Signature (the ``answer`` part of BrainScoreModel):
+        fn(stimulus_row, instruction, label_set) -> the generated text
     """
+    from brainscore.model_helpers.api_behavioral import _row_parts
     device = next(qwen_model.parameters()).device
 
     def generate(stimulus_row, instruction: str, label_set: List[str]) -> str:
-        image = Image.open(stimulus_row['image_file_name']).convert('RGB')
-        messages = [{
-            'role': 'user',
-            'content': [
-                {'type': 'image', 'image': image},
-                {'type': 'text',  'text': instruction +
-                 f' Answer with exactly one of: {", ".join(label_set)}.'},
-            ],
-        }]
+        # The row's picture, then its text (before the instruction and the directive).
+        image_column, text_column = _row_parts(stimulus_row, 'Qwen2.5-VL answer')
+        text = (f'{instruction} ' if instruction else '') + Choice(label_set).directive()
+        if text_column:
+            text = f'{stimulus_row[text_column]}\n\n{text}'
+        content, images = [], None
+        if image_column:
+            images = [Image.open(stimulus_row[image_column]).convert('RGB')]
+            content.append({'type': 'image', 'image': images[0]})
+        content.append({'type': 'text', 'text': text})
+        messages = [{'role': 'user', 'content': content}]
         prompt = qwen_processor.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True)
         inputs = qwen_processor(
-            text=[prompt], images=[image], return_tensors='pt', padding=True,
+            text=[prompt], images=images, return_tensors='pt', padding=True,
         ).to(device)
 
         with torch.no_grad():
@@ -121,27 +126,21 @@ def _make_generation_fn(qwen_model, qwen_processor, max_new_tokens: int = 8):
         # Strip the prompt tokens, decode the tail
         input_len = inputs['input_ids'].shape[1]
         response_ids = generated[0, input_len:]
-        response = qwen_processor.tokenizer.decode(
-            response_ids, skip_special_tokens=True).strip().lower()
-
-        # Robust parsing: prefer exact match, then substring match, then
-        # fall back to first label (BrainScoreModel emits a warning).
-        for lbl in label_set:
-            if response == lbl.lower():
-                return lbl
-        for lbl in label_set:
-            if re.search(rf'\b{re.escape(lbl.lower())}\b', response):
-                return lbl
-        return response  # unparseable — caller will default to label_set[0]
+        # The generated text, exactly: BrainScoreModel parses it with core's Choice.parse.
+        return qwen_processor.tokenizer.decode(response_ids, skip_special_tokens=True)
 
     return generate
 
 
-def get_model(identifier: str) -> Subject:
+def load_qwen(identifier: str, size: str):
+    """A Qwen2.5-VL of ``size`` (``SIZES``), on one device, and its processor (image part pinned).
+
+    The one load of the family: float16, or bfloat16 at ``BF16_REVISION`` for
+    ``BF16_IDENTIFIER``. ``identifier`` names the registration in the download
+    check. Returns the model, the processor and the download settings.
+    """
     bf16 = identifier == BF16_IDENTIFIER
-    size = 'qwen2.5-vl-3b' if bf16 else VARIANTS.get(identifier, identifier)
-    assert size in SIZES, identifier
-    hf_id, download_gb, language_layer = SIZES[size]
+    hf_id, download_gb, _ = SIZES[size]
     from brainscore.models._downloads import hf_preflight
     selection = {'revision': BF16_REVISION} if bf16 else {}
     download = hf_preflight(identifier, hf_id, download_gb, **selection)
@@ -149,9 +148,6 @@ def get_model(identifier: str) -> Subject:
         download = {**download, 'revision': BF16_REVISION}
 
     from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
-    from brainscore.model_helpers.text_wrapper import TextWrapper
-    from brainscore.model_helpers.vision_wrapper import VisionWrapper
-
     qwen_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         hf_id,
         torch_dtype=torch.bfloat16 if bf16 else torch.float16,
@@ -165,75 +161,83 @@ def get_model(identifier: str) -> Subject:
     qwen_model = qwen_model.to(select_device())
     qwen_processor = AutoProcessor.from_pretrained(hf_id, **download)
     qwen_processor = pin_image_processor(qwen_processor, hf_id, **download)
+    return qwen_model, qwen_processor, download
 
-    # Vision: VisionWrapper(kind='vlm') delegates to VLMVisionWrapper, which
-    # handles Qwen's flattened-patch layout.
-    # image_grid_thw tells the wrapper how to segment patches back to images.
-    vision_wrapper = VisionWrapper(
-        model=qwen_model.model.visual,
-        kind='vlm',
-        processor=qwen_processor,
-        identifier=f'{identifier}-vision',
-        image_input_key='pixel_values',
-        forward_kwargs_map={'grid_thw': 'image_grid_thw'},
-        patch_count_fn=lambda out: [int(t * h * w) for t, h, w in out['image_grid_thw']],
-        layer_aggregation='mean_patches',
-        batch_size=4,
-    )
+
+def picture_extractor(qwen_model, qwen_processor, identifier: str):
+    """The picture extractor of every Qwen2.5-VL registration: the visual tower, ``<identifier>-vision``."""
+    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
+    # VLMVisionWrapper handles Qwen's flattened-patch layout by default
+    # (image_grid_thw segments the patches back to images).
+    return VLMVisionWrapper(model=qwen_model.model.visual, processor=qwen_processor,
+                            identifier=f'{identifier}-vision')
+
+
+def get_model(identifier: str, *, probabilities: Optional[str] = None) -> Subject:
+    """The registration ``identifier``. ``probabilities`` is the part that gives
+    ``behavior:probabilities`` (and, by the link, ``behavior:rt``): ``'readout'`` (fitted on
+    the task's fitting stimuli) or ``'likelihood'`` (the softmax of the option likelihoods).
+    The registry passes it for each registration; ``None`` takes the same choice: the
+    likelihood for a variant with the word-form region, else the readout."""
+    if probabilities is None:
+        probabilities = 'likelihood' if identifier in VARIANTS else 'readout'
+    bf16 = identifier == BF16_IDENTIFIER
+    size = 'qwen2.5-vl-3b' if bf16 else VARIANTS.get(identifier, identifier)
+    assert size in SIZES, identifier
+    language_layer = SIZES[size][2]
+    from brainscore.model_helpers.text_wrapper import TextWrapper
+
+    qwen_model, qwen_processor, download = load_qwen(identifier, size)
+    vision_wrapper = picture_extractor(qwen_model, qwen_processor, identifier)
 
     # Text: TextWrapper wraps model.language_model (causal decoder).
-    # last_token aggregation with attention_mask handles padded batches.
+    # last aggregation with attention_mask handles padded batches.
     text_wrapper = TextWrapper(
         model=qwen_model.model.language_model,
         tokenizer=qwen_processor.tokenizer,
         identifier=f'{identifier}-text',
-        layer_aggregation='last_token',
-        max_length=512,
     )
 
-    # Qwen-VL is instruction-following, so expose its generate() as the
-    # behavioral-task generation path. Benchmarks that pass a TaskContext
-    # with an `instruction` and `label_set` (e.g., ROAR) will use this
-    # path; others fall back to the logistic readout configured below.
-    generation_fn = _make_generation_fn(qwen_model, qwen_processor)
+    # Qwen-VL is instruction-following, so its generate() is the answer part: it answers a
+    # plain Choice (e.g., ROAR). The format a session requests selects the part that answers
+    # it (the statement below); there is no fallback to another part.
+    answer = _make_answer(qwen_model, qwen_processor)
     # Raw replies and candidate likelihoods for TaskContext(response=...) tasks:
-    # ratings, reported confidence, written answers and implied probabilities.
+    # ratings, written answers and implied probabilities.
     from brainscore.model_helpers.replies import chat_parts
     reply, likelihood = chat_parts(qwen_model, qwen_processor)
 
-    region_layer_map = dict(REGION_LAYER_MAP, language_system=language_layer)
-    # Each region says which tower records it, so a task showing images and
-    # text records the vision regions from the image tower.
-    variant_kwargs = dict(region_modality_map={
-        region: 'text' if region == 'language_system' else 'vision' for region in region_layer_map})
+    # The picture tokens enter the language model, so its layer is reached from text and from a
+    # picture in an answering pass (rule 2.5); the text extractor records it.
+    from brainscore.selection import LayerSelector
+    layers = dict(REGION_LAYER_MAP, language_system=LayerSelector(name=language_layer, modality=('text', 'vision')))
+    variant_kwargs = {}
     if identifier in VARIANTS:
-        from brainscore.perturbation import build_pytorch_ablation_fn
-        region_layer_map['VWFA'] = VWFA_LAYER
-        variant_kwargs = dict(
-            # Selection paths are relative to the extraction root. The same
-            # visual module is also used by the full model's generate().
-            intervention=build_pytorch_ablation_fn(qwen_model.model.visual),
-            region_modality_map={
-                region: 'text' if region == 'language_system' else 'vision'
-                for region in region_layer_map
-            },
-        )
-
+        from brainscore.model_helpers.intervention import pytorch_intervention
+        layers['VWFA'] = VWFA_LAYER
+        # Selection paths are relative to the extraction root. The same
+        # visual module is also used by the full model's generate().
+        variant_kwargs = dict(intervention=pytorch_intervention(qwen_model.model.visual))
     subject = BrainScoreModel(
         identifier=identifier,
         model=qwen_model,
-        region_layer_map=region_layer_map,
+        region_layer_map=layers,
         extractor={
             'vision': vision_wrapper,
             'text': text_wrapper,
         },
-        visual_degrees=8,
-        answer=generation_fn,
+        answer=answer,
         reply=reply,
         likelihood=likelihood,
         # Also enable the readout path so Qwen can be compared on the same
         # behavioral benchmark both ways. Uses the same vision layer as 'IT'.
         behavioral_readout_layer='blocks.28',
+        # Generation answers the rating (reply and readout both give it natively). Bare
+        # behavior carries the requested format's answer and takes no statement. The
+        # probabilities come from the part the registration states.
+        capability_config={'behavior-sessions': {
+            'behavior:rating': 'generation',
+            'behavior:probabilities': PROBABILITY_PARTS[probabilities]}},
         **variant_kwargs,
     )
     if not bf16:

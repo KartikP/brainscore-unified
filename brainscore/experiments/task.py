@@ -2,7 +2,7 @@
 
     experiment = Experiment(
         subject=model,
-        protocol=TaskProtocol(stimuli, task_context, conditions=['baseline', 'lesioned']),
+        protocol=TaskProtocol(stimuli, task, conditions=['baseline', 'lesioned']),
         tools=[RecordNeural(['IT']), RecordBehavior(), Intervene(change, conditions=['lesioned'])],
         output_dir='runs/study')
     result = experiment.run()
@@ -16,8 +16,11 @@ from contextlib import contextmanager
 
 from brainscore_core.contract import required_traits_for
 from brainscore_core.events import StateChange
-from brainscore_core.streaming import CONTROL_CHANNEL
-from brainscore_core.streaming_helpers import apply_state_change, stimulus_session
+from brainscore_core.streaming import check_response_formats
+from brainscore_core.streaming_helpers import apply_state_change, stimulus_session, task_input_channels
+
+from brainscore.model_helpers.intervention import INTERVENTION_CHANNELS
+from brainscore.selection import require_resolved
 
 from .runner import SessionProtocol, Tool
 from .tools import RecordInputsOutputs
@@ -37,45 +40,52 @@ class TaskProtocol(SessionProtocol):
     ``readout_fit`` says which network the readout is fitted on while a change
     is active: ``TaskContext(..., readout_fit='intact')`` fits it before the
     change and tests the changed network, as an animal trained before a lesion.
+    Only the subject's own interventions are switched off for that fit; a change
+    made by a network tool (``Ablate``, ``ScaleActivity``) stays on.
     """
 
     def __init__(self, stimuli, task, *, identifier='task', conditions=None,
                  repetitions=(0,), required_traits=(), metadata=None):
-        probe = stimulus_session(stimuli)
-        inputs = set()
-        while (event := probe.next_input()) is not None:
-            if event.channel != CONTROL_CHANNEL:
-                inputs.add(event.channel)
+        # The inputs the task presents from the table (core, the one derivation a benchmark uses too):
+        # its present entries or the catalog columns, and the instruction when the task gives one.
+        inputs = task_input_channels(stimuli, task)
         self.stimuli = stimuli
         self.task = task
         self.required_traits = frozenset(required_traits_for(required_traits, task.trial_memory))
         super().__init__(identifier, self._session, conditions=conditions, repetitions=repetitions,
-                         input_channels=inputs, output_channels=(), metadata=metadata)
+                         required_input_channels=inputs, requested_output_channels=(), metadata=metadata)
 
     def accept_requests(self, channels):
         if not channels:
             raise ValueError('Attach a recorder (RecordNeural, RecordBehavior): '
                              'nothing would be measured.')
         channels = set(channels)
-        if 'behavior' in channels:
+        formats = {c for c in channels if c.startswith('behavior:')}
+        if 'behavior' in channels or formats:
             if self.task.task_type == 'passive':
                 raise ValueError('A passive task produces no behavior; remove RecordBehavior '
                                  'or give the task a response (Choice, Scale, Text).')
-            if self.task.response is not None:
-                # Every kind of answer the response asks for: e.g. choice and confidence.
-                channels = (channels - {'behavior'}) | set(self.task.response.channels)
-        self.output_channels = frozenset(channels)
+        if formats and self.task.response is None:
+            raise ValueError(f'{sorted(formats)} need TaskContext(response=...); task_type '
+                             f'{self.task.task_type!r} answers on bare behavior.')
+        # Refused here, before any session is built, by the rule the session itself applies.
+        check_response_formats(sorted(formats), self.task)
+        if 'behavior' in channels and self.task.response is not None:
+            # Bare behavior is the response's first format: the choice of a Choice.
+            channels = (channels - {'behavior'}) | {self.task.response.channels[0]}
+        self.requested_output_channels = frozenset(channels)
 
     def validate(self, subject):
-        missing = self.required_traits - set(subject.traits)
-        if missing:
-            raise ValueError(f'This task needs subject traits {sorted(missing)}; '
-                             f'{subject.identifier!r} declares {sorted(subject.traits) or "none"}.')
+        # The required traits are checked with the channels by the one compatibility rule.
         if self.task.response is not None:
-            missing = set(self.task.response.channels) - set(subject.out_channels)
+            # The answer is given in every session, recorded or not; other formats
+            # only when a recorder asks for them.
+            needed = {self.task.response.channels[0]} | {
+                c for c in self.requested_output_channels if c.startswith('behavior:')}
+            missing = needed - set(subject.out_channels)
             if missing:
-                raise ValueError(f'Task response requires outputs {sorted(missing)} even when '
-                                 f'behavior is not recorded; subject {subject.identifier!r} '
+                raise ValueError(f'Task response requires outputs {sorted(missing)}; '
+                                 f'subject {subject.identifier!r} '
                                  f'declares {sorted(subject.out_channels)}.')
         super().validate(subject)
 
@@ -87,19 +97,19 @@ class TaskProtocol(SessionProtocol):
 
     @contextmanager
     def _session(self, repetition):
-        yield stimulus_session(self.stimuli, sorted(self.output_channels), task_context=self.task)
+        yield stimulus_session(self.stimuli, sorted(self.requested_output_channels), task=self.task)
 
 
 class _ChannelRecorder(RecordInputsOutputs):
     """Save only this recorder's output channels, under its own folder."""
 
     def validate(self, experiment):
-        missing = set(self.output_channels) - set(experiment.subject.out_channels)
+        missing = set(self.requested_output_channels) - set(experiment.subject.out_channels)
         if missing:
             raise ValueError(f'{experiment.subject.identifier!r} does not declare {sorted(missing)}')
 
     def _keeps(self, event):
-        return event['kind'] == 'output' and event['payload'].channel in self.output_channels
+        return event['kind'] == 'output' and event['payload'].channel in self.requested_output_channels
 
 
 class RecordNeural(_ChannelRecorder):
@@ -120,30 +130,64 @@ class RecordNeural(_ChannelRecorder):
             raise ValueError("during='prompt' is the only option: the forward pass that "
                              'reads the stimulus and instruction, before any generated token.')
         self.regions, self.during = list(regions), during
-        self.output_channels = frozenset(f'neural:{region}' for region in self.regions)
+        self.requested_output_channels = frozenset(f'neural:{region}' for region in self.regions)
 
     def describe(self):
         return {**super().describe(), 'regions': self.regions, 'during': self.during}
 
 
 class RecordBehavior(_ChannelRecorder):
-    """Record the subject's answers: every kind the task's response asks for.
+    """Record the subject's answers in ``formats``.
 
-    Read back with ``result.behavior()``, or ``result.behavior(measure='confidence')``.
+    By default the first format of the task's response: the choice of a
+    ``Choice``, the rating of a ``Scale``, the text of a ``Text``. ``formats``
+    names more, by the part of the channel after ``behavior:``, as
+    ``result.behavior(measure=...)`` reads them: for example
+    ``RecordBehavior(['choice', 'probabilities'])``. A format that the task's
+    response does not name is refused before the run. Read back with
+    ``result.behavior()``, or ``result.behavior(measure='probabilities')``.
     """
     name = 'behavior'
-    output_channels = frozenset({'behavior'})
+
+    def __init__(self, formats=None, *, max_bytes=None):
+        super().__init__(max_bytes=max_bytes)
+        if formats is None:
+            self.formats = None
+            self.requested_output_channels = frozenset({'behavior'})
+            return
+        if isinstance(formats, str) or not formats:
+            raise ValueError("Pass a nonempty list of formats, e.g. ['choice', 'probabilities']")
+        self.formats = list(formats)
+        self.requested_output_channels = frozenset(f'behavior:{name}' for name in self.formats)
+
+    def describe(self):
+        described = super().describe()
+        return described if self.formats is None else {**described, 'formats': self.formats}
+
+    def validate(self, experiment):
+        # The protocol requests the channels of the task's response in place of bare
+        # behavior (TaskProtocol.accept_requests); the subject must declare those.
+        requested = {c for c in experiment.protocol.requested_output_channels
+                     if c == 'behavior' or c.startswith('behavior:')}
+        missing = requested - set(experiment.subject.out_channels)
+        if missing:
+            raise ValueError(f'{experiment.subject.identifier!r} does not declare {sorted(missing)}')
 
     def _keeps(self, event):
-        channel = event['payload'].channel if event['kind'] == 'output' else ''
+        # The subject's answers, and the finalized answers the runner publishes after
+        # each session (their trial states; ExperimentResult.trials reads them).
+        channel = event['payload'].channel if event['kind'] in ('output', 'answer') else ''
         return channel == 'behavior' or channel.startswith('behavior:')
 
 
 class Intervene(Tool):
-    """Apply one undoable change through the subject's own ``intervention``.
+    """Apply one intervention through the subject's own ``intervention`` part.
 
-    The change is applied at the start of each matching repetition and undone at
-    its end. Targets use the subject's layer paths, as in ``region_layer_map``.
+    The change is sent with ``apply_state_change`` on its declared channel
+    (``lesion``, ``stimulation`` or ``pharmacological``) at the start of each
+    matching repetition, and undone by its handle at the end. Targets use the
+    subject's layer paths, as in ``region_layer_map``; resolve a
+    ``FunctionalSelection`` or ``RandomSelection`` before you build the change.
     """
     name = 'intervention'
     phase = 'intervene'
@@ -159,9 +203,13 @@ class Intervene(Tool):
                 'perturbation': self.change.perturbation.kind, 'conditions': self.conditions}
 
     def validate(self, experiment):
-        if 'lesion' not in experiment.subject.in_channels and \
-                'stimulation' not in experiment.subject.in_channels:
-            raise ValueError(f'{experiment.subject.identifier!r} declares no intervention')
+        require_resolved(self.change)
+        subject = experiment.subject
+        if not set(INTERVENTION_CHANNELS) & set(subject.in_channels) \
+                or 'perturbation' not in subject.out_channels:
+            raise ValueError(f'{subject.identifier!r} declares no intervention: it needs one of '
+                             f'{list(INTERVENTION_CHANNELS)} in in_channels and perturbation in '
+                             f'out_channels, as BrainScoreModel(intervention=...) declares.')
 
     @contextmanager
     def attach(self, context):
@@ -170,8 +218,10 @@ class Intervene(Tool):
             return
         subject = context.experiment.subject
         applied = apply_state_change(subject, self.change)
-        context.publish('intervention', {'handle_id': applied.handle_id}, source=self.name)
         try:
+            # Once the change is applied its undo is certain, even when a
+            # subscriber of the publish raises.
+            context.publish('intervention', {'handle_id': applied.handle_id}, source=self.name)
             yield
         finally:
             apply_state_change(subject, StateChange(kind='reset', handle_id=applied.handle_id))

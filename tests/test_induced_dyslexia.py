@@ -1,6 +1,6 @@
 """Unit tests for the induced-dyslexia perturbation benchmark.
 
-No ROAR data or real models needed. Every candidate here is a contract subject:
+No ROAR data or real models needed. Every subject here is a contract subject:
 it implements only ``participate(session)``, ``reset()`` and its declarations,
 with no ``process`` and no private attributes. Tests the benchmark's own logic
 (localize, ablate, measure, reset), the specific-deficit computation, the
@@ -13,7 +13,7 @@ from brainscore_core import Subject
 from brainscore_core.compatibility import CompatibilityError, check_compatibility
 from brainscore_core.metrics import Score
 from brainscore import RandomSelection
-from brainscore_core.model_interface import PerturbationApplied, Selection
+from brainscore_core.events import PerturbationApplied, Selection
 from brainscore_core.streaming import StreamEvent
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
@@ -28,7 +28,7 @@ class _Subject(Subject):
     assembly, and reports the newest active lesion so the fake reader can react."""
     identifier = 'participate-only-stub'
     in_channels = {'text', 'lesion'}
-    out_channels = {'behavior', 'neural:VWFA', 'perturbation'}
+    out_channels = {'behavior:choice', 'neural:VWFA', 'perturbation'}
 
     def __init__(self, recording=None, fail_on_lesion=None):
         self.recording = recording
@@ -44,7 +44,7 @@ class _Subject(Subject):
 
     def participate(self, session):
         self.sessions += 1
-        requested = set(session.requested_output_channels)
+        requested = set(session.outputs)
         if requested == {'perturbation'}:
             change = session.next_input().payload
             if change.kind == 'reset':
@@ -72,22 +72,25 @@ class _Subject(Subject):
 
 
 class _Reader:
-    """Returns scripted reading accuracy by lesion kind on the candidate."""
+    """Returns scripted reading accuracy by lesion kind on the subject."""
     def __init__(self, accs):
         self.accs = accs
         self.seen = []
 
-    def __call__(self, candidate):
-        self.seen.append(candidate.active)
+    def __call__(self, subject):
+        self.seen.append(subject.active)
         s = Score(0.0)
-        s.attrs['raw'] = self.accs[candidate.active]
+        s.attrs['raw'] = self.accs[subject.active]
+        # A reading score carries the counts of its trial states and its policy.
+        s.attrs.update(n_trials=4, n_valid=3, n_invalid=1, n_missing=0,
+                       answer_policy='invalid: wrong, counted; missing: wrong, counted')
         return s
 
 
 def _make(accs, monkeypatch, canned):
     cand = _Subject()
     reader = _Reader(accs)
-    bench = InducedDyslexia(n_units=3, modality='text',
+    bench = InducedDyslexia(identifier='Yeatman2021-induced_dyslexia-text', n_units=3, channels=('text',),
                             reading_benchmark=reader, localizer_stimuli=None)
     monkeypatch.setattr(bench, '_localize', lambda c: canned)
     return bench, cand, reader
@@ -109,12 +112,12 @@ class TestScoring:
         bench, cand, reader = _make(
             {'none': 0.95, 'functional': 0.55, 'random': 0.90},
             monkeypatch, self.CANNED)
-        read = bench._reading_accuracy
-        def failing_read(candidate):
+        read = bench._reading_score
+        def failing_read(subject):
             if len(reader.seen) + 1 == failed_call:
                 raise RuntimeError('synthetic reading failure')
-            return read(candidate)
-        monkeypatch.setattr(bench, '_reading_accuracy', failing_read)
+            return read(subject)
+        monkeypatch.setattr(bench, '_reading_score', failing_read)
         with pytest.raises(RuntimeError, match='synthetic reading failure'):
             bench(cand)
         assert cand.lesions == {}
@@ -149,11 +152,11 @@ class TestScoring:
         assert reader.seen == ['caller', 'functional', 'random']
         assert score.attrs['baseline_accuracy'] == 0.80
 
-        def failing_read(candidate):
-            if candidate.active == 'functional':
+        def failing_read(subject):
+            if subject.active == 'functional':
                 raise RuntimeError('synthetic reading failure')
-            return accs[candidate.active]
-        monkeypatch.setattr(bench, '_reading_accuracy', failing_read)
+            return reader(subject)
+        monkeypatch.setattr(bench, '_reading_score', failing_read)
         with pytest.raises(RuntimeError, match='synthetic reading failure'):
             bench(cand)
         assert cand.lesions == {'caller-handle': 'caller'}
@@ -170,6 +173,12 @@ class TestScoring:
         assert abs(score.attrs['specific_deficit'] - 0.35) < 1e-9
         assert score.attrs['dyslexic'] is True
         assert float(score) == 0.55
+        # The counts of the three readings: sums, and each condition apart.
+        assert (score.attrs['n_trials'], score.attrs['n_invalid'], score.attrs['n_missing']) == (12, 3, 0)
+        assert set(score.attrs['counts_by_condition']) == {'intact', 'lesion', 'random_control'}
+        assert score.attrs['counts_by_condition']['lesion'] == {
+            'n_trials': 4, 'n_valid': 3, 'n_invalid': 1, 'n_missing': 0}
+        assert score.attrs['answer_policy'] == 'invalid: wrong, counted; missing: wrong, counted'
         # intact, then lesioned, then random control; no lesion left afterwards
         assert reader.seen == ['none', 'functional', 'random']
         assert cand.lesions == {}
@@ -199,14 +208,14 @@ class TestScoring:
 
 class TestPreflight:
     def _bench(self):
-        return InducedDyslexia(modality='text', reading_benchmark=_Reader({}),
+        return InducedDyslexia(identifier='Yeatman2021-induced_dyslexia-text', channels=('text',), reading_benchmark=_Reader({}),
                                localizer_stimuli=None)
 
     def test_declares_what_it_sends_and_needs(self):
         bench = self._bench()
         assert bench.required_input_channels == {'text', 'instruction', 'lesion'}
         assert bench.trial_memory == 'none'
-        assert bench.requested_output_channels == {'behavior', 'neural:VWFA', 'perturbation'}
+        assert bench.requested_output_channels == {'behavior:choice', 'neural:VWFA', 'perturbation'}
 
     def test_compatible_subject_matches(self):
         match = check_compatibility(_Subject(), self._bench())
@@ -221,22 +230,36 @@ class TestPreflight:
         assert subject.sessions == 0
 
     @pytest.mark.parametrize('in_channels', [{'text', 'stimulation'}, {'text'}])
-    def test_subject_without_lesion_input_is_na_before_compute(self, in_channels):
-        # Declares every requested output, but not the lesion input. Pre-flight
-        # passes (inputs need only overlap, rule 5.2), so the benchmark refuses
-        # it from the declaration before any session.
+    def test_subject_without_lesion_input_is_na_in_pre_flight(self, in_channels):
+        # Declares every requested output, but not the lesion input: its lesion
+        # record is answered only from the intervention inputs it takes (pre-flight
+        # rule 4), and the benchmark sends none of them, so the pair is N/A.
         subject = _Subject()
         subject.in_channels = in_channels
-        check_compatibility(subject, self._bench())
-        with pytest.raises(CompatibilityError, match='lesion'):
-            self._bench()(subject)
+        with pytest.raises(CompatibilityError, match="'perturbation'"):
+            check_compatibility(subject, self._bench())
         assert subject.sessions == 0
+
+    @pytest.mark.parametrize('listed', [{'text'}, {'text', 'lesion'}])
+    def test_a_subject_that_lists_its_lesion_record_from_text_is_refused_before_compute(self, listed):
+        # The record answers the lesion in every case: a stated map that gives it from
+        # another input is a malformed declaration, refused by pre-flight in score().
+        import brainscore
+
+        class _ListsText(_Subject):
+            output_inputs = property(lambda self: {'perturbation': frozenset(listed)})
+        subject = _ListsText()
+        with pytest.raises(ValueError, match="lists 'perturbation' in output_inputs from"):
+            check_compatibility(subject, self._bench())
+        with pytest.raises(ValueError, match='list only intervention inputs'):
+            brainscore.score(subject, self._bench(), check_mem=False)
+        assert subject.sessions == 0 and subject.applies == 0
 
     def test_an_addressed_lesion_declaration_is_refused_by_pre_flight(self):
         # The lesion channel has no address: the target is in the StateChange.
         subject = _Subject()
         subject.in_channels = {'text', 'lesion:other'}
-        with pytest.raises(CompatibilityError, match='not addressable'):
+        with pytest.raises(ValueError, match='not addressable'):
             check_compatibility(subject, self._bench())
         assert subject.sessions == 0
 
@@ -274,7 +297,7 @@ class TestCompositeLocalize:
 
     def test_picks_real_selective_per_layer(self):
         cand = _Subject(recording=self._assembly())
-        bench = InducedDyslexia(localizer_region='VWFA', n_units=1, modality='text',
+        bench = InducedDyslexia(identifier='Yeatman2021-induced_dyslexia-text', localizer_region='VWFA', n_units=1, channels=('text',),
                                 reading_benchmark=_Reader({}),
                                 localizer_stimuli=self._stimuli())
         sels = bench._localize(cand)
@@ -287,7 +310,7 @@ class TestCompositeLocalize:
 
     def test_recording_without_layer_is_refused_before_any_lesion(self):
         cand = _Subject(recording=self._assembly(with_layer=False))
-        bench = InducedDyslexia(n_units=1, modality='text', reading_benchmark=_Reader({}),
+        bench = InducedDyslexia(identifier='Yeatman2021-induced_dyslexia-text', n_units=1, channels=('text',), reading_benchmark=_Reader({}),
                                 localizer_stimuli=self._stimuli())
         with pytest.raises(ValueError, match="no 'layer' coord"):
             bench._localize(cand)
@@ -301,12 +324,12 @@ class _ReaderSubject(Subject):
 
     Units 0 and 1 carry word form; with both silenced the subject calls every
     string real. It speaks only through ``participate``: neural activity as one
-    assembly with a ``layer`` coord, answers as one probability row per trial,
+    assembly with a ``layer`` coord, answers as one choice cell per trial,
     lesions as records.
     """
     identifier = 'participate-only-reader'
     in_channels = {'text', 'lesion'}
-    out_channels = {'behavior', 'neural:VWFA', 'perturbation'}
+    out_channels = {'behavior:choice', 'neural:VWFA', 'perturbation'}
 
     def __init__(self):
         self.silenced = {}
@@ -320,7 +343,7 @@ class _ReaderSubject(Subject):
         return units
 
     def participate(self, session):
-        requested = set(session.requested_output_channels)
+        requested = set(session.outputs)
         if requested == {'perturbation'}:
             change = session.next_input().payload
             if change.kind == 'reset':
@@ -350,9 +373,8 @@ class _ReaderSubject(Subject):
         silenced = set().union(*self.silenced.values())
         for event in events:
             real = event.payload.startswith('real') or {0, 1} <= silenced
-            session.respond(StreamEvent('behavior', np.array([1.0, 0.0] if real else [0.0, 1.0]),
-                                        event.t_ms, {'stimulus_id': event.meta['stimulus_id'],
-                                                     'label_set': ['real', 'pseudo']}))
+            session.respond(StreamEvent('behavior:choice', 'real' if real else 'pseudo',
+                                        event.t_ms, {'stimulus_id': event.meta['stimulus_id']}))
 
     def reset(self):
         self.silenced.clear()
@@ -364,7 +386,9 @@ def synthetic_roar(monkeypatch):
     ids = [f's{i}' for i in range(500)]
     labels = ['real'] * 250 + ['pseudo'] * 250
     words = [f'{label}-{i}' for i, label in enumerate(labels)]
-    stimuli = StimulusSet({'stimulus_id': ids, 'sentence': words, 'image_label': labels})
+    # As the data plugin gives it: the word as an image file and as a string.
+    stimuli = StimulusSet({'stimulus_id': ids, 'image_file_name': [f'{sid}.png' for sid in ids],
+                           'sentence': words, 'image_label': labels})
     stimuli.identifier = 'synthetic-roar-dyslexia'
     stimuli.stimulus_paths = {sid: sid for sid in ids}
     monkeypatch.setattr(roar, 'load_stimulus_set', lambda identifier: stimuli)
@@ -374,7 +398,7 @@ def synthetic_roar(monkeypatch):
 
 def test_participate_only_subject_runs_the_benchmark(synthetic_roar):
     subject = _ReaderSubject()
-    bench = InducedDyslexia(n_units=2, modality='text')
+    bench = InducedDyslexia(identifier='Yeatman2021-induced_dyslexia-text', n_units=2, channels=('text',))
     check_compatibility(subject, bench)
     score = bench(subject)
     assert score.attrs['baseline_accuracy'] == 1.0

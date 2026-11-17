@@ -66,13 +66,11 @@ def test_only_opted_in_models_gain_the_channels(capability):
 
 
 def test_wrong_payloads_are_rejected(capability):
-    # Wrong type, or the right dataclass holding a wrong field: rejected up front.
+    # Wrong type, or the right dataclass holding a wrong field: rejected up front,
+    # before any model sees the request.
     for payload in ('not a request', capability.WordRequest(text=42)):
         with pytest.raises(ValueError):
             Session([StreamEvent(channel=capability.REQUEST, payload=payload, t_ms=0.0)], [capability.RESULT])
-        with pytest.raises(ValueError):
-            capability.build_model().process(
-                StreamEvent(channel=capability.REQUEST, payload=payload, t_ms=0.0))
 
 
 def test_bad_settings_fail_before_counting(capability):

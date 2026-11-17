@@ -10,7 +10,7 @@ from brainscore.experiments import (
     compare_outputs, replay_sessions,
 )
 from brainscore.run_record import RecordingBudgetExceeded, RunRecord
-from brainscore.tools import attach_tools, list_tools, load_tool
+from brainscore.tools import attach_tools, load_tool
 from brainscore_core.contract import Subject
 from brainscore_core.streaming import Session, StreamEvent
 
@@ -34,18 +34,14 @@ def protocol() -> SessionProtocol:
     @contextmanager
     def factory(trial):
         yield Session([StreamEvent('observation', [[1., 2.]], None)])
-    return SessionProtocol('record-io-check', factory, input_channels=['observation'],
-                           output_channels=['behavior'], repetitions=[0, 1])
+    return SessionProtocol('record-io-check', factory, required_input_channels=['observation'],
+                           requested_output_channels=['behavior'], repetitions=[0, 1])
 
 
-def test_loader_returns_existing_recorder_and_preserves_default_configuration():
-    loaded = load_tool('record-io')
-    assert type(loaded) is RecordInputsOutputs
-    assert loaded.name == 'inputs_outputs' and loaded.phase == 'observe'
-    assert loaded.describe() == RecordInputsOutputs().describe()
-    assert loaded is not load_tool('record-io')
+def test_loader_passes_the_recorder_configuration():
+    # The default configuration is in test_ablation_tool_loader.py::
+    # test_a_loaded_tool_is_the_existing_class_with_the_same_configuration.
     assert load_tool('record-io', max_bytes=1000).describe() == {'max_bytes': 1000}
-    assert 'record-io' in list_tools()
 
 
 def test_loaded_recorder_preserves_outputs_and_supports_existing_replay(tmp_path):

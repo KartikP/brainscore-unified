@@ -1,4 +1,5 @@
 """Qualification gates run offline in CI; trained checkpoints run explicitly."""
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -6,6 +7,12 @@ from types import SimpleNamespace
 
 import pytest
 import torch
+
+
+# check_model fits LEACE with the reference implementation.
+NEEDS_CONCEPT_ERASURE = pytest.mark.skipif(
+    importlib.util.find_spec('concept_erasure') is None,
+    reason='concept-erasure is not installed; install brainscore[test] (or brainscore[interpretability])')
 
 
 @pytest.fixture(autouse=True)
@@ -37,6 +44,7 @@ class Encoder(torch.nn.Module):
         return SimpleNamespace(last_hidden_state=self.final_norm(values.cumsum(1)))
 
 
+@NEEDS_CONCEPT_ERASURE
 def test_complete_qualification_gates_on_small_fixture(tmp_path):
     from interpretability_qualification import check_model
     report = check_model(tmp_path, Encoder(), Tokenizer(), 'final_norm', {'fixture': True})
@@ -55,6 +63,7 @@ def test_incorrect_or_unmeasured_values_fail_qualification(observed, expected):
         check_close(observed, expected, 'deliberately invalid')
 
 
+@NEEDS_CONCEPT_ERASURE
 def test_native_reference_detects_an_extractor_output_mismatch(tmp_path):
     from interpretability_qualification import check_model
 

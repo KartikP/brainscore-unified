@@ -147,6 +147,9 @@ jobs:
       - name: Install CPU Torch on Linux
         if: (runner.os == 'Linux') && steps.scope.outputs.skip != 'true'
         run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" torch
+      - name: Install ffmpeg
+        if: steps.scope.outputs.skip != 'true'
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" ffmpeg
       - name: Install coordinated packages
         if: steps.scope.outputs.skip != 'true'
         run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" install

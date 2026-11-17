@@ -2,7 +2,8 @@
 import argparse
 import sys
 from . import local
-from .preparation import data_builder_registry, prepare_dataset
+from brainscore import data_builder_registry
+from .preparation import prepare_dataset
 
 
 def main(argv: list[str] | None = None) -> int:

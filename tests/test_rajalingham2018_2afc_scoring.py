@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from brainscore.benchmarks.rajalingham2018_2afc import benchmark as B
+from brainscore.tools.rajalingham2018_2afc import benchmark as B
 
 
 def _synthetic(seed=0, n_obj=6, imgs_per_obj=8, reps=10):
@@ -70,20 +70,28 @@ def test_random_scores_near_zero_and_copy_scores_higher():
 
 
 def test_two_afc_model_runs_through_participate():
-    """The montage subject answers through participate; trials that share an
+    """A subject with an answer part answers through participate; trials that share an
     image (both sides of one condition) stay separate because the driver joins
     answers to its own trial table by the trial stimulus_id."""
-    from brainscore.benchmarks.rajalingham2018_2afc.score_2afc import (
-        INSTRUCTION_DIRECT, TwoAFCModel, run_trials)
+    from brainscore import BrainScoreModel
+    from brainscore.tools.rajalingham2018_2afc.score_2afc import INSTRUCTION_DIRECT, run_trials
     stim = pd.DataFrame([
         {'stimulus_id': 'trial_00000L', 'image_path': 'm0', 'image_id': 'img0',
          'sample_obj': 'wrench', 'dist_obj': 'rhino', 'left_obj': 'wrench', 'right_obj': 'rhino'},
         {'stimulus_id': 'trial_00000R', 'image_path': 'm1', 'image_id': 'img0',
          'sample_obj': 'wrench', 'dist_obj': 'rhino', 'left_obj': 'rhino', 'right_obj': 'wrench'},
     ])
-    model = TwoAFCModel('left', lambda row: 'LEFT', mode='random', instruction=INSTRUCTION_DIRECT)
-    assert set(model.in_channels) == {'vision:image'} and set(model.out_channels) == {'behavior'}
+    model = BrainScoreModel('left', in_channels={'vision:image'},
+                            answer=lambda stimulus_row, instruction, label_set: 'LEFT')
+    assert set(model.in_channels) == {'vision:image', 'instruction', 'control'}
     choices = run_trials(model, stim, INSTRUCTION_DIRECT)
     assert list(choices['choice']) == ['wrench', 'rhino']
     assert list(choices['image_id']) == ['img0', 'img0']
     assert list(choices['left_obj']) == ['wrench', 'rhino']
+
+
+def test_the_csv_files_are_read_from_the_data_plugin():
+    from brainscore.data import rajalingham2018_2afc as data
+    assert data.TRIALS_CSV.is_file() and data.TOKENS_CSV.is_file()
+    assert B.TRIALS_CSV == data.TRIALS_CSV
+    assert len(B.load_trials()) == 5018 and len(B.load_tokens()) == 24

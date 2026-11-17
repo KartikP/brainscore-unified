@@ -24,10 +24,10 @@ torch.set_num_threads(4)
 started = time.time()
 
 # Use the registered model and benchmark without changing their settings.
-model = brainscore.load_model('gpt2')
+model = brainscore.load_model('gpt2-small')
 benchmark = brainscore.load_benchmark('LeBel2023-UTS03-encoding')
 score = benchmark(model)
-per_vertex = np.asarray(score.attrs['raw'])
+per_vertex = np.asarray(score.attrs['per_vertex_r'])
 # The full benchmark uses None to mean every target in assembly order.
 selected = score.attrs['target_index']
 indices = np.arange(len(per_vertex)) if selected is None else np.asarray(selected)
@@ -45,7 +45,7 @@ with _pickle_path().open('rb') as handle:
     data_hash = hashlib.file_digest(handle, 'sha256').hexdigest()
 metadata = {
     'measured': True,
-    'model': 'gpt2',
+    'model': 'gpt2-small',
     'layer': 'h.11',
     'benchmark': 'LeBel2023-UTS03-encoding',
     'subject': 'UTS03',

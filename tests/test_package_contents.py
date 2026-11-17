@@ -11,7 +11,7 @@ def make_wheel(tmp_path, extra=None, missing=None):
     files = {
         'brainscore/models/vjepa_v1/backbone/LICENSE': 'license',
         'brainscore/models/vjepa_v1/backbone/NOTICE.md': 'attribution',
-        'brainscore/benchmarks/rajalingham2018_2afc/trials.csv': 'trial\n',
+        'brainscore/data/rajalingham2018_2afc/trials.csv': 'trial\n',
     }
     files.update(extra or {})
     if missing:

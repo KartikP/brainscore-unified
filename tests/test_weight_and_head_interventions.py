@@ -5,7 +5,7 @@ import torch
 from brainscore.brainscore_model import BrainScoreModel
 from brainscore_core.events import Perturbation, Selection, StateChange
 from brainscore_core.streaming_helpers import apply_state_change
-from brainscore.perturbation import build_pytorch_ablation_fn
+from brainscore.model_helpers.intervention import pytorch_intervention
 
 pytestmark = pytest.mark.unit
 
@@ -23,14 +23,15 @@ class Attention(torch.nn.Module):
 class Net(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        torch.manual_seed(0)
-        self.proj = torch.nn.Linear(3, 8)
-        self.attn = Attention()
+        with torch.random.fork_rng():
+            torch.manual_seed(0)
+            self.proj = torch.nn.Linear(3, 8)
+            self.attn = Attention()
 
 
 def _subject(net):
-    return BrainScoreModel('net', model=net, supported_modalities={'vision'},
-                           intervention=build_pytorch_ablation_fn(net))
+    return BrainScoreModel('net', model=net, in_channels={'vision:image'},
+                           intervention=pytorch_intervention(net))
 
 
 def test_a_weight_edit_changes_outputs_and_undo_restores_it_exactly():

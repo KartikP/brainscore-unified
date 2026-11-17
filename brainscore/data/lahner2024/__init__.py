@@ -1,8 +1,16 @@
-"""Data plugin for Lahner2024 BOLDMoments assets."""
+"""Data plugin for Lahner2024 BOLDMoments assets.
 
+The stimuli and the responses are hosted. Two local assets are prepared on this
+machine from the hosted clips, by the scripts in ``data_packaging/``: the frames
+a stills-only subject sees (``prepare_frames``) and the sound tracks
+(``prepare_audio_tracks``).
+"""
+
+from pathlib import Path
 from typing import Optional
 
 from brainscore import data_registry, stimulus_set_registry
+from brainscore.data import local
 
 
 STIMULUS_ID = 'BOLDMoments'
@@ -25,6 +33,47 @@ TIMERESOLVED_EVENTS_SHA1: Optional[str] = '783c5b33a75f121812a49b8b0a7639b9ed07c
 TIMERESOLVED_MOTION_ID = 'Lahner2024-fMRI-timeresolved-motion'
 TIMERESOLVED_MOTION_VERSION_ID: Optional[str] = 'wR1CwATaRjpEgvpR4ozr_UzkTS6yitjR'
 TIMERESOLVED_MOTION_SHA1: Optional[str] = '827130c78f6b706b52f6d0d28962eb2301bee00b'
+
+# The frames a stills-only subject sees from each 3-second clip: start, middle, end.
+DEFAULT_SAMPLE_TIMES_MS = (500, 1500, 2500)
+
+_FRAMES_COMMAND = 'python -m brainscore.data.lahner2024.data_packaging.prepare_frames'
+_SOUND_COMMAND = 'python -m brainscore.data.lahner2024.data_packaging.prepare_audio_tracks'
+_CLIPS_SOURCE = ('https://openneuro.org/datasets/ds005165 (BOLD Moments; the clips are the '
+                 'hosted stimulus set BOLDMoments, which brainscore.load_stimulus_set fetches)')
+
+# Both assets are needed only by the route a subject takes (frames for a subject
+# that takes vision:image and not vision:video, sound for one that takes audio),
+# so no benchmark identifier is listed: the benchmark checks them when it reads them.
+LAHNER_FRAMES = local.register(local.LocalAsset(
+    name='lahner2024-frames',
+    env_var='BRAINSCORE_LAHNER_FRAMES_DIR',
+    default_path='brainscore-data/lahner2024/frames',
+    kind='stimuli',
+    why_local='The frames are cut on this machine from the hosted clips; '
+              'Brain-Score hosts the clips, not the frames.',
+    source=_CLIPS_SOURCE,
+    obtain='Nothing to download: the extractor reads the hosted clips.',
+    prepare=_FRAMES_COMMAND,
+))
+
+LAHNER_SOUND = local.register(local.LocalAsset(
+    name='lahner2024-sound',
+    env_var='BRAINSCORE_LAHNER_SOUND_DIR',
+    default_path='.brainio/lahner2024_audio_16k',
+    kind='stimuli',
+    why_local='The sound tracks (16 kHz mono WAV, one per clip) are demuxed on this '
+              'machine from the hosted clips; Brain-Score does not host them.',
+    source=_CLIPS_SOURCE,
+    obtain='Nothing to download: the converter reads the hosted clips (it needs ffmpeg).',
+    prepare=_SOUND_COMMAND,
+))
+
+
+def frame_file(frames_dir: Path, video_path, time_ms: float) -> Path:
+    """The prepared frame of ``video_path`` at ``time_ms``: ``<stem>_t<ms>.png``."""
+    return Path(frames_dir) / f'{Path(video_path).stem}_t{int(time_ms)}.png'
+
 
 MOTION_COLUMNS = [
     'trans_x', 'trans_y', 'trans_z',
@@ -106,29 +155,21 @@ def load_lahner2024_timeresolved_assembly(
     )
 
 
-def _s3_key(filename: str) -> tuple[str, str]:
-    bucket, *prefix = STIMULUS_BUCKET.split('/', 1)
-    key = f'{prefix[0]}/{filename}' if prefix else filename
-    return bucket, key
-
-
-def _load_csv_sidecar(filename: str, version_id: Optional[str],
+def _load_csv_sidecar(identifier: str, version_id: Optional[str],
                       sha1: Optional[str], prep_script: str):
-    import io
-
-    import boto3
+    """A hosted CSV sidecar, fetched once, checked against its sha1 and cached."""
     import pandas as pd
+    from brainscore_core.supported_data_standards.brainio.s3 import get_path
 
-    _require_hosted(filename, version_id, sha1, prep_script)
-    bucket, key = _s3_key(filename)
-    obj = boto3.client('s3').get_object(
-        Bucket=bucket, Key=key, VersionId=version_id)
-    return pd.read_csv(io.BytesIO(obj['Body'].read()))
+    _require_hosted(identifier, version_id, sha1, prep_script)
+    bucket, folder = STIMULUS_BUCKET.split('/', 1)
+    return pd.read_csv(get_path(identifier, 'csv', bucket, version_id, sha1,
+                                filename_prefix='', folder_name=folder))
 
 
 def load_lahner2024_timeresolved_events():
     return _load_csv_sidecar(
-        'Lahner2024-fMRI-timeresolved-events.csv',
+        TIMERESOLVED_EVENTS_ID,
         TIMERESOLVED_EVENTS_VERSION_ID,
         TIMERESOLVED_EVENTS_SHA1,
         "python -m brainscore.data.lahner2024.data_packaging.prepare_timeresolved_assembly",
@@ -137,7 +178,7 @@ def load_lahner2024_timeresolved_events():
 
 def load_lahner2024_timeresolved_motion():
     return _load_csv_sidecar(
-        'Lahner2024-fMRI-timeresolved-motion.csv',
+        TIMERESOLVED_MOTION_ID,
         TIMERESOLVED_MOTION_VERSION_ID,
         TIMERESOLVED_MOTION_SHA1,
         "python -m brainscore.data.lahner2024.data_packaging.prepare_motion_sidecar",

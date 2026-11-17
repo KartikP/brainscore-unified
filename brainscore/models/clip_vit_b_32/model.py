@@ -13,13 +13,14 @@ are therefore relative to the respective sub-module root.
 
 import functools
 
-from PIL import Image
-from transformers import CLIPModel, CLIPProcessor
+import torch
+from transformers import CLIPConfig, CLIPModel, CLIPProcessor
 
 from brainscore.model_helpers.text_wrapper import TextWrapper
 from brainscore import BrainScoreModel, LayerSelector
 from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
 from brainscore_core.hf_compat import pin_image_processor
+from brainscore.models._shared import _load_preprocess_images
 
 
 REGION_LAYER_MAP = {
@@ -33,49 +34,49 @@ REGION_LAYER_MAP = {
 }
 
 
-def _load_preprocess_images(image_filepaths, processor, image_size=224):
-    """Load and preprocess images using CLIPProcessor."""
-    images = []
-    for path in image_filepaths:
-        with Image.open(path) as img:
-            if img.mode not in ('RGB',):
-                img = img.convert('RGB')
-            images.append(img.copy())
+def load_clip(random_init: bool = False):
+    """CLIP ViT-B/32 and its processor (image part pinned): the one load of the family.
 
-    processed = processor(images=images, return_tensors='pt')
-    return processed['pixel_values'].numpy()
+    ``random_init`` gives the untrained null: the same architecture from the
+    checkpoint's config, weights initialised by the model with torch seed 0.
+    """
+    # Pin the image-processor implementation: transformers 5 rebinds the class
+    # names, moving the default from PIL to torchvision and shifting pixels.
+    clip_processor = CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')
+    clip_processor = pin_image_processor(clip_processor, 'openai/clip-vit-base-patch32')
+    if random_init:
+        config = CLIPConfig.from_pretrained('openai/clip-vit-base-patch32')
+        torch.manual_seed(0)
+        return CLIPModel(config), clip_processor
+    return CLIPModel.from_pretrained('openai/clip-vit-base-patch32'), clip_processor
+
+
+def picture_extractor(clip_model, clip_processor, identifier: str, backbone_id=None) -> PytorchWrapper:
+    """The picture extractor of every CLIP registration: the vision model with the image loader.
+
+    ``identifier`` labels the activations; ``backbone_id`` names the stored
+    path of the legacy wrapper (its ``identifier`` when None).
+    """
+    return PytorchWrapper(
+        identifier=identifier,
+        backbone_id=backbone_id,
+        model=clip_model.vision_model,
+        preprocessing=functools.partial(_load_preprocess_images, processor=clip_processor),
+    )
 
 
 def get_model(identifier: str) -> BrainScoreModel:
     assert identifier == 'clip-vit-b-32'
-
-# Pin the image-processor implementation: transformers 5 rebinds the class
-    # names, moving the default from PIL to torchvision and shifting pixels.
-    clip_processor = CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')
-    clip_processor = pin_image_processor(clip_processor, 'openai/clip-vit-base-patch32')
-    clip_model = CLIPModel.from_pretrained('openai/clip-vit-base-patch32')
-
-    preprocessing = functools.partial(
-        _load_preprocess_images,
-        processor=clip_processor,
-        image_size=224,
-    )
-
-    # Vision: PytorchWrapper wraps vision_model sub-module.
-    activations_model = PytorchWrapper(
-        identifier=identifier,
-        model=clip_model.vision_model,
-        preprocessing=preprocessing,
-    )
-    activations_model.image_size = 224
+    clip_model, clip_processor = load_clip()
+    vision_wrapper = picture_extractor(clip_model, clip_processor, identifier)
 
     # Text: TextWrapper wraps text_model sub-module. CLIP's text encoder is
-    # bidirectional (BERT-like), so mean_tokens aggregation is appropriate.
+    # bidirectional (BERT-like), so mean aggregation is appropriate.
     text_wrapper = TextWrapper(
         model=clip_model.text_model,
         tokenizer=clip_processor.tokenizer,
         identifier=f'{identifier}-text',
-        layer_aggregation='mean_tokens',
+        layer_aggregation='mean',
         max_length=77,
     )
 
@@ -90,12 +91,13 @@ def get_model(identifier: str) -> BrainScoreModel:
             for region, layer in REGION_LAYER_MAP.items()
         },
         extractor={
-            'vision': activations_model,
+            'vision': vision_wrapper,
             'text': text_wrapper,
         },
-        visual_degrees=8,
         # Behavioral readout uses the final vision encoder block (matches
         # the 'IT' layer convention). Behavioral benchmarks like Ferguson2024
         # will fit a logistic readout on top of this layer's features.
         behavioral_readout_layer='encoder.layers.10',
+        # The readout derives the choice from its probabilities by argmax.
+        capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}},
     )

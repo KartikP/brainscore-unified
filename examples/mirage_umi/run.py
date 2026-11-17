@@ -15,7 +15,7 @@ from brainscore.experiments import (
     Experiment, RecordInputsOutputs, SessionProtocol, compare_outputs, replay_sessions,
 )
 from brainscore.models.mirage import MirageRuntime, MirageSubject
-from brainscore.models.mirage.model import OUTPUT_CHANNEL, SUBJECTS
+from brainscore.models.mirage.model import OUTPUT_CHANNEL, PARTICIPANTS
 from brainscore_core.streaming import Session, StreamEvent
 
 
@@ -28,7 +28,7 @@ def main() -> None:
     parser.add_argument('--video', required=True, type=Path)
     parser.add_argument('--transcript', required=True, type=Path)
     parser.add_argument('--out', required=True, type=Path)
-    parser.add_argument('--subject', default='sub-01', choices=SUBJECTS)
+    parser.add_argument('--participant', default='sub-01', choices=PARTICIPANTS)
     parser.add_argument('--device', default='cuda')
     parser.add_argument('--timeout-s', type=float, default=1200.0)
     args = parser.parse_args()
@@ -53,7 +53,7 @@ def main() -> None:
         '--video', str(local_video.resolve()),
         '--transcript', str(args.transcript.resolve()),
         '--run-dir', str(args.run_dir.resolve()),
-        '--subject-idx', str(SUBJECTS.index(args.subject)),
+        '--subject-idx', str(PARTICIPANTS.index(args.participant)),
         '--device', args.device, '--batch-size', '1', '--output', str(direct_path.resolve()),
     ]
     with (args.out / 'direct.log').open('wb') as log:
@@ -62,10 +62,10 @@ def main() -> None:
     native = np.load(direct_path, allow_pickle=False)
     runtime = MirageRuntime(
         python_executable=args.mirage_python, source_dir=args.source_dir,
-        run_dir=args.run_dir, work_dir=args.work_dir, subject=args.subject,
+        run_dir=args.run_dir, work_dir=args.work_dir, participant=args.participant,
         device=args.device, batch_size=1, timeout_s=args.timeout_s,
     )
-    subject = MirageSubject(predictor=runtime, subject=args.subject)
+    subject = MirageSubject(predictor=runtime, participant=args.participant)
 
     @contextmanager
     def factory(_trial):
@@ -81,7 +81,7 @@ def main() -> None:
         subject=subject,
         protocol=SessionProtocol(
             'mirage-native-fidelity', factory,
-            input_channels=('vision:video', 'audio', 'text'), output_channels=(OUTPUT_CHANNEL,),
+            required_input_channels=('vision:video', 'audio', 'text'), requested_output_channels=(OUTPUT_CHANNEL,),
         ),
         tools=(RecordInputsOutputs(),), output_dir=args.out / 'record',
         metadata={'purpose': 'integration fidelity; no human response data or fitting'},

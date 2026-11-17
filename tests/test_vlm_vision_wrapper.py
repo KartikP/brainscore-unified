@@ -16,8 +16,8 @@ from PIL import Image
 pytestmark = pytest.mark.slow  # loads real Qwen2.5-VL-3B weights — run on demand
 
 from brainscore import BrainScoreModel
-from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+from tests.vlm_same_image import assert_same_image
 
 
 @pytest.fixture(scope='module')
@@ -36,10 +36,7 @@ def qwen_vision_wrapper(request):
         model=qwen_model.model.visual,
         processor=qwen_processor,
         identifier='qwen2.5-vl-3b-vision-test',
-        image_input_key='pixel_values',
-        forward_kwargs_map={'grid_thw': 'image_grid_thw'},
-        patch_count_fn=lambda out: [int(t * h * w) for t, h, w in out['image_grid_thw']],
-        layer_aggregation='mean_patches',
+        layer_aggregation='mean',
         batch_size=2,
     )
     from brainscore.validation.integration_checks import record_placement
@@ -56,7 +53,9 @@ def _make_image_stimuli(n=3, identifier_suffix=''):
     tmpdir = tempfile.mkdtemp()
     paths = {}
     for i in range(n):
-        img = Image.fromarray(np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8))
+        # Seeded, and different for each call (the counter), so cache entries stay apart.
+        pixels = np.random.RandomState(1000 * _img_counter + i).randint(0, 255, (224, 224, 3), dtype=np.uint8)
+        img = Image.fromarray(pixels)
         img_path = os.path.join(tmpdir, f'img{i}.png')
         img.save(img_path)
         paths[f'img{i}'] = img_path
@@ -79,10 +78,6 @@ def image_stimuli():
 
 
 class TestVLMVisionWrapperBasic:
-    def test_returns_neuroid_assembly(self, qwen_vision_wrapper, image_stimuli):
-        result = qwen_vision_wrapper(image_stimuli, layers=['blocks.28'])
-        assert isinstance(result, NeuroidAssembly)
-
     def test_shape_is_per_image(self, qwen_vision_wrapper, image_stimuli):
         """Critical test: the whole point of this wrapper is that output is
         (n_images, features), NOT (total_patches, features)."""
@@ -115,10 +110,8 @@ class TestPatchToImageAggregation:
         tmpdir = tempfile.mkdtemp()
         try:
             # Make image A deterministic, image B deterministic and different
-            np.random.seed(42)
-            img_a = Image.fromarray(np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8))
-            np.random.seed(99)
-            img_b = Image.fromarray(np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8))
+            img_a = Image.fromarray(np.random.RandomState(42).randint(0, 255, (224, 224, 3), dtype=np.uint8))
+            img_b = Image.fromarray(np.random.RandomState(99).randint(0, 255, (224, 224, 3), dtype=np.uint8))
 
             path_a = os.path.join(tmpdir, 'a.png')
             path_b = os.path.join(tmpdir, 'b.png')
@@ -145,10 +138,9 @@ class TestPatchToImageAggregation:
             r_with_b = qwen_vision_wrapper(stim_with_b, layers=['blocks.28'])
 
             alone_a = r_alone.values[0]
-            with_b_a = r_with_b.values[
-                list(r_with_b['stimulus_id'].values).index('a')]
-            # FP16 arithmetic introduces small differences, so a loose tolerance
-            assert np.allclose(alone_a, with_b_a, atol=1e-2)
+            ids = list(r_with_b['stimulus_id'].values)
+            with_b_a, with_b_b = r_with_b.values[ids.index('a')], r_with_b.values[ids.index('b')]
+            assert_same_image(alone_a, with_b_a, with_b_b)
         finally:
             import shutil
             shutil.rmtree(tmpdir)
@@ -180,7 +172,7 @@ class TestVLMVisionWrapperIntegration:
             identifier='qwen2.5-vl-3b-test',
             model=None,
             region_layer_map={'IT': 'blocks.28'},
-            preprocessors={'vision': qwen_vision_wrapper},
+            extractor={'vision': qwen_vision_wrapper},
         )
         model.start_recording('IT')
 

@@ -15,10 +15,29 @@ print(len(stimuli), responses.sizes)
 These are separate assets: movie access does not imply permission to redistribute
 human responses, or vice versa. Confirm the applicable terms before sharing.
 
+## Frames and sound: local assets
+
+The benchmarks read two folders that you prepare once from the hosted clips.
+`python -m brainscore.data` shows whether they are found.
+
+| Asset | Folder (variable, default) | Prepare with |
+| --- | --- | --- |
+| `lahner2024-frames` | `BRAINSCORE_LAHNER_FRAMES_DIR`, `~/brainscore-data/lahner2024/frames` | `python -m brainscore.data.lahner2024.data_packaging.prepare_frames` |
+| `lahner2024-sound` | `BRAINSCORE_LAHNER_SOUND_DIR`, `~/.brainio/lahner2024_audio_16k` | `python -m brainscore.data.lahner2024.data_packaging.prepare_audio_tracks` (needs ffmpeg) |
+
+A subject that takes only still images reads the frames; a subject that takes
+sound reads the sound tracks. A missing file stops the run with the command
+that prepares it.
+
+A Lahner2024 benchmark takes no folder argument: for every variant, the frames
+folder is set by `BRAINSCORE_LAHNER_FRAMES_DIR` and the sound folder by
+`BRAINSCORE_LAHNER_SOUND_DIR`.
+
 ## Existing preparation scripts
 
 | Module under `brainscore.data.lahner2024` | Produces |
 | --- | --- |
+| `prepare_frames` | Frames (PNG) at 500, 1500 and 2500 ms of each clip |
 | `prepare_audio_tracks` | Audio sidecars from the registered movies |
 | `prepare_timeresolved_assembly` | Time-resolved responses and event metadata from fMRIPrep surface files |
 | `prepare_motion_sidecar` | Motion/confound metadata |
@@ -29,6 +48,7 @@ Inspect inputs and output options before preparing data:
 python -m brainscore.data.lahner2024.data_packaging.prepare_timeresolved_assembly --help
 python -m brainscore.data.lahner2024.data_packaging.prepare_motion_sidecar --help
 python -m brainscore.data.lahner2024.data_packaging.prepare_audio_tracks --help
+python -m brainscore.data.lahner2024.data_packaging.prepare_frames --help
 ```
 
 The time-resolved converter accepts `--data-cache`, `--output-path` and
@@ -41,4 +61,4 @@ prepared time-resolved assembly are different targets, not interchangeable.
 
 Before release, complete the local loader/command path, document the exact
 native inputs and access steps, measure storage/runtime needs, and validate a
-fresh build. See the [dataset audit](../../../docs/archive/dataset_preparation.md).
+fresh build.

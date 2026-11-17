@@ -19,17 +19,118 @@ from .selection import (
     RandomSelection, UnitSelection, UnitSelector, selection_coordinates,
     selection_unit_indices,
 )
-from brainscore_core.model_interface import Subject
+from brainscore_core.contract import Subject
 from brainscore_core.benchmarks import Benchmark
 from brainscore_core.metrics import Metric, Score
 
 _logger = logging.getLogger(__name__)
 
-model_registry: Dict[str, Callable[[], Subject]] = {}
-benchmark_registry: Dict[str, Callable[[], Benchmark]] = {}
-metric_registry: Dict[str, Callable[[], Metric]] = {}
-data_registry: Dict[str, Callable[..., Any]] = {}
-stimulus_set_registry: Dict[str, Callable[..., Any]] = {}
+class _Registry(dict):
+    """A registry that refuses a second registration under a key it holds.
+
+    A replaced factory would silently change what is scored under that name,
+    so a second assignment from another source raises and names both sources.
+    The same source again (a module imported a second time) replaces quietly. Remove the entry
+    first (``del registry[key]``) to replace it on purpose, as a test does.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._sources: Dict[str, str] = {}
+
+    @staticmethod
+    def _source_of(value, frame) -> str:
+        """Name the source of a registration: the factory's module and qualified
+        name, or the registering statement (file and line) for a lambda."""
+        name = getattr(value, '__qualname__', None)
+        if name and '<lambda>' not in name and getattr(value, '__module__', None):
+            return f'{value.__module__}.{name}'
+        return f'{frame.f_code.co_filename}:{frame.f_lineno}'
+
+    def _register(self, key, value, frame) -> None:
+        source = self._source_of(value, frame)
+        if key in self and self._sources.get(key) != source:
+            raise ValueError(
+                f'{key!r} is already registered (by {self._sources.get(key, "unknown")}); '
+                f'a second registration (by {source}) would silently replace it. '
+                f'Use a new identifier.')
+        super().__setitem__(key, value)       # the same source again (a re-import) replaces quietly
+        self._sources[key] = source
+
+    def __setitem__(self, key, value) -> None:
+        import sys
+        self._register(key, value, sys._getframe(1))
+
+    def update(self, *args, **kwargs) -> None:
+        import sys
+        frame = sys._getframe(1)
+        for key, value in dict(*args, **kwargs).items():
+            self._register(key, value, frame)
+
+    def setdefault(self, key, default=None):
+        import sys
+        if key not in self:
+            self._register(key, default, sys._getframe(1))
+        return self[key]
+
+    def __ior__(self, other):
+        import sys
+        frame = sys._getframe(1)
+        for key, value in dict(other).items():
+            self._register(key, value, frame)
+        return self
+
+    def __delitem__(self, key) -> None:
+        super().__delitem__(key)
+        self._sources.pop(key, None)
+
+
+model_registry: Dict[str, Callable[[], Subject]] = _Registry()
+benchmark_registry: Dict[str, Callable[[], Benchmark]] = _Registry()
+metric_registry: Dict[str, Callable[[], Metric]] = _Registry()
+data_registry: Dict[str, Callable[..., Any]] = _Registry()
+stimulus_set_registry: Dict[str, Callable[..., Any]] = _Registry()
+# Lazy factories of local data builders (``brainscore.data.preparation.DataBuilder``).
+data_builder_registry: Dict[str, Callable[[], Any]] = _Registry()
+
+
+# Plugin packages that failed to import: {qualified name: 'ErrorType: message'}, and the
+# __init__.py file of each (read before a load falls back to an old registry).
+_plugin_import_failures: Dict[str, str] = {}
+_plugin_failed_files: Dict[str, Path] = {}
+
+
+def _import_plugins(package: str) -> None:
+    """Import every plugin of the kind folder ``package`` so that it registers.
+
+    A plugin is a sub-package (a folder with an ``__init__.py``) whose name does not
+    start with ``_``; a plain module (a shared helper) is not imported. A plugin whose
+    import fails is named in a warning with the cause and recorded; the other plugins
+    still register, and the loaders' not-found message names it.
+    """
+    import importlib
+    import os
+    import pkgutil
+    import sys
+    for info in sorted(pkgutil.iter_modules(sys.modules[package].__path__), key=lambda i: i.name):
+        if not info.ispkg or info.name.startswith('_'):
+            continue
+        name = f'{package}.{info.name}'
+        try:
+            importlib.import_module(name)
+        except ImportError as error:
+            _plugin_import_failures[name] = f'{type(error).__name__}: {error}'
+            folder = Path(info.module_finder.path) / info.name
+            _plugin_failed_files[name] = folder / '__init__.py'
+            # Remove what the package registered before its error (the source of an entry is
+            # a factory of the package, or a registering statement in a file of its folder).
+            for registry in (model_registry, benchmark_registry, metric_registry, data_registry,
+                             stimulus_set_registry, data_builder_registry):
+                for key, source in list(registry._sources.items()):
+                    if source.startswith((f'{name}.', f'{folder}{os.sep}')):
+                        del registry[key]
+            _logger.warning(f'plugin {name} failed to import and registers nothing: '
+                            f'{type(error).__name__}: {error}')
 
 
 def _populate_unified_registries() -> None:
@@ -151,6 +252,42 @@ def list_benchmarks():
     return _listing(benchmark_registry, 'benchmarks', 'benchmark_registry')
 
 
+def _refuse_failed_owner(kind: str, identifier: str, folder: str) -> None:
+    """Raise when a unified plugin of ``folder`` that failed to import names ``identifier``.
+
+    Called before a load falls back to an old registry, so a broken unified plugin is not
+    silently replaced by an old registration of the same identifier. Reads the
+    ``__init__.py`` text of each failed package of the kind; nothing when none failed.
+    """
+    for name, init_file in _plugin_failed_files.items():
+        if not name.startswith(f'brainscore.{folder}.'):
+            continue
+        try:
+            text = init_file.read_text(encoding='utf-8')
+        except OSError:
+            continue
+        if f"'{identifier}'" in text or f'"{identifier}"' in text:
+            raise LoadError(
+                f"{kind} '{identifier}' is named by the unified plugin {name}, which failed to "
+                f"import ({_plugin_import_failures[name]}). It is not loaded from another registry; "
+                f"repair the plugin's import.")
+
+
+def _not_found(kind: str, identifier: str, sources: str, folder: str, listing: str = '') -> KeyError:
+    """The one message of a loader that finds no identifier."""
+    listed = f' {listing} lists them all.' if listing else ''
+    failed = {name: cause for name, cause in _plugin_import_failures.items()
+              if name.startswith(f'brainscore.{folder}.')}
+    broken = (' These plugin packages failed to import, so their identifiers are missing: '
+              + '; '.join(f'{name} ({cause})' for name, cause in sorted(failed.items())) + '.'
+              if failed else '')
+    return KeyError(
+        f"{kind} '{identifier}' not found in {sources} registries.{listed}{broken} A plugin "
+        f"registers when its package is imported: a folder brainscore/{folder}/<name>/ with an "
+        f"__init__.py is imported with brainscore; a plugin in another package registers when "
+        f"you import that package before you load it.")
+
+
 def load_model(identifier: str) -> Subject:
     """Load a model by identifier.
 
@@ -162,16 +299,15 @@ def load_model(identifier: str) -> Subject:
     """
     if identifier in model_registry:
         return model_registry[identifier]()
+    _refuse_failed_owner('Model', identifier, 'models')
     for domain in ('vision', 'language'):
         try:
             with _explained(identifier, domain, 'weights'):
                 return __import__(f'brainscore_{domain}', fromlist=['load_model']).load_model(identifier)
         except PluginNotFoundError:
             continue
-    raise KeyError(
-        f"Model '{identifier}' not found in unified, vision, or language registries; "
-        f"brainscore.list_models() lists them all."
-    )
+    raise _not_found('Model', identifier, 'unified, vision, or language', 'models',
+                     'brainscore.list_models()')
 
 
 def load_benchmark(identifier: str, **configuration: Any) -> Benchmark:
@@ -188,6 +324,7 @@ def load_benchmark(identifier: str, **configuration: Any) -> Benchmark:
 
     if configuration:
         raise TypeError('Benchmark configuration is supported only by unified registry factories')
+    _refuse_failed_owner('Benchmark', identifier, 'benchmarks')
 
     for domain, modality in (('vision', 'vision'), ('language', 'text')):
         try:
@@ -196,10 +333,8 @@ def load_benchmark(identifier: str, **configuration: Any) -> Benchmark:
             return ensure_legacy_benchmark_modalities(benchmark, {modality})
         except PluginNotFoundError:
             continue
-    raise KeyError(
-        f"Benchmark '{identifier}' not found in unified, vision, or language registries; "
-        f"brainscore.list_benchmarks() lists them all."
-    )
+    raise _not_found('Benchmark', identifier, 'unified, vision, or language', 'benchmarks',
+                     'brainscore.list_benchmarks()')
 
 
 def load_metric(identifier: str, *args, **kwargs) -> Metric:
@@ -211,6 +346,7 @@ def load_metric(identifier: str, *args, **kwargs) -> Metric:
     """
     if identifier in metric_registry:
         return metric_registry[identifier](*args, **kwargs)
+    _refuse_failed_owner('Metric', identifier, 'metrics')
 
     try:
         from brainscore_vision import load_metric as load_vision_metric
@@ -218,9 +354,7 @@ def load_metric(identifier: str, *args, **kwargs) -> Metric:
     except PluginNotFoundError:
         pass
 
-    raise KeyError(
-        f"Metric '{identifier}' not found in unified or vision registries."
-    )
+    raise _not_found('Metric', identifier, 'unified or vision', 'metrics')
 
 
 def load_dataset(identifier: str, *args, **kwargs):
@@ -237,6 +371,7 @@ def load_dataset(identifier: str, *args, **kwargs):
         raise KeyError(
             f"Dataset '{identifier}' not found in unified registry; "
             "domain fallbacks do not accept loader arguments.")
+    _refuse_failed_owner('Dataset', identifier, 'data')
 
     try:
         from brainscore_vision import load_dataset as _vision
@@ -248,8 +383,7 @@ def load_dataset(identifier: str, *args, **kwargs):
         return _language(identifier)
     except PluginNotFoundError:
         pass
-    raise KeyError(
-        f"Dataset '{identifier}' not found in unified, vision, or language registries.")
+    raise _not_found('Dataset', identifier, 'unified, vision, or language', 'data')
 
 
 def load_stimulus_set(identifier: str, *args, **kwargs):
@@ -261,14 +395,14 @@ def load_stimulus_set(identifier: str, *args, **kwargs):
         raise KeyError(
             f"StimulusSet '{identifier}' not found in unified registry; "
             "domain fallbacks do not accept loader arguments.")
+    _refuse_failed_owner('StimulusSet', identifier, 'data')
 
     try:
         from brainscore_vision import load_stimulus_set as _vision
         return _vision(identifier)
     except PluginNotFoundError:
         pass
-    raise KeyError(
-        f"StimulusSet '{identifier}' not found in unified, vision, or language registries.")
+    raise _not_found('StimulusSet', identifier, 'unified or vision', 'data')
 
 
 def _resolve_identifier(obj, default: str) -> str:
@@ -284,25 +418,30 @@ def _resolve_identifier(obj, default: str) -> str:
 
 def score(model_identifier, benchmark_identifier,
           check_mem: bool = True) -> Score:
-    """Score a model on a benchmark.
+    """Score a subject on a benchmark.
 
     Each argument is either an identifier ``str`` — loaded from the unified
     registry (with domain fallbacks) — or an already-constructed object (a
-    ``Subject`` / benchmark). Passing objects lets you score a model you just
+    ``Subject`` / benchmark). Passing objects lets you score a subject you just
     built without registering it first::
 
-        model = BrainScoreModel('my-vlm', ...)
-        score(model, 'MajajHong2015public.IT-pls-unified')
+        subject = BrainScoreModel('my-vlm', ...)
+        score(subject, 'MajajHong2015public.IT-pls')
 
-    then runs the benchmark on the model.
+    then runs the benchmark on the subject.
+
+    An incompatible pair, known from the declarations, returns the N/A result
+    before any compute (``brainscore_core.score_status.na_score``: NaN,
+    ``attrs['status'] == 'N/A'``, ``reason``, ``missing_channels``). A refusal
+    when the run starts (a subject that refuses a session, a benchmark's own
+    check) raises ``ExecutionNotFeasibleError``; a malformed declaration
+    (``ValueError``) and a memory-check failure raise too.
     """
-    from brainscore_core.compatibility import (
-        check_compatibility,
-    )
+    from brainscore_core.compatibility import CompatibilityError, check_compatibility
     from brainscore_core.extraction_cache import weight_fingerprint_scope
     from brainscore_core.memory import check_memory
+    from brainscore_core.score_status import na_score
     from brainscore_core.score_metadata import (
-        infer_score_protocol,
         requested_output_channels_for_score,
         stamp_score_metadata,
     )
@@ -310,8 +449,8 @@ def score(model_identifier, benchmark_identifier,
         from brainscore_core.score_metadata import record_measures
     except ImportError as error:
         raise ImportError(
-            'brainscore needs a brainscore_core with score_metadata.record_measures '
-            '(core ad7288a or later); install the core revision in install/peer-revisions.json'
+            'brainscore needs a brainscore_core with score_metadata.record_measures; '
+            'install the core revision named in install/peer-revisions.json'
         ) from error
 
     import time as _time
@@ -323,55 +462,58 @@ def score(model_identifier, benchmark_identifier,
         check_benchmark_assets(benchmark_identifier)
     benchmark = (load_benchmark(benchmark_identifier)
                  if isinstance(benchmark_identifier, str) else benchmark_identifier)
-    model = (load_model(model_identifier)
-             if isinstance(model_identifier, str) else model_identifier)
+    subject = (load_model(model_identifier)
+               if isinstance(model_identifier, str) else model_identifier)
     model_id = (model_identifier if isinstance(model_identifier, str)
-                else _resolve_identifier(model, 'custom-model'))
+                else _resolve_identifier(subject, 'custom-model'))
     benchmark_id = (benchmark_identifier if isinstance(benchmark_identifier, str)
                     else _resolve_identifier(benchmark, 'custom-benchmark'))
     requested_channels = requested_output_channels_for_score(benchmark)
 
-    compatibility = check_compatibility(model, benchmark)
+    # The one place N/A is made: the declaration check, before any compute
+    # (rules 5.6, 5.7). A refusal during the run below is an error.
+    try:
+        compatibility = check_compatibility(subject, benchmark)
+    except CompatibilityError as error:
+        result = na_score(error)
+        if isinstance(subject, BrainScoreModel):
+            # A format a wired part derives but no statement declares: name the line to write
+            # (the text of the session refusal; read from the wiring, nothing runs).
+            from ._model.behavioral import statement_hint
+            result.attrs['reason'] += statement_hint(subject, result.attrs['missing_channels'])
+        result.attrs.update(model_identifier=model_id, benchmark_identifier=benchmark_id)
+        return result
     if check_mem:
-        check_memory(model, benchmark)
+        check_memory(subject, benchmark)
 
     # A legacy domain benchmark (marked by its domain loader) receives the
     # permanent facade, which runs its calls as sessions through participate.
-    from brainscore_core.legacy_facade import declared_visual_degrees, subject_for_benchmark
-    candidate = subject_for_benchmark(model, benchmark,
-                                      visual_degrees=declared_visual_degrees(model))
+    from brainscore_core.legacy_facade import (
+        declared_visual_degrees, record_replaced_answers, subject_for_benchmark)
+    received = subject_for_benchmark(subject, benchmark,
+                                     visual_degrees=declared_visual_degrees(subject))
 
     _t0 = _time.time()
-    with weight_fingerprint_scope(), record_measures() as measures:
-        result = benchmark(candidate)
-    # The run must leave the subject as it found it: every perturbation a session
-    # of the benchmark applied is undone. Perturbations the caller applied stay.
-    if measures.unreleased:
-        raise RuntimeError(
-            f"Benchmark '{benchmark_id}' left perturbation handle(s) "
-            f"{sorted(measures.unreleased)} active on subject '{model_id}'; a benchmark "
-            "must undo every change it applies (StateChange(kind='reset', handle_id=...)).")
+    # A session no note names belongs to this score's subject, also when this score runs inside another.
+    with weight_fingerprint_scope(), record_measures(subject=getattr(subject, 'identifier', None)) as measures:
+        result = benchmark(received)
+    # The run must leave the subject as it found it: every intervention a session
+    # of the benchmark applied is undone. Interventions the caller applied stay.
+    measures.check_released(benchmark_id, model_id)
     result.attrs['runtime_sec'] = round(_time.time() - _t0, 2)
     result.attrs['model_identifier'] = model_id
-    # Benchmarks can supply a qualified identity for settings or data subsets.
-    recorded_id = result.attrs.get('benchmark_identifier', benchmark_id)
-    resolved_id = _resolve_identifier(benchmark, benchmark_id)
-    if not isinstance(recorded_id, str) or recorded_id not in (benchmark_id, resolved_id):
-        raise ValueError(
-            'Score benchmark_identifier must match the requested alias or resolved benchmark identifier'
-        )
-    result.attrs.setdefault('benchmark_identifier', benchmark_id)
+    # A benchmark can supply a qualified identity for settings or data subsets.
     stamp_score_metadata(
         result,
-        model,
+        subject,
         requested_channels=requested_channels,
-        protocol=infer_score_protocol(model, benchmark, requested_channels,
-                                      measures=measures),
-        harness_id='brainscore',
+        entry_point='brainscore',
         measures=measures,
+        benchmark=benchmark,
+        benchmark_identifier=benchmark_id,
     )
     result.attrs['compatibility'] = compatibility.as_attrs()
-    result.attrs['trial_memory'] = getattr(benchmark, 'trial_memory', 'none')
+    record_replaced_answers(result, received)
     return result
 
 

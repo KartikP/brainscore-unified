@@ -22,6 +22,7 @@ from copy import deepcopy
 import logging
 import os
 import signal
+import socket
 import threading
 import time
 
@@ -54,7 +55,8 @@ class RecordedPolicy:
         self.policy = policy
         self.route = route
         self.recorder = recorder
-        self.subject = BrainScoreModel('pi05-libero', policy=LiberoChunkPolicy(policy))
+        self.subject = BrainScoreModel('pi05-libero', policy=LiberoChunkPolicy(policy),
+                                       policy_in_channels=LiberoChunkPolicy.inputs)
         self.calls = 0
         self.calling = False  # true while a request is being answered
 
@@ -107,6 +109,15 @@ def main():
         async def run(self):
             self.task = asyncio.current_task()
             self.loop = asyncio.get_running_loop()
+            # on_stop runs only when the main thread executes Python. A signal that lands
+            # just before the loop blocks in select, or in another thread, would wait for
+            # the next network event. The C-level handler also writes to this socket,
+            # which wakes the loop.
+            self.wake = socket.socketpair()
+            for end in self.wake:
+                end.setblocking(False)
+            self.loop.add_reader(self.wake[0], self.wake[0].recv, 4096)
+            signal.set_wakeup_fd(self.wake[1].fileno())
             if stop:
                 self.loop.call_soon(finish)
             await super().run()
@@ -169,6 +180,7 @@ def main():
     except (KeyboardInterrupt, asyncio.CancelledError):
         pass
     finally:
+        signal.set_wakeup_fd(-1)  # the loop is closed; nothing reads the socket any more
         try:
             recorder.close(failed=stop.get('failed', True))
         finally:

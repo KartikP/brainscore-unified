@@ -9,10 +9,7 @@ Single registration only. See blip2-wav2vec2 docstring for why we
 skip null variants on these two heavy VLMs (CLIP and V-JEPA combos
 already cover the four signal/null permutations).
 """
-import torch
-
-from brainscore import BrainScoreModel, LayerSelector
-from brainscore_core.hf_compat import pin_image_processor
+from brainscore import BrainScoreModel
 
 
 REGION_LAYER_MAP = {
@@ -23,64 +20,23 @@ REGION_LAYER_MAP = {
     'A1': 'encoder.layers.6',
 }
 
-REGION_MODALITY_MAP = {
-    'V1': 'vision',
-    'V2': 'vision',
-    'V4': 'vision',
-    'IT': 'vision',
-    'A1': 'audio',
-}
-
 
 def get_model(identifier: str) -> BrainScoreModel:
     assert identifier == 'qwen2.5-vl-wav2vec2'
-    from brainscore.models._downloads import hf_preflight
-    download = hf_preflight(identifier, 'Qwen/Qwen2.5-VL-3B-Instruct', 7.6)
+    from brainscore.models._shared import build_audio_wrapper
+    from brainscore.models.qwen25_vl_3b.model import load_qwen, picture_extractor
 
-    from transformers import (
-        AutoProcessor, Qwen2_5_VLForConditionalGeneration)
-    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
-    from brainscore.models._multimodal_av_shared import build_audio_wrapper
-
-    qwen_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-        'Qwen/Qwen2.5-VL-3B-Instruct',
-        torch_dtype=torch.float16,
-        **download,
-    )
-    # Pin the image-processor implementation (see brainscore_core.hf_compat).
-    qwen_processor = AutoProcessor.from_pretrained(
-        'Qwen/Qwen2.5-VL-3B-Instruct', **download)
-    qwen_processor = pin_image_processor(
-        qwen_processor, 'Qwen/Qwen2.5-VL-3B-Instruct', **download)
-
-    vision_wrapper = VLMVisionWrapper(
-        model=qwen_model.model.visual,
-        processor=qwen_processor,
-        identifier=f'{identifier}-vision',
-        image_input_key='pixel_values',
-        forward_kwargs_map={'grid_thw': 'image_grid_thw'},
-        patch_count_fn=lambda out: [
-            int(t * h * w) for t, h, w in out['image_grid_thw']],
-        layer_aggregation='mean_patches',
-        batch_size=4,
-    )
-    # Share the standalone Qwen vision-cache key — same backbone, same
-    # forward pass for the visual side.
-    vision_wrapper.backbone_id = 'qwen2.5-vl-3b-vision'
-
+    # The picture extractor of qwen2.5-vl-3b: the same load and the same wrapper.
+    qwen_model, qwen_processor, _ = load_qwen(identifier, 'qwen2.5-vl-3b')
+    vision_wrapper = picture_extractor(qwen_model, qwen_processor, identifier)
     audio_wrapper, _ = build_audio_wrapper(identifier, random_init=False)
 
     return BrainScoreModel(
         identifier=identifier,
         model=qwen_model,
-        region_layer_map={
-            region: LayerSelector(name=layer, modality=REGION_MODALITY_MAP.get(region))
-            for region, layer in REGION_LAYER_MAP.items()
-        },
+        region_layer_map=REGION_LAYER_MAP,
         extractor={
             'vision': vision_wrapper,
             'audio': audio_wrapper,
         },
-        required_modalities={'vision', 'audio'},
-        visual_degrees=8,
     )

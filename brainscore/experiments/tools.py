@@ -5,7 +5,6 @@ import math
 from typing import Any, Callable, ContextManager, Iterator, Sequence
 from brainscore.run_record import RunRecorder
 from brainscore_core.events import Selection, Perturbation, StateChange
-from brainscore.instrumentation import observe
 from .runner import Tool
 
 
@@ -26,8 +25,10 @@ class RecordInputsOutputs(Tool):
         return {} if self.max_bytes is None else {'max_bytes': self.max_bytes}
 
     def _keeps(self, event):
-        """Which events this recorder saves; all of them here."""
-        return True
+        """Which events this recorder saves: all the subject's events. The finalized
+        answers the runner publishes after a session are kept by RecordBehavior; they are
+        not part of the exchange that replay rebuilds."""
+        return event['kind'] != 'answer'
 
     @contextmanager
     def attach(self, context):
@@ -84,7 +85,7 @@ class RecordActivity(Tool):
         if not any(isinstance(tool, RecordInputsOutputs) for tool in experiment.tools):
             raise ValueError('RecordActivity requires RecordInputsOutputs to persist its events')
         if experiment.instrumentation is None:
-            raise ValueError('RecordActivity requires an instrumentation provider')
+            raise ValueError('RecordActivity requires an instrumentation')
         experiment.instrumentation.validate('record', self.targets)
 
     @contextmanager
@@ -118,7 +119,7 @@ class Ablate(Tool):
 
     def validate(self, experiment):
         if experiment.instrumentation is None:
-            raise ValueError(f'{type(self).__name__} requires an instrumentation provider')
+            raise ValueError(f'{type(self).__name__} requires an instrumentation')
         experiment.instrumentation.validate(self.operation, self.targets)
         available_conditions = getattr(experiment.protocol, 'conditions', ('default',))
         if self.conditions is not None and (not self.conditions or set(self.conditions) - set(available_conditions)):
@@ -201,6 +202,15 @@ class PatchActivity(Ablate):
         return instrumentation.patch(self.targets, reference=self.reference)
 
 
+def _forward_hook(stack, module, hook):
+    """Run ``hook`` on each forward call of ``module`` until ``stack`` closes.
+
+    The one place the experiment tools hook a module; recording uses
+    ActivationWindow and interventions use pytorch_intervention.
+    """
+    stack.callback(module.register_forward_hook(hook).remove)
+
+
 def _selection(target):
     return Selection(layer=target) if isinstance(target, str) else target
 
@@ -212,37 +222,10 @@ def _describe_target(target):
             'axis': target.axis, 'expected_shape': target.expected_shape}
 
 
-class ObserveCalls(Tool):
-    """Attach an existing on_start/on_result/on_error observer to method calls.
-
-    Native session tools use on_event instead; a session event is not a method
-    call. This adapter preserves existing observers without inventing call data.
-    """
-    def __init__(self, observer: Any, *, methods: Sequence[str] = ('process',),
-                 name: str = 'call_observer') -> None:
-        if not isinstance(name, str) or not name.strip():
-            raise ValueError('Tool name must be a nonempty string')
-        self.observer, self.methods, self.name = observer, tuple(methods), name
-
-    def describe(self):
-        return {'observer': type(self.observer).__module__ + '.' + type(self.observer).__qualname__,
-                'methods': self.methods}
-
-    def validate(self, experiment):
-        for method in self.methods:
-            if not callable(getattr(experiment.subject, method, None)):
-                raise ValueError(f'Subject does not expose {method}')
-
-    @contextmanager
-    def attach(self, context):
-        with observe(context.experiment.subject, self.observer, methods=self.methods):
-            yield
-
-
 class TorchInstrumentation:
     """Expose model layer paths or explicitly named modules to experiment tools.
 
-    Recording uses ActivationWindow; ablation uses build_pytorch_ablation_fn.
+    Recording uses ActivationWindow; ablation uses pytorch_intervention.
     Selection.axis uses the same coordinates for recording and intervention.
     The default -1 indexes the last axis; None flattens non-batch dimensions.
     """
@@ -277,8 +260,8 @@ class TorchInstrumentation:
                 raise ValueError(
                     f'{selection.layer!r}: TorchInstrumentation reads and changes module '
                     f"outputs only; input sites (':input') and other site suffixes are not "
-                    f'supported here. Use TextWrapper recording or a StateChange through '
-                    f'intervene() for input sites.')
+                    f'supported here. Use TextWrapper recording, or an intervention sent with '
+                    f'apply_state_change, for input sites.')
             if operation in ('attribute', 'patch') and (selection.axis != -1 or selection.expected_shape is not None):
                 raise ValueError('Attribution and patching require last-axis selections without a fixed shape.')
             if (selection.layer not in self.targets
@@ -293,13 +276,13 @@ class TorchInstrumentation:
 
     @contextmanager
     def record(self, targets, receive):
-        from brainscore.activation_window import ActivationWindow, _first_tensor_out
+        from brainscore.activation_window import ActivationWindow, first_tensor_out
         self.validate('record', targets)
         with ExitStack() as stack:
             for target in targets:
                 selection = _selection(target)
                 def select(output, selection=selection):
-                    tensor = _first_tensor_out(output)
+                    tensor = first_tensor_out(output)
                     if tensor is None:
                         raise TypeError('Activity target must expose a tensor')
                     from brainscore.model_helpers.selection import selection_view
@@ -365,21 +348,15 @@ class TorchInstrumentation:
     @contextmanager
     def _perturb(self, targets, perturbation):
         import torch
-        from brainscore.perturbation import build_pytorch_ablation_fn
+        from brainscore.model_helpers.intervention import pytorch_intervention
         self.validate('ablate', targets)
         with ExitStack() as stack:
             for target in targets:
                 selection = _selection(target)
                 module = self.targets[selection.layer]
-                def validate_output(module, inputs, output):
-                    tensor = output[0] if isinstance(output, tuple) and output else output
-                    if not isinstance(tensor, torch.Tensor):
-                        raise TypeError('Ablation target must return a tensor or a tuple beginning with one')
-                handle = module.register_forward_hook(validate_output)
-                stack.callback(handle.remove)
                 # An auxiliary root provides a stable path without modifying the model.
                 root = torch.nn.ModuleDict({'target': module})
-                apply = build_pytorch_ablation_fn(root)
+                apply = pytorch_intervention(root)
                 _, cleanup = apply(StateChange(kind='ablation',
                     target=Selection(layer='target', indices=selection.indices,
                                      axis=selection.axis, expected_shape=selection.expected_shape),

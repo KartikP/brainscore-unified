@@ -1,6 +1,6 @@
 # Running tests
 
-Use the coordinated environment from [install/README.md](../install/README.md). The [release matrix](../docs/archive/release_test_matrix.md) maps capabilities to tests, real-model comparisons and runner requirements.
+Use the coordinated environment from [install/README.md](../install/README.md).
 
 ## Four-repository offline checks
 
@@ -50,6 +50,6 @@ The main profile's 27 missing-client exemptions do not apply to this job. Local 
 
 ## Real models and data
 
-Run the matrix's integration/qualification selections only after staging their data and checkpoints. `pytest -m slow` is not a complete release qualification command. Scientific compatibility uses all eight cases in `python -m brainscore.validation.run_parity`; the matrix records the other required domain comparisons.
+Run the matrix's integration/qualification selections only after staging their data and checkpoints. `pytest -m slow` is not a complete release qualification command. Scientific compatibility uses all six cases (four MajajHong2015 PLS, two Pereira2018 ridge) in `RESULTCACHING_DISABLE=1 python -m brainscore.validation.run_parity`; the matrix records the other required domain comparisons.
 
 Keep submission/database tests in isolated services without production credentials. Save failed runs alongside successful results.

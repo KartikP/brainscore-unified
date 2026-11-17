@@ -26,13 +26,12 @@ def Answers(channel):
 class AskForIT(Benchmark):
     identifier = 'ask-for-it'
     parent = 'neural'
-    uses_session = True
     required_input_channels = {'text'}
     requested_output_channels = {'neural:IT'}
 
-    def __call__(self, candidate):
+    def __call__(self, subject):
         session = Session([StreamEvent('text', 'hello', 0.0)], ['neural:IT'])
-        candidate.participate(session)
+        subject.participate(session)
         return Score(float(session.collect('neural:IT').sum()))
 
 

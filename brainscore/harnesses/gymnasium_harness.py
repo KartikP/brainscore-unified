@@ -98,7 +98,7 @@ class GymnasiumEnvironment:
         self.env.close()
 
 
-def play_gym_episode(model, env_id: str, max_steps: int = 60, seed: int = 0,
+def play_gym_episode(subject, env_id: str, max_steps: int = 60, seed: int = 0,
                      action_descriptions: Optional[Dict[int, str]] = None,
                      n_actions: Optional[int] = None) -> Dict[str, Any]:
     """Run a rendered, discrete Gymnasium episode through an EnvironmentSource.
@@ -123,7 +123,7 @@ def play_gym_episode(model, env_id: str, max_steps: int = 60, seed: int = 0,
     except BaseException:
         env.close()
         raise
-    responses = run_environment(model, wrapper, seed=seed, require_specs=True)
+    responses = run_environment(subject, wrapper, seed=seed, require_specs=True)
     solved = (bool(wrapper.terminated and wrapper.last_reward > 0) if 'MiniGrid' in env_id
               else wrapper.last_info.get('is_success'))
     return {
@@ -136,10 +136,7 @@ def play_gym_episode(model, env_id: str, max_steps: int = 60, seed: int = 0,
 
 
 def random_gym_policy(seed: int = 0):
-    """Uniform-random discrete policy — the closed-loop null floor for a Gym env."""
-    rng = np.random.RandomState(seed)
-
-    def policy(observation, history):
-        n = len(observation.get('legal_actions', {})) or 7
-        return int(rng.randint(0, n))
-    return policy
+    """Uniform-random discrete policy (``row -> {'motor': action}``), the closed-loop null floor for a Gym env."""
+    from brainscore.harnesses.grid_game import _seeded_random_policy
+    return _seeded_random_policy(
+        seed, lambda row: len(row['observation'].get('legal_actions', {})) or 7)

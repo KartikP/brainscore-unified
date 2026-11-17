@@ -12,11 +12,49 @@ pytestmark = pytest.mark.unit
 
 
 class TestReport:
+    @pytest.fixture(autouse=True)
+    def stand_in_environment(self, monkeypatch):
+        """Each test counts only the rows it sets up. The real lock section, imports and
+        result cache add rows of the machine (a Linux machine with the full lock and other
+        installed packages adds one per difference); a test that needs one sets it itself."""
+        monkeypatch.setattr(doctor, '_lock_file', lambda: None)
+        monkeypatch.setattr(doctor, 'IMPORT_CHECKS', ())
+        monkeypatch.setenv('RESULTCACHING_DISABLE', '1')
+
     def test_names_the_interpreter_that_answered(self):
         """Which env replied is usually the whole question."""
         import sys
         text, _ = doctor.report()
         assert sys.executable in text
+
+    def test_prints_the_fingerprint_every_score_carries(self):
+        from brainscore_core.environment_check import environment_fingerprint
+        text, _ = doctor.report()
+        assert f'environment fingerprint  {environment_fingerprint()}' in text
+
+    def test_prints_the_math_threads_next_to_the_fingerprint(self):
+        from brainscore_core.environment_check import math_threads
+        lines = doctor.report()[0].splitlines()
+        index = next(i for i, l in enumerate(lines) if l.startswith('environment fingerprint'))
+        assert lines[index + 1] == f'math threads             {math_threads()}'
+
+    def test_another_process_prints_the_same_fingerprint_as_a_score_here(self):
+        """Two processes of one environment give one value, whatever each imported first."""
+        import os, subprocess, sys
+        from brainscore_core.environment_check import _score_environment
+        code = ('import sys; sys.path.append("/nonexistent/vendor"); from brainscore import doctor; '
+                'doctor._lock_file = lambda: None; doctor.IMPORT_CHECKS = (); print(doctor.report()[0])')
+        out = subprocess.run([sys.executable, '-W', 'ignore', '-c', code], capture_output=True,
+                             text=True, env=dict(os.environ), check=True).stdout
+        line = next(l for l in out.splitlines() if l.startswith('environment fingerprint'))
+        assert line.split()[-1] == _score_environment()['software']['environment_fingerprint']
+
+    def test_an_unavailable_fingerprint_is_printed_and_the_report_finishes(self, monkeypatch):
+        from brainscore_core import environment_check
+        monkeypatch.setattr(environment_check, 'environment_fingerprint',
+                            lambda: 'unavailable: a distribution has no name (at /x)')
+        text, _ = doctor.report()
+        assert 'environment fingerprint  unavailable: a distribution has no name (at /x)' in text
 
     def test_reports_passing_dependencies_too(self, monkeypatch):
         monkeypatch.setattr(doctor, '_dependency_rows',
@@ -79,10 +117,38 @@ class TestReport:
 
 class TestAgainstTheRealEnvironment:
     def test_this_environment_is_within_bounds(self):
-        """The suite is meaningless if run under drifted dependencies."""
-        _, problems = doctor.report()
-        assert problems == 0, 'this environment is outside the verified bounds'
+        """The suite is meaningless if run under drifted dependencies.
+
+        An environment check, not a check of the code: in the GitHub jobs (which install
+        the pinned versions and also run `python -m brainscore.doctor`) a drift fails
+        here. On a developer machine the drift is a condition of that machine, so the
+        test is skipped and names it.
+        """
+        import os
+        text, problems = doctor.report()
+        if problems and os.environ.get('GITHUB_ACTIONS') != 'true':
+            drifted = [f'{package} {installed} (needs {expected})'
+                       for package, installed, expected, ok in doctor._dependency_rows() if not ok]
+            pytest.skip('this environment is outside the verified bounds: '
+                        + ('; '.join(drifted) or 'see python -m brainscore.doctor')
+                        + '. Install with -c unified/install/v2-constraints.txt.')
+        assert problems == 0, text
 
     def test_describe_env_covers_every_bound(self):
         from brainscore_core.environment_check import _BOUNDS, describe_env
         assert len(describe_env()) == len(_BOUNDS)
+
+
+def test_the_lock_section_reads_the_fingerprint_inventory(tmp_path, monkeypatch):
+    """A folder added to sys.path later, holding a second numpy, does not change the version
+    the lock section reads: the first startup entry of a name counts, as for the fingerprint."""
+    import sys
+    from brainscore_core.environment_check import environment_distributions
+    before = doctor._installed_distributions()
+    info = tmp_path / 'numpy-0.0.0.dist-info'
+    info.mkdir()
+    (info / 'METADATA').write_text('Metadata-Version: 2.1\nName: numpy\nVersion: 0.0.0\n')
+    monkeypatch.setattr(sys, 'path', sys.path + [str(tmp_path)])
+    assert doctor._installed_distributions() == before
+    assert before['numpy'] != '0.0.0'
+    assert before == {name: version for name, (version, _) in environment_distributions().items()}

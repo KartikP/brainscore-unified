@@ -1,10 +1,10 @@
 # Brain-Score UMI manual
 
-The Unified Model Interface (UMI) is how Brain-Score runs experiments on models. This manual is short on purpose. Read the first three pages in order; use the rest when you need them.
+The Unified Model Interface (UMI) is how Brain-Score runs experiments on models. Read the first three pages in order; use the rest when you need them.
 
 ## Start here
 
-1. [What UMI is](01_what_is_umi.md): the "lab for models" idea, in one page and one diagram.
+1. [What UMI is](01_what_is_umi.md): a common interface where experiments meet models.
 2. [Core concepts](02_core_concepts.md): the eight terms everything else is built from, each with a few lines of code.
 3. [Class map](03_class_map.md): which class to use, which method to call, and how the abstract ideas turn into concrete code.
 
@@ -22,16 +22,22 @@ Each guide answers one "how do I" question.
 | Use a model already in Brain-Score | [Existing models](guides/existing_models.md) |
 | Load or add a dataset | [Data](guides/data.md) |
 | Write a benchmark | [Write a benchmark](guides/write_a_benchmark.md) |
+| Run the experiments of my library on every model that fits | [External libraries](guides/external_libraries.md) |
 | Get choices or answers from a model | [Behavior](guides/behavior.md) |
 | Silence or change units, or choose units by function | [Perturb and select units](guides/perturb_and_select_units.md) |
 | Run a game, simulator or robot task | [Closed loop](guides/closed_loop.md) |
 | Compare conditions, record activity, replay a run | [Experiments](guides/experiments.md) |
+| Get a new kind of output from a subject (an action, a measurement) | [A new kind of output](guides/new_output.md) |
 | Add my own channel, tool or capability | [Extend UMI](guides/extend.md) |
+| Extend Brain-Score from a package of my own | [Your own package](guides/your_own_package.md) |
 
 ## Reference
 
 - [Glossary](04_glossary.md): every term, one line each.
 - [Feature status](reference/features.md): what is core, what is advanced, and what is still experimental; old names and their replacements.
+- [Activation caching](reference/caching.md): what the activation cache key holds, its limits, and how to turn it off.
+- [Large model downloads](reference/model_downloads.md): the download check of the large checkpoints and how to allow the download.
+- [Ways to answer](reference/ways_to_answer.md): each registered model's inputs, regions and ways to answer, and the way that gives each kind of answer.
 - [Experiments](../notebooks/README.md#experiments): worked studies that use the concepts.
 
-Older documentation, including qualification records and audits, is kept unchanged in [archive/](archive/).
+Older documentation, including qualification records and audits, is kept unchanged in the folder `docs/archive/`; it is not maintained.

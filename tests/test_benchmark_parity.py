@@ -1,4 +1,4 @@
-"""All six registered factories exercised with tiny CPU models/synthetic data.
+"""Every release case exercised with tiny CPU models/synthetic data.
 
 Metrics and data loading are replaced. These are route/activation tests, not
 measurements of neural predictivity on MajajHong or Pereira.
@@ -14,7 +14,7 @@ from brainscore_core.metrics import Score
 from brainscore import BrainScoreModel
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore.validation.benchmark_parity import (
-    ADAPTER_SCORE_ULPS, CASES, PEREIRA_CASES, PEREIRA_NATIVE_ULPS, PEREIRA_SCORE_ATOL,
+    ADAPTER_SCORE_ULPS, CASES, L4_NATIVE_ULPS, RELEASE_CASES, RIDGE_CASES,
     adapter_score_tolerance,
     assert_pereira_activations, assert_pereira_score_drift, fp32_ulp_tolerance, validate_case,
 )
@@ -23,8 +23,8 @@ from tests.test_umi_review_regressions import language_pair, _stimuli
 pytestmark = pytest.mark.integration
 
 # The tolerance guards are domain-independent code. One vision and one language
-# case cover both routes; the factory test above still runs all six cases.
-GUARD_CASES = (CASES[0], PEREIRA_CASES[0])
+# case cover both routes; the factory test below still runs every release case.
+GUARD_CASES = (CASES[0], RIDGE_CASES[0])
 
 
 @pytest.mark.parametrize('failure', [False, True])
@@ -56,7 +56,6 @@ def constant_metric(monkeypatch):
 @pytest.fixture
 def synthetic_benchmarks(monkeypatch, tmp_path):
     from brainscore_vision.benchmarks.majajhong2015 import benchmark as vision_legacy
-    from brainscore_vision.benchmarks.majajhong2015 import unified as vision_unified
     from brainscore_language.benchmarks.pereira2018.benchmark import _Pereira2018Experiment
     import brainscore_language.benchmarks.pereira2018.benchmark as language_benchmark
     stimuli = _stimuli()
@@ -86,10 +85,9 @@ def synthetic_benchmarks(monkeypatch, tmp_path):
         data.attrs['stimulus_set'].identifier = stimuli.identifier
         data.attrs['stimulus_set'].stimulus_paths = paths
         return data
-    for module in (vision_legacy, vision_unified):
-        monkeypatch.setattr(module, 'load_assembly', vision_data)
-        monkeypatch.setattr(module, 'load_metric', lambda *a, **k: _metric)
-        monkeypatch.setattr(module, 'load_ceiling', lambda *a, **k: lambda data: Score(1))
+    monkeypatch.setattr(vision_legacy, 'load_assembly', vision_data)
+    monkeypatch.setattr(vision_legacy, 'load_metric', lambda *a, **k: _metric)
+    monkeypatch.setattr(vision_legacy, 'load_ceiling', lambda *a, **k: lambda data: Score(1))
     def language_data(self, experiment, atlas):
         seen.append(experiment)
         return NeuroidAssembly(np.zeros((4, 1)), dims=['presentation', 'neuroid'], coords={
@@ -106,7 +104,7 @@ def synthetic_benchmarks(monkeypatch, tmp_path):
     return seen
 
 
-def _vision_candidate(case, route):
+def _vision_subject(case, route):
     from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper, load_preprocess_images
     from brainscore_vision.model_helpers.brain_transformation import ModelCommitment
     from brainscore_vision.compat.unified_adapter import VisionModelAdapter
@@ -118,17 +116,17 @@ def _vision_candidate(case, route):
                              identifier='synthetic-parity', batch_size=4)
     if route == 'native':
         return BrainScoreModel('synthetic-native', model=model, region_layer_map=mapping,
-                               preprocessors={'vision': wrapper}, visual_degrees=8)
+                               extractor={'vision': wrapper}, visual_degrees=8)
     legacy = ModelCommitment('synthetic-legacy', wrapper, ['1'], region_layer_map=mapping, visual_degrees=8)
     return VisionModelAdapter(legacy) if route == 'adapter' else legacy
 
 
-@pytest.mark.parametrize('case', CASES, ids=lambda case: case.unified)
+@pytest.mark.parametrize('case', RELEASE_CASES, ids=lambda case: case.legacy)
 def test_all_registered_factories_on_both_routes(case, synthetic_benchmarks, language_pair):
     native, adapter = language_pair
     def factory(case, route):
         if case.domain == 'vision':
-            return _vision_candidate(case, route)
+            return _vision_subject(case, route)
         native.reset()
         adapter.reset()
         return {'native': native, 'adapter': adapter, 'legacy': adapter._legacy}[route]
@@ -150,21 +148,21 @@ def test_harness_rejects_adapter_disguised_as_native(synthetic_benchmarks, langu
         adapter.reset()
         return adapter._legacy if route == 'legacy' else adapter
     with pytest.raises(TypeError, match='native route'):
-        validate_case(CASES[-1], factory)
+        validate_case(RIDGE_CASES[-1], factory)
 
 
 def test_harness_detects_missing_native_context(synthetic_benchmarks, language_pair, constant_metric, monkeypatch):
     native, adapter = language_pair
-    wrapper = native._preprocessors['text']
+    wrapper = native.extractor['text']
     def factory(case, route):
         native.reset()
         adapter.reset()
         return {'native': native, 'adapter': adapter, 'legacy': adapter._legacy}[route]
     # First establish that the otherwise-identical setup passes with context.
-    validate_case(CASES[-1], factory)
-    monkeypatch.setattr(wrapper, '_extract_texts', lambda stimuli: list(stimuli.sentence))
+    validate_case(RIDGE_CASES[-1], factory)
+    monkeypatch.setattr(wrapper, '_table_inputs', lambda stimuli: list(stimuli.sentence))
     with pytest.raises(AssertionError, match='native activations differ') as failure:
-        validate_case(CASES[-1], factory)
+        validate_case(RIDGE_CASES[-1], factory)
     assert 'score differs' not in str(failure.value)
     assert 'raw differs' not in str(failure.value)
 
@@ -193,7 +191,7 @@ def run_parity_observations(language_pair):
             _similarity_metric = metric
             ceiling = Score(changes.get('legacy', {}).get('ceiling', 0.5))
 
-            def __call__(self, candidate):
+            def __call__(self, subject):
                 observation = changes.get(active_route, {})
                 source = NeuroidAssembly(
                     np.array([[1., 2.]]) + observation.get('activation_delta', 0),
@@ -214,7 +212,7 @@ def run_parity_observations(language_pair):
     return run
 
 
-@pytest.mark.parametrize('case', GUARD_CASES, ids=lambda case: case.unified)
+@pytest.mark.parametrize('case', GUARD_CASES, ids=lambda case: case.legacy)
 @pytest.mark.parametrize('field', ['activation_delta', 'score', 'raw'])
 def test_adapter_guards_cannot_be_relaxed_by_native_tolerances(case, field, run_parity_observations):
     baseline = {'activation_delta': 0, 'score': 0.5, 'raw': 0.25}[field]
@@ -225,7 +223,7 @@ def test_adapter_guards_cannot_be_relaxed_by_native_tolerances(case, field, run_
                                 native_atol=1, score_atol=1)
 
 
-@pytest.mark.parametrize('case', GUARD_CASES, ids=lambda case: case.unified)
+@pytest.mark.parametrize('case', GUARD_CASES, ids=lambda case: case.legacy)
 @pytest.mark.parametrize('field', ['score', 'raw'])
 def test_adapter_scores_allow_four_fp32_ulps_with_exact_activations(case, field, run_parity_observations):
     # Controlled scalar perturbations, not invented CI activation arrays.
@@ -262,41 +260,21 @@ def test_adapter_score_tolerance_scales_without_an_absolute_floor(reference):
     assert adapter_score_tolerance(reference) == 4 * spacing
 
 
-@pytest.mark.parametrize('case, legacy_score, native_score, legacy_raw, native_raw', [
-    (CASES[-2], 0.8711741877922449, 0.8723817692825759,
-     0.30821208826023067, 0.3086393176456909),
-    (CASES[-1], 0.8280753625165158, 0.8277164923953866,
-     0.30095362369641643, 0.30082319684364545),
-])
-def test_native_accepts_measured_score_gaps_and_reports_ulp_policy(
-        case, legacy_score, native_score, legacy_raw, native_raw, run_parity_observations):
-    reference = dict(score=legacy_score, raw=legacy_raw, ceiling=legacy_raw / legacy_score)
-    # Synthetic activation discrepancy exercises the small-coordinate floor.
-    # These are not the original GPU activation arrays.
-    changed = dict(score=native_score, raw=native_raw, activation_delta=1e-4)
-    report = run_parity_observations(case, {'legacy': reference, 'adapter': reference, 'native': changed})
-    assert report['native_atol'] is None
-    assert report['native_ulps'] == 16
-    assert report['native_ulp_magnitude_floor'] == 64
-    assert report['score_atol'] == 0.002
-    assert report['routes']['native']['score'] == native_score
-
-
 @pytest.mark.parametrize('field', ['score', 'raw'])
 def test_native_score_guard_rejects_drift_with_identical_activations(field, run_parity_observations):
     baseline = {'score': 0.5, 'raw': 0.25}[field]
     with pytest.raises(AssertionError, match=f'native {field} differs'):
-        run_parity_observations(CASES[-1], {'native': {field: baseline + 0.003}})
+        run_parity_observations(RIDGE_CASES[-1], {'native': {field: baseline + 0.003}})
 
 
 def test_native_activation_guard_remains_when_scores_match(run_parity_observations):
     with pytest.raises(AssertionError, match='native activations differ'):
-        run_parity_observations(CASES[-1], {'native': {'activation_delta': 2 ** -12}})
+        run_parity_observations(RIDGE_CASES[-1], {'native': {'activation_delta': 2 ** -12}})
 
 
 def test_native_reports_score_and_activation_failures_together(run_parity_observations):
     with pytest.raises(AssertionError) as failure:
-        run_parity_observations(CASES[-1], {'native': {
+        run_parity_observations(RIDGE_CASES[-1], {'native': {
             'score': 0.503, 'raw': 0.253, 'activation_delta': 2 ** -12}})
     message = str(failure.value)
     assert message.index('native score differs') < message.index('native raw differs')
@@ -314,24 +292,25 @@ def test_reported_binades_and_deltas_fit_policy(reference, delta, local_ulps):
     reference = np.array([reference], dtype=np.float32)
     assert delta / float(np.spacing(np.abs(reference[0]))) == local_ulps
     actual = reference.astype(np.float64) + delta
-    assert assert_pereira_activations(actual, reference) <= PEREIRA_NATIVE_ULPS
+    assert assert_pereira_activations(actual, reference, ulps=L4_NATIVE_ULPS) <= L4_NATIVE_ULPS
     assert 2 ** -13 == 4 * 2 ** -15
 
 
 @pytest.mark.parametrize('reference', [0., 1.619, -1.619, 64., 273.237, -278.512, 1024.])
 def test_ulp_limit_accepts_boundary_and_rejects_one_more_effective_ulp(reference):
     reference = np.array([reference], dtype=np.float32)
-    limit = fp32_ulp_tolerance(reference)
-    assert_pereira_activations(reference.astype(np.float64) + limit, reference)
+    limit = fp32_ulp_tolerance(reference, ulps=L4_NATIVE_ULPS)
+    assert_pereira_activations(reference.astype(np.float64) + limit, reference, ulps=L4_NATIVE_ULPS)
     with pytest.raises(AssertionError, match='effective FP32 ULPs exceeds 16'):
-        assert_pereira_activations(reference.astype(np.float64) + limit * 17 / 16, reference)
+        assert_pereira_activations(reference.astype(np.float64) + limit * 17 / 16, reference,
+                                   ulps=L4_NATIVE_ULPS)
 
 
 def test_ulp_limit_is_per_element_not_global_maximum():
     reference = np.array([0., 273.237], dtype=np.float32)
-    assert_pereira_activations(reference.astype(np.float64) + [0., 2 ** -12], reference)
+    assert_pereira_activations(reference.astype(np.float64) + [0., 2 ** -12], reference, ulps=L4_NATIVE_ULPS)
     with pytest.raises(AssertionError):
-        assert_pereira_activations(reference.astype(np.float64) + [2 ** -12, 0.], reference)
+        assert_pereira_activations(reference.astype(np.float64) + [2 ** -12, 0.], reference, ulps=L4_NATIVE_ULPS)
 
 
 @pytest.mark.parametrize('actual, reference', [([np.nan], [0.]), ([np.inf], [0.]),
@@ -339,16 +318,7 @@ def test_ulp_limit_is_per_element_not_global_maximum():
                                              ([0., 0.], [0.])])
 def test_ulp_check_rejects_nonfinite_or_mismatched_shapes(actual, reference):
     with pytest.raises(AssertionError):
-        assert_pereira_activations(actual, reference)
-
-
-def test_pereira_raw_score_uses_ceiling_units_even_when_published_score_is_clipped(run_parity_observations):
-    # Equal clipped scores must not hide a >0.002 normalized raw-score drift.
-    reference = dict(score=1., raw=0.3, ceiling=0.25)
-    with pytest.raises(AssertionError, match='native raw differs'):
-        run_parity_observations(CASES[-1], {
-            'legacy': reference, 'adapter': reference,
-            'native': dict(score=1., raw=0.3006)})
+        assert_pereira_activations(actual, reference, ulps=L4_NATIVE_ULPS)
 
 
 def test_vision_native_keeps_original_absolute_tolerance(run_parity_observations):
@@ -358,60 +328,19 @@ def test_vision_native_keeps_original_absolute_tolerance(run_parity_observations
 
 def _paired_score_reports(deltas, raw_deltas=None):
     raw_deltas = deltas if raw_deltas is None else raw_deltas
-    return [dict(benchmark=case.unified, routes={
+    return [dict(benchmark=case.legacy, routes={
         'legacy': dict(score=0.5, raw=0.25, ceiling=0.5),
         'native': dict(score=0.5 + delta, raw=0.25 + raw_delta * 0.5, ceiling=0.5),
-    }) for case, delta, raw_delta in zip(PEREIRA_CASES, deltas, raw_deltas)]
+    }) for case, delta, raw_delta in zip(RIDGE_CASES, deltas, raw_deltas)]
 
 
-@pytest.mark.parametrize('deltas', [(0., 0.), (0.0012075814903310, -0.0003588701211292),
-                                  (0.0012, -0.0004)])
-def test_paired_score_guard_accepts_measured_or_exact_parity(deltas):
-    assert_pereira_score_drift(_paired_score_reports(deltas))
+def test_paired_score_guard_needs_an_fp32_policy():
+    from brainscore.validation.benchmark_parity import HISTORICAL_POLICY
+    with pytest.raises(ValueError, match='FP32 policy'):
+        assert_pereira_score_drift(_paired_score_reports((0., 0.)), policy=HISTORICAL_POLICY)
 
 
-@pytest.mark.parametrize('deltas', [(0.0001, 0.0001), (-0.0001, -0.0001)])
-@pytest.mark.parametrize('key', ['score', 'raw'])
-def test_paired_score_guard_rejects_same_sign_bias_inside_individual_tolerances(deltas, key):
-    assert all(abs(delta) < PEREIRA_SCORE_ATOL for delta in deltas)
-    reports = _paired_score_reports(deltas if key == 'score' else (0., 0.),
-                                    deltas if key == 'raw' else (0., 0.))
-    with pytest.raises(AssertionError, match=f'{key}: same-sign drift'):
-        assert_pereira_score_drift(reports)
-
-
-@pytest.mark.parametrize('key', ['score', 'raw'])
-def test_paired_score_guard_detects_growing_drift_before_global_budget(key):
-    # A monotone outward drift still inside 0.002 crosses the frozen rounding
-    # envelope. Growth smaller than the envelope's resolution is not claimed
-    # to be detectable by any finite tolerance.
-    for deltas in ((0.0012, -0.0004), (0.00124, -0.00044)):
-        assert_pereira_score_drift(_paired_score_reports(deltas))
-    deltas = (0.0013, -0.0005)
-    assert all(abs(delta) < PEREIRA_SCORE_ATOL for delta in deltas)
-    reports = _paired_score_reports(deltas if key == 'score' else (0., 0.),
-                                    deltas if key == 'raw' else (0., 0.))
-    with pytest.raises(AssertionError, match=f'{key} drift .*historical rounding envelope'):
-        assert_pereira_score_drift(reports)
-
-
-@pytest.mark.parametrize('indices', [[0], [1], [0, 0]])
-def test_paired_score_guard_requires_both_cases(indices):
-    reports = _paired_score_reports((0., 0.))
-    with pytest.raises(AssertionError, match='both benchmarks exactly once'):
-        assert_pereira_score_drift([reports[index] for index in indices])
-
-
-def test_slow_entrypoint_actually_enforces_joint_bias_guard(monkeypatch, tmp_path):
-    from tests import test_benchmark_parity_slow as slow
-    reports = {report['benchmark']: report for report in _paired_score_reports((0.0001, 0.0001))}
-    monkeypatch.setattr(slow, '_require_checkpoint', lambda domain: None)
-    monkeypatch.setattr(slow, 'validate_case', lambda case, factory: reports[case.unified])
-    with pytest.raises(AssertionError, match='same-sign drift'):
-        slow.test_pereira_243_and_384_score_parity(tmp_path)
-
-
-@pytest.mark.parametrize('case', (*PEREIRA_CASES,))
+@pytest.mark.parametrize('case', RIDGE_CASES)
 def test_cpu_budget_is_explicit_and_preserves_failure_evidence(case, run_parity_observations):
     from brainscore.validation.benchmark_parity import CPU_FP32_POLICY, ParityFailure
     changes = {'native': {'activation_delta': 32 * 2 ** -17, 'score': .500002}}
@@ -431,7 +360,7 @@ def test_cpu_budget_is_explicit_and_preserves_failure_evidence(case, run_parity_
 def test_cpu_profile_does_not_relax_adapter(field, run_parity_observations):
     from brainscore.validation.benchmark_parity import CPU_FP32_POLICY, RIDGE_CASES
     value = {'activation_delta': 1e-12, 'score': .500001, 'raw': .250001}[field]
-    for case in (*PEREIRA_CASES, *RIDGE_CASES):
+    for case in RIDGE_CASES:
         with pytest.raises(AssertionError, match='adapter'):
             run_parity_observations(case, {'adapter': {field: value}}, policy=CPU_FP32_POLICY)
 
@@ -460,8 +389,8 @@ def test_cpu_mean_signed_drift_has_a_finite_budget(key):
         assert_pereira_score_drift(reports((0, 0))[:1], policy=CPU_FP32_POLICY)
 
 
-@pytest.mark.parametrize('case', (*PEREIRA_CASES,))
-def test_l4_keeps_historical_activation_budget_with_tighter_scores(case, run_parity_observations):
+@pytest.mark.parametrize('case', RIDGE_CASES)
+def test_l4_keeps_the_16_ulp_activation_budget_with_tighter_scores(case, run_parity_observations):
     from brainscore.validation.benchmark_parity import L4_FP32_POLICY
     report = run_parity_observations(case, {'native': {'activation_delta': 16 * 2 ** -17,
         'score': .500002}}, policy=L4_FP32_POLICY)
@@ -484,9 +413,7 @@ def test_l4_applies_same_activation_rule_to_ridge_and_retains_adapter_guard(run_
 
 
 def test_l4_preserves_paired_bias_guard():
-    from brainscore.validation.benchmark_parity import L4_FP32_POLICY, RIDGE_CASES
+    from brainscore.validation.benchmark_parity import L4_FP32_POLICY
     reports = _paired_score_reports((6e-6, 6e-6))
-    for case, report in zip(RIDGE_CASES, reports):
-        report['benchmark'] = case.unified
     with pytest.raises(AssertionError, match='mean signed drift'):
         assert_pereira_score_drift(reports, policy=L4_FP32_POLICY)

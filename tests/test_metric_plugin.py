@@ -41,7 +41,7 @@ class TestMetricSeamFirstClass:
     def test_load_metric_returns_metric(self):
         import brainscore
         from brainscore_core.metrics import Metric
-        from brainscore.metrics import TopographicMetric
+        from brainscore.metrics.topographic import TopographicMetric
         metric = brainscore.load_metric('topographic-alignment')
         assert isinstance(metric, Metric) and isinstance(metric, TopographicMetric)
 
@@ -72,3 +72,29 @@ class TestMetricSeamFirstClass:
         aligned = float(metric(_topographic_assembly(0), brain))
         shuffled = float(metric(_topographic_assembly(0, shuffle_positions=True), brain))
         assert aligned > shuffled
+
+
+@pytest.mark.parametrize('path, names', [
+    ('brainscore.metrics.topographic',
+     ['TopographicMetric', 'SelectivityTopographicMetric', 'correlation_distance_profile',
+      'spatial_smoothness', 'topographic_alignment', 'selectivity_maps', 'selectivity_centroids',
+      'selectivity_topographic_alignment']),
+    ('brainscore.metrics.direct_comparison', ['DirectComparisonMetric']),   # per_unit_pearson is core's
+])
+# The public names of a moved metric module are the names it defines; names it only imports
+# (np, Optional, Tuple, Metric, Score) are not public names of the module and are not re-exported.
+def test_a_moved_metric_keeps_each_public_name_at_its_path(path, names):
+    import importlib
+    module = importlib.import_module(path)
+    assert [name for name in names if not hasattr(module, name)] == []
+
+
+@pytest.mark.parametrize('name, path, class_name', [
+    ('topographic-alignment', 'brainscore.metrics.topographic', 'TopographicMetric'),
+    ('selectivity-topographic-alignment', 'brainscore.metrics.topographic', 'SelectivityTopographicMetric'),
+    ('direct-comparison', 'brainscore.metrics.direct_comparison', 'DirectComparisonMetric'),
+])
+def test_each_registered_metric_loads_by_name_as_its_class(name, path, class_name):
+    import importlib
+    import brainscore
+    assert isinstance(brainscore.load_metric(name), getattr(importlib.import_module(path), class_name))

@@ -22,8 +22,7 @@ The supported shared environment is:
 | importlib-metadata | below 5 |
 
 Use the shared constraints in `install/v2-constraints.txt` for the reviewed CPU
-integration profile. Full platform and scientific qualification is tracked in
-[the production policy](../docs/archive/production_release.md).
+integration profile.
 
 ## One-command setup
 
@@ -36,13 +35,43 @@ conda activate brainscore-unified
 
 The script:
 
-1. Clones missing core/, vision/, language/, and unified/ repositories from
-   their unified-model-interface-v2 branches.
-2. Refuses an existing sibling repository on a different branch.
+1. Clones a missing unified/ at the unified-model-interface-v2 branch, and missing
+   core/, vision/ and language/ at the commits named in `install/peer-revisions.json`.
+2. Refuses an existing sibling repository that is neither on that branch nor at its
+   pinned commit.
 3. Creates brainscore-unified from environment-unified.yml.
 4. Installs all four repositories editably, including notebook dependencies.
 5. Runs pip check, imports all four packages, and verifies the Transformers
    cache API needed by language scoring.
+
+Both ways use conda-forge only (the environment file lists `nodefaults`), so a fresh
+miniconda does not stop at the terms of service of Anaconda's default channels, and the
+script accepts nothing on your behalf.
+
+## Reproducible setup (the scoring platform)
+
+On Linux x86_64 with Python 3.11 and CUDA 12.4, one command installs every package at the
+version of the reference scoring machine:
+
+~~~bash
+bash setup.sh --lock
+conda activate brainscore-unified
+python -m brainscore.doctor     # lists the Python and every package that differs from the lock
+~~~
+
+It reads the Python version from the line `# python==3.11.15` of the lock and creates the
+environment with `conda create --override-channels -c conda-forge python==3.11.15 pip`.
+It installs `unified/install/lock-linux-py311-cu124.txt` (it names the PyTorch CUDA 12.4 index
+itself, and also `pip`, `setuptools` and `wheel`, so the environment ends with their locked
+versions; the environment fingerprint counts them), then installs the four repositories from their checkouts with `--no-deps`.
+On another platform the option stops with a message; the pinned setup above and the bounds of the doctor
+apply there. Do not combine the lock with `v2-constraints.txt`: that file is the CPU test
+profile. It names the lock's versions (torch and torchvision without the `+cu124` tag, so
+the CPU wheel installs).
+
+The doctor compares the Python, `pip`, `setuptools`, `wheel` and every package with the lock, and
+prints the environment fingerprint and the math threads; every score records both
+(see [Score a model](../docs/guides/score_a_model.md) for when two scores compare bit for bit).
 
 The script refuses to overwrite an existing conda environment. Choose a
 different name when needed:
@@ -54,11 +83,12 @@ UMI_ENV_NAME=brainscore-unified-test bash setup.sh
 ## Manual setup
 
 With the four repositories already checked out side by side, the environment file is
-unnecessary; the shared constraints file holds every dependency to its tested version:
+unnecessary; the shared constraints file holds the shared dependencies that move scores
+or break imports at their tested versions (not every package; see the reproducible setup):
 
 ~~~bash
-cd <workspace-root>
-conda create -y -n brainscore-unified python=3.11
+cd <workspace-root>           # holds core/, vision/, language/, unified/
+conda create -y -n brainscore-unified --override-channels -c conda-forge python=3.11
 conda activate brainscore-unified
 pip install -c unified/install/v2-constraints.txt -e ./core -e ./vision -e ./language -e "./unified[notebooks,test]"
 python -m pip check
@@ -71,11 +101,12 @@ directory:
 
 ~~~bash
 cd <workspace-root>
-cp unified/install/environment-unified.yml .
+cp unified/install/environment-unified.yml .    # beside the repositories, so its paths resolve
 conda env create -n brainscore-unified -f environment-unified.yml
 conda activate brainscore-unified
 python -m pip check
 python -c "import brainscore"
+# The transformers that language scoring needs
 python -c "from transformers import DynamicCache; assert hasattr(DynamicCache(), 'to_legacy_cache')"
 ~~~
 
@@ -92,6 +123,7 @@ Lesson 1 uses images and weights committed with the lessons and downloads nothin
 
 ~~~bash
 cd unified/notebooks/lessons
+# Run lesson 1; the executed copy goes to /tmp
 jupyter nbconvert --to notebook --execute --stdout 01_your_first_subject.ipynb >/tmp/umi-lesson01.ipynb
 ~~~
 
@@ -139,11 +171,10 @@ Brain-Score Unified/
 |-- environment-unified.yml
 |-- setup.sh
 |-- README.md
-|-- SETUP.md
+|-- install-manifest.txt
 ~~~
 
-All four repositories must remain on unified-model-interface-v2 for this
-distribution.
+`setup.sh` writes `README.md` and `install-manifest.txt` (the commit of each repository).
 
 ## Troubleshooting
 
@@ -181,4 +212,5 @@ python -m pip install -c unified/install/v2-constraints.txt -e core -e vision -e
 
 Brain-Score caches scores and activations. Use an isolated
 RESULTCACHING_HOME for experiments whose model state or hooks change, and
-consult the perturbation caveats in the UMI API cookbook.
+read the cache rules of a custom intervention in
+[Perturb and select units](../docs/guides/perturb_and_select_units.md#interventions).

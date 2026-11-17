@@ -6,12 +6,12 @@ not download data, drive hardware, or infer units from an unnamed action vector.
 
 from dataclasses import asdict
 from pathlib import Path
-from typing import Mapping
 import time
 
 import numpy as np
 
-from brainscore_core.streaming import NamedStreams, Session, StreamEvent, begin_event, row_events
+from brainscore_core.streaming import NamedStreams, StreamEvent, row_events
+from brainscore_core.streaming_helpers import environment_session
 
 
 from brainscore_core.environment import ActionSpec
@@ -104,41 +104,79 @@ def droid_steps(episode, *, action_spec, action_source, timestamp_key=None):
         raise ValueError('Expected a nonempty episode ending with is_last')
 
 
-def evaluate_droid_episode(subject, episode, *, action_spec, action_source,
-                           recorder=None, timestamp_key=None):
-    """Evaluate a fixed trajectory; a ``begin`` clears the subject's episode state first.
+class _RecordedEpisode:
+    """A recorded episode as an environment: each step serves the next recorded row.
 
-    The subject keeps its interventions and task setup (no ``reset()``).
-    Returns predictions, targets and inference latencies. This cannot measure
-    task success under policy control because observations are demonstrations.
+    The subject's action never changes the next row (open loop). The session owns
+    the loop; this environment keeps the predictions, targets and latencies, and
+    writes the recorder's input and output events.
     """
-    predictions, targets, latencies = [], [], []
-    subject.participate(Session([begin_event()], ('motor',)))
-    for step, target, info in droid_steps(episode, action_spec=action_spec,
-                                          action_source=action_source,
-                                          timestamp_key=timestamp_key):
-        if recorder:
-            for event in row_events(step, info['t_ms'], step_num=info['step_num']):
-                recorder.record('input', event)
-        start = time.perf_counter()
-        outputs = subject.process(step)
-        elapsed = (time.perf_counter() - start) * 1000
-        if not isinstance(outputs, Mapping) or 'motor' not in outputs:
-            raise TypeError("Robotics policy must return {'motor': action}")
-        response = outputs['motor']
-        action = response.payload if isinstance(response, StreamEvent) else response
-        prediction = action_spec.validate(action)
-        predictions.append(prediction)
-        targets.append(target)
-        latencies.append(elapsed)
-        if recorder:
-            recorder.record('output', StreamEvent('motor', action, info['t_ms'],
-                {'step_num': info['step_num'], 'target': target, 'latency_ms': elapsed,
-                 'deadline_missed': elapsed > action_spec.period_ms,
+
+    def __init__(self, steps, action_spec, recorder):
+        self._steps = steps
+        self._spec = action_spec
+        self._recorder = recorder
+        self._target = self._info = self._served = None
+        self.predictions, self.targets, self.latencies = [], [], []
+
+    def _next_row(self):
+        row, self._target, self._info = next(self._steps)
+        if self._recorder:
+            for event in row_events(row, self._info['t_ms'], step_num=self._info['step_num']):
+                self._recorder.record('input', event)
+        self._served = time.perf_counter()
+        return row
+
+    def clock(self):
+        return {key: self._info[key] for key in ('t_ms', 'time_source', 'time_inferred')}
+
+    def reset(self):
+        return self._next_row()
+
+    def step(self, outputs):
+        # From the row leaving the environment to the action reaching it (the session included).
+        elapsed = (time.perf_counter() - self._served) * 1000
+        action = outputs['motor']
+        self.predictions.append(self._spec.validate(action))
+        self.targets.append(self._target)
+        self.latencies.append(elapsed)
+        if self._recorder:
+            info = self._info
+            self._recorder.record('output', StreamEvent('motor', action, info['t_ms'],
+                {'step_num': info['step_num'], 'target': self._target, 'latency_ms': elapsed,
+                 'deadline_missed': elapsed > self._spec.period_ms,
                  'evaluation': 'recorded_trajectory', 'action_status': 'predicted',
                  'deadline_enforced': False}))
-    return {'predictions': np.stack(predictions), 'targets': np.stack(targets),
-            'latency_ms': np.asarray(latencies), 'evaluation': 'recorded_trajectory'}
+        try:
+            return self._next_row(), None
+        except StopIteration:
+            return {}, 'terminal'
+
+
+def evaluate_droid_episode(subject, episode, *, action_spec, action_source,
+                           recorder=None, timestamp_key=None):
+    """Evaluate a fixed trajectory in one closed-loop session; its ``begin`` clears
+    the subject's episode state first.
+
+    The subject keeps its interventions and task setup (no ``reset()``). It must
+    declare the inputs its policy reads (``policy_in_channels``, for example
+    ``DroidPolicy.inputs``): the session sends only those. Returns predictions,
+    targets and latencies (from the row leaving the episode to the action
+    reaching it). This cannot measure task success under policy control because
+    observations are demonstrations.
+    """
+    environment = _RecordedEpisode(
+        droid_steps(episode, action_spec=action_spec, action_source=action_source,
+                    timestamp_key=timestamp_key),
+        action_spec, recorder)
+    # history_limit=0: the session keeps no copy of the camera frames; the episode keeps the results.
+    with environment_session(environment, history_limit=0) as session:
+        subject.participate(session)
+    if not session.complete:
+        raise RuntimeError('The recorded episode ended before its last step')
+    return {'predictions': np.stack(environment.predictions),
+            'targets': np.stack(environment.targets),
+            'latency_ms': np.asarray(environment.latencies), 'evaluation': 'recorded_trajectory'}
 
 
 def staged_droid_episodes(directory, *, split='train'):

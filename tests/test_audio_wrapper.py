@@ -1,11 +1,10 @@
 """Unit tests for AudioWrapper — the fifth activations_model wrapper.
 
 Covers the pieces that don't require downloading a real audio checkpoint:
-- construction contract (identifier, backbone_id, sampling_rate resolution)
+- construction contract (identifier, sampling_rate resolution)
 - ``_extract_paths`` stimulus-column detection
 - ``_aggregate`` reduces (B, T, H) correctly under each mode
 - ``_load_waveform`` truncates clips longer than max_duration_sec
-- cache key propagation uses backbone_id (not identifier)
 - column-to-modality map knows ``audio_path`` / ``audio_file_name``
 
 A small real forward-pass test against a tiny HuggingFace model (e.g.
@@ -75,24 +74,14 @@ def wrapper():
     processor = _FakeProcessor(sampling_rate=16000)
     return AudioWrapper(
         model=model, processor=processor,
-        identifier='test-wrapper', backbone_id='test-backbone',
+        identifier='test-wrapper',
     )
 
 
 class TestConstruction:
 
-    def test_identifier_and_backbone_id(self, wrapper):
+    def test_identifier(self, wrapper):
         assert wrapper.identifier == 'test-wrapper'
-        assert wrapper.backbone_id == 'test-backbone'
-
-    def test_default_backbone_id_equals_identifier(self):
-        from brainscore.model_helpers.audio_wrapper import AudioWrapper
-        import torch.nn as nn
-        w = AudioWrapper(
-            model=nn.Identity(), processor=_FakeProcessor(),
-            identifier='audio-a',
-        )
-        assert w.backbone_id == 'audio-a'
 
     def test_sampling_rate_from_processor(self, wrapper):
         assert wrapper.target_sample_rate == 16000
@@ -138,8 +127,7 @@ class TestConstruction:
 # ── Stimulus column detection ───────────────────────────────────────
 
 class TestExtractPaths:
-    """_extract_paths should find audio paths under any of the known
-    column names (audio_path, audio_file_name, audio_file, filename)."""
+    """_extract_paths finds audio paths under the columns the core catalog binds to ``audio``."""
 
     def test_audio_path_column(self, wrapper):
         df = pd.DataFrame({
@@ -187,7 +175,7 @@ class TestAggregate:
         import torch
         act = np.ones((2, 4, 2), dtype=np.float32)
         act[0, 2:, :] = 100  # padded-region values we want masked out
-        mask = torch.tensor([[1, 1, 0, 0], [1, 1, 1, 1]], dtype=torch.int64)
+        mask = np.array([[1, 1, 0, 0], [1, 1, 1, 1]], dtype=np.int64)
         out = wrapper._aggregate({'l': act}, attention_mask=mask)
         # Row 0: only first 2 steps count → mean = 1
         np.testing.assert_allclose(out['l'][0], [1.0, 1.0])
@@ -200,7 +188,7 @@ class TestAggregate:
         import torch
         act = np.ones((1, 3, 2), dtype=np.float32)
         # mask has 8 steps but activations only have 3 — conv stride
-        mask = torch.ones((1, 8), dtype=torch.int64)
+        mask = np.ones((1, 8), dtype=np.int64)
         out = wrapper._aggregate({'l': act}, attention_mask=mask)
         np.testing.assert_allclose(out['l'], act.mean(axis=1))
 
@@ -209,7 +197,7 @@ class TestAggregate:
         import torch.nn as nn
         w = AudioWrapper(
             model=nn.Identity(), processor=_FakeProcessor(),
-            identifier='w', layer_aggregation='time_series',
+            identifier='w', layer_aggregation='sequence',
         )
         act = np.random.randn(3, 7, 4).astype(np.float32)
         out = w._aggregate({'l': act}, attention_mask=None)
@@ -226,6 +214,65 @@ class TestAggregate:
         act = np.random.randn(2, 3, 4, 5).astype(np.float32)
         with pytest.raises(ValueError, match="Unexpected activation rank"):
             wrapper._aggregate({'l': act}, attention_mask=None)
+
+
+class TestPrecision:
+    """The audio extractor keeps the dtype of its network until the temporal
+    reduction: the hook output becomes numpy as it is, and only a dtype numpy
+    cannot hold (bfloat16) becomes float32."""
+
+    @staticmethod
+    def _network(dtype):
+        import torch
+        import torch.nn as nn
+
+        class _Network(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.encoder = nn.Identity()
+                self.seen = []
+
+            def forward(self, input_values, attention_mask=None):
+                generator = torch.Generator().manual_seed(0)
+                activity = torch.randn(input_values.shape[0], 3, 2, generator=generator,
+                                       dtype=torch.float64) * 100
+                activity[:, :, 0] = torch.tensor([2049., 1., -2048.], dtype=torch.float64)
+                if dtype == torch.float64:
+                    activity[:, :, 1] = torch.tensor([100000001., 1., -100000000.], dtype=torch.float64)
+                activity = activity.to(dtype)
+                self.seen.append(activity)
+                self.encoder(activity)
+
+        return _Network()
+
+    def _extract(self, dtype, aggregation):
+        from brainscore.model_helpers.audio_wrapper import AudioWrapper
+        network = self._network(dtype)
+        wrapper = AudioWrapper(model=network, processor=_FakeProcessor(), identifier='precision',
+                               layer_aggregation=aggregation, batch_size=1)
+        waves = [np.zeros(1600, np.float32), np.zeros(1600, np.float32)]
+        return wrapper._get_activations_batched(waves, ['encoder'])['encoder'], network.seen
+
+    @pytest.mark.parametrize('aggregation', ['mean', 'sequence'])
+    @pytest.mark.parametrize('dtype_name', ['float16', 'float32', 'float64'])
+    def test_activity_keeps_the_network_dtype(self, dtype_name, aggregation):
+        import torch
+        activity, seen = self._extract(getattr(torch, dtype_name), aggregation)
+        raw = np.concatenate([tensor.numpy() for tensor in seen])
+        expected = raw if aggregation == 'sequence' else raw.mean(axis=1)
+        assert activity.dtype == np.dtype(dtype_name)
+        np.testing.assert_array_equal(activity, expected)
+
+    def test_float64_mean_is_not_rounded(self):
+        import torch
+        activity, _ = self._extract(torch.float64, 'mean')
+        assert activity[0, 1] == pytest.approx(2 / 3, abs=0)
+
+    def test_bfloat16_becomes_float32(self):
+        import torch
+        activity, seen = self._extract(torch.bfloat16, 'sequence')
+        assert activity.dtype == np.float32
+        np.testing.assert_array_equal(activity, np.concatenate([t.float().numpy() for t in seen]))
 
 
 # ── Waveform loading + truncation ───────────────────────────────────
@@ -317,7 +364,7 @@ class TestWaveformChunking:
         w = AudioWrapper(
             model=nn.Identity(), processor=_FakeProcessor(16000),
             identifier='w', max_duration_sec=60.0,
-            layer_aggregation='time_series',
+            layer_aggregation='sequence',
         )
         # 3 chunks @ T=2, H=2. Clip 0 = chunks {0,1} → T=4. Clip 1 = {2} → T=2.
         chunk_arr = np.array([
@@ -335,46 +382,15 @@ class TestWaveformChunking:
         assert np.isnan(out[1, 2:]).all()
 
 
-# ── Cache key propagation ───────────────────────────────────────────
+# ── Stimulus columns that feed the audio channel ───────────────────
 
-class TestCacheKey:
+class TestAudioColumns:
 
-    def test_from_paths_cached_uses_backbone_id(self, wrapper, tmp_path, monkeypatch):
-        monkeypatch.setenv('RESULTCACHING_DISABLE', '0')
-        monkeypatch.chdir(tmp_path)
-        (tmp_path / 'x.wav').write_bytes(b'input')
-        captured = {}
-
-        def fake_stored(identifier, stimuli_identifier, layers, paths, extraction_fingerprint):
-            captured['identifier'] = identifier
-            return 'sentinel'
-
-        wrapper._from_paths_stored = fake_stored
-        result = wrapper._from_paths_cached(
-            paths=['x.wav'], layers=['enc'], stimuli_identifier='stim')
-        assert result == 'sentinel'
-        assert captured['identifier'] == 'test-backbone'
-
-    def test_different_backbone_ids_dont_collide(self):
-        from brainscore.model_helpers.audio_wrapper import AudioWrapper
-        import torch.nn as nn
-        a = AudioWrapper(model=nn.Identity(), processor=_FakeProcessor(),
-                         identifier='a', backbone_id='wav2vec-bert')
-        b = AudioWrapper(model=nn.Identity(), processor=_FakeProcessor(),
-                         identifier='b', backbone_id='hubert')
-        assert a.backbone_id != b.backbone_id
-
-
-# ── Column-to-modality registry ─────────────────────────────────────
-
-class TestColumnToModality:
-
-    def test_audio_columns_registered(self):
-        from brainscore import BrainScoreModel
-        mapping = BrainScoreModel.COLUMN_TO_MODALITY
-        assert mapping.get('audio_path') == 'audio'
-        assert mapping.get('audio_file_name') == 'audio'
-        assert mapping.get('audio_file') == 'audio'
+    def test_audio_columns_feed_the_audio_channel(self):
+        from brainscore_core.io_catalog import column_channel
+        assert column_channel('audio_path') == 'audio'
+        assert column_channel('audio_file_name') == 'audio'
+        assert column_channel('audio_file') == 'audio'
 
 
 # ── Temporal coords on time_series output ──────────────────────────
@@ -387,19 +403,17 @@ class TestTemporalCoords:
     def test_step_ms_unset_before_any_forward_pass(self, wrapper):
         assert wrapper._step_ms is None
 
-    def test_pack_3d_omits_time_coords_when_step_ms_unset(self, wrapper):
+    def test_time_series_packaging_omits_time_coords_when_step_ms_unset(self, wrapper):
         # Synthetic time_series output — _step_ms left as None
         act = np.zeros((2, 5, 4), dtype=np.float32)
-        assembly = wrapper._pack_3d(
-            act, layer_name='enc', paths=['a', 'b'], n_time=5, n_features=4)
+        assembly = wrapper._layers({'enc': act}, ['a', 'b'])['enc']
         assert 'time_bin_start_ms' not in assembly.coords
         assert 'time_bin_end_ms' not in assembly.coords
 
-    def test_pack_3d_attaches_time_coords_when_step_ms_set(self, wrapper):
+    def test_time_series_packaging_attaches_time_coords_when_step_ms_set(self, wrapper):
         wrapper._step_ms = 20.0  # mimic a Wav2Vec2-style 50 Hz output
         act = np.zeros((1, 4, 3), dtype=np.float32)
-        assembly = wrapper._pack_3d(
-            act, layer_name='enc', paths=['a'], n_time=4, n_features=3)
+        assembly = wrapper._layers({'enc': act}, ['a'])['enc']
         np.testing.assert_allclose(
             assembly['time_bin_start_ms'].values, [0.0, 20.0, 40.0, 60.0])
         np.testing.assert_allclose(
@@ -434,22 +448,28 @@ class TestTemporalCoords:
         # 1s @ 16kHz input → 50 output steps means step_ms = 1000/50 = 20
         w = AudioWrapper(
             model=model, processor=_FakeProcessor(16000),
-            identifier='strided', layer_aggregation='time_series',
+            identifier='strided', layer_aggregation='sequence',
         )
         wav = np.zeros(16000, dtype=np.float32)  # 1s
         w._run_one_batch([wav], layers=['encoder'])
         assert w._step_ms == pytest.approx(20.0, rel=1e-6)
 
-    def test_pack_3d_time_coords_independent_of_layer_name(self, wrapper):
+    def test_units_carry_the_shared_neuroid_coords(self, wrapper):
+        """The same unit coordinates as every other extractor: neuroid_num, model."""
+        layers = {'enc.0': np.zeros((2, 3), np.float32), 'enc.1': np.zeros((2, 2), np.float32)}
+        assembly = wrapper._package(layers, paths=['a', 'b'])
+        assert list(assembly['neuroid_num'].values) == [0, 1, 2, 0, 1]
+        assert set(assembly['model'].values) == {'test-wrapper'}
+        assert list(assembly['layer'].values) == ['enc.0'] * 3 + ['enc.1'] * 2
+
+    def test_time_series_packaging_time_coords_independent_of_layer_name(self, wrapper):
         """time_bin_start_ms / time_bin_end_ms only depend on _step_ms
         and n_time, not the layer name — important for multi-layer
         outputs that get concatenated along neuroid."""
         wrapper._step_ms = 25.0
         act = np.zeros((1, 3, 2), dtype=np.float32)
-        a1 = wrapper._pack_3d(
-            act, layer_name='layer.1', paths=['a'], n_time=3, n_features=2)
-        a2 = wrapper._pack_3d(
-            act, layer_name='layer.2', paths=['a'], n_time=3, n_features=2)
+        a1 = wrapper._layers({'layer.1': act}, ['a'])['layer.1']
+        a2 = wrapper._layers({'layer.2': act}, ['a'])['layer.2']
         np.testing.assert_allclose(
             a1['time_bin_start_ms'].values, a2['time_bin_start_ms'].values)
         np.testing.assert_allclose(

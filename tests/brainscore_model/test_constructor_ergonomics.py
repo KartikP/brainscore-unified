@@ -1,8 +1,4 @@
-"""C4: capability functions are explicit keyword-only params (visible in the
-signature/help), and the positional-tail footgun warns."""
-import inspect
-import warnings
-
+"""The constructor takes its parts as keywords; each part declares its channels."""
 import pytest
 
 from brainscore import BrainScoreModel
@@ -12,42 +8,41 @@ def _f(*a, **k):
     return None
 
 
-def test_explicit_capability_kwargs_route_correctly():
-    m = BrainScoreModel('id', None, {}, {}, None,
-                        action_fn=_f, state_change_fn=_f,
-                        generation_fn=_f, behavioral_readout_layer='layer.10')
-    assert m._action_fn is _f
-    assert m._state_change_fn is _f
-    assert m._generation_fn is _f
-    assert m._behavioral_readout_layer == 'layer.10'
+def test_parts_after_the_region_map_are_not_positional():
+    with pytest.raises(TypeError):
+        BrainScoreModel('id', None, {}, {'vision': _f})
 
 
-def test_capability_params_are_in_the_signature():
-    params = inspect.signature(BrainScoreModel.__init__).parameters
-    for name in ('behavioral_readout_layer', 'generation_fn', 'action_fn', 'state_change_fn'):
-        assert name in params, f"{name} should be an explicit keyword param"
-        assert params[name].kind == inspect.Parameter.KEYWORD_ONLY
+def test_extractor_is_a_mapping():
+    with pytest.raises(TypeError, match='mapping'):
+        BrainScoreModel('id', extractor=_f)
 
 
-def test_constructor_and_process_are_documented():
-    assert (BrainScoreModel.__init__.__doc__ or '').strip()
-    assert (BrainScoreModel.process.__doc__ or '').strip()
-
-
-def test_positional_capability_tail_warns():
-    with pytest.warns(DeprecationWarning, match="positionally"):
-        BrainScoreModel('id', None, {}, {}, None, 8, 'layer.10')  # 7th positional = footgun
-
-
-def test_keyword_calls_do_not_warn():
-    with warnings.catch_warnings():
-        warnings.simplefilter('error', DeprecationWarning)
-        BrainScoreModel('id', None, {}, {}, None, policy=_f)  # must not raise
+def test_each_part_declares_its_channels():
+    model = BrainScoreModel('id', policy=_f, intervention=_f, answer=_f,
+                            in_channels={'text'})
+    assert {'motor', 'perturbation', 'behavior:choice'} <= model.out_channels
+    assert {'text', 'instruction', 'observation', 'lesion'} <= model.in_channels
 
 
 def test_identifier_only_construction_works():
-    # docstring says only identifier is always required — make that true
-    m = BrainScoreModel('id')
-    assert m.identifier == 'id'
-    assert m._region_layer_map_dict == {}
-    assert m._preprocessors == {}
+    # The docstring says only identifier is always required.
+    model = BrainScoreModel('id')
+    assert model.identifier == 'id'
+    assert dict(model.region_layer_map) == {}
+    assert dict(model.extractor) == {}
+    assert model.in_channels == {'control'}
+
+
+@pytest.mark.parametrize('word', ['in_channels', 'required_channels'])
+@pytest.mark.parametrize('name, channel', [('vision', 'vision:image'), ('video', 'vision:video')])
+def test_channel_arguments_refuse_a_modality_name(word, name, channel):
+    with pytest.raises(ValueError, match=f"use '{channel}'"):
+        BrainScoreModel('id', reply=_f, **{word: {name}})
+
+
+def test_in_channels_and_required_channels_are_declared_as_given():
+    model = BrainScoreModel('id', reply=_f, in_channels={'text', 'vision:video'},
+                            required_channels={'vision:video'})
+    assert {'text', 'vision:video'} <= model.in_channels
+    assert model.required_channels == {'vision:video'}

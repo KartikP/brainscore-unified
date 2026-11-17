@@ -254,7 +254,7 @@ class RemoteOpenPIInstrumentation:
     """Use RecordActivity/Ablate with an OpenPIPolicyClient on another process."""
     def __init__(self, client):
         if client._provider is not None:
-            raise ValueError('Client already has an instrumentation provider')
+            raise ValueError('Client already has an instrumentation')
         self.client = client
         client._provider = self
 

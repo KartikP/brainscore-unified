@@ -9,30 +9,36 @@ them a piece at a time.
 
 ## What a data plugin provides
 
-Two things, registered under two identifiers:
+What was shown and what was measured, each registered under an identifier:
 
 | | What it is | Registry |
 | --- | --- | --- |
 | StimulusSet | what was shown, one row per stimulus | `stimulus_set_registry` |
-| DataAssembly | what was measured, `(presentation, neuroid)` | `data_registry` |
+| DataAssembly, neural | what was measured, `(presentation, neuroid)` | `data_registry` |
+| DataAssembly, behavior | what participants answered, one row per (participant, trial) | `data_registry` |
+
+The template registers `your-stimuli`, `your-measurements` and `your-choices`. Keep the
+ones your study has.
 
 Neither scores anything. A benchmark loads both and compares a model against them.
 
 ## Install
 
-Copy this folder to `brainscore/data/<your_name>/`, then add one line to
-`brainscore/data/__init__.py`:
+Copy this folder to `brainscore/data/<your_name>/` and move `test_data.py` to
+`tests/test_<your_name>.py`. Nothing else to edit: the folder registers by its presence.
+
+Then, typically from inside a benchmark (here from the `templates/` folder, where
+importing the template registers it):
 
 ```python
-from . import your_name
-```
-
-Then, typically from inside a benchmark:
-
-```python
+import new_data
 from brainscore import load_stimulus_set, load_dataset
+
 stimuli  = load_stimulus_set('your-stimuli')
 measured = load_dataset('your-measurements')
+choices  = load_dataset('your-choices')
+print(len(stimuli), dict(measured.sizes))   # 32 {'presentation': 32, 'neuroid': 16}
+print(dict(choices.sizes))                  # {'presentation': 128}: 4 participants x 32 trials
 ```
 
 ## Replace in this order
@@ -41,16 +47,22 @@ measured = load_dataset('your-measurements')
    generating them. Everything else keeps working.
 2. `load_stimulus_set`: read your metadata CSV rather than the constructed rows.
 3. `load_assembly`: swap the random values for your recordings, keeping the coords.
+4. `load_choices`: swap the made-up answers for your participants' answers.
 
 Run `pytest` after each step. The tests fail with a named reason, not a shape error.
+
+As shipped, loading the template writes its 32 example images once to
+`your_data_stimuli/` in the Brain-Score home (`BRAINSCORE_HOME`, default `~/.brain-score`).
+The template's test points `BRAINSCORE_HOME` at a temporary folder, so a test run leaves
+nothing there; keep that in your test while your loader writes files.
 
 ## The four things that make data benchmark-usable
 
 Each corresponds to a failure that is easy to hit and hard to read:
 
-- A recognized modality column: `image_file_name`, `sentence`, `audio_path`,
+- A recognized modality column: `image_path`, `sentence`, `audio_path`,
   `video_path`. The subject finds a stimulus set's modality by column name. Without
-  one you get `No recognized modality columns`.
+  one you get `No column in this stimulus set says what kind of input it holds`.
 - `stimulus_paths` pointing at files that exist. A real model opens them. Paths that
   merely look plausible fail only once someone runs a real model, not in your tests.
 - At least two coords per axis. With one, brainio never builds the MultiIndex, and
@@ -58,6 +70,12 @@ Each corresponds to a failure that is easy to hit and hard to read:
 - Whatever your metric stratifies on. Cross-validated metrics split folds by a
   presentation coord (`object_name` here) and raise
   `Expected stratification coordinate` without it.
+
+## Data you may not share
+
+Declare it as a local asset in your `__init__.py`, beside the registry lines, and put the
+script that prepares it in `data_packaging/`. [Data](../../docs/guides/data.md#add-a-data-plugin)
+shows the declaration.
 
 ## Publishing
 

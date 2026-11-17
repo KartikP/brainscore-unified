@@ -12,9 +12,13 @@ This module holds those three things per asset so that a missing file produces
 instructions instead of a stack trace, and so a user can ask what they are
 missing before starting a run rather than during one.
 
-Declaring an asset::
+Each data plugin declares its own assets in its ``__init__.py``, beside its
+registry lines. Plugin ``__init__`` files import no ML library, so listing the
+assets (``python -m brainscore.data``) stays light. Declaring an asset::
 
-    register(LocalAsset(
+    from brainscore.data import local
+
+    LEBEL_PICKLE = local.register(local.LocalAsset(
         name='lebel2023-pickle',
         env_var='BRAINSCORE_LEBEL_PICKLE',
         default_path='Downloads/assembly_lebel_uts03.pkl',
@@ -26,11 +30,11 @@ Declaring an asset::
 
 Reading it::
 
-    path = local.path('lebel2023-pickle')      # raises LocalDataMissing if absent
+    path = local.path(LEBEL_PICKLE.name)       # raises LocalDataMissing if absent
 
 Seeing what is missing, without running anything::
 
-    python -m brainscore.data.local
+    python -m brainscore.data
 """
 
 import os
@@ -57,7 +61,8 @@ class LocalAsset:
     :param prepare: shell command converting it into the benchmark's format,
         if conversion is needed. Downloads that are read directly leave this
         empty.
-    :param used_by: benchmark identifiers that need it
+    :param used_by: registered benchmark identifiers that need it; empty when
+        only settings that no registered benchmark uses need it
     """
 
     name: str
@@ -71,10 +76,27 @@ class LocalAsset:
     used_by: List[str] = field(default_factory=list)
 
     def resolved(self) -> pathlib.Path:
-        """Where it is expected, honouring the environment override."""
+        """Where it is expected, honouring the environment override.
+
+        A leading ``~`` in the variable means the home folder. When a folder with
+        that literal name (for example ``./~/frames``) also exists under the current
+        folder, the value is ambiguous and is refused. A variable set to an empty
+        value is refused too: it names no folder.
+        """
         override = os.environ.get(self.env_var)
+        if override is not None and not override.strip():
+            raise ValueError(
+                f'{self.env_var} is set but empty. Set it to a folder, or unset it to use '
+                f'the default {pathlib.Path.home() / self.default_path}.')
         if override:
-            return pathlib.Path(override).expanduser()
+            expanded = pathlib.Path(override).expanduser()
+            literal = pathlib.Path.cwd() / override
+            if override.startswith('~') and literal.exists() and literal != expanded:
+                raise ValueError(
+                    f'{self.env_var}={override!r} is ambiguous: it means {expanded} (the '
+                    f'home folder), but {literal} also exists. Set {self.env_var} to the '
+                    f'absolute path of the folder you mean.')
+            return expanded
         return pathlib.Path.home() / self.default_path
 
     def present(self) -> bool:
@@ -103,7 +125,9 @@ REGISTRY: Dict[str, LocalAsset] = {}
 
 
 def register(asset: LocalAsset) -> LocalAsset:
-    """Declare an asset. Re-registering the same name replaces it."""
+    """Declare an asset. A second asset with the same name is refused."""
+    if asset.name in REGISTRY:
+        raise ValueError(f'a local asset named {asset.name!r} is already declared')
     REGISTRY[asset.name] = asset
     return asset
 
@@ -125,9 +149,15 @@ def path(name: str) -> pathlib.Path:
 def status(name: Optional[str] = None) -> List[dict]:
     """Presence of every declared asset, for a pre-run check."""
     assets = [REGISTRY[name]] if name else list(REGISTRY.values())
-    return [{'name': a.name, 'kind': a.kind, 'present': a.present(),
-             'path': str(a.resolved()), 'used_by': a.used_by}
-            for a in sorted(assets, key=lambda a: a.name)]
+    rows = []
+    for asset in sorted(assets, key=lambda a: a.name):
+        try:
+            where, present = str(asset.resolved()), asset.present()
+        except ValueError as refused:            # a variable that names no single folder
+            where, present = f'refused: {refused}', False
+        rows.append({'name': asset.name, 'kind': asset.kind, 'present': present,
+                     'path': where, 'used_by': asset.used_by})
+    return rows
 
 
 def format_status() -> str:
@@ -149,84 +179,8 @@ def format_status() -> str:
     return '\n'.join(lines)
 
 
-# --------------------------------------------------------------------------
-# The manifest. Declared here rather than beside each reader so that asking
-# what you need never requires importing the code that needs it — `python -m
-# brainscore.data local` works on a bare checkout.
-# --------------------------------------------------------------------------
-
-LEBEL_PICKLE = register(LocalAsset(
-    name='lebel2023-pickle',
-    env_var='BRAINSCORE_LEBEL_PICKLE',
-    default_path='Downloads/assembly_lebel_uts03.pkl',
-    kind='neural data',
-    why_local='Needed only for non-default context settings; the default files are '
-              'hosted (brainscore/data/lebel2023/hosted.py).',
-    source='https://github.com/GT-LIT-Lab/litcoder_release',
-    obtain='The UTS03 assembly pickle for LeBel et al. 2023.',
-    used_by=['LeBel2023-UTS03-encoding',
-             'LeBel2023-UTS03-encoding-languagemask'],
-))
-
-LANA_ATLAS = register(LocalAsset(
-    name='lana-atlas',
-    env_var='BRAINSCORE_LANA_ATLAS',
-    default_path='Downloads/20425209/FS',
-    kind='atlas',
-    why_local='Fedorenko-lab resource distributed under its own terms.',
-    source='https://osf.io/kzwbh/  (doi:10.17605/OSF.IO/KZWBH)',
-    obtain='The "FS Atlas" archive - the FreeSurfer-surface arm, which needs no '
-           'volume-to-surface projection. Unzip it; the directory holding '
-           'LH_LanA_n804.nii.gz and RH_LanA_n804.nii.gz is what to point at.',
-    used_by=['LeBel2023-UTS03-encoding-languagemask'],
-))
-
-ALGONAUTS_ROOT = register(LocalAsset(
-    name='algonauts2025-root',
-    env_var='BRAINSCORE_ALGONAUTS_ROOT',
-    default_path='algonauts_2025',
-    kind='stimuli',
-    why_local='The stimuli are the Friends and Movie10 films; the fMRI is '
-              'released under a data-use agreement the downloader signs.',
-    source='https://github.com/courtois-neuromod/algonauts_2025.competitors',
-    obtain='The competition dataset via DataLad (~130 GB: 129 GB stimuli, ~1 GB '
-           'fMRI per subject). Ubuntu 22.04 ships a git-annex too old for '
-           'current DataLad; install it from conda-forge instead.',
-    prepare='python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly '
-            '--algonauts-root <root> --subjects 1',
-    used_by=['Algonauts2025-friends-sub01'],
-))
-
-
-COGGYM_CHECKOUT = register(LocalAsset(
-    name='coggym-checkout',
-    env_var='BRAINSCORE_COGGYM_CHECKOUT',
-    default_path='coggym',
-    kind='stimuli',
-    why_local="CogGym's runner reads its experiments, human results and scoring code "
-              "from an unmodified Git checkout at a pinned revision.",
-    source='https://github.com/lance-ying/coggym (revision a1cd9df1118fec80eba7463de237d1497d77e041)',
-    obtain='git clone https://github.com/lance-ying/coggym.git, then check out the revision above.',
-    used_by=['CogGym.* (all 23 public experiments)'],
-))
-
-
 def check_benchmark_assets(identifier: str) -> None:
     """Check declared local assets without constructing a model or reading data."""
     for asset in REGISTRY.values():
         if identifier in asset.used_by:
             path(asset.name)
-
-
-EWOK_ROOT = register(LocalAsset(
-    name='ewok-core-1.0',
-    env_var='BRAINSCORE_EWOK_ROOT',
-    default_path='.brainio/ewok-core-1.0',
-    kind='stimuli',
-    why_local='The authors require protected or gated distribution of EWoK text.',
-    source='https://huggingface.co/datasets/ewok-core/ewok-core-1.0',
-    obtain='Obtain the native files from the authors, or use approved Hugging Face access.',
-    prepare='python -m brainscore.data prepare EWoK-core-1.0 '
-            '--source <native files> --output <new build directory>',
-    used_by=['EWoK-core-1.0-logprobs', 'EWoK-core-1.0-choice'],
-))

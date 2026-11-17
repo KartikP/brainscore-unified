@@ -9,10 +9,12 @@ Two pinned variants by presentation, mirroring the ROAR reading test it reuses:
 - ``Yeatman2021-induced_dyslexia-image`` — word images
 - ``Yeatman2021-induced_dyslexia-text``  — word strings
 """
+from functools import partial
+
 from brainscore import benchmark_registry
 from .benchmark import InducedDyslexia
 
-benchmark_registry['Yeatman2021-induced_dyslexia-image'] = (
-    lambda: InducedDyslexia(modality='vision'))
-benchmark_registry['Yeatman2021-induced_dyslexia-text'] = (
-    lambda: InducedDyslexia(modality='text'))
+benchmark_registry['Yeatman2021-induced_dyslexia-image'] = partial(
+    InducedDyslexia, channels=('vision:image',), identifier='Yeatman2021-induced_dyslexia-image')
+benchmark_registry['Yeatman2021-induced_dyslexia-text'] = partial(
+    InducedDyslexia, channels=('text',), identifier='Yeatman2021-induced_dyslexia-text')

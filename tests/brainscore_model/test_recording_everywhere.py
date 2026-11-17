@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from brainscore.brainscore_model import BrainScoreModel
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice
 from brainscore_core.streaming_helpers import stimulus_session
 from brainscore.selection import CompositeSelector, LayerSelector
@@ -36,7 +36,7 @@ class Net:
 
 
 class Recordable:
-    identifier = backbone_id = 'toy'
+    identifier = 'toy'
 
     def __init__(self, net):
         self.net = net
@@ -45,21 +45,19 @@ class Recordable:
         raise AssertionError('recorded during the task')
 
     @contextmanager
-    def record(self, layers):
+    def record(self, layers, stimuli=None):
         seen = []
 
         class Take:
             @staticmethod
-            def take():
+            def take(_row):
                 first = seen[0]
                 seen.clear()
-                values = np.concatenate([first[layer] for layer in layers])[None]
-                units = [(layer, i) for layer in layers for i in range(len(first[layer]))]
-                return NeuroidAssembly(values, dims=['presentation', 'neuroid'], coords={
+                return {layer: NeuroidAssembly(first[layer][None], dims=['presentation', 'neuroid'], coords={
                     'stimulus_id': ('presentation', ['?']),
-                    'neuroid_id': ('neuroid', [f'{l}.{i}' for l, i in units]),
-                    'neuroid_num': ('neuroid', [i for _, i in units]),
-                    'layer': ('neuroid', [l for l, _ in units])})
+                    'neuroid_id': ('neuroid', [f'{layer}.{i}' for i in range(len(first[layer]))]),
+                    'neuroid_num': ('neuroid', list(range(len(first[layer])))),
+                    'layer': ('neuroid', [layer] * len(first[layer]))}) for layer in layers}
         self.net.hooks.append(seen.append)
         try:
             yield Take()
@@ -67,7 +65,8 @@ class Recordable:
             self.net.hooks.remove(seen.append)
 
 
-def _model(net, region_map=None):
+def _model(net, region_map=None, replies=True):
+    """A model with reply and likelihood parts; without ``replies`` it answers by likelihood."""
     def reply(prompt):
         net.forward(prompt.text())
         return 'cat'
@@ -78,12 +77,15 @@ def _model(net, region_map=None):
                 for i, c in enumerate(candidates)}
     return BrainScoreModel('toy', extractor={'text': Recordable(net)},
                            region_layer_map=region_map or {'A': LayerSelector('early', modality='text')},
-                           reply=reply, likelihood=likelihood)
+                           reply=reply if replies else None, likelihood=likelihood,
+                           capability_config={'behavior-sessions': {
+                               # The likelihood derives these formats; the statements declare them.
+                               'behavior:probabilities': ('likelihood', 'softmax'),
+                               **({} if replies else {'behavior:choice': ('likelihood', 'softmax_argmax')})}})
 
 
 def _run(model, task, channels, streaming=False):
-    session = stimulus_session(STIMULI, channels, task_context=task)
-    session.streaming = streaming
+    session = stimulus_session(STIMULI, channels, task=task, streaming=streaming)
     model.participate(session)
     return session
 
@@ -94,21 +96,80 @@ def _prompt_text(stimulus_text):
 
 def test_recording_during_likelihood_scoring_is_the_prompt_pass():
     net = Net()
-    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True),
-                       prefer_path='likelihood')
-    recorded = _run(_model(net), task, ['behavior:probabilities', 'neural:A']).collect('neural:A')
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
+    recorded = _run(_model(net, replies=False), task, ['behavior:probabilities', 'neural:A']).collect('neural:A')
     expected = [Net().forward(_prompt_text(s))['early'] for s in ('x', 'yy', 'zzz')]
     np.testing.assert_array_equal(recorded.values, expected)
 
 
+def test_log_probabilities_of_per_row_options_and_a_region_in_one_session():
+    """Each row gives its own options (EWoK's form) and a region is recorded in the same pass:
+    the recording keeps the scalar stimulus columns; the options stay with the answer."""
+    stimuli = STIMULI.assign(options=[['cat', 'dog house'], ['dog', 'dog house'], ['cat', 'dog']])
+    stimuli.identifier = 'everywhere-options'
+    session = stimulus_session(stimuli, ['behavior:log_probabilities', 'neural:A'],
+                               task=TaskContext(response=Choice('options', verbatim=True)))
+    _model(Net()).participate(session)
+    recorded = session.collect('neural:A')
+    assert recorded.sizes['presentation'] == len(stimuli)
+    assert list(recorded['sentence'].values) == list(stimuli['sentence'])
+    log_probabilities = session.collect('behavior:log_probabilities')
+    assert log_probabilities.attrs['response']['method'] == 'likelihood'
+    assert set(log_probabilities['response_state'].values) == {'valid'}
+
+
+class _PassiveToo(Recordable):
+    """Records while answering, and presents a table passively through the shipped attachment."""
+
+    def __call__(self, stimuli, layers, **kwargs):
+        from brainscore.model_helpers._extractors import attach_stimulus_set
+        values = [self.net.forward(text)[layers[0]] for text in stimuli['sentence']]
+        return attach_stimulus_set(NeuroidAssembly(np.array(values), dims=['presentation', 'neuroid'], coords={
+            'neuroid_id': ('neuroid', [f'{layers[0]}.{i}' for i in range(len(values[0]))]),
+            'layer': ('neuroid', [layers[0]] * len(values[0]))}), stimuli)
+
+
+def test_a_column_of_single_value_arrays_is_kept_on_a_recording_while_answering():
+    """A zero-dimensional array is one value: the recording keeps it, as a passive recording does."""
+    stimuli = STIMULI.assign(extra=[np.array(3), np.array(7), np.array(9)])
+    stimuli.identifier = 'everywhere-single-values'
+    net = Net()
+    model = BrainScoreModel('toy', extractor={'text': _PassiveToo(net)},
+                            region_layer_map={'A': LayerSelector('early', modality='text')},
+                            likelihood=lambda prompt, labels: net.forward(prompt.text()) and {
+                                label: -1.0 for label in labels})
+    task = stimulus_session(stimuli, ['behavior:log_probabilities', 'neural:A'],
+                            task=TaskContext(response=Choice(['cat', 'dog'], verbatim=True)))
+    model.participate(task)
+    passive = stimulus_session(stimuli, ['neural:A'])
+    model.participate(passive)
+    assert ([int(value) for value in task.collect('neural:A')['extra'].values]
+            == [int(value) for value in passive.collect('neural:A')['extra'].values] == [3, 7, 9])
+
+
+@pytest.mark.parametrize('streaming', [False, True])
+def test_a_recording_while_answering_names_the_stimulus_columns_it_leaves_out(streaming):
+    stimuli = STIMULI.assign(options=[['cat', 'dog house'], ['dog', 'dog house'], ['cat', 'dog']])
+    stimuli.identifier = 'everywhere-left-out'
+    session = stimulus_session(stimuli, ['behavior:log_probabilities', 'neural:A'],
+                               task=TaskContext(response=Choice('options', verbatim=True)), streaming=streaming)
+    _model(Net()).participate(session)
+    recording = session.collect('neural:A').attrs['recording']
+    assert 'options' in recording['stimulus_columns_left_out'] and recording['reason']
+    # A table of single values leaves nothing out, and says nothing.
+    scalar = stimulus_session(STIMULI, ['behavior:log_probabilities', 'neural:A'],
+                              task=TaskContext(response=Choice(['cat', 'dog'], verbatim=True)), streaming=streaming)
+    _model(Net()).participate(scalar)
+    assert 'stimulus_columns_left_out' not in scalar.collect('neural:A').attrs['recording']
+
+
 def test_a_reply_with_implied_probabilities_records_the_prompt_pass():
     net = Net()
-    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True),
-                       prefer_path='generation')
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
     session = _run(_model(net), task, ['behavior:choice', 'behavior:probabilities', 'neural:A'])
     expected = [Net().forward(_prompt_text(s))['early'] for s in ('x', 'yy', 'zzz')]
     np.testing.assert_array_equal(session.collect('neural:A').values, expected)
-    assert session.collect('behavior:probabilities').attrs['measure']['source'] == 'likelihood'
+    assert session.collect('behavior:probabilities').attrs['response']['method'] == 'likelihood'
 
 
 def test_a_composite_region_records_its_chosen_units():
@@ -124,8 +185,33 @@ def test_a_streaming_session_gets_each_trial_as_it_ends():
     net = Net()
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
     session = _run(_model(net), task, ['behavior:choice', 'neural:A'], streaming=True)
-    assert [e.t_ms for e in session.emitted if e.channel == 'neural:A'] == [0.0, 1.0, 2.0]
-    assert session.collect('neural:A').sizes['presentation'] == 3
+    recorded = [e for e in session.emitted if e.channel == 'neural:A']
+    assert len({e.meta['trial_index'] for e in recorded}) == len(STIMULI)   # one event per trial
+    assert session.collect('neural:A').sizes['presentation'] == len(STIMULI)
+
+
+@pytest.mark.parametrize('streaming', [True, False])
+@pytest.mark.parametrize('timed', [True, False])
+def test_an_answer_and_its_recording_carry_the_time_of_their_trial(streaming, timed):
+    """Rule 4.2: time is the input's time, or None; never a trial counter.
+
+    A streamed trial answers at the time of its input; the whole table, answered at
+    once, is many trials and carries no time. The trial index is in meta.
+    """
+    stimuli = STIMULI.copy()
+    if timed:
+        stimuli['t_ms'] = [100.0, 600.0, 1100.0]
+    stimuli.identifier = 'everywhere-timed' if timed else STIMULI.identifier
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
+    session = stimulus_session(stimuli, ['behavior:choice', 'neural:A'], task=task, streaming=streaming)
+    _model(Net()).participate(session)
+    assert session.emitted
+    for event in session.emitted:
+        if streaming:
+            index = event.meta['trial_index']
+            assert event.t_ms == (stimuli['t_ms'].iloc[index] if timed else None)
+        else:
+            assert event.t_ms is None
 
 
 def test_an_extractor_without_record_is_recorded_through_the_model():
@@ -149,7 +235,7 @@ def test_an_extractor_without_record_is_recorded_through_the_model():
 
 def test_a_streaming_session_answers_a_trial_before_it_reads_the_next():
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
-    session = stimulus_session(STIMULI, ['behavior:choice', 'neural:A'], task_context=task, streaming=True)
+    session = stimulus_session(STIMULI, ['behavior:choice', 'neural:A'], task=task, streaming=True)
     log = []
     read, respond = session.next_input, session.respond
 
@@ -163,3 +249,31 @@ def test_a_streaming_session_answers_a_trial_before_it_reads_the_next():
     session.respond = lambda event: (log.append(event.channel), respond(event))[1]
     _model(Net()).participate(session)
     assert log == ['read', 'behavior:choice', 'neural:A'] * 3
+
+
+@pytest.mark.parametrize('table_times', [None, [10.0, 20.0]])
+def test_a_trial_answered_alone_keeps_the_time_of_its_input_events(table_times):
+    """Rule 4.2: answered one trial at a time, a trial carries the time of the input
+    events that presented it; a time column of an attached table never replaces it."""
+    from brainscore_core.streaming import Session, StreamEvent
+    input_times = [125.0, 875.0]
+    events = [StreamEvent('text', text, t_ms, {'stimulus_id': sid, 'stimulus_index': index})
+              for index, (sid, text, t_ms) in enumerate(zip('ab', ['x', 'yy'], input_times))]
+    table = None
+    if table_times is not None:
+        table = StimulusSet({'stimulus_id': ['a', 'b'], 'sentence': ['x', 'yy'], 't_ms': table_times})
+        table.identifier = 'listed-with-table'
+    net = Net()
+
+    def reply(prompt):
+        net.forward(prompt.text())
+        return 'cat'
+    model = BrainScoreModel('toy', extractor={'text': Recordable(net)},
+                            region_layer_map={'A': LayerSelector('early', modality='text')},
+                            reply=reply, memory='trial_history')
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), trial_memory='history')
+    session = Session(events, ['behavior:choice', 'neural:A'], task, stimuli=table)
+    model.participate(session)
+    assert {event.channel for event in session.emitted} == {'behavior:choice', 'neural:A'}
+    for event in session.emitted:
+        assert event.t_ms == input_times[event.meta['trial_index']]

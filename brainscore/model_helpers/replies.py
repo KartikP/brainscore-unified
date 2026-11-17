@@ -1,18 +1,32 @@
 """``reply`` and ``likelihood`` parts for a Hugging Face chat model (text, image or video).
 
     reply, likelihood = chat_parts(model, processor, chat_template_kwargs={'enable_thinking': False})
-    BrainScoreModel(..., reply=reply, likelihood=likelihood)
+    BrainScoreModel(..., reply=reply, likelihood=likelihood,
+                    capability_config={'behavior-sessions': {
+                        'behavior:probabilities': ('likelihood', 'softmax')}})
 
 Both receive a ``brainscore_core.responses.Prompt``: the trial's parts in order
-(instruction, stimulus parts, the response's directive). They are shown as one
-user message in that order; images as images, clips as video with their real
-frame rate. ``reply(prompt)`` returns the model's raw reply; the task's response
-parses it. ``likelihood(prompt, candidates)`` returns the log probability of
+(instruction, stimulus parts, the response's directive). The task's instruction,
+the text part named ``instruction``, is the system turn (or comes first in the
+user turn when the chat template takes no system turn). The other parts are
+shown as one user message in their order; images as images, clips as video with
+their real frame rate. A screen in a stimulus column named ``instruction`` is an
+image part and is shown like the other parts. ``reply(prompt)`` returns the model's raw reply; the task's response
+parses it. Under a ``verbatim`` choice, ``likelihood`` scores
+``f"{text} {candidate}"`` as plain text, with no chat template and no
+beginning-of-sequence token, as EWoK's ``score`` does; ``reply`` still uses the
+chat template, because a chat model cannot answer without it. A ``Text`` response carries the task's generation settings
+(``max_tokens``, ``temperature``, ``top_p``, ``seed``), and the reply obeys them.
+Without them the reply is greedy and at most ``max_new_tokens`` tokens long.
+``likelihood(prompt, candidates)`` returns the log probability of
 each candidate as the whole reply (teacher-forced, summed over its tokens). It
 runs the prompt on its own before any candidate, so a recording made during
 scoring is the prompt pass, as it is for a reply.
 """
 from typing import Mapping, Optional, Sequence
+
+from brainscore_core.compatibility import ExecutionNotFeasibleError
+from brainscore_core.responses import Choice, Text
 
 
 def chat_parts(model, processor, *, max_new_tokens: int = 64,
@@ -26,13 +40,18 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
     def reply(prompt) -> str:
         import torch
         inputs = inputs_for(prompt)
+        settings = _generation_settings(prompt, max_new_tokens)
+        if isinstance(prompt.response, Text) and prompt.response.seed is not None:
+            torch.manual_seed(prompt.response.seed)
         with torch.no_grad():
-            generated = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
+            generated = model.generate(**inputs, **settings)
         return tokenizer.decode(generated[0, inputs['input_ids'].shape[1]:],
                                 skip_special_tokens=True).strip()
 
     def likelihood(prompt, candidates: Sequence[str]) -> dict:
         import torch
+        if isinstance(prompt.response, Choice) and prompt.response.verbatim:
+            return _plain_text_scores(model, tokenizer, prompt, candidates)
         inputs = inputs_for(prompt)
         prompt_ids = inputs['input_ids']
         length = prompt_ids.shape[1]
@@ -43,7 +62,7 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
             ids = torch.tensor([tokenizer(candidate, add_special_tokens=False)['input_ids']],
                                device=prompt_ids.device)
             if ids.shape[1] == 0:
-                raise ValueError(f'candidate {candidate!r} has no tokens to score')
+                raise ValueError(f'option {candidate!r} has no tokens to score')
             extended = {}
             for key, value in inputs.items():
                 # Every per-token input (ids, mask, token types) grows with the candidate.
@@ -60,6 +79,84 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
         return scores
 
     return reply, likelihood
+
+
+def _plain_text_scores(model, tokenizer, prompt, candidates: Sequence[str]) -> dict:
+    """Score each candidate after the trial's text as plain text, as EWoK's ``score`` does.
+
+    For a ``verbatim`` task: the text is ``f"{text} {candidate}"`` with no chat
+    template and no beginning-of-sequence token. The value is the summed log
+    probability of the tokens after the text's own tokens; each option runs in its
+    own forward pass, so its value does not depend on the other options. The text
+    runs alone first, so a recording made during scoring is the text pass. An empty text
+    is refused: its first token would have no prediction, and EWoK's own score
+    is then undefined (NaN).
+    """
+    import torch
+    texts = [content for kind, content in prompt.parts if kind == 'text']
+    if len(texts) != len(prompt.parts) or len(texts) != 1:
+        raise ExecutionNotFeasibleError('Plain-text scoring takes exactly one text part; got '
+                                        f'{[kind for kind, _ in prompt.parts]}')
+    if prompt.history:
+        raise ExecutionNotFeasibleError(
+            'Plain-text scoring scores the text alone; it cannot show earlier trials')
+    text = texts[0]
+    device = next(model.parameters()).device
+    context = tokenizer(text, add_special_tokens=False)['input_ids']
+    if not context:
+        raise ValueError('The text has no tokens to condition on, so the first option token '
+                         'cannot be scored; give a nonempty text')
+    encoded = []
+    for candidate in candidates:
+        ids = tokenizer(f'{text} {candidate}', add_special_tokens=False)['input_ids']
+        if len(ids) <= len(context):
+            raise ValueError(f'option {candidate!r} has no tokens to score')
+        encoded.append(ids)
+    with torch.no_grad():
+        # The text alone first: the pass a recording keeps.
+        model(input_ids=torch.tensor([context], device=device),
+              attention_mask=torch.ones(1, len(context), dtype=torch.long, device=device))
+    return dict(zip(candidates, _scores_alone(model, encoded, len(context))))
+
+
+def _scores_alone(model, sequences, start: int) -> list:
+    """The summed log probability of the tokens of each sequence from position ``start`` on.
+
+    Each sequence runs in its own forward pass (a batch of one, no padding): the log
+    probability of an option is a property of the model and its context, and the shape of
+    a batch of several options changes it in half precision.
+    """
+    import torch
+    device = next(model.parameters()).device
+    totals = []
+    for sequence in sequences:
+        ids = torch.tensor([sequence], device=device)
+        # The sum of the batched layout: every position gathered, the option's positions
+        # kept by a float32 mask, one sum over the row (the same order of terms as before).
+        scored = torch.tensor([[0] * start + [1] * (len(sequence) - start)], device=device)[:, 1:].float()
+        with torch.no_grad():
+            logp = model(input_ids=ids, attention_mask=torch.ones_like(ids)).logits[:, :-1].float().log_softmax(-1)
+        totals.append(float((logp.gather(-1, ids[:, 1:, None])[..., 0] * scored).sum(1)[0]))
+    return totals
+
+
+def _generation_settings(prompt, max_new_tokens: int) -> dict:
+    """The ``generate`` arguments for one trial, from the task's ``Text`` response.
+
+    Without settings the reply is greedy and at most ``max_new_tokens`` long.
+    A temperature above 0 samples, with ``top_p`` when the task gives one.
+    """
+    response = prompt.response
+    settings = {'max_new_tokens': max_new_tokens, 'do_sample': False}
+    if not isinstance(response, Text):
+        return settings
+    if response.max_tokens is not None:
+        settings['max_new_tokens'] = response.max_tokens
+    if response.temperature:
+        settings.update(do_sample=True, temperature=float(response.temperature))
+        if response.top_p is not None:
+            settings['top_p'] = float(response.top_p)
+    return settings
 
 
 def chat_inputs(model, processor, prompt, template=None):
@@ -83,17 +180,39 @@ def chat_inputs(model, processor, prompt, template=None):
                 metadata.append(clip_metadata(frames, fps))
                 content.append({'type': 'video'})
             else:
-                raise NotImplementedError(f'chat models here cannot be shown a {kind!r} part')
+                raise ExecutionNotFeasibleError(f'chat models here cannot be shown a {kind!r} part')
         return content
 
+    # The task's instruction is the system turn, as a library's own client sends it.
+    # It is the text part named 'instruction'; a screen in a column of that name
+    # (present=('image:instruction', ...)) is a shown part like any other.
     # Earlier trials of the episode (memory='trial_history') become earlier turns.
+    def is_instruction(part, name):
+        return part[0] == 'text' and name == 'instruction'
+
+    def shown(trial):
+        names = trial.names or (None,) * len(trial.parts)
+        return [part for part, name in zip(trial.parts, names) if not is_instruction(part, name)]
+    names = prompt.names or (None,) * len(prompt.parts)
+    instruction = [part[1] for part, name in zip(prompt.parts, names) if is_instruction(part, name)]
     messages = []
     for earlier, answered in prompt.history:
-        messages.append({'role': 'user', 'content': content_of(earlier.parts)})
+        messages.append({'role': 'user', 'content': content_of(shown(earlier))})
         messages.append({'role': 'assistant', 'content': [{'type': 'text', 'text': answered}]})
-    messages.append({'role': 'user', 'content': content_of(prompt.parts)})
-    text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True,
-                                         **dict(template or {}))
+    messages.append({'role': 'user', 'content': content_of(shown(prompt))})
+    system = ([{'role': 'system', 'content': [{'type': 'text', 'text': '\n\n'.join(instruction)}]}]
+              if instruction else [])
+    from jinja2.exceptions import TemplateError
+    try:
+        text = processor.apply_chat_template(system + messages, tokenize=False, add_generation_prompt=True,
+                                             **dict(template or {}))
+    except TemplateError:
+        if not system:
+            raise
+        # A template that takes no system turn gets the instruction first in the first user turn.
+        first = dict(messages[0], content=system[0]['content'] + messages[0]['content'])
+        text = processor.apply_chat_template([first, *messages[1:]], tokenize=False,
+                                             add_generation_prompt=True, **dict(template or {}))
     call = dict(text=[text], return_tensors='pt', padding=True)
     if images:
         call['images'] = images

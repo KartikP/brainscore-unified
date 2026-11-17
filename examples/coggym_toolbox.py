@@ -25,7 +25,7 @@ from brainscore.experiments import (
     replay_sessions,
 )
 from brainscore.harnesses.coggym import CogGymRunner
-from brainscore.model_helpers.response_trace import build_trace_subject
+from brainscore import BrainScoreModel
 from brainscore_core.events import Selection
 
 from example_qualification import (
@@ -40,8 +40,10 @@ from example_qualification import (
 )
 
 
-class LocalTextProvider:
-    """Call a cached SmolVLM model using CogGym's provider arguments."""
+class LocalTextAdapter:
+    """Call a cached SmolVLM model with CogGym's request arguments.
+
+    CogGym calls the object that answers its requests a "provider"; this is one."""
 
     def __init__(self, model_path: Path) -> None:
         self.processor = AutoProcessor.from_pretrained(
@@ -170,30 +172,32 @@ def qualify(args, model_id: str, report: dict[str, Any]) -> None:
     )
     report['scope'] = runner.describe()
 
-    # Connect the provider to the same subject interface used by other UMI tools.
-    provider = LocalTextProvider(args.model_path)
-    subject = build_trace_subject(
-        identifier=model_id,
-        provider=lambda request: provider.complete_with_metadata(**request),
-        parse=str,  # CogGym's own parser interprets answers later.
-        provenance={
-            'model_path': str(args.model_path.resolve()),
-            'model_sha256': provenance['model_sha256'],
-            'dtype': 'float32',
-            'device': 'cpu',
-            'decoding': 'greedy',
-            'max_tokens': 32,
-        },
-    )
+    # Connect the adapter to the same subject interface used by other UMI tools.
+    adapter = LocalTextAdapter(args.model_path)
+    def reply(prompt):
+        # A reply part over the same adapter: the instruction is CogGym's system
+        # text and the trial's text is its user message, so the request equals
+        # the one CogGym's own client sends, and the task's settings are CogGym's.
+        texts = dict(zip(prompt.names, (content for _, content in prompt.parts)))
+        response = prompt.response
+        return adapter.complete_with_metadata(
+            system=texts.get('instruction', ''),
+            messages=[{'role': 'user', 'content': texts['text']}],
+            model=model_id, temperature=response.temperature or 0,
+            max_tokens=response.max_tokens,
+        )['text']
+
+    # Provenance: the model path and its SHA-256 are in qualification.json.
+    subject = BrainScoreModel(model_id, in_channels={'text'}, reply=reply)
 
     # Choose half the intermediate MLP units in one layer, not half the model.
     layer = 'model.text_model.layers.0.mlp.up_proj'
-    module = dict(provider.model.named_modules())[layer]
+    module = dict(adapter.model.named_modules())[layer]
     generator = torch.Generator().manual_seed(7)
     shuffled = torch.randperm(module.out_features, generator=generator)
     indices = sorted(shuffled[:module.out_features // 2].tolist())
     selected = Selection(layer=layer, indices=indices)
-    instrumentation = TorchInstrumentation(provider.model)  # Connect layer hooks.
+    instrumentation = TorchInstrumentation(adapter.model)  # Connect layer hooks.
 
     def execute(name, ablate=False):
         tools = [RecordInputsOutputs(), RecordReasoning()]
@@ -205,7 +209,7 @@ def qualify(args, model_id: str, report: dict[str, Any]) -> None:
         tools.append(RecordActivity([layer]))  # Record after any intervention.
         result = Experiment(
             subject=subject,
-            protocol=runner.protocol(reset=provider.reset),
+            protocol=runner.protocol(reset=adapter.reset),
             tools=tools,
             instrumentation=instrumentation,
             output_dir=args.output_dir / name,
@@ -217,19 +221,19 @@ def qualify(args, model_id: str, report: dict[str, Any]) -> None:
                 'temperature': 0,
             },
         ).run()
-        require(not any(layer._forward_hooks for layer in provider.model.modules()),
+        require(not any(layer._forward_hooks for layer in adapter.model.modules()),
                 f'no forward hooks remain after {name}')
         return result
 
     # Verify that recording preserves requests, answers, parsing, and scoring.
     direct = runner.run(
-        provider,
+        adapter,
         output_dir=args.output_dir / 'direct',
-        reset=provider.reset,
+        reset=adapter.reset,
     )
-    direct_requests = deepcopy(provider.requests)
+    direct_requests = deepcopy(adapter.requests)
     recorded = execute('recorded')
-    require(provider.requests == direct_requests, 'recorded requests match direct requests')
+    require(adapter.requests == direct_requests, 'recorded requests match direct requests')
     require(direct == recorded.value, 'recorded score matches direct score')
     original_trials = _read_trials(args.output_dir / 'direct')
     require(original_trials == _read_trials(recorded.directory / 'coggym'),
@@ -245,8 +249,8 @@ def qualify(args, model_id: str, report: dict[str, Any]) -> None:
     report['restored_outputs_match'] = True
 
     # Replay sends the saved requests again, one session per recorded call; it
-    # does not rerun CogGym. Reset the provider as the recorded run did first.
-    provider.reset(1)
+    # does not rerun CogGym. Reset the adapter as the recorded run did first.
+    adapter.reset(1)
     replay = Experiment(
         subject=subject,
         protocol=replay_sessions(recorded.directory),

@@ -31,7 +31,7 @@ class NativeFixture:
         value = sum(clip.video.read_bytes())
         return Prediction(
             values=np.full((2, 1000), value, dtype=np.float32),
-            provenance={'subject': 'sub-01', 'implementation': 'test fixture'},
+            provenance={'participant': 'sub-01', 'implementation': 'test fixture'},
         )
 
 
@@ -155,8 +155,8 @@ def test_recording_copies_inputs_and_replay_reruns_without_original_file(video, 
     original = Experiment(
         subject=MirageSubject(predictor=predictor),
         protocol=SessionProtocol('mirage-fixture', factory,
-                                 input_channels=('vision:video', 'audio', 'text'),
-                                 output_channels=(OUTPUT_CHANNEL,)),
+                                 required_input_channels=('vision:video', 'audio', 'text'),
+                                 requested_output_channels=(OUTPUT_CHANNEL,)),
         tools=(RecordInputsOutputs(),), output_dir=tmp_path / 'record',
     ).run()
     video.unlink()
@@ -171,7 +171,7 @@ def test_recording_copies_inputs_and_replay_reruns_without_original_file(video, 
     assert compare_outputs(original.directory, replay.directory)['equal']
     outputs = [event['payload'] for event in read_events(original.directory)
                if event['kind'] == 'output']
-    assert outputs[0].meta['provenance']['subject'] == 'sub-01'
+    assert outputs[0].meta['provenance']['participant'] == 'sub-01'
 
 
 def runtime(tmp_path, executable):
@@ -209,20 +209,20 @@ def test_python311_worker_fails_clearly_without_importing_upstream(video, tmp_pa
     assert list(predictor.work_dir.iterdir()) == []
 
 
-@pytest.mark.parametrize('defect', ['shape', 'dtype', 'nonfinite', 'wrong_subject'])
+@pytest.mark.parametrize('defect', ['shape', 'dtype', 'nonfinite', 'wrong_participant'])
 def test_invalid_native_output_is_not_emitted(video, defect):
     def predictor(_clip):
         values = np.ones((2, 1000), dtype=np.float32)
-        subject = 'sub-01'
+        participant = 'sub-01'
         if defect == 'shape':
             values = values[:, :999]
         elif defect == 'dtype':
             values = values.astype(np.float64)
         elif defect == 'nonfinite':
             values[0, 0] = np.nan
-        elif defect == 'wrong_subject':
-            subject = 'sub-02'
-        return Prediction(values, {'subject': subject})
+        elif defect == 'wrong_participant':
+            participant = 'sub-02'
+        return Prediction(values, {'participant': participant})
 
     subject = MirageSubject(predictor=predictor)
     session = Session(inputs(video), (OUTPUT_CHANNEL,))
@@ -242,7 +242,7 @@ assert Path(request['video']).suffix == '.mp4'
 assert Path(request['video']).read_bytes().startswith(b'fixture')
 assert json.loads(Path(request['transcript']).read_text())[0]['word'] == 'hello'
 np.save(request['output'], np.ones((2, 1000), dtype=np.float32))
-Path(request['provenance']).write_text(json.dumps({{'subject': request['subject']}}))
+Path(request['provenance']).write_text(json.dumps({{'participant': request['participant']}}))
 ''')
     executable.chmod(0o755)
     from brainscore.models.mirage.model import _clip

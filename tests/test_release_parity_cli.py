@@ -7,10 +7,25 @@ from brainscore.validation.run_parity import main
 pytestmark = pytest.mark.unit
 
 
-@pytest.mark.parametrize('selection', ['not-a-benchmark', parity.PEREIRA_CASES[0].unified])
-def test_invalid_or_unpaired_selection_fails_before_inference(selection):
+@pytest.fixture(autouse=True)
+def cache_off(monkeypatch):
+    """The caller turns the activation cache off; the command only checks it."""
+    monkeypatch.setenv('RESULTCACHING_DISABLE', '1')
+
+
+def test_the_command_refuses_a_warm_cache_and_leaves_the_switch_alone(monkeypatch, capsys):
+    import os
+    monkeypatch.delenv('RESULTCACHING_DISABLE')
     with pytest.raises(SystemExit) as error:
-        main(['--resnet18', 'unused', '--gpt2', 'unused', '--only', selection])
+        main(['--resnet18', 'unused', '--gpt2', 'unused'])
+    assert error.value.code == 2
+    assert 'RESULTCACHING_DISABLE=1' in capsys.readouterr().err
+    assert 'RESULTCACHING_DISABLE' not in os.environ
+
+
+def test_invalid_selection_fails_before_inference():
+    with pytest.raises(SystemExit) as error:
+        main(['--resnet18', 'unused', '--gpt2', 'unused', '--only', 'not-a-benchmark'])
     assert error.value.code == 2
 
 
@@ -25,18 +40,22 @@ def simulated_runtime(monkeypatch):
 
 
 def test_paired_guard_failure_fails_cli(monkeypatch, tmp_path, simulated_runtime):
-    monkeypatch.setattr(parity, 'validate_case', lambda case, factory, **kwargs: {'benchmark': case.unified})
+    from brainscore.validation import parity_runtime
+    monkeypatch.setattr(parity_runtime, 'require_cpu_reference', lambda manifest: None)
+    monkeypatch.setattr(parity, 'validate_case', lambda case, factory, **kwargs: {'benchmark': case.legacy})
     def fail(reports, **kwargs):
         raise AssertionError('drift detected')
     monkeypatch.setattr(parity, 'assert_pereira_score_drift', fail)
-    code = main(['--resnet18', 'unused', '--gpt2', 'unused', '--out', str(tmp_path/'parity.json')])
+    code = main(['--resnet18', 'unused', '--gpt2', 'unused', '--policy', parity.CPU_FP32_POLICY,
+                 '--device', 'cpu', '--out', str(tmp_path/'parity.json')])
     assert code == 1
     report = json.loads((tmp_path/'parity.json').read_text())
-    assert 'drift detected' in report['failures']['paired_drift:linear']
+    assert 'drift detected' in report['failures']['paired_drift:ridge']
 
 
-def test_release_manifest_includes_ridge():
-    assert len(parity.RELEASE_CASES) == 8
+def test_release_manifest_is_four_vision_and_two_ridge_cases():
+    assert len(parity.RELEASE_CASES) == 6
+    assert all(case.domain == 'vision' for case in parity.CASES) and len(parity.CASES) == 4
     assert len(parity.RIDGE_CASES) == 2
     assert all('ridge' in case.legacy for case in parity.RIDGE_CASES)
 
@@ -46,7 +65,7 @@ def test_release_manifest_includes_ridge():
     ['--policy', parity.CPU_FP32_POLICY],
     ['--policy', parity.CPU_FP32_POLICY, '--device', 'cuda'],
     ['--policy', parity.CPU_FP32_POLICY, '--device', 'cpu', '--language-precision', 'float64-eager'],
-    ['--policy', parity.CPU_FP32_POLICY, '--device', 'cpu', '--only', parity.RIDGE_CASES[0].unified],
+    ['--policy', parity.CPU_FP32_POLICY, '--device', 'cpu', '--only', parity.RIDGE_CASES[0].legacy],
     ['--threads', '0'],
 ])
 def test_invalid_execution_profile_fails_before_inference(options):
@@ -57,20 +76,20 @@ def test_invalid_execution_profile_fails_before_inference(options):
 
 def test_failed_observations_survive_cli(monkeypatch, tmp_path, simulated_runtime):
     def fail(case, factory, **kwargs):
-        raise parity.ParityFailure('activation failure', {'benchmark': case.unified,
+        raise parity.ParityFailure('activation failure', {'benchmark': case.legacy,
             'routes': {'native': {'score': .8, 'raw': .4}}})
     monkeypatch.setattr(parity, 'validate_case', fail)
     out = tmp_path/'failed.json'
     assert main(['--resnet18', 'unused', '--gpt2', 'unused', '--out', str(out)]) == 1
     report = json.loads(out.read_text())
-    assert len(report['failed_observations']) == 8
-    assert report['failed_observations'][parity.CASES[0].unified]['routes']['native']['score'] == .8
+    assert len(report['failed_observations']) == 6
+    assert report['failed_observations'][parity.CASES[0].legacy]['routes']['native']['score'] == .8
     assert not report['release_complete']
 
 
 @pytest.mark.parametrize('reference', [False, True])
 def test_reference_success_is_separate_from_fp32_release(monkeypatch, tmp_path, simulated_runtime, reference):
-    monkeypatch.setattr(parity, 'validate_case', lambda case, factory, **kwargs: {'benchmark': case.unified})
+    monkeypatch.setattr(parity, 'validate_case', lambda case, factory, **kwargs: {'benchmark': case.legacy})
     monkeypatch.setattr(parity, 'assert_pereira_score_drift', lambda *args, **kwargs: None)
     out = tmp_path/'success.json'
     options = ['--language-precision', 'float64-eager'] if reference else []
@@ -120,7 +139,7 @@ def test_cpu_profile_rejects_different_or_extra_tokenizer_inputs():
 @pytest.mark.parametrize('options', [
     ['--device', 'cpu'],
     ['--device', 'cuda', '--language-precision', 'float64-eager'],
-    ['--device', 'cuda', '--only', parity.RIDGE_CASES[0].unified],
+    ['--device', 'cuda', '--only', parity.RIDGE_CASES[0].legacy],
 ])
 def test_l4_profile_rejects_invalid_execution_or_unpaired_ridge(options):
     with pytest.raises(SystemExit) as error:

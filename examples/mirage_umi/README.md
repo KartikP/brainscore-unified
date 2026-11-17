@@ -39,7 +39,7 @@ python examples/mirage_umi/run.py \
   --transcript /path/to/transcript.json \
   --out /path/to/fresh/results \
   --device cuda \
-  --subject sub-01
+  --participant sub-01
 ```
 
 The transcript is a JSON list of `{word, onset, duration}` records, with times
@@ -86,18 +86,15 @@ Run setup on a suitably provisioned Ubuntu 24.04 GPU instance with the pinned
 core and this unified source exported under `/opt/mirage-run/{core,unified}`.
 The setup script does not launch or stop an instance. Use `--help` on the Python
 scripts for asset and input destinations. Keep `HF_HOME` and the cache paths
-consistent with `run.py`. The complete commands, environment details and
-scientific limits are in the
-[integration report](../../docs/archive/mirage_umi_integration.md).
+consistent with `run.py`.
 
 Upstream: [source](https://github.com/epflneuroailab/mirage) and
 [released encoder](https://huggingface.co/epfl-neuroai/mirage).
 
 ## Runtime overhead
 
-The [performance report](../../docs/archive/mirage_umi_performance.md) measures native
-CLI, UMI session and recorded-experiment latency under matched execution settings.
-The current adapter adds approximately 5–6% on the two short clips. Its per-call
+A timing run measured native CLI, UMI session and recorded-experiment latency under
+matched execution settings. The current adapter adds approximately 5–6% on the two short clips. Its per-call
 encoder checkpoint verification takes about 2.81 s; host work outside the runtime
 call takes about 3 ms, or 13 ms with the experiment and recording tools.
 

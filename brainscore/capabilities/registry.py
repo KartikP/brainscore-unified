@@ -1,6 +1,10 @@
-"""Capability registry for BrainScoreModel."""
+"""The one capability registry of BrainScoreModel.
 
-from typing import Dict, Iterable
+``BrainScoreModel.check_session_support`` reads it to find the capability that
+runs a session.
+"""
+
+from typing import Dict
 
 from .base import Capability
 
@@ -19,25 +23,12 @@ def register_capability(capability: Capability, *, replace: bool = False) -> Cap
     return capability
 
 
-def enabled_capabilities(model) -> Iterable[Capability]:
-    """Yield capabilities enabled for ``model`` in stable dispatch order."""
-    for capability in sorted(capability_registry.values(),
-                             key=lambda c: (c.order, c.identifier)):
-        if not capability.enabled_for(model):
-            continue
-        _setup_once(model, capability)
-        yield capability
-
-
-def _setup_once(model, capability: Capability) -> None:
-    if not hasattr(model, '_capability_state'):
-        model._capability_state = {}
-    if not hasattr(model, '_capability_setup_done'):
-        model._capability_setup_done = set()
-    if capability.identifier in model._capability_setup_done:
+def _setup_once(subject, capability: Capability) -> None:
+    """Run ``capability.setup`` for ``subject`` once, before the capability first runs."""
+    if capability.identifier in subject._capability_setup_done:
         return
-    state = capability.setup(model)
-    model._capability_state[capability.identifier] = (
+    state = capability.setup(subject)
+    subject._capability_state[capability.identifier] = (
         state if state is not None else {}
     )
-    model._capability_setup_done.add(capability.identifier)
+    subject._capability_setup_done.add(capability.identifier)

@@ -4,7 +4,8 @@ import pandas as pd
 import pytest
 
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.responses import Choice
+from brainscore_core.contract import TaskContext
 from brainscore_core.streaming_helpers import behavioral_response, neural_response
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     BehavioralAssembly, NeuroidAssembly)
@@ -50,13 +51,19 @@ def _labelled(n=4, labels=('cat', 'dog')):
 def _model():
     extractor = _Extractor()
     model = BrainScoreModel('restore', region_layer_map={'IT': 'layer'},
-                            extractor={'vision': extractor}, behavioral_readout_layer='layer')
+                            extractor={'vision': extractor}, behavioral_readout_layer='layer',
+                            capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
     return model, extractor
 
 
 def _task(labels=('cat', 'dog')):
-    return TaskContext(task_type='probabilities', fitting_stimuli=_labelled(labels=labels),
-                       metadata={'stimulus_set': _images()})
+    return TaskContext(response=Choice(list(labels)), fitting_stimuli=_labelled(labels=labels))
+
+
+def _read_out(model, stimuli):
+    """The configured readout's probabilities for ``stimuli``."""
+    behavioral = model._behavioral
+    return behavioral.readout_classifier.predict_proba(behavioral.extract_behavioral_features(stimuli))
 
 
 def _fits(extractor):
@@ -66,10 +73,10 @@ def _fits(extractor):
 def test_process_records_activity_again_after_a_behavior_session():
     model, _ = _model()
     model.start_recording('IT')
-    assert isinstance(behavioral_response(model, _task()), BehavioralAssembly)
+    assert isinstance(behavioral_response(model, _images(), _task()), BehavioralAssembly)
     after = model.process(_images())
     assert isinstance(after, NeuroidAssembly) and not isinstance(after, BehavioralAssembly)
-    assert model._behavioral.task_context is None and model._behavioral.readout_classifier is None
+    assert model._behavioral.task is None and model._behavioral.readout_classifier is None
 
 
 def test_the_callers_task_survives_a_behavior_session():
@@ -77,10 +84,10 @@ def test_the_callers_task_survives_a_behavior_session():
     prior = _task(labels=('bird', 'fish'))
     model.start_task(prior)
     classifier = model._behavioral.readout_classifier
-    behavioral_response(model, _task())
-    assert model._behavioral.task_context is prior
+    behavioral_response(model, _images(), _task())
+    assert model._behavioral.task is prior
     assert model._behavioral.readout_classifier is classifier
-    output = model.process(_images())
+    output = _read_out(model, _images())
     assert sorted(output['choice'].values) == ['bird', 'fish']
 
 
@@ -91,84 +98,84 @@ def test_the_callers_task_returns_when_the_session_fails():
     classifier = model._behavioral.readout_classifier
     extractor.fail_on_scoring = True
     with pytest.raises(RuntimeError, match='extraction failed'):
-        behavioral_response(model, _task())
-    assert model._behavioral.task_context is prior
+        behavioral_response(model, _images(), _task())
+    assert model._behavioral.task is prior
     assert model._behavioral.readout_classifier is classifier
 
 
 def test_the_same_task_in_a_later_session_keeps_its_fitted_readout():
     model, extractor = _model()
     task = _task()
-    first = behavioral_response(model, task)
+    first = behavioral_response(model, _images(), task)
     assert _fits(extractor) == 1
     model.start_recording('IT')
-    neural_response(model, _images(), record='IT')   # a session in between
-    second = behavioral_response(model, task)
+    neural_response(model, _images(), ['neural:IT'])   # a session in between
+    second = behavioral_response(model, _images(), task)
     assert _fits(extractor) == 1
     np.testing.assert_array_equal(first.values, second.values)
     model.start_task(task)                           # the caller sends the same task
     assert _fits(extractor) == 1
-    assert isinstance(model.process(_images()), BehavioralAssembly)
+    assert isinstance(_read_out(model, _images()), BehavioralAssembly)
 
 
 def test_a_new_task_in_a_later_session_fits_again():
     model, extractor = _model()
-    behavioral_response(model, _task())
-    behavioral_response(model, _task(labels=('bird', 'fish')))
+    behavioral_response(model, _images(), _task())
+    behavioral_response(model, _images(), _task(labels=('bird', 'fish')))
     assert _fits(extractor) == 2
 
 
 def test_an_edited_task_in_a_later_session_fits_again():
-    """Review finding P1: a remembered readout is reused only for the full, unchanged task."""
+    """A remembered readout is reused only for the full, unchanged task."""
     model, extractor = _model()
     task = _task()
-    behavioral_response(model, task)
+    behavioral_response(model, _images(), task)
     assert _fits(extractor) == 1
     task.readout_fit = 'intact'                     # a setting the old fingerprint left out
-    behavioral_response(model, task)
+    behavioral_response(model, _images(), task)
     assert _fits(extractor) == 2
     task.fitting_stimuli['image_path'] = [f'/tmp/other{i}.png' for i in range(4)]  # edited in place
-    behavioral_response(model, task)
+    behavioral_response(model, _images(), task)
     assert _fits(extractor) == 3
     task.fitting_stimuli.stimulus_paths = {'f0': '/tmp/elsewhere.png'}
-    behavioral_response(model, task)
+    behavioral_response(model, _images(), task)
     assert _fits(extractor) == 4
-    behavioral_response(model, task)                 # unchanged since: reused
+    behavioral_response(model, _images(), task)                 # unchanged since: reused
     assert _fits(extractor) == 4
 
 
 def test_a_failed_task_setup_never_leaves_a_half_built_readout():
-    """Review finding P2: a fit that fails part way is not remembered or reused."""
+    """A fit that fails part way is not remembered or reused."""
     model, _ = _model()
     a = _task(labels=('bird', 'fish'))
     model.start_task(a)
     one_class = _task(labels=('cat', 'cat'))
     with pytest.raises(ValueError):
-        behavioral_response(model, one_class)        # the classifier cannot fit one class
-    assert model._behavioral.task_context is a
+        behavioral_response(model, _images(), one_class)        # the classifier cannot fit one class
+    assert model._behavioral.task is a
     with pytest.raises(ValueError):
         model.start_task(one_class)                  # the same failure, outside a session
     model.start_task(_task(labels=('cat', 'dog')))   # another task, configured directly
     model.start_task(a)
-    assert sorted(model.process(_images())['choice'].values) == ['bird', 'fish']
+    assert sorted(_read_out(model, _images())['choice'].values) == ['bird', 'fish']
 
 
 def test_a_neutral_session_keeps_the_remembered_readout():
-    """Review finding P2: a session that configures no task does not cost a refit."""
+    """A session that configures no task does not cost a refit."""
     model, extractor = _model()
     model.start_task(_task(labels=('bird', 'fish')))  # the caller's task A
     model.start_recording('IT')
     b = _task()
-    behavioral_response(model, b)
+    behavioral_response(model, _images(), b)
     assert _fits(extractor) == 2
-    neural_response(model, _images(), record='IT')
-    behavioral_response(model, b)
+    neural_response(model, _images(), ['neural:IT'])
+    behavioral_response(model, _images(), b)
     assert _fits(extractor) == 2
-    assert sorted(model.process(_images())['choice'].values) == ['bird', 'fish']
+    assert sorted(_read_out(model, _images())['choice'].values) == ['bird', 'fish']
 
 
 def test_a_reset_inside_a_session_stands(monkeypatch):
-    """Review finding P2: the scope does not bring back a task that reset() cleared."""
+    """The scope does not bring back a task that reset() cleared."""
     from brainscore.capabilities.sessions import NeuralSessions
     from brainscore_core.streaming_helpers import stimulus_session
     model, _ = _model()
@@ -176,14 +183,14 @@ def test_a_reset_inside_a_session_stands(monkeypatch):
     monkeypatch.setattr(NeuralSessions, 'participate',
                         lambda self, subject, session: subject.reset())
     model.participate(stimulus_session(_images(), ['neural:IT']))
-    assert model._behavioral.task_context is None
+    assert model._behavioral.task is None
     assert model._behavioral.readout_classifier is None
     model.start_recording('IT')
     assert not isinstance(model.process(_images()), BehavioralAssembly)
 
 
 def test_an_unhashable_fitting_table_fits_no_more_often_than_before():
-    """Review round 2, P1: a list-valued column falls back to the id-and-label check (rule 10.1)."""
+    """A list-valued column falls back to the id-and-label check (rule 10.1)."""
     from brainscore_core.legacy_facade import LegacyBenchmarkFacade
     model, extractor = _model()
     fitting = _labelled()
@@ -193,8 +200,33 @@ def test_an_unhashable_fitting_table_fits_no_more_often_than_before():
     facade.look_at(_images())
     facade.look_at(_images())
     assert _fits(extractor) == 1                         # the base count
-    task = TaskContext(task_type='probabilities', fitting_stimuli=fitting,
-                       metadata={'stimulus_set': _images()})
-    behavioral_response(model, task)
-    behavioral_response(model, task)
+    task = TaskContext(response=Choice(['cat', 'dog']), fitting_stimuli=fitting)
+    behavioral_response(model, _images(), task)
+    behavioral_response(model, _images(), task)
     assert _fits(extractor) == 2                         # a new task object fits once
+
+
+@pytest.mark.parametrize('readout_fit, fits_after_change', [('intact', 1), ('current', 2)])
+def test_an_intervention_refits_only_a_readout_fitted_on_the_current_model(readout_fit, fits_after_change):
+    """A readout fitted with every intervention undone stays valid when one is applied."""
+    from brainscore_core.events import (PerturbationApplied, Perturbation, Selection, StateChange)
+    from brainscore_core.streaming_helpers import apply_state_change
+    extractor = _Extractor()
+    lesioned = []
+
+    def intervention(change):
+        lesioned.append(True)
+        return (PerturbationApplied(handle_id=f'h{len(lesioned)}', target=change.target,
+                                    perturbation=change.perturbation, applied_at=0),
+                lambda: lesioned.pop())
+    model = BrainScoreModel('restore', extractor={'vision': extractor},
+                            behavioral_readout_layer='layer', intervention=intervention)
+    task = _task()
+    task.readout_fit = readout_fit
+    before = behavioral_response(model, _images(), task)
+    assert _fits(extractor) == 1
+    apply_state_change(model, StateChange('ablation', target=Selection(layer='layer'),
+                                          perturbation=Perturbation('zero')))
+    after = behavioral_response(model, _images(), task)
+    assert _fits(extractor) == fits_after_change and lesioned == [True]
+    np.testing.assert_array_equal(after.values, before.values)   # the toy features ignore the lesion

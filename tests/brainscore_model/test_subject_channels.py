@@ -1,19 +1,22 @@
 import pytest
 
+from brainscore_core.compatibility import CompatibilityError, ExecutionNotFeasibleError
+
 from brainscore import BrainScoreModel
 
 
-def test_brainscore_model_gets_channel_identity_from_preprocessors():
+def test_brainscore_model_gets_channel_identity_from_extractors():
     model = BrainScoreModel(
         identifier="brain-score-model",
         model=None,
         region_layer_map={"IT": "layer4"},
-        preprocessors={"vision": lambda *args, **kwargs: None},
+        extractor={"vision": lambda *args, **kwargs: None},
         behavioral_readout_layer="layer4",
     )
 
     assert model.in_channels == {"vision:image", "control"}   # a vision key takes stills
-    assert model.out_channels == {"neural:IT", "behavior", "behavior:choice",
+    # The readout derives behavior:choice; with no statement it is not declared (rule 4.11).
+    assert model.out_channels == {"neural:IT", "behavior",
                                   "behavior:probabilities", "behavior:rating", "behavior:rt"}
     assert model.required_channels == set()
 
@@ -23,8 +26,32 @@ def test_region_map_without_extractor_declares_no_neural_output():
     from brainscore import BrainScoreModel
     model = BrainScoreModel('unwired', region_layer_map={'IT': 'layer'})
     assert 'neural:IT' not in model.out_channels
-    with pytest.raises(NotImplementedError, match='No session handler'):
+    with pytest.raises(ExecutionNotFeasibleError, match=r"does not produce \['neural:IT'\]"):
         model.check_session_support({'neural:IT'})
     wired = BrainScoreModel('wired', region_layer_map={'IT': 'layer'},
                             extractor={'vision': lambda stimuli, layers=None, **k: None})
     assert 'neural:IT' in wired.out_channels
+
+
+def test_a_text_only_benchmark_asking_for_a_vision_region_is_na_at_preflight():
+    """output_inputs: a vision region cannot be answered from text alone."""
+    from brainscore import LayerSelector
+    from brainscore_core.compatibility import CompatibilityError, check_compatibility
+
+    model = BrainScoreModel(
+        identifier="two-towers", model=None,
+        region_layer_map={"IT": LayerSelector(name="vision.layer", modality="vision"),
+                          "language": LayerSelector(name="text.layer", modality="text")},
+        extractor={"vision": lambda *args, **kwargs: None,
+                   "text": lambda *args, **kwargs: None})
+
+    class Benchmark:
+        identifier = "text-only"
+        required_input_channels = {"text"}
+
+    vision_region, text_region = Benchmark(), Benchmark()
+    vision_region.requested_output_channels = {"neural:IT"}
+    text_region.requested_output_channels = {"neural:language"}
+    with pytest.raises(CompatibilityError, match="answers 'neural:IT' only from the inputs"):
+        check_compatibility(model, vision_region)
+    assert check_compatibility(model, text_region).kind == "full"

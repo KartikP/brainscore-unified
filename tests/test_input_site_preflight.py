@@ -42,7 +42,7 @@ def protocol() -> SessionProtocol:
     def factory(trial):
         yield Session([StreamEvent('observation', [[1., 2., 3.]], None)])
     return SessionProtocol('input-site-preflight', factory, conditions=['baseline'],
-                           input_channels=['observation'], output_channels=['behavior'])
+                           required_input_channels=['observation'], requested_output_channels=['behavior'])
 
 
 def _no_hooks(module):

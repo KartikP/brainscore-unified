@@ -17,7 +17,7 @@ import numpy as np
 
 from brainscore.experiments import Experiment, RecordInputsOutputs, SessionProtocol
 from brainscore.models.mirage import MirageRuntime, MirageSubject
-from brainscore.models.mirage.model import Clip, OUTPUT_CHANNEL, SUBJECTS
+from brainscore.models.mirage.model import Clip, OUTPUT_CHANNEL, PARTICIPANTS
 from brainscore_core.streaming import Session, StreamEvent
 
 
@@ -97,7 +97,7 @@ def main() -> None:
     expected_hashes = dict(zip(('public', 'synthetic'),
                                (case['native_array_sha256'] for case in qualification['cases'])))
     script = Path(__file__).with_name('timing_worker.py').resolve()
-    for case, video, transcript, subject_id in (
+    for case, video, transcript, participant in (
         ('public', args.stimuli_dir / 'clip.mp4', args.stimuli_dir / 'transcript.json', 'sub-01'),
         ('synthetic', args.stimuli_dir / 'synthetic/clip.mp4',
          args.stimuli_dir / 'synthetic/transcript.json', 'sub-02'),
@@ -118,7 +118,7 @@ def main() -> None:
                 runtime_s = []
                 runtime = MirageRuntime(
                     python_executable=str(launcher), source_dir=args.source_dir,
-                    run_dir=args.run_dir, work_dir=args.work_dir, subject=subject_id,
+                    run_dir=args.run_dir, work_dir=args.work_dir, participant=participant,
                     device='cuda', batch_size=1, timeout_s=args.timeout_s,
                 )
 
@@ -138,7 +138,7 @@ def main() -> None:
                                     {**metadata, 'transcript': words}),
                     ], (OUTPUT_CHANNEL,))
 
-                subject = MirageSubject(predictor=predict, subject=subject_id)
+                subject = MirageSubject(predictor=predict, participant=participant)
                 start = time.perf_counter()
                 if mode == 'direct':
                     path = trial / 'native.npy'
@@ -146,7 +146,7 @@ def main() -> None:
                         str(launcher), '-m', 'brain_enc.cli.infer_fmri',
                         '--video', str(video), '--transcript', str(transcript),
                         '--run-dir', str(args.run_dir.resolve()),
-                        '--subject-idx', str(SUBJECTS.index(subject_id)),
+                        '--subject-idx', str(PARTICIPANTS.index(participant)),
                         '--device', 'cuda', '--batch-size', '1', '--output', str(path.resolve()),
                     ], environment=environment, log=trial / 'direct.log', timeout_s=args.timeout_s)
                     values = np.load(path, allow_pickle=False)
@@ -163,8 +163,8 @@ def main() -> None:
                     result = Experiment(
                         subject=subject,
                         protocol=SessionProtocol(
-                            'mirage-overhead', factory, input_channels=('vision:video', 'audio', 'text'),
-                            output_channels=(OUTPUT_CHANNEL,),
+                            'mirage-overhead', factory, required_input_channels=('vision:video', 'audio', 'text'),
+                            requested_output_channels=(OUTPUT_CHANNEL,),
                         ),
                         tools=(RecordInputsOutputs(),), output_dir=trial / 'experiment',
                         metadata={'case': case, 'block': block, 'position': position,
@@ -182,11 +182,11 @@ def main() -> None:
                 if mode != 'direct':
                     assert list(assembly.tr_index.values) == list(range(values.shape[0]))
                     assert list(assembly.parcel_index.values) == list(range(1000))
-                    assert set(assembly.subject_id.values) == {subject_id}
+                    assert set(assembly.subject_id.values) == {participant}
                 native = json.loads(sidecar.read_text())
                 if native['status'] != 'complete':
                     raise RuntimeError('Timing worker did not complete')
-                row = {'case': case, 'subject': subject_id, 'block': block, 'position': position,
+                row = {'case': case, 'participant': participant, 'block': block, 'position': position,
                        'mode': mode, 'warmup': block == 0, 'wall_s': wall_s,
                        'runtime_call_s': runtime_s[0] if runtime_s else None,
                        'framework_outside_runtime_s': wall_s - runtime_s[0] if runtime_s else None,

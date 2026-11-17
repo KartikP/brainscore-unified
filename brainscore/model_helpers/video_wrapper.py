@@ -1,5 +1,5 @@
 """
-VideoWrapper — activations_model for native-temporal video models.
+VideoWrapper — extractor for native-temporal video models.
 
 Fourth wrapper class in the unified interface, alongside:
     - PytorchWrapper      (standard image models, batch x C x H x W)
@@ -28,10 +28,11 @@ The output assembly already has a ``time_bin`` dimension; downstream code
 matches against fMRI TRs) consumes it directly.
 
 Design symmetry with other wrappers:
-    - Identifier property → used by @store_xarray caching key
-    - Accepts a StimulusSet with ``video_path`` column (or list of paths)
+    - An explicit key (weights, settings, inputs) keys the @store_xarray cache
+    - Accepts a StimulusSet (or list of paths): the first column the core
+      catalog binds to ``vision:video`` (``video_path``, ``video_file_name``,
+      ``video``, in that order), else ``stimulus_paths``
     - Takes ``layers`` kwarg; returns NeuroidAssembly
-    - No new methods — just the __call__ contract
 
 Design asymmetry (video-specific):
     - Accepts a configurable ``frame_sampler`` to extract T frames per video
@@ -41,6 +42,12 @@ Design asymmetry (video-specific):
     - Configurable ``t_to_time_ms_fn`` maps hook-output time index to
       absolute ms within the video, for layers that downsample time
       (e.g., a transformer with patch-wise temporal compression).
+
+Cache key: ``VideoWrapper._VERSION`` is part of the activation cache key. The module
+functions ``_window_features``, ``_shared_clock``, ``_edges_from_centers`` and
+``_default_time_mapping``, and ``brainscore.temporal.window_plan`` and
+``brainscore_core.assembly_builder``, shape the values this wrapper returns but
+are not hashed: a change there that moves values needs a raise of ``_VERSION``.
 
 Memory: videos are processed one-at-a-time by default (batch_size=1)
 because video models have large T×C×H×W tensors. Batch size can be
@@ -58,21 +65,20 @@ from tqdm.auto import tqdm
 
 from brainscore_core.assembly_builder import (
     make_assembly,
-    make_neuroid_ids,
+    make_layer_neuroid_coords,
     replace_presentation_coord,
 )
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     NeuroidAssembly,
 )
-from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.temporal import window_plan
-from brainscore_core.extraction_cache import (
-    store_xarray, extraction_fingerprint, wrapper_config, file_inputs,
+from brainscore_core.extraction_cache import store_xarray
+from brainscore.model_helpers._extractors import (
+    CachingExtractor, LiveRecording, as_float32, catalog_columns, catalog_paths,
 )
 
 
 logger = logging.getLogger(__name__)
-
 
 def pad_out_of_bound(frames: List[Optional[np.ndarray]], oob_mask: List[bool],
                      strategy: str = 'repeat') -> List[np.ndarray]:
@@ -144,8 +150,8 @@ def default_uniform_frame_sampler(
     return frames
 
 
-class VideoWrapper:
-    """Wraps a video-native model for use as a BrainScoreModel activations_model.
+class VideoWrapper(CachingExtractor):
+    """Wraps a video-native model for use as a BrainScoreModel extractor.
 
     Args:
         model: PyTorch module that accepts a video tensor and returns
@@ -154,9 +160,8 @@ class VideoWrapper:
             producing a tensor appropriate for the model. Typical layouts:
             ``(T, C, H, W)`` for a single video, or already batched
             ``(1, T, C, H, W)``. The wrapper normalizes to ``(B, T, C, H, W)``.
-        identifier: Model identifier for caching.
-        backbone_id: Optional cache-key identifier shared by registrations
-            backed by the same weights. Defaults to ``identifier``.
+        identifier: Model identifier for the ``model`` coordinate; not part
+            of the cache key.
         target_fps: Frame sampling rate, in Hz. Default 5.
         num_frames: If set, sample exactly this many frames per video
             (overrides target_fps behavior). Defaults to None.
@@ -165,9 +170,6 @@ class VideoWrapper:
         forward_kwargs: Extra kwargs passed to the model's forward call
             for every batch (static only — no per-batch dynamic kwargs
             in this version).
-        hook_time_axis: Which axis of the hook output corresponds to time.
-            Default 1 (after batch). Set to 0 if hook drops the batch dim.
-            Ignored when ``post_hook_fn`` is set.
         post_hook_fn: Optional callable applied to raw hook output before
             the wrapper assumes a ``(B, T, features)`` layout. Use this for
             models whose hook output interleaves time and space in the
@@ -182,7 +184,6 @@ class VideoWrapper:
             video models have large T×C×H×W tensors.
         context_window_ms: If set, process long clips in windows of this
             duration instead of one whole-clip forward pass.
-        context_stride_ms: Window stride; defaults to ``context_window_ms``.
         context_strategy: Window placement strategy passed to
             ``window_plan``. Defaults to ``'block'``.
         out_of_bound: Padding for windows outside the clip: ``'repeat'``,
@@ -191,22 +192,29 @@ class VideoWrapper:
             and should be handled with ``context_window_ms``.
     """
 
+    # The version of what this class extracts: a part of the activation cache key
+    # (``_extractors.cache_config``), read from this class body only. Raise it by
+    # hand when a change can move the extracted values, also through code it calls.
+    _VERSION = 1
+
+    # Recording several layers in one call gives, for each layer, exactly what a
+    # call for that layer alone gives, so the regions of one session share one
+    # call (brainscore._model.channels).
+    independent_layers = True
+
     def __init__(
         self,
         model,
         preprocessing: Callable[[List[np.ndarray]], 'torch.Tensor'],  # noqa: F821
         identifier: Optional[str] = None,
-        backbone_id: Optional[str] = None,
         target_fps: float = 5.0,
         num_frames: Optional[int] = None,
         frame_sampler: Optional[Callable] = None,
         forward_kwargs: Optional[Dict] = None,
-        hook_time_axis: int = 1,
         post_hook_fn: Optional[Callable[[np.ndarray], np.ndarray]] = None,
         t_to_time_ms_fn: Optional[Callable[[int, float], List[float]]] = None,
         batch_size: int = 1,
         context_window_ms: Optional[float] = None,
-        context_stride_ms: Optional[float] = None,
         context_strategy: str = 'block',
         out_of_bound: str = 'repeat',
         max_clip_ms: Optional[float] = None,
@@ -219,13 +227,11 @@ class VideoWrapper:
         self._num_frames = num_frames
         self._frame_sampler = frame_sampler or default_uniform_frame_sampler
         self._forward_kwargs = dict(forward_kwargs or {})
-        self._hook_time_axis = hook_time_axis
         self._post_hook_fn = post_hook_fn
         self._t_to_time_ms_fn = t_to_time_ms_fn or _default_time_mapping
         self._batch_size = batch_size
         # Long-clip temporal context (additive; None = current whole-clip path).
         self._context_window_ms = context_window_ms
-        self._context_stride_ms = context_stride_ms
         self._context_strategy = context_strategy
         self._out_of_bound = out_of_bound
         self._max_clip_ms = max_clip_ms
@@ -235,64 +241,26 @@ class VideoWrapper:
         self._model = self._model.to(self._device)
 
         self._identifier = identifier or model.__class__.__name__
-        # V-JEPA v1/v2 both wrap the same underlying ViT-L weights in many
-        # configurations; set a shared backbone_id so cached activations
-        # are reused across registrations. Defaults to identifier.
-        self._backbone_id = backbone_id or self._identifier
 
-    @property
-    def identifier(self) -> str:
-        return self._identifier
+    def _table_inputs(self, stimulus_set) -> List[str]:
+        if 'stimulus_id' not in stimulus_set.columns:     # it labels the clips; refuse before any pass
+            raise ValueError(f'A clip table needs a stimulus_id column; got {list(stimulus_set.columns)}.')
+        return self._extract_video_paths(stimulus_set)
 
-    @identifier.setter
-    def identifier(self, value: str) -> None:
-        self._identifier = value
-
-    @property
-    def backbone_id(self) -> str:
-        return self._backbone_id
-
-    def __call__(self, stimuli, layers, stimuli_identifier=None, **kwargs) -> NeuroidAssembly:
-        """Extract temporal activations from a batch of videos.
-
-        Args:
-            stimuli: StimulusSet with ``video_path`` column (or ``image_file_name``
-                for video paths), or list of video file paths.
-            layers: List of layer name strings to hook.
-            stimuli_identifier: Cache identifier; falls back to
-                ``stimuli.identifier`` if available.
-
-        Returns:
-            NeuroidAssembly with dims ``(presentation, time_bin, neuroid)``.
-            ``presentation`` is one per video (count = len(stimuli)).
-            ``time_bin`` is one per output time step (depends on the
-            hooked layer's temporal resolution).
-        """
-        if isinstance(stimuli, StimulusSet):
-            return self._from_stimulus_set(stimuli, layers, stimuli_identifier)
-        return self._from_paths(list(stimuli), layers, stimuli_identifier)
-
-    def _from_stimulus_set(self, stimulus_set, layers, stimuli_identifier=None):
-        if stimuli_identifier is None and hasattr(stimulus_set, 'identifier'):
-            stimuli_identifier = stimulus_set.identifier
-        paths = self._extract_video_paths(stimulus_set)
-        stimulus_ids = list(stimulus_set['stimulus_id'].values)
-        activations = self._from_paths_cached(paths, layers, stimuli_identifier)
-        activations = self._relabel_stimulus_ids(activations, stimulus_ids)
-        activations = self._attach_stimulus_set_meta(activations, stimulus_set)
-        return activations
+    def _columns(self, assembly, stimulus_set):
+        assembly = self._relabel_stimulus_ids(assembly, list(stimulus_set['stimulus_id'].values))
+        return self._attach_stimulus_set_meta(assembly, stimulus_set)
 
     def _extract_video_paths(self, stimulus_set) -> List[str]:
-        for col in ('video_path', 'video_file_name', 'image_file_name', 'filename'):
-            if col in stimulus_set.columns:
-                return [str(p) for p in stimulus_set[col].values]
+        paths = catalog_paths(stimulus_set, 'vision:video')
+        if paths is not None:
+            return [str(p) for p in paths]
         if hasattr(stimulus_set, 'stimulus_paths'):
             return [str(stimulus_set.stimulus_paths[sid])
                     for sid in stimulus_set['stimulus_id']]
-        raise ValueError(
-            f"Could not find video paths in stimulus set. "
-            f"Looked for columns: video_path, video_file_name, "
-            f"image_file_name, filename. Got: {list(stimulus_set.columns)}")
+        raise ValueError(f"Could not find video paths in stimulus set: expected one of "
+                         f"{catalog_columns('vision:video')} (or stimulus_paths); "
+                         f"got {list(stimulus_set.columns)}.")
 
     CACHE_FIELDS = (
         '_preprocessing',
@@ -300,42 +268,18 @@ class VideoWrapper:
         '_num_frames',
         '_frame_sampler',
         '_forward_kwargs',
-        '_hook_time_axis',
         '_post_hook_fn',
         '_t_to_time_ms_fn',
         '_batch_size',
         '_context_window_ms',
-        '_context_stride_ms',
         '_context_strategy',
         '_out_of_bound',
         '_max_clip_ms',
     )
 
-    def cache_config(self):
-        return wrapper_config(self, self.CACHE_FIELDS)
-
-    def _from_paths_cached(self, paths, layers, stimuli_identifier=None):
-        if self._backbone_id and stimuli_identifier:
-            signature = extraction_fingerprint(
-                {"configuration": self.cache_config(), "inputs": file_inputs(paths)},
-                cache_identifier=(f'{type(self).__module__}.{type(self).__name__}'
-                                  f'._from_paths_stored/identifier={self._backbone_id}'),
-            )
-            if signature is None:
-                return self._from_paths(paths, layers, stimuli_identifier)
-            return self._from_paths_stored(
-                identifier=self._backbone_id,
-                stimuli_identifier=stimuli_identifier,
-                layers=layers,
-                paths=paths,
-                extraction_fingerprint=signature,
-            )
-        return self._from_paths(paths, layers, stimuli_identifier)
-
     @store_xarray(identifier_ignore=['paths', 'layers'],
                   combine_fields={'layers': 'layer'})
-    def _from_paths_stored(self, identifier, layers, stimuli_identifier, paths,
-                           extraction_fingerprint):
+    def _from_paths_stored(self, layers, stimuli_identifier, paths, extraction_fingerprint):
         return self._from_paths(paths, layers, stimuli_identifier)
 
     def _from_paths(self, paths: List[str], layers: List[str],
@@ -392,18 +336,27 @@ class VideoWrapper:
         if video_batch.dtype != model_dtype and video_batch.is_floating_point():
             video_batch = video_batch.to(model_dtype)
 
-        layer_outputs: OrderedDict = OrderedDict()
-        hooks = []
-        try:
-            for name in layers:
-                hooks.append(self._register_hook(self._get_layer(name), name, layer_outputs))
-            self._model.eval()
-            with torch.no_grad():
-                self._model(video_batch, **self._forward_kwargs)
-        finally:
-            for hook in hooks:
-                hook.remove()
+        self._model.eval()
+        with LiveRecording(self._model, self._model, layers, as_float32) as recording, torch.no_grad():
+            self._model(video_batch, **self._forward_kwargs)
+            layer_outputs, _ = recording.take()
         return {ln: self._flatten_layer_output(arr) for ln, arr in layer_outputs.items()}
+
+    def _sample(self, path) -> List[np.ndarray]:
+        """The frames of a clip for the whole-clip path."""
+        if self._num_frames is not None:
+            return self._frame_sampler(path, num_frames=self._num_frames)
+        return self._frame_sampler(path, num_frames=0, target_fps=self._target_fps)
+
+    def _checked_duration_ms(self, path) -> float:
+        """A clip's duration for the whole-clip path, refused over ``max_clip_ms``."""
+        duration_ms, _, _ = self._clip_duration_ms(path)
+        if self._max_clip_ms is not None and duration_ms > self._max_clip_ms:
+            raise ValueError(
+                f"clip {path} is {duration_ms:.0f}ms > max_clip_ms="
+                f"{self._max_clip_ms}; set context_window_ms to chunk it "
+                f"(no silent downsampling).")
+        return duration_ms
 
     def _clip_duration_ms(self, path) -> Tuple[float, int, float]:
         import cv2
@@ -419,17 +372,8 @@ class VideoWrapper:
         per_video_frames = []
         durations_ms: List[float] = []
         for path in batch_paths:
-            if self._num_frames is not None:
-                frames = self._frame_sampler(path, num_frames=self._num_frames)
-            else:
-                frames = self._frame_sampler(path, num_frames=0,
-                                             target_fps=self._target_fps)
-            duration_ms, _, _ = self._clip_duration_ms(path)
-            if self._max_clip_ms is not None and duration_ms > self._max_clip_ms:
-                raise ValueError(
-                    f"clip {path} is {duration_ms:.0f}ms > max_clip_ms="
-                    f"{self._max_clip_ms}; set context_window_ms to chunk it "
-                    f"(no silent downsampling).")
+            frames = self._sample(path)
+            duration_ms = self._checked_duration_ms(path)
             per_video_frames.append(frames)
             durations_ms.append(duration_ms)
 
@@ -444,7 +388,6 @@ class VideoWrapper:
         """Chunked path: window the clip, forward each window, stitch to clip time."""
         duration_ms, total, fps = self._clip_duration_ms(path)
         windows = window_plan(duration_ms, self._context_window_ms,
-                              stride_ms=self._context_stride_ms,
                               strategy=self._context_strategy)
         nf = self._num_frames or max(
             1, int(round(self._context_window_ms / 1000.0 * self._target_fps)))
@@ -454,18 +397,30 @@ class VideoWrapper:
             frames, oob = self._sample_window(path, win, nf, total, fps)
             frames = pad_out_of_bound(frames, oob, self._out_of_bound)
             out = self._run_model([frames], layers)  # {ln: (1, T_win, F)}
-            T_win = out[layers[0]].shape[1]
-            if win.is_causal:  # one feature at window end (trailing context)
-                for ln in layers:
-                    per_layer[ln].append(out[ln][0].mean(axis=0, keepdims=True))
-                times.append(win.end_ms)
-            else:
-                for ln in layers:
-                    per_layer[ln].append(out[ln][0])
-                sub = self._t_to_time_ms_fn(T_win, win.end_ms - win.start_ms)
-                times.extend(win.start_ms + s for s in sub)
+            for ln in layers:
+                per_layer[ln].append(_window_features(out[ln][0], win))
+            times.extend(self._window_times(win, out[layers[0]].shape[1]))
         feats = {ln: np.concatenate(per_layer[ln], axis=0) for ln in layers}
         return feats, times
+
+    def _window_times(self, win, steps: int) -> List[float]:
+        """A window's clock: a causal window's one feature at its end, else its steps over its span."""
+        if win.is_causal:
+            return [win.end_ms]
+        return [win.start_ms + s for s in self._t_to_time_ms_fn(steps, win.end_ms - win.start_ms)]
+
+    def _clock(self, path, steps: int):
+        """The clock ``__call__`` gives a clip of one pass with ``steps`` steps, and the window
+        of that pass (None without ``context_window_ms``); a clip of several windows is refused."""
+        if self._context_window_ms is None:
+            return list(self._t_to_time_ms_fn(steps, self._checked_duration_ms(path))), None
+        windows = window_plan(self._clip_duration_ms(path)[0], self._context_window_ms,
+                              strategy=self._context_strategy)
+        if len(windows) > 1:
+            raise ValueError(
+                f'{path} spans {len(windows)} windows of context_window_ms={self._context_window_ms}, '
+                f'which {self._identifier!r} stitches; a recording during a task has one pass per clip.')
+        return self._window_times(windows[0], steps), windows[0]
 
     def _sample_window(self, path, win, nf: int, total: int, fps: float):
         """Sample nf frames evenly within [win.start, win.end]; frames whose
@@ -500,9 +455,8 @@ class VideoWrapper:
 
         If ``post_hook_fn`` was provided, defer to it — it handles
         arbitrary time/space layouts (e.g., VideoMAE's interleaved
-        seq_len). Otherwise use ``hook_time_axis`` to identify the
-        temporal dim in the hook's output, then flatten everything
-        after (B, T) into ``features``.
+        seq_len). Otherwise axis 1 is time, and everything after (B, T)
+        is flattened into ``features``.
         """
         if self._post_hook_fn is not None:
             out = self._post_hook_fn(arr)
@@ -515,8 +469,6 @@ class VideoWrapper:
             raise ValueError(
                 f"VideoWrapper hook output has ndim={arr.ndim}, expected >=2 "
                 f"(at minimum (B, T, ...)).")
-        if self._hook_time_axis != 1:
-            arr = np.moveaxis(arr, self._hook_time_axis, 1)
         B, T = arr.shape[0], arr.shape[1]
         return arr.reshape(B, T, -1)
 
@@ -524,21 +476,42 @@ class VideoWrapper:
         """Layer paths this extractor can record, relative to the module it wraps."""
         return [name for name, _ in self._model.named_modules(remove_duplicate=False) if name]
 
-    def _get_layer(self, layer_name: str):
-        module = self._model
-        for part in layer_name.split('.'):
-            module = getattr(module, part, None)
-            if module is None:
-                raise ValueError(
-                    f"Layer '{layer_name}' not found at part '{part}'")
-        return module
+    def record(self, layers, stimuli=None):
+        """Record ``layers`` while another caller runs the model (an answer).
 
-    def _register_hook(self, layer, layer_name: str, target_dict: OrderedDict):
-        def hook_fn(_module, _input, output, name=layer_name):
-            if isinstance(output, (tuple, list)):
-                output = output[0]
-            target_dict[name] = output.detach().cpu().float().numpy()
-        return layer.register_forward_hook(hook_fn)
+        Returns a ``LiveRecording``; its ``take(row)`` gives ``{layer: assembly}``
+        for the first forward pass since the previous take, packaged by the
+        functions of ``__call__``, with the clock ``__call__`` gives ``stimuli``:
+        the first clip's (``_clock``). Refused before any pass: no ``stimuli`` (a
+        policy step has no clip, so no clock), and what ``__call__`` would refuse
+        or stitch: a clip over ``max_clip_ms`` or of several windows, clips of
+        different clocks or numbers of frames. A pass of several clips, and a
+        later pass of the presentation with other input, are refused before they run.
+        """
+        if stimuli is None:
+            raise ValueError('A video recording during a task needs the presented clip for its '
+                             'clock; a policy step presents none.')
+        paths = self._extract_video_paths(stimuli)
+        _shared_clock([self._clock(path, 1)[0] for path in paths], paths)
+        if self._context_window_ms is None and len({len(self._sample(path)) for path in paths}) > 1:
+            raise ValueError('The clips give different numbers of frames, so they share no time axis; '
+                             'present clips of one length together.')
+
+        def inputs(args, kwargs):
+            video = next((v for v in (*args, *kwargs.values()) if hasattr(v, 'shape')), None)
+            if video is not None and video.shape[0] != 1:
+                raise ValueError(f'A recording during a task keeps one clip per pass; this pass shows '
+                                 f'{video.shape[0]}.')
+
+        def package(activity, _read, row):
+            flat = {layer: self._flatten_layer_output(a)[0] for layer, a in activity.items()}
+            steps, path = len(next(iter(flat.values()))), self._extract_video_paths(row.to_frame().T)[0]
+            clock, window = self._clock(paths[0], steps)
+            clock = _shared_clock([clock, self._clock(path, steps)[0]], [paths[0], path])
+            return {layer: self._package(OrderedDict([(layer, [_window_features(a, window)])]), [clock], [path])
+                    for layer, a in flat.items()}
+
+        return LiveRecording(self._model, self._model, layers, as_float32, package, inputs, one_input=True)
 
     def _package(
         self,
@@ -548,60 +521,43 @@ class VideoWrapper:
     ) -> NeuroidAssembly:
         """Package per-video, per-layer activations into a NeuroidAssembly
         with dims (presentation, time_bin, neuroid)."""
-        n_videos = len(paths)
-        first_layer = next(iter(per_video_activations))
-        # Each per_video_activations[layer] is a list of length n_videos,
-        # each entry shape (T_out, features_flat_per_layer).
-        T_out = per_video_activations[first_layer][0].shape[0]
-
         # One time_bin axis is shared by all presentations; refuse clips whose
         # clocks differ beyond tolerance rather than mislabel them.
         time_ms = _shared_clock(per_video_time_ms, paths)
 
-        # Concatenate layers along the feature axis, and stack videos
-        layer_tensors = []
-        for layer_name, entries in per_video_activations.items():
-            # entries: list of (T, F_layer) arrays
-            stacked = np.stack(entries, axis=0)  # (n_videos, T, F_layer)
-            layer_tensors.append((layer_name, stacked))
-
-        # Concatenate across layers on the feature axis
-        feature_arrays = [t for (_, t) in layer_tensors]
-        data = np.concatenate(feature_arrays, axis=2)  # (n_videos, T, total_F)
-
-        # Neuroid coords
-        neuroid_ids: List[str] = []
-        layer_labels: List[str] = []
-        for layer_name, stacked in layer_tensors:
-            F = stacked.shape[2]
-            neuroid_ids.extend(
-                make_neuroid_ids(self._identifier, layer_name, F))
-            layer_labels.extend([layer_name] * F)
+        # Stack videos per layer, then concatenate layers on the feature axis:
+        # (n_videos, T, total_F). Each layer's units are numbered from zero
+        # (``neuroid_num``), as in every other extractor.
+        stacked = {layer_name: np.stack(entries, axis=0)
+                   for layer_name, entries in per_video_activations.items()}
+        data = np.concatenate(list(stacked.values()), axis=2)
+        neuroid = {}
+        for layer_name, values in stacked.items():
+            for name, (_, labels) in make_layer_neuroid_coords(
+                    self._identifier, layer_name, values.shape[2]).items():
+                neuroid.setdefault(name, []).extend(labels)
 
         # Build stimulus_ids (placeholder — caller may relabel via
         # _relabel_stimulus_ids)
         stimulus_ids = [Path(p).stem for p in paths]
+        n_time = len(time_ms)
 
-        # Secondary time_bin coord so gather_indexes produces a MultiIndex
-        # (single coord → plain Index named after the dim, and the coord
-        # name gets lost).
         # Canonical time-bin edges (ms), matching the coord names emitted by
         # TextWrapper / AudioWrapper so naturalistic benchmarks align any
         # wrapper's output uniformly (no per-wrapper special cases). Keep
         # time_bin_center_ms too — existing video benchmarks read it.
-        time_starts, time_ends = _edges_from_centers(time_ms)
         coords = {
             'stimulus_id': ('presentation', stimulus_ids),
             'video_path': ('presentation', paths),
+        }
+        time_starts, time_ends = _edges_from_centers(time_ms)
+        coords.update({
             'time_bin_center_ms': ('time_bin', time_ms),
             'time_bin_start_ms': ('time_bin', time_starts),
             'time_bin_end_ms': ('time_bin', time_ends),
-            'time_bin_idx': ('time_bin', list(range(len(time_ms)))),
-            'neuroid_id': ('neuroid', neuroid_ids),
-            'neuroid_num': ('neuroid', list(range(len(neuroid_ids)))),
-            'model': ('neuroid', [self._identifier] * len(neuroid_ids)),
-            'layer': ('neuroid', layer_labels),
-        }
+        })
+        coords['time_bin_idx'] = ('time_bin', list(range(n_time)))
+        coords.update({name: ('neuroid', labels) for name, labels in neuroid.items()})
         return make_assembly(
             data,
             coords=coords,
@@ -623,7 +579,10 @@ class VideoWrapper:
             assembly, 'stimulus_id', stimulus_ids)
 
     def _attach_stimulus_set_meta(self, assembly, stimulus_set):
-        """Attach remaining stimulus set columns as presentation coords."""
+        """Attach remaining stimulus set columns as presentation coords.
+
+        A column that cannot be attached raises, as in the other extractors.
+        """
         for column in stimulus_set.columns:
             if column == 'stimulus_id':
                 continue
@@ -633,12 +592,14 @@ class VideoWrapper:
                 continue
             except (KeyError, AttributeError):
                 pass
-            try:
-                assembly = assembly.assign_coords(
-                    {column: ('presentation', list(stimulus_set[column].values))})
-            except Exception:
-                pass
+            assembly = assembly.assign_coords(
+                {column: ('presentation', list(stimulus_set[column].values))})
         return assembly
+
+
+def _window_features(activity: np.ndarray, win) -> np.ndarray:
+    """One pass's ``(T, F)`` features: a causal window keeps their mean."""
+    return activity.mean(axis=0, keepdims=True) if win is not None and win.is_causal else activity
 
 
 # Clips packaged together share one time_bin axis. Their own clocks may
@@ -720,3 +681,4 @@ def _default_time_mapping(n_time_steps_out: int, video_duration_ms: float) -> Li
         return [video_duration_ms / 2.0]
     step_ms = video_duration_ms / n_time_steps_out
     return [step_ms * (i + 0.5) for i in range(n_time_steps_out)]
+

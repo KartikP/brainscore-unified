@@ -88,7 +88,7 @@ def model():
     return BrainScoreModel(
         identifier='synthetic-model', model=None,
         region_layer_map={'IT': 'layer.0'},
-        preprocessors={'text': _SyntheticExtractor()},
+        extractor={'text': _SyntheticExtractor()},
     )
 
 

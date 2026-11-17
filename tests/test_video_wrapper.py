@@ -42,8 +42,9 @@ def _make_mock_video_model(n_features: int = 8):
         def forward(self, x):
             return self.main_block(x)
 
-    torch.manual_seed(0)
-    return MockVideoModel(n_features)
+    with torch.random.fork_rng():
+        torch.manual_seed(0)
+        return MockVideoModel(n_features)
 
 
 def _mock_preprocess(frames):
@@ -210,6 +211,17 @@ class TestVideoWrapperBasics:
             assert ends[i] == pytest.approx(starts[i + 1])
 
 
+    def test_a_column_that_cannot_be_attached_raises(self, video_stimulus_set):
+        """The metadata step fails visibly, as in the other extractors."""
+        from brainscore.model_helpers.video_wrapper import VideoWrapper
+        wrapper = VideoWrapper(model=_make_mock_video_model(n_features=8),
+                               preprocessing=_mock_preprocess, identifier='mock-vid',
+                               num_frames=4)
+        video_stimulus_set['pair'] = [(0, 1), (2, 3), (4, 5)]
+        with pytest.raises(ValueError):
+            wrapper(video_stimulus_set, layers=['main_block'])
+
+
 class TestVideoWrapperTemporalInvariance:
     def test_different_frame_orders_give_different_activations(
             self, video_stimulus_set):
@@ -359,7 +371,7 @@ def test_pad_out_of_bound_strategies():
         pad_out_of_bound([None], [True], 'repeat')               # no valid frame
 
 
-# ---- per-clip clocks (F4) ----
+# ---- per-clip clocks ----
 
 def _clip_set(tmp_path, specs, name='clock_set'):
     """specs: list of (stem, n_frames, fps). Returns a video StimulusSet."""

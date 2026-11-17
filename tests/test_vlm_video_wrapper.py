@@ -48,9 +48,10 @@ class Processor:
 class Tower(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        torch.manual_seed(0)
-        self.blocks = torch.nn.ModuleList([torch.nn.Sequential(torch.nn.Linear(4, 4), torch.nn.ReLU(),
-                                                               torch.nn.Linear(4, 4))])
+        with torch.random.fork_rng():
+            torch.manual_seed(0)
+            self.blocks = torch.nn.ModuleList([torch.nn.Sequential(torch.nn.Linear(4, 4), torch.nn.ReLU(),
+                                                                   torch.nn.Linear(4, 4))])
 
     def forward(self, hidden, grid_thw):
         return self.blocks[0](hidden)
@@ -80,7 +81,7 @@ def test_record_takes_the_clip_another_caller_ran(tmp_path):
                                        return_tensors='pt')
     with wrapper.record(['blocks.0']) as recording:
         tower(inputs['pixel_values_videos'], grid_thw=inputs['video_grid_thw'])   # e.g. inside generate
-        taken = recording.take()
+        taken = recording.take()['blocks.0']
     passive = wrapper(StimulusSet({'stimulus_id': ['m'], 'video_path': [str(tmp_path / 'm.avi')]}),
                       layers=['blocks.0'])
     np.testing.assert_allclose(taken.values, passive.values, rtol=1e-6)

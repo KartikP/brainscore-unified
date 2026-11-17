@@ -1,13 +1,16 @@
-"""TaskContext(response=...): choices, confidence, ratings and written answers.
+"""TaskContext(response=...): choices, ratings and written answers.
 
-Reported answers come from a reply and are parsed by the response; implied
-measures come from a likelihood part or a readout. Each result says which.
+Answers come from a reply (parsed by the response), a likelihood part or a
+readout. Each answer's response record says which.
 """
 import numpy as np
 import pytest
 
+from brainscore_core.response_formats import response_record
+from brainscore_core.compatibility import ExecutionNotFeasibleError
+
 from brainscore.brainscore_model import BrainScoreModel
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice, Scale, Text
 from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
@@ -38,15 +41,25 @@ def _model(replies=None, scores=None, readout=False):
     def likelihood(prompt, candidates):
         return {c: scores[prompt.stimulus_id][c] for c in candidates}
 
+    # A derived format is declared by a statement (rule 4.11): the likelihood's
+    # probabilities and, without a reply, its choice; a readout's choice.
+    stated = {}
+    if scores:
+        stated['behavior:probabilities'] = ('likelihood', 'softmax')
+        if not replies:
+            stated['behavior:choice'] = ('likelihood', 'softmax_argmax')
+    elif readout and not replies:
+        stated['behavior:choice'] = ('readout', 'argmax')
     model = BrainScoreModel(identifier='toy', extractor={'text': _features},
                             reply=reply if replies else None,
                             likelihood=likelihood if scores else None,
-                            behavioral_readout_layer='late' if readout else None)
+                            behavioral_readout_layer='late' if readout else None,
+                            capability_config={'behavior-sessions': stated})
     return model, prompts
 
 
 def _ask(model, task, channels):
-    session = stimulus_session(STIMULI, channels, task_context=task)
+    session = stimulus_session(STIMULI, channels, task=task)
     model.participate(session)
     return session
 
@@ -59,18 +72,8 @@ def test_choice_reply_is_parsed_and_invalid_replies_are_kept_as_invalid():
     assert np.isnan(choice.values[2:]).all()
     assert list(choice['answer_valid'].values) == [True, True, False, False]
     assert list(choice['raw_answer'].values) == ['Cat', 'a dog.', 'cat or dog', 'bird']
-    assert choice.attrs['measure'] == {'kind': 'reported', 'source': 'reply'}
+    assert choice.attrs['response'] == response_record('behavior:choice', 'generation', parsed_by='model')
     assert prompts[0] == 'Which animal?\n\nw\n\nAnswer with exactly one of: cat, dog.'
-
-
-def test_reported_confidence_comes_from_the_same_reply():
-    model, _ = _model(replies={'a': 'cat\n4', 'b': 'dog\n9', 'c': 'cat', 'd': 'dog\n2'})
-    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], confidence=Scale(1, 5, 1)))
-    session = _ask(model, task, ['behavior:choice', 'behavior:confidence'])
-    confidence = session.collect('behavior:confidence')
-    np.testing.assert_array_equal(np.isnan(confidence.values), [False, True, True, False])
-    assert confidence.values[0] == 4 and confidence.values[3] == 2
-    assert 'outside' in confidence['parse_error'].values[1]
 
 
 def test_rating_from_a_reply_and_from_a_readout():
@@ -85,7 +88,7 @@ def test_rating_from_a_reply_and_from_a_readout():
     task = TaskContext(response=Scale(1, 7), fitting_stimuli=fitting)
     predicted = _ask(readout, task, ['behavior:rating']).collect('behavior:rating')
     np.testing.assert_allclose(predicted.values, [6, 2, 6, 2], atol=0.5)
-    assert predicted.attrs['measure'] == {'kind': 'implied', 'source': 'readout'}
+    assert predicted.attrs['response'] == response_record('behavior:rating', 'readout')
 
 
 def test_written_answers_are_kept_as_written():
@@ -100,18 +103,20 @@ def test_likelihood_gives_a_choice_and_its_implied_probabilities():
     scores = {s: {'cat': -1.0, 'dog': -3.0} if s in 'ac' else {'cat': -2.0, 'dog': -0.5}
               for s in 'abcd'}
     model, _ = _model(scores=scores)
-    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True))
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
     session = _ask(model, task, ['behavior:choice', 'behavior:probabilities'])
     probabilities = session.collect('behavior:probabilities')
     np.testing.assert_allclose(probabilities.values[0], [1 / (1 + np.exp(-2)), 1 - 1 / (1 + np.exp(-2))],
                                rtol=1e-6)
-    assert probabilities.attrs['measure'] == {'kind': 'implied', 'source': 'likelihood'}
+    assert probabilities.attrs['response'] == response_record(
+        'behavior:probabilities', 'likelihood', conversion='softmax',
+        source_format='behavior:log_probabilities')
     np.testing.assert_array_equal(session.collect('behavior:choice').values.argmax(1), [0, 1, 0, 1])
 
 
 def test_readout_choice_with_probabilities():
     model, _ = _model(readout=True)
-    task = TaskContext(response=Choice(['cat', 'dog'], probabilities=True), fitting_stimuli=STIMULI)
+    task = TaskContext(response=Choice(['cat', 'dog']), fitting_stimuli=STIMULI)
     session = _ask(model, task, ['behavior:choice', 'behavior:probabilities'])
     np.testing.assert_array_equal(session.collect('behavior:choice').values.argmax(1), [0, 1, 0, 1])
     assert session.collect('behavior:probabilities').values.shape == (4, 2)
@@ -120,28 +125,40 @@ def test_readout_choice_with_probabilities():
 @pytest.mark.parametrize('labels', [['cat', 'dog'], ['dog', 'cat']])
 def test_readout_probabilities_follow_the_task_label_order(labels):
     model, _ = _model(readout=True)
-    task = TaskContext(response=Choice(labels, probabilities=True), fitting_stimuli=STIMULI)
+    task = TaskContext(response=Choice(labels), fitting_stimuli=STIMULI)
     session = _ask(model, task, ['behavior:choice', 'behavior:probabilities'])
     choice, probabilities = session.collect('behavior:choice'), session.collect('behavior:probabilities')
     assert list(probabilities['choice'].values) == list(choice['choice'].values) == labels
     np.testing.assert_array_equal(probabilities.values.argmax(1), choice.values.argmax(1))
 
 
-@pytest.mark.parametrize('response, channel', [(Text(), 'behavior:text'),
-                                               (Choice(['cat', 'dog'], confidence=Scale(1, 5)),
-                                                'behavior:confidence')])
-def test_reported_answers_from_a_readout_only_model_are_not_supported(response, channel):
+@pytest.mark.parametrize('response, channel', [(Text(), 'behavior:text')])
+def test_reported_answers_from_a_readout_only_model_are_refused(response, channel):
     model, _ = _model(readout=True)
     assert channel not in model.out_channels
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ExecutionNotFeasibleError, match=f"does not produce \\['{channel}'\\]"):
         _ask(model, TaskContext(response=response, fitting_stimuli=STIMULI), [channel])
 
 
+def test_plain_behavior_request_is_refused_for_a_reply_only_subject():
+    """Bare behavior is given only by an answer part or a readout with an extractor."""
+    model, prompts = _model(replies={s: 'dog' for s in 'abcd'})
+    assert 'behavior' not in model.out_channels
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
+    with pytest.raises(ExecutionNotFeasibleError, match=r"does not produce \['behavior'\]"):
+        _ask(model, task, ['behavior'])
+    assert prompts == []
+
+
 def test_plain_behavior_request_returns_the_primary_answer():
-    model, _ = _model(replies={s: 'dog' for s in 'abcd'})
+    """With an answer part bare behavior is declared; a response task's choice is copied to it.
+    A plain Choice is answered by answer= when it is wired."""
+    model = BrainScoreModel(identifier='toy', extractor={'text': _features},
+                            answer=lambda stimulus_row, instruction, label_set: 'cat',
+                            reply=lambda prompt: 'dog')
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
     behavior = _ask(model, task, ['behavior']).collect('behavior')
-    np.testing.assert_array_equal(behavior.values.argmax(1), [1, 1, 1, 1])
+    np.testing.assert_array_equal(behavior.values.argmax(1), [0, 0, 0, 0])
 
 
 def test_task_type_and_response_must_agree():
@@ -166,11 +183,11 @@ def test_a_trial_is_shown_in_the_declared_order():
 
 def test_an_unordered_multi_part_stimulus_fails_before_any_reply():
     calls = []
-    model = BrainScoreModel(identifier='m', supported_modalities={'text', 'video'},
+    model = BrainScoreModel(identifier='m', in_channels={'text', 'vision:video'},
                             reply=lambda prompt: calls.append(prompt) or 'left')
     both = StimulusSet({'stimulus_id': ['a'], 'sentence': ['x'], 'video_path': ['v.mp4']})
     both.identifier = 'both-parts'
-    session = stimulus_session(both, ['behavior:choice'], task_context=TaskContext(
+    session = stimulus_session(both, ['behavior:choice'], task=TaskContext(
         instruction='Which way?', response=Choice(['left', 'right'])))
     with pytest.raises(ValueError, match='present'):
         model.participate(session)
@@ -198,7 +215,9 @@ def test_implied_reaction_times_rise_for_close_calls(link):
     model, _ = _model(scores=scores)
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], reaction_time=link))
     rt = _ask(model, task, ['behavior:rt']).collect('behavior:rt')
-    assert rt.attrs['measure'] == {'kind': 'implied', 'link': link, 'source': 'likelihood'}
+    assert rt.attrs['response'] == response_record(
+        'behavior:rt', 'link', source_format='behavior:probabilities',
+        parameters={'link': link, 'source_method': 'likelihood', 'units': 'monotone'})
     fast, slow = rt.values[0], rt.values[3]                   # a clear call, a near tie
     assert slow > fast
 

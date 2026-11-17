@@ -14,33 +14,36 @@ import numpy as np
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def brainscore_home(tmp_path, monkeypatch):
+    """The example loader writes its images to the Brain-Score home: use a temporary one."""
+    monkeypatch.setenv('BRAINSCORE_HOME', str(tmp_path))
+
+
 def test_registered_under_both_ids():
     import brainscore
     assert 'your-stimuli' in brainscore.stimulus_set_registry
     assert 'your-measurements' in brainscore.data_registry
 
 
-def test_stimulus_set_is_loadable_and_dispatchable():
-    import brainscore
-    stimuli = brainscore.load_stimulus_set('your-stimuli')
-
+def check_dispatchable(stimuli):
+    """A stimulus set a session can send: a recognized column, and real files or inline text."""
     assert len(stimuli) > 0
     assert 'stimulus_id' in stimuli.columns
 
-    # Dispatch picks a modality by RECOGNIZED column name; without one, process()
-    # raises "No recognized modality columns".
-    FILE_BACKED = {'image_file_name', 'image_path', 'filename', 'video_path',
-                   'audio_path', 'audio_file_name', 'audio_file'}
-    INLINE = {'sentence', 'text'}          # TextWrapper reads the value itself
-    present = (FILE_BACKED | INLINE) & set(stimuli.columns)
+    # A column feeds a channel only when it is in the catalog's column table;
+    # without one, a session sends the subject nothing.
+    from brainscore_core.io_catalog import stimulus_columns
+    columns = stimulus_columns()
+    present = set(columns) & set(stimuli.columns)
     assert present, (
         f'no recognized modality column in {list(stimuli.columns)}; a model cannot '
         f'tell what kind of data this is')
+    file_backed = {column for column in present if columns[column] != 'text'}
+    inline = present - file_backed                      # text carries its content in the table
 
-    if FILE_BACKED & present:
-        # Only file-backed modalities need paths on disk — a real model opens them.
-        # Text stimuli carry their content inline and have no files, so requiring
-        # stimulus_paths there would reject a perfectly valid language plugin.
+    if file_backed:
+        # Only file-backed modalities need paths on disk: a real model opens them.
         assert hasattr(stimuli, 'stimulus_paths'), (
             'file-backed stimuli need a stimulus_paths mapping')
         for stimulus_id in stimuli['stimulus_id'].values:
@@ -48,9 +51,14 @@ def test_stimulus_set_is_loadable_and_dispatchable():
             assert os.path.exists(path), (
                 f'stimulus_paths[{stimulus_id!r}] -> missing {path}')
     else:
-        column = sorted(INLINE & present)[0]
+        column = sorted(inline)[0]
         values = [str(v).strip() for v in stimuli[column].values]
         assert all(values), f'empty {column!r} values; inline stimuli carry their content'
+
+
+def test_stimulus_set_is_loadable_and_dispatchable():
+    import brainscore
+    check_dispatchable(brainscore.load_stimulus_set('your-stimuli'))
 
 
 def test_assembly_is_loadable_and_well_formed():
@@ -109,3 +117,13 @@ def test_carries_the_coord_metrics_stratify_on():
                     "stratify on it and raise 'Expected stratification coordinate'. "
                     "Rename to match your metric if you use a different coord.")
     assert len(set(values)) >= 2, 'stratification needs at least two categories'
+
+
+def test_participant_choices_match_the_stimuli():
+    """Behavioral data: one row per (participant, trial), the chosen label as the value."""
+    import brainscore
+    stimuli = brainscore.load_stimulus_set('your-stimuli')
+    choices = brainscore.load_dataset('your-choices')
+    assert set(np.asarray(choices['stimulus_id'].values).astype(str)) <= set(stimuli['stimulus_id'])
+    assert len(set(np.asarray(choices['participant'].values))) >= 2
+    assert set(np.unique(choices.values)) <= {'alpha', 'beta', 'gamma', 'delta'}
