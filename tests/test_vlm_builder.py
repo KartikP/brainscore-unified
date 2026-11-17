@@ -489,15 +489,72 @@ def _on_stand_ins(monkeypatch):
         yield identifier, model_registry[identifier]()
 
 
-def test_every_builder_registration_declares_what_its_parts_can_do(monkeypatch):
+def _given(subject, channel, folder):
+    """The rows one small session gives on ``channel``; for an input, a session that uses it."""
+    from brainscore_core.events import Perturbation, Selection, StateChange
+    from brainscore_core.responses import Scale, Text
+    from brainscore_core.streaming_helpers import apply_state_change
+    pictures = _pictures(folder, n=4)
+    pictures.stimulus_paths = dict(zip(pictures['stimulus_id'], pictures['image_file_name']))
+    fitting = StimulusSet({'stimulus_id': list(pictures['stimulus_id']),
+                           'image_file_name': list(pictures['image_file_name']),
+                           'image_label': ['cat', 'dog', 'cat', 'dog']})
+    fitting.identifier = 'vlm-builder-fitting'
+    fitting.stimulus_paths = dict(pictures.stimulus_paths)
+    sentences = StimulusSet({'stimulus_id': ['t0', 't1'], 'sentence': ['the cat sat', 'the dog sat']})
+    sentences.identifier = 'vlm-builder-sentences'
+    continuations = StimulusSet({'stimulus_id': ['t0', 't1'], 'sentence': ['the cat sat', 'the dog sat'],
+                                 'options': [('cat', 'dog')] * 2})
+    continuations.identifier = 'vlm-builder-continuations'
+    choice = Choice(['cat', 'dog'])
+    tasks = {
+        'behavior': (pictures, TaskContext(response=choice)),
+        'behavior:choice': (pictures, TaskContext(response=choice)),
+        'behavior:probabilities': (pictures, TaskContext(response=choice, fitting_stimuli=fitting)),
+        'behavior:rt': (pictures, TaskContext(response=Choice(['cat', 'dog'], reaction_time='surprisal'),
+                                              fitting_stimuli=fitting)),
+        'behavior:rating': (sentences, TaskContext(response=Scale(1, 7, 1))),
+        'behavior:text': (sentences, TaskContext(response=Text(max_tokens=4))),
+        'behavior:log_probabilities': (continuations, TaskContext(response=Choice(labels='options', verbatim=True))),
+    }
+    if channel == 'perturbation':
+        record = apply_state_change(subject, StateChange(
+            kind='ablation', target=Selection(layer=subject.region_layer_map['IT']),
+            perturbation=Perturbation(kind='zero')))
+        apply_state_change(subject, StateChange(kind='reset', handle_id=record.handle_id))
+        return int(record.handle_id is not None)
+    if channel == 'vision:video':
+        stimuli, task, channel = _clip(folder), TaskContext(task_type='passive'), 'neural:IT'
+    elif channel.startswith('neural:'):
+        # A passive session presents what the recording extractor takes: text for the language layer.
+        stimuli = sentences if 'text' in subject.output_inputs[channel] else pictures
+        task = TaskContext(task_type='passive')
+    else:
+        assert channel in tasks, f'no small session for {channel}: add one to _given'
+        stimuli, task = tasks[channel]
+    session = stimulus_session(stimuli, [channel], task)
+    subject.participate(session)
+    return session.collect(channel).shape[0]
+
+
+def test_every_builder_registration_gives_what_it_declares(monkeypatch, tmp_path):
+    """Every output a registration made with the builder declares (and clips, when it takes
+    them) comes out of one small session on its stand-in."""
     channel_of = {'vision': 'vision:image', 'video': 'vision:video', 'text': 'text', 'audio': 'audio'}
     for identifier, subject in _on_stand_ins(monkeypatch):
         inner = subject._subject
         assert subject.identifier == identifier
+        assert subject._provenance['region_layer_map_status'].startswith(vlm.DEPTH_HYPOTHESIS), identifier
         assert {channel_of[key] for key in inner.extractor} <= subject.in_channels, identifier
         assert {f'neural:{region}' for region in inner.region_layer_map} <= subject.out_channels, identifier
-        assert {'behavior:text', 'behavior:probabilities'} <= subject.out_channels, identifier
-        assert subject._provenance['region_layer_map_status'].startswith(vlm.DEPTH_HYPOTHESIS), identifier
+        assert {'behavior:choice', 'behavior:probabilities', 'behavior:log_probabilities', 'behavior:rating',
+                'behavior:rt', 'behavior:text', 'perturbation', 'neural:VWFA'} <= subject.out_channels, identifier
+        assert {'lesion', 'stimulation', 'pharmacological'} <= subject.in_channels, identifier
+        for channel in sorted(subject.out_channels) + sorted({'vision:video'} & subject.in_channels):
+            if channel == 'neural:A1':
+                continue    # the audio extractor is the registration's own part; its test.py runs it
+            assert _given(subject, channel, tmp_path) > 0, (identifier, channel)
+        subject.reset()
 
 
 @pytest.mark.parametrize('model_class, vision, language, config', [
