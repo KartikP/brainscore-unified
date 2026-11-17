@@ -7,6 +7,7 @@ nothing is cloned, made or installed.
 """
 import json
 import os
+import platform
 import re
 import signal
 import subprocess
@@ -61,6 +62,7 @@ def test_a_fresh_machine_gets_the_folder_at_the_pinned_commit_with_its_own_envir
     assert PINNED_COMMIT in folder.name
     marker = json.loads((folder / 'ready.json').read_text())
     assert marker['revision'] == PINNED_COMMIT and 'google-genai==3.2.0' in marker['freeze']
+    assert marker['python'] == platform.python_version()       # this Python made the environment
     clone = next(call for call in fresh.of('git') if 'clone' in call['args'])
     assert 'https://github.com/lance-ying/coggym.git' in clone['args']
     assert any('checkout' in call['args'] and call['args'][-1] == PINNED_COMMIT for call in fresh.of('git'))

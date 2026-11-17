@@ -4,12 +4,13 @@ pinned commit and the library's own environment. One ``Library`` describes the l
 ``<folder>/checkout`` is the library's repository at the pinned commit; ``<folder>/env`` is a
 virtual environment with the library's pinned packages only (its requirements file,
 installed with ``--no-deps`` and checked with ``pip check``); ``<folder>/ready.json`` says the
-folder is complete (the commit, the requirements' hash and the environment's ``pip freeze``).
+folder is complete (the commit, the requirements' hash, the Python version and the
+environment's ``pip freeze``).
 Nothing is installed into the scoring environment.
 
 The default place is ``~/.brain-score/environments/<name>/<commit>-<hash>`` (the root of every
-library's folders can be moved with ``BRAINSCORE_ENVIRONMENTS_HOME``), so a changed pin gets a
-new folder. The folder is
+library's folders can be moved with ``BRAINSCORE_ENVIRONMENTS_HOME``); the hash covers the
+requirements and the Python version, so a changed pin or Python gets a new folder. The folder is
 made at the first use when ``BS_INSTALL_DEPENDENCIES`` allows installs (``yes``, the default, or
 ``newenv``: the folder's environment is a new one either way): in a temporary
 sibling folder, checked, then published by a rename that never replaces (an existing folder
@@ -59,6 +60,7 @@ class Library:
     commit: str                     # the full commit (40 hex characters)
     requirements: Path              # the pinned packages, one ``name==version`` per line
     required_files: tuple = ()      # paths in the checkout that must exist
+    python: str | None = None       # the Python 3 that makes the environment; None: this one
 
     def __post_init__(self) -> None:
         if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', self.name):
@@ -79,8 +81,31 @@ def default_folder(library: Library) -> Path:
     value = os.environ.get('BRAINSCORE_ENVIRONMENTS_HOME', '~/.brain-score/environments')
     root = Path(value).expanduser()
     if not value or not root.is_absolute():
-        raise ValueError(f'BRAINSCORE_ENVIRONMENTS_HOME must name an absolute folder, not {value!r}')
-    return root / library.name / f'{library.commit}-{_requirements_hash(library)[:12]}'
+        raise ValueError(f'BRAINSCORE_ENVIRONMENTS_HOME must name an absolute folder, not {value!r}. '
+                         f'Next step: set it to an absolute path, or unset it.')
+    version = python_version(library)
+    digest = hashlib.sha256(f'{_requirements_hash(library)} python {version}'.encode()).hexdigest()
+    return root / library.name / f'{library.commit}-{digest[:12]}'
+
+
+def python_version(library: Library) -> str:
+    """The version (``3.x.y``) of the Python that makes the library's environment; a program
+    that is not found or is not Python 3 is refused (``ValueError``). Nothing is made here."""
+    python = library.python or sys.executable
+    try:
+        result = subprocess.run([python, '-c', 'import sys; print(*sys.version_info[:3], sep=".")'],
+                                capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL,
+                                env=_command_environment())
+        version = result.stdout.strip() if result.returncode == 0 else ''
+    except (OSError, subprocess.SubprocessError) as error:
+        version = f'{type(error).__name__}: {error}'
+    if not re.fullmatch(r'3\.\d+\.\d+', version):
+        raise ValueError(
+            f"{library.name}'s environment is made with the Python program {python}, and it is not "
+            f"found or is not Python 3 ({version or 'no version'}). Next step: install Python 3 "
+            f"and name it as the python of the library's description; Brain-Score installs no "
+            f"Python.")
+    return version
 
 
 def ready_folder(library: Library, identifier: str, folder: Path | None = None) -> Path:
@@ -96,9 +121,9 @@ def ready_folder(library: Library, identifier: str, folder: Path | None = None) 
                         f'install Brain-Score from a source that ships it.')
     try:
         folder = Path(folder) if folder is not None else default_folder(library)
+        version = None if folder.exists() else python_version(library)
     except ValueError as error:
-        raise LoadError(f'{identifier}: {error}. Next step: set it to an absolute path, or unset '
-                        f'it.') from None
+        raise LoadError(f'{identifier}: {error}') from None
     if not folder.exists():
         if installation_preference() == 'no':
             raise LoadError(
@@ -111,7 +136,7 @@ def ready_folder(library: Library, identifier: str, folder: Path | None = None) 
         try:
             with _creation_lock(folder):
                 if not folder.exists():
-                    _make(library, identifier, folder)
+                    _make(library, identifier, folder, version)
         except OSError as error:
             # The lock, the folder's parent or the temporary folder could not be made: nothing of
             # this attempt exists to remove.
@@ -141,7 +166,7 @@ def _check_ready(library, identifier, folder):
             f'remove it yourself, or use another place (BRAINSCORE_ENVIRONMENTS_HOME, or folder=).')
 
 
-def _make(library, identifier, folder):
+def _make(library, identifier, folder, version):
     from brainscore import LoadError
     folder.parent.mkdir(parents=True, exist_ok=True)
     partial = Path(tempfile.mkdtemp(prefix=f'.{folder.name}.partial-', dir=folder.parent))
@@ -162,7 +187,7 @@ def _make(library, identifier, folder):
         missing = [name for name in library.required_files if not (checkout / name).exists()]
         if missing:
             raise ValueError(f'the checkout lacks {missing}')
-        _run([sys.executable, '-m', 'venv', str(partial / 'env')])
+        _run([library.python or sys.executable, '-m', 'venv', str(partial / 'env')])
         # Every package at its pinned version, nothing resolved beyond the list; then a check.
         # Into this environment only (pip refuses to run outside a virtual environment).
         _run([str(python), '-m', 'pip', 'install', '--require-virtualenv', '--no-deps', '--no-input',
@@ -171,6 +196,7 @@ def _make(library, identifier, folder):
         freeze = _run([str(python), '-m', 'pip', 'freeze', '--all', '--disable-pip-version-check'])
         (partial / 'ready.json').write_text(json.dumps({
             'revision': library.commit, 'requirements_sha256': _requirements_hash(library),
+            'python': version,
             'freeze': sorted(line for line in freeze.splitlines() if line.strip())}, indent=2) + '\n')
         # One step that never replaces: a folder that appeared meanwhile belongs to someone else.
         _rename_no_replace(partial, folder)
