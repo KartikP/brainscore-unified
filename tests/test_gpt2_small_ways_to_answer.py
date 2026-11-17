@@ -61,15 +61,31 @@ class _Extractor:
         return _features(stimuli, layers, **kwargs)
 
 
+def no_real_loads(monkeypatch):
+    """Fail the test if a real checkpoint, tokenizer or the network is reached."""
+    import socket
+    from transformers import modeling_utils, tokenization_utils_base
+
+    def refuse(*args, **kwargs):
+        pytest.fail(f'a real loader or the network was reached: {args[:2]!r}')
+    monkeypatch.setattr(socket.socket, 'connect', refuse)
+    monkeypatch.setattr(modeling_utils.PreTrainedModel, 'from_pretrained', refuse)
+    monkeypatch.setattr(tokenization_utils_base.PreTrainedTokenizerBase, 'from_pretrained', refuse)
+
+
+def gpt2_stand_ins(monkeypatch, language_model, tokenizer):
+    """The GPT-2 classes the registration loads give stand-ins (their own ``from_pretrained``)."""
+    from transformers.models.gpt2 import modeling_gpt2, tokenization_gpt2
+    no_real_loads(monkeypatch)
+    monkeypatch.setattr(modeling_gpt2.GPT2LMHeadModel, 'from_pretrained', lambda *args, **kwargs: language_model())
+    monkeypatch.setattr(tokenization_gpt2.GPT2Tokenizer, 'from_pretrained', lambda *args, **kwargs: tokenizer())
+
+
 def _load(monkeypatch, forbid=None):
     """``brainscore.load_model('gpt2-small')`` with stand-ins; ``forbid`` names the part
     (``'likelihood'`` or ``'readout'``) that fails if it runs."""
-    import transformers
     import brainscore.model_helpers.text_wrapper as text_wrapper
-    monkeypatch.setattr(transformers, 'GPT2LMHeadModel', SimpleNamespace(
-        from_pretrained=lambda *args, **kwargs: _language_model(forbid == 'likelihood')), raising=False)
-    monkeypatch.setattr(transformers, 'GPT2Tokenizer',
-                        SimpleNamespace(from_pretrained=lambda *args, **kwargs: _Tokenizer()), raising=False)
+    gpt2_stand_ins(monkeypatch, lambda: _language_model(forbid == 'likelihood'), _Tokenizer)
     monkeypatch.setattr(text_wrapper, 'TextWrapper',
                         lambda *args, **kwargs: _Extractor(forbid == 'readout', *args, **kwargs))
     return brainscore.load_model('gpt2-small')
