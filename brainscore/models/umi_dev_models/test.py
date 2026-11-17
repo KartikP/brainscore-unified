@@ -1,7 +1,8 @@
 """The study's models: offline on a stand-in of each model's stated layout (no weights: every real
 ``from_pretrained`` raises), and with the real weights in the tests marked ``slow`` (a GPU machine).
 
-    pytest brainscore/models/umi_dev_models/test.py -m "not slow"     # offline
+    pytest brainscore/models/umi_dev_models/test.py -m "not slow and not qualification"     # offline
+    HF_HUB_OFFLINE=1 pytest brainscore/models/umi_dev_models/test.py -m qualification        # settings files, no weights
     BRAINSCORE_SKIP_MODEL_DOWNLOAD_CHECK=1 pytest brainscore/models/umi_dev_models/test.py -m slow -k qwen3-vl-2b
 """
 import sys

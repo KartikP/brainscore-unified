@@ -21,18 +21,21 @@ measurements of the same weights.
 - **Precision:** bfloat16. Activity is exported as float32.
 - **Answers:** written replies give choices, ratings and text; the likelihood of each option gives
   log probabilities; a readout fitted on the IT layer gives probabilities and response times.
-  The readout reads the vision part only: it needs pictures and the task's fitting stimuli. The
-  provenance names the readout layer.
-- **Pictures:** each picture is one whole image; a processor that gives tiles or crops is refused.
+  The readout reads the vision part only, so these two formats come from pictures only: a task on
+  text or clips is N/A in pre-flight and refused before any compute. It needs the task's fitting
+  stimuli. The provenance names the readout layer.
+- **Pictures:** each picture is one whole image, for a recording and for an answer (the same
+  stated settings reach both); a processor that still gives tiles or crops for a recording is
+  refused.
 - **Placement:** each part on one accelerator; a device map that offloads weights or splits a
   part is refused. The processor loads before the weights, so a processor fault shows before a
   large download.
-- **Provenance:** each score names the checkpoint and its revision (`not pinned` until a load
-  test fixes it), the depth hypothesis and the readout layer.
+- **Provenance:** each score names the checkpoint and its revision (the commit of its Hub files;
+  `not pinned` until a load test fixes it), the depth hypothesis and the readout layer.
 - **One session for regions, one session for an answer:** the language layer is recorded from text
-  in a session without an answer, and a session that asks for it together with an answer is refused
-  before any compute. A recording during an answer has to be verified for each family apart, and no
-  benchmark of the study asks for it.
+  in a passive session, and a session that asks for it under a task (also with neural outputs only)
+  is refused before any compute. A recording during an answer has to be verified for each family
+  apart, and no benchmark of the study asks for it.
 
 ## What a model gets
 
@@ -40,7 +43,7 @@ measurements of the same weights.
 |---|---|---|
 | neural V1, V2, V4, IT, VWFA | all | |
 | neural language_system, from text | all | |
-| neural language_system during an answer | none | the study's rule above; a later general change (below) |
+| neural language_system during an answer | none | the study's rule above (Qwen3-VL and Gemma 3 also need a general change, below) |
 | clips (`vision:video`), from the vision part | Qwen3-VL | the other processors give no flattened clip patches; Qwen2.5-VL's clip path is not checked yet |
 | behavior: choice, probabilities, log_probabilities, rating, rt, text | all | |
 | perturbation (lesion, stimulation, pharmacological) | Qwen3-VL, Qwen2.5-VL | the other families record their vision layers as PCA components, and a lesion addresses the module's units |
@@ -48,14 +51,15 @@ measurements of the same weights.
 
 ## Needs a general change
 
-These abilities need a change of shared code; the study does not declare them:
+The study leaves out the language layer during an answer by its own rule, for every family (on v2
+it would run for SmolVLM, InternVL3 and Qwen2.5-VL). These abilities also need a change of shared
+code before a later study could declare them:
 
-- The language layer during an answer, verified for each family. On v2 it would run for SmolVLM,
-  InternVL3 and Qwen2.5-VL; Qwen3-VL's language model gets `visual_pos_masks`, which the recording
-  refuses (`brainscore/model_helpers/_extractors.py`), and Gemma 3's gets its attention mask as a
-  mapping of causal masks, which the text recording cannot read (`brainscore/model_helpers/text_wrapper.py`).
-  Pre-flight cannot tell a session without an answer from one with an answer, so a study model
-  refuses the second when it starts.
+- Qwen3-VL and Gemma 3: the language layer during an answer. Qwen3-VL's language model gets
+  `visual_pos_masks`, which the recording refuses (`brainscore/model_helpers/_extractors.py`), and
+  Gemma 3's gets its attention mask as a mapping of causal masks, which the text recording cannot
+  read (`brainscore/model_helpers/text_wrapper.py`). Pre-flight cannot tell a passive session from
+  a session with a task, so a study model refuses the second when it starts.
 - Qwen3-VL: clips reaching the language layer: a region's input tuple cannot name two forms of
   one input family (`brainscore/brainscore_model.py`).
 - A vision part split over several accelerators: the vision extractor moves its module to one
@@ -70,8 +74,9 @@ Add one entry to `model_configs.json` and one registry line to `__init__.py`. Th
   it must exist in the pinned transformers.
 - `vision`, `language`: the module path of each part, then the path of its list of repeated
   blocks. Build the class from its config on the meta device (resolve the class first) and print
-  it; `test.py` checks the paths of each class this way.
-- `dtype`: `bfloat16`. `download_gb`: the sum of the `*.safetensors` files on the Hub page.
+  it. `test.py` checks the paths on each class built from a small configuration of its own
+  (`SMALL_CONFIGS`), and the qualification on the class built from the real settings made small.
+- `dtype`: `bfloat16`. `download_gb`: an estimate of the checkpoint's size, for the download check.
 - `image_processor_kwargs`: `null` when the processor gives flattened patches with
   `image_grid_thw` (Qwen-VL); otherwise the settings that give one whole image per picture
   (`do_image_splitting`, `do_pan_and_scan`, `crop_to_patches` set to false).
@@ -79,8 +84,9 @@ Add one entry to `model_configs.json` and one registry line to `__init__.py`. Th
 - `device_map`: `"auto"` when the weights (2 bytes per parameter) take more than about two thirds
   of one accelerator.
 - `packages`: the packages the model's processor or forward imports beyond the reference
-  environment, by name; each is stated once, with its version, in `requirements.txt` (the run
-  environment of the study installs that file). A load without one names it before any download.
+  environment, by name; each is stated once, as a line of `requirements.txt` (the run environment of
+  the study installs that file; the line holds no version yet). A load without one names it before
+  any download.
 
 Then prove that the model complies, in three steps from the folder `unified`:
 
@@ -95,7 +101,8 @@ Then prove that the model complies, in three steps from the folder `unified`:
    HF_HUB_OFFLINE=1 pytest brainscore/models/umi_dev_models/test.py -m qualification -k <name>
    ```
 
-   Add the family's class to `_small` in `test.py` when its configuration needs other sizes.
+   A new class needs a small configuration in `SMALL_CONFIGS` and a reduction in `_small` (the tests
+   fail and say so). A selected qualification fails when a package or a settings file is missing.
 3. On a GPU machine, the real weights (the variable allows the first download):
    `BRAINSCORE_SKIP_MODEL_DOWNLOAD_CHECK=1 pytest brainscore/models/umi_dev_models/test.py -m slow -k <name>`.
 
