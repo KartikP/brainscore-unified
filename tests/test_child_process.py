@@ -102,3 +102,27 @@ def build_messages(trial, experiment):
             child.ask({'do': 'prepare', 'experiment': EXPERIMENT, 'trial_ids': None})
     assert time.monotonic() - started < 10
     assert child.process.poll() is not None
+
+
+def _stand_in(tmp_path, body):
+    script = tmp_path / 'child.py'
+    script.write_text('import os, sys, time\n' + body)
+    return ChildProcess([sys.executable, script], log_directory=tmp_path / 'log', idle_timeout_s=0.5)
+
+
+def test_a_child_that_reads_nothing_is_killed_at_the_deadline(tmp_path):
+    started = time.monotonic()
+    with pytest.raises(ChildFailed, match='read nothing'):
+        with _stand_in(tmp_path, 'time.sleep(60)\n') as child:
+            child.ask({'do': 'prepare', 'payload': 'x' * (4 * 1024 * 1024)})
+    assert time.monotonic() - started < 10 and child.process.poll() is not None
+
+
+def test_a_child_that_writes_a_line_slowly_is_killed_at_the_deadline(tmp_path):
+    started = time.monotonic()
+    body = ('out = os.fdopen(int(os.environ["BRAINSCORE_CHILD_FDS"].split(",")[1]), "wb", 0)\n'
+            'while True:\n    out.write(b"x")\n    time.sleep(0.05)\n')
+    with pytest.raises(ChildFailed, match='nothing complete'):
+        with _stand_in(tmp_path, body) as child:
+            child.ask({'do': 'prepare'})
+    assert time.monotonic() - started < 10 and child.process.poll() is not None

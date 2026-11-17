@@ -31,6 +31,8 @@ from typing import Any, Callable, Mapping, Optional, Sequence
 
 # Seconds a child has to exit after its pipe is closed, before it is killed.
 STOP_GRACE_SECONDS = 5.0
+# The longest line either side may send: room for a call with many pictures as base64 text.
+MAX_LINE_BYTES = 256 * 1024 * 1024
 
 
 class ChildFailed(RuntimeError):
@@ -74,6 +76,7 @@ class ChildProcess:
         os.close(to_child_read)
         os.close(to_parent_write)
         self._read, self._write = to_parent_read, to_child_write
+        os.set_blocking(self._write, False)       # a send waits under the deadline, not forever
         return self
 
     def __exit__(self, kind, error, traceback) -> None:
@@ -163,27 +166,45 @@ class ChildProcess:
                 raise self._fail(f'the child sent a message of no known kind: {sorted(message)}')
 
     def log_tail(self, limit: int = 4000) -> str:
-        """The end of the child's error output."""
+        """The last ``limit`` bytes of the child's error output (the rest is not read)."""
         try:
-            return (self.log_directory / 'stderr.log').read_bytes()[-limit:].decode(errors='replace')
+            with (self.log_directory / 'stderr.log').open('rb') as log:
+                log.seek(max(0, log.seek(0, os.SEEK_END) - limit))
+                return log.read().decode(errors='replace')
         except OSError:
             return ''
 
     def _send(self, message: Any) -> None:
+        """Write one line; a child that does not read it within ``idle_timeout_s`` is killed."""
         data = (json.dumps(message, allow_nan=False) + '\n').encode()
+        if len(data) > MAX_LINE_BYTES:
+            raise ValueError(f'a message of {len(data)} bytes is longer than the limit of {MAX_LINE_BYTES}')
+        deadline = None if self.idle_timeout_s is None else time.monotonic() + self.idle_timeout_s
         try:
             while data:
-                data = data[os.write(self._write, data):]
+                remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+                _, ready, _ = select.select([], [self._write], [], remaining)
+                if not ready:
+                    raise self._fail(f'the child read nothing for {self.idle_timeout_s:g} seconds')
+                try:
+                    data = data[os.write(self._write, data):]
+                except BlockingIOError:
+                    continue
         except BrokenPipeError:
             raise self._fail('the child closed its pipe') from None
 
     def _receive(self) -> dict:
         deadline = None if self.idle_timeout_s is None else time.monotonic() + self.idle_timeout_s
         while b'\n' not in self._buffer:
-            remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
-            ready, _, _ = select.select([self._read], [], [], remaining)
+            if len(self._buffer) > MAX_LINE_BYTES:
+                raise self._fail(f'the child wrote a line longer than {MAX_LINE_BYTES} bytes')
+            remaining = None if deadline is None else deadline - time.monotonic()
+            # The deadline holds for the whole line, also when the child writes it slowly.
+            ready = remaining is None or remaining > 0
+            if ready:
+                ready, _, _ = select.select([self._read], [], [], remaining)
             if not ready:
-                raise self._fail(f'the child said nothing for {self.idle_timeout_s:g} seconds')
+                raise self._fail(f'the child said nothing complete for {self.idle_timeout_s:g} seconds')
             chunk = os.read(self._read, 1 << 16)
             if not chunk:
                 raise self._fail('the child exited')
