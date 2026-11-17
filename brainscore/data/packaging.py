@@ -93,7 +93,10 @@ class DataBuilder:
             command = f'none yet. {self.cannot}'
         else:
             command = 'none: nothing to package.'
+        recorded = _expected(name, self) if self.build else {}
         check = ('; '.join(f'sha1 of `{file}` is `{value}`' for file, value in self.sha1.items())
+                 or (f'the sha1 and exact content digest of {len(recorded)} files in `data_packaging/expected.json`; '
+                     'the other files: the printed counts' if recorded else '')
                  or ('the printed counts; no sha1 is recorded for these files' if self.build
                      else 'nothing to compare.'))
         return '\n'.join([
@@ -325,7 +328,10 @@ def _packaging_folder(builder: DataBuilder) -> Path:
 
 def _expected(name: str, builder: DataBuilder) -> dict:
     """``{file path: entry of build.json}`` that a cloud run recorded in ``data_packaging/expected.json``."""
-    path = _packaging_folder(builder) / 'expected.json'
+    try:
+        path = _packaging_folder(builder) / 'expected.json'
+    except ModuleNotFoundError:          # a declaration whose script is not written yet records nothing
+        return {}
     return json.loads(path.read_text()).get(name, {}) if path.exists() else {}
 
 
