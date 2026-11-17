@@ -336,6 +336,37 @@ def test_the_readout_answers_from_pictures_only(stand_in, identifier):
     assert [getattr(part, 'passes', 0) for part in parts] == [0, 0, 0]
 
 
+def test_a_pinned_revision_reaches_every_load(monkeypatch):
+    """The revision a model states reaches the download check, its processor and its weights."""
+    import brainscore.models._downloads as downloads
+    import brainscore_core.hf_compat as hf_compat
+    live, seen = sys.modules['transformers'], []
+
+    def preflight(identifier, hf_id, approximate_gb, revision=None):
+        seen.append(('download check', revision))
+        return {'local_files_only': True, **({'revision': revision} if revision else {})}
+
+    class Weights(torch.nn.Linear):
+        @classmethod
+        def from_pretrained(cls, hf_id, **settings):
+            seen.append(('weights', settings.get('revision')))
+            return torch.nn.Linear(1, 1)
+    monkeypatch.setattr(downloads, 'hf_preflight', preflight)
+    monkeypatch.setattr(live.AutoProcessor, 'from_pretrained',
+                        lambda hf_id, **settings: seen.append(('processor', settings.get('revision'))) or FakeProcessor())
+    monkeypatch.setattr(hf_compat, 'pin_image_processor', lambda processor, *a, **k: processor)
+    # The first lazy loads above can put another module object under the name: set the class on the one there now.
+    monkeypatch.setattr(sys.modules['transformers'], 'PinnedWeights', Weights, raising=False)
+    monkeypatch.setattr('brainscore.model_helpers._device.select_device', lambda device=None: 'cpu')
+    pinned = {i: c for i, c in study.MODEL_CONFIGS.items() if c['revision'] != 'not pinned'}
+    assert pinned and all(len(c['revision']) == 40 for c in pinned.values())     # a commit of the Hub files
+    for identifier, config in pinned.items():
+        seen.clear()
+        study._load(identifier, dict(config, model_class='PinnedWeights'))
+        assert seen == [('download check', config['revision']), ('processor', config['revision']),
+                        ('weights', config['revision'])], identifier
+
+
 @pytest.mark.parametrize('processor, whole, tiled', [
     ('SmolVLMImageProcessor', {'do_image_splitting': False}, {'do_image_splitting': True}),
     ('Gemma3ImageProcessor', {'do_pan_and_scan': False}, {'do_pan_and_scan': True, 'pan_and_scan_min_crop_size': 8,
