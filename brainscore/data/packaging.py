@@ -406,6 +406,7 @@ def package_data(name: str, source: str | Path | None = None,
     # build must not look like a ready dataset.
     staging = Path(tempfile.mkdtemp(prefix='.brainscore-build-', dir=destination.parent))
     work = Path(tempfile.mkdtemp(prefix='.brainscore-work-', dir=destination.parent))
+    placed = {}
     try:
         try:
             _run(builder.build, native, staging, work)
@@ -429,7 +430,6 @@ def package_data(name: str, source: str | Path | None = None,
         if problems:
             raise ValueError('\n'.join([f'The check of the built {name} files failed; nothing was moved '
                                          f'to {destination}.', *problems]))
-        placed = _place_hosted(builder, staging, files) if builder.reads == 'brainio' and destination == read_place else {}
         (staging / 'build.json').write_text(json.dumps(
             {'schema_version': 4, 'name': name, 'source': builder.source, 'files': files},
             indent=2, allow_nan=False) + '\n')
@@ -438,7 +438,14 @@ def package_data(name: str, source: str | Path | None = None,
             entry.chmod(0o700 if entry.is_dir() else 0o600)
         if destination.exists() or destination.is_symlink():
             raise FileExistsError('the output appeared during the build; nothing replaced')
+        # Publish last, after the record and the permissions; on a failure, undo only this call's files.
+        if builder.reads == 'brainio' and destination == read_place:
+            _place_hosted(builder, staging, files, placed)
         os.rename(staging, destination)
+    except BaseException:
+        for place in placed.values():
+            place.unlink()
+        raise
     finally:
         shutil.rmtree(work, ignore_errors=True)
         if staging.exists():
@@ -456,19 +463,18 @@ def _read_place(name: str, builder: DataBuilder) -> Path:
     return data_home() / 'packaged' / name
 
 
-def _place_hosted(builder: DataBuilder, staging: Path, files: dict) -> dict:
-    """Publish each identical hosted file at ``$BRAINIO_HOME/<sha1>/<file name>``; ``{file path: place}``.
+def _place_hosted(builder: DataBuilder, staging: Path, files: dict, placed: dict) -> None:
+    """Publish each identical hosted file at ``$BRAINIO_HOME/<sha1>/<file name>``; add it to ``placed``.
 
     ``os.link`` never replaces an entry (a broken link counts as one): the registered file already
     there is kept, any other entry stops the call. The staging folder is under ``$BRAINIO_HOME``.
     """
-    placed = {}
     for relative, entry in files.items():
         file = Path(relative).name
         if entry['check'] != 'identical' or file not in builder.sha1:
             continue
         place = brainio_home() / entry['sha1'] / file
-        place.parent.mkdir(parents=True, exist_ok=True)
+        place.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         try:
             os.link(staging / relative, place)
         except FileExistsError:
@@ -476,9 +482,8 @@ def _place_hosted(builder: DataBuilder, staging: Path, files: dict) -> dict:
                 continue
             raise FileExistsError(f'{place} appeared during the build and is not the registered file; '
                                   'it is kept: move it away, then run again.') from None
-        os.unlink(staging / relative)
         placed[relative] = place
-    return placed
+        os.unlink(staging / relative)
 
 
 def _report(name: str, builder: DataBuilder, destination: Path, read_place: Path,

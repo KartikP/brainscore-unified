@@ -16,6 +16,7 @@ import re
 import shlex
 import shutil
 import socket
+import stat
 import sys
 import types
 
@@ -398,6 +399,27 @@ def test_a_cache_name_occupied_during_the_build_is_not_replaced(tmp_path, monkey
     with pytest.raises(FileExistsError, match=re.escape(str(place))):
         package_data('made-up', source=source)
     assert place.read_bytes() == b'mine'
+
+
+@pytest.mark.parametrize('failure', ['none', 'second publication', 'record folder'])
+def test_a_failed_hosted_publication_leaves_no_file_of_this_call(failure, tmp_path, monkeypatch, offline):
+    source, sha1 = _hosted(tmp_path, monkeypatch, {'a.bin': b'registered a', 'b.bin': b'registered b'})
+    places = {file: tmp_path / 'brainio' / value / file for file, value in sha1.items()}
+    if failure == 'second publication':
+        _occupy_during_the_build(monkeypatch, [places['b.bin']])
+    if failure == 'record folder':
+        def refuse(*args):
+            raise OSError('the record folder cannot be renamed')
+        monkeypatch.setattr(os, 'rename', refuse)
+    if failure == 'none':
+        package_data('made-up', source=source)
+        assert all(stat.S_IMODE(place.stat().st_mode) == 0o600 for place in places.values())   # private
+        return
+    with pytest.raises(OSError):
+        package_data('made-up', source=source)
+    assert not places['a.bin'].exists()
+    assert failure != 'second publication' or places['b.bin'].read_bytes() == b'mine'
+    assert not (tmp_path / 'brainio' / 'packaged' / 'made-up').exists()
 
 
 def test_a_file_with_no_expected_record_states_its_counts(tmp_path, monkeypatch, capsys, offline):
