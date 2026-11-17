@@ -354,15 +354,17 @@ def test_a_part_offloaded_or_spread_is_refused():
 
 
 def test_a_missing_package_and_a_missing_class_are_named_before_any_download(monkeypatch):
-    """The one statement of a package is requirements.txt; a load without it says what to install."""
+    """requirements.txt states each package once; a model that uses one names it, and a load of that model
+    without it says what to install. A model that does not use it loads."""
     assert study.REQUIREMENTS == ['num2words']
+    assert all(set(c['packages']) <= set(study.REQUIREMENTS) for c in study.MODEL_CONFIGS.values())
     import transformers.utils
     from brainscore import LoadError
     monkeypatch.setattr(transformers.utils, 'is_num2words_available', lambda: False)
     monkeypatch.setattr(study, '_load', lambda *a: pytest.fail('no load before the refusal'))
     with pytest.raises(LoadError, match="needs the package 'num2words', which is not installed. Next step"):
         model_registry['smolvlm2-256m_UMI-dev']()
-    monkeypatch.setattr(transformers.utils, 'is_num2words_available', lambda: True)
+    study._refuse('qwen3-vl-2b_UMI-dev', study.MODEL_CONFIGS['qwen3-vl-2b_UMI-dev'])    # uses no package of the list
     with pytest.raises(LoadError, match='NoSuchVLM'):
         study._refuse('m', dict(study.MODEL_CONFIGS['qwen3-vl-2b_UMI-dev'], model_class='NoSuchVLM'))
 
@@ -483,7 +485,7 @@ def test_qualify_the_family(identifier, monkeypatch, tmp_path):
         assert 'which is not installed. Next step' in str(error)
         # Go on as a machine with the folder's requirements would: a processor that imports a
         # missing package then fails when it is built.
-        monkeypatch.setattr(study, 'REQUIREMENTS', [])
+        monkeypatch.setitem(study.MODEL_CONFIGS, identifier, dict(config, packages=[]))
     try:
         processor = pin_image_processor(live.AutoProcessor.from_pretrained(config['hf_id'], local_files_only=True),
                                         config['hf_id'], local_files_only=True)

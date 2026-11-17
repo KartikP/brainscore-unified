@@ -77,8 +77,9 @@ Add one entry to `model_configs.json` and one registry line to `__init__.py`. Th
 - `extra_forward_inputs`: what the language model gets beyond its tokens and a 2-D attention mask
   in an answering pass (read the model's forward); the language layer is then recorded only in a
   session without an answer.
-- A package the processor imports beyond the reference environment goes in `requirements.txt`,
-  the one statement; a load without it names it before any download.
+- `packages`: the packages the model's processor or forward imports beyond the reference
+  environment, by name; each is stated once, with its version, in `requirements.txt` (the run
+  environment of the study installs that file). A load without one names it before any download.
 
 Then prove that the model complies, in three steps from the folder `unified`:
 

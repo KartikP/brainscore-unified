@@ -9,7 +9,8 @@ from pathlib import Path
 from brainscore.model_helpers.provenance import ProvenanceSubject
 
 MODEL_CONFIGS = json.loads((Path(__file__).parent / 'model_configs.json').read_text())
-# The packages the study needs beyond the reference environment: stated once, in requirements.txt.
+# The packages the study needs beyond the reference environment, with their versions: stated once, in
+# requirements.txt. A model names the ones its processor or forward uses (``packages`` in its values).
 REQUIREMENTS = [re.split(r'[<>=!~;\[ ]', line.strip())[0] for line in
                 (Path(__file__).parent / 'requirements.txt').read_text().splitlines()
                 if line.strip() and not line.startswith('#')]
@@ -63,14 +64,16 @@ class _StudySubject(ProvenanceSubject):
 
 
 def _refuse(identifier, config):
-    """A package of requirements.txt that is missing, or a class this transformers lacks: named before any
-    download."""
+    """A package the model uses that is missing, or a class this transformers lacks: named before any
+    download. A package the model names must be a line of requirements.txt."""
     import importlib
     import importlib.util
     import transformers
     from brainscore import LoadError
     utils = importlib.import_module('transformers.utils')
-    for package in REQUIREMENTS:
+    for package in config['packages']:
+        if package not in REQUIREMENTS:
+            raise ValueError(f"'{identifier}' names the package '{package}', which requirements.txt does not state.")
         # The check the processor itself makes (transformers.utils.is_<package>_available), else an import.
         available = getattr(utils, f'is_{package}_available', None)
         if not (available() if available else importlib.util.find_spec(package)):
