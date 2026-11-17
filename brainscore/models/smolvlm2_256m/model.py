@@ -2,8 +2,10 @@
 
 The smallest model of the set. Layout: the vision part takes whole pictures as
 ``(B, C, H, W)``, so ``PytorchWrapper`` with ``LayerPCA(1000)`` records it. Image
-splitting is off: each picture is one input, resized to 512 pixels on its longer
-side. No extractor records clips in this layout; the reply part can still be shown them.
+splitting is off: each picture is one input, resized to the processor's square
+``max_image_size``. The subject takes no clips (no clip extractor fits this layout), and
+its vision regions are recorded from pictures alone, not during a written answer
+(``PytorchWrapper`` has no live recording).
 
 Regions come from the depth hypothesis over each part's blocks (no layer search).
 """

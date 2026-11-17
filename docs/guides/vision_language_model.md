@@ -46,30 +46,66 @@ def get_model(identifier: str):
 ```
 
 `test.py`: the plugin's own test with the real weights, marked `slow`, as in
-`brainscore/models/qwen3_vl_2b/test.py` (declarations, one neural session, one choice).
+`brainscore/models/qwen3_vl_2b/test.py` (declarations, pictures, text, a choice, the readout).
 
 Several sizes of one family that share their code go in one folder, with one registry
 line each and `get_model(identifier)` choosing the values, as `qwen25_vl_3b` does for
 its 3B and 7B models; a model with other code gets its own folder.
 
-Find each value:
+## Find each value
 
-| Value | Where |
-|---|---|
-| class | `architectures` in the Hub `config.json` (a mixture-of-experts model has its own class; its paths stay the same) |
-| `vision`, `language` | `print(model)` of the class built from its config on the meta device; the module path, then the path of the repeated blocks inside it |
-| `video` | `True` only when the vision part takes the processor's flattened patches (Qwen-VL, Qwen2.5-Omni, GLM-4.1V) |
-| `image_processor_kwargs` | for a vision part that takes `(B, C, H, W)`: the image-processor settings that give each picture whole, for example `{'do_image_splitting': False}` (SmolVLM), `{}` (Gemma 3) |
-| `audio` | `(module path, block list path, extractor)` of an audio encoder |
-| `device_map` | `'auto'` for a model that does not fit one accelerator |
+1. **Hub identifier**: the instruction-tuned checkpoint (`-Instruct`, `-it`; `-hf` for a
+   repository converted to the transformers classes). Pass `revision=` (the commit on the
+   Hub page) to score one fixed set of weights.
+2. **Class**: `architectures` in the Hub `config.json`. Check that the pinned transformers
+   has it: `python -c "import transformers; transformers.Qwen3VLForConditionalGeneration"`.
+   A mixture-of-experts model has its own class; its paths are the same.
+3. **`vision`, `language`**: build the class from its config on the meta device (no weights)
+   and check that each path ends in the list of repeated blocks:
 
-Then run the offline checks (a stand-in model, no download):
+```python
+import torch
+import transformers
+
+config = transformers.AutoConfig.from_pretrained('Qwen/Qwen3-VL-4B-Instruct')   # config.json only
+with torch.device('meta'):
+    network = transformers.Qwen3VLForConditionalGeneration(config)
+print(network.get_submodule('model.visual.blocks')[0])          # one vision block
+print(len(network.get_submodule('model.language_model.layers')))  # the number of decoder layers
+```
+
+4. **`download_gb`**: the sum of the `*.safetensors` files on the Hub page (the download,
+   in the precision of the files; `dtype` is the precision in memory, `bfloat16`).
+5. **`video`**: `True` when the processor has a `video_processor` that gives
+   `pixel_values_videos` and `video_grid_thw`, and the vision part takes `grid_thw` (Qwen-VL,
+   GLM-4.1V). Clips then also reach the language layer.
+6. **`image_processor_kwargs`**: only for a vision part that takes `(B, C, H, W)` (its processor
+   gives no `image_grid_thw`): the settings that give one whole image per picture, for
+   example `{'do_image_splitting': False}` (SmolVLM), `{'do_pan_and_scan': False}` (Gemma 3),
+   `{'crop_to_patches': False}` (InternVL). The builder refuses a processor that still gives
+   tiles. Each layer is reduced to 1000 components (`LayerPCA`), fitted once on ImageNet
+   validation images (`MT_IMAGENET_PATH`).
+7. **`device_map`**: `'auto'` when the weights (2 bytes per parameter) take more than about
+   two thirds of one accelerator. Each extractor keeps the loaded placement; a vision part
+   given `image_processor_kwargs` must stay on one device.
+8. **`probabilities`**: `'readout'` for new models (a classifier on the IT layer, fitted on the
+   task's fitting stimuli); `('likelihood', 'softmax')` takes them from the log probabilities
+   of the options, with no fitting.
+9. **`audio`**: no extractor for an audio encoder inside a vision-language model exists yet;
+   leave it out.
+
+## Checks
+
+Offline, with a stand-in model (no download):
 
 ```bash
 pytest tests/test_vlm_builder.py -m "not slow"
 ```
 
-`test_every_builder_registration_declares_what_its_parts_can_do` loads every
-registration made with the builder on a stand-in and checks its declarations. On a
-GPU machine, load the model once and run one neural and one behavioral benchmark
-before you score it on all benchmarks.
+Its loop over the registry builds every registration made with the builder on a stand-in.
+On a GPU machine, run the plugin's own test, then one neural and one behavioral
+benchmark before a full run:
+
+```bash
+pytest brainscore/models/<name>/test.py -m slow
+```
