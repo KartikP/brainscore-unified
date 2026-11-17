@@ -56,7 +56,7 @@ def _load(identifier: str, hf_id: str, model_class: str, dtype: str, download_gb
 def _blocks(model, part: Tuple[str, str]):
     """``(the part's module, the paths of its blocks relative to that module)``."""
     root, blocks = part
-    count = len(model.get_submodule(f'{root}.{blocks}'))
+    count = len(list(model.get_submodule(f'{root}.{blocks}').children()))
     return model.get_submodule(root), [f'{blocks}.{index}' for index in range(count)]
 
 

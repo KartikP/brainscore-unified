@@ -28,6 +28,8 @@ WAYS = {'generation': 'writing', 'likelihood': 'likelihood', 'readout': 'readout
 SKELETONS = {
     'Qwen2_5_VLForConditionalGeneration': ('model.visual.blocks', 'model.language_model.layers'),
     'Qwen3_5ForConditionalGeneration': ('model.visual.blocks', 'model.language_model.layers'),
+    'Qwen3VLForConditionalGeneration': ('model.visual.blocks', 'model.language_model.layers'),
+    'SmolVLMForConditionalGeneration': ('model.vision_model.encoder.layers', 'model.text_model.layers'),
     'Blip2ForConditionalGeneration': ('vision_model.encoder.layers', 'language_model.model.decoder.layers'),
     'Wav2Vec2Model': ('encoder.layers',),
 }
