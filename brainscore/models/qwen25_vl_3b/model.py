@@ -19,7 +19,7 @@ Region layer paths are relative to each wrapper's sub-model root:
 import hashlib
 import json
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import torch
 from PIL import Image
@@ -173,10 +173,14 @@ def picture_extractor(qwen_model, qwen_processor, identifier: str):
                             identifier=f'{identifier}-vision')
 
 
-def get_model(identifier: str, *, probabilities: str) -> Subject:
+def get_model(identifier: str, *, probabilities: Optional[str] = None) -> Subject:
     """The registration ``identifier``. ``probabilities`` is the part that gives
     ``behavior:probabilities`` (and, by the link, ``behavior:rt``): ``'readout'`` (fitted on
-    the task's fitting stimuli) or ``'likelihood'`` (the softmax of the option likelihoods)."""
+    the task's fitting stimuli) or ``'likelihood'`` (the softmax of the option likelihoods).
+    The registry passes it for each registration; ``None`` takes the same choice: the
+    likelihood for a variant with the word-form region, else the readout."""
+    if probabilities is None:
+        probabilities = 'likelihood' if identifier in VARIANTS else 'readout'
     bf16 = identifier == BF16_IDENTIFIER
     size = 'qwen2.5-vl-3b' if bf16 else VARIANTS.get(identifier, identifier)
     assert size in SIZES, identifier

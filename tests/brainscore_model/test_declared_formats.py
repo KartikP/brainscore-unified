@@ -44,13 +44,14 @@ NEURAL_ONLY = ('benchmarks/grid_game/benchmark.py', 'models/multimodal_av_blip2_
                'tools/auto_register.py', 'validation/benchmark_parity.py')
 # Declared behavior formats per library call, before the owner statements and now (a
 # likelihood part now also gives behavior:log_probabilities natively).
+# The Qwen2.5-VL builder states the probabilities part of each registration (not a literal
+# the scan reads; tests/test_qwen_probability_statements.py checks it); qwen3.6-27b has its parts.
 DECLARED = {
     'model_helpers/causal_lm.py': ({B, CH, P, RA, RT, TE}, {CH, P, LP, RA, RT, TE}),
     'models/api_closed/model.py': ({B, CH, RA, TE}, {B, CH, RA, TE}),
     'models/blip2_opt_2_7b/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
     'models/clip_vit_b_32/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
     'models/gpt2_small/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
-    'models/qwen25_vl_3b/model.py': ({B, CH, P, RA, RT, TE}, {B, CH, P, LP, RA, RT, TE}),
     'models/qwen36_27b/model.py': ({B, CH, P, RA, RT, TE}, {B, CH, P, LP, RA, RT, TE}),
     'models/random_vit_b_32/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
     'tools/rajalingham2018_2afc/score_2afc.py': ({B, CH}, {B, CH}),
@@ -76,7 +77,6 @@ COMPATIBLE = {
     'models/blip2_opt_2_7b/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
     'models/clip_vit_b_32/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
     'models/gpt2_small/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
-    'models/qwen25_vl_3b/model.py': (ALL, ALL),
     'models/qwen36_27b/model.py': (ALL, ALL),
     'models/random_vit_b_32/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
     'tools/rajalingham2018_2afc/score_2afc.py': (ALL - {'EWoK logprobs', 'CogGym'},
