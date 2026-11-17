@@ -457,10 +457,10 @@ def _read_place(name: str, builder: DataBuilder) -> Path:
 
 
 def _place_hosted(builder: DataBuilder, staging: Path, files: dict) -> dict:
-    """Move each identical hosted file to ``$BRAINIO_HOME/<sha1>/<file name>``; ``{file path: place}``.
+    """Publish each identical hosted file at ``$BRAINIO_HOME/<sha1>/<file name>``; ``{file path: place}``.
 
-    A file already there is not replaced. The staging folder is under ``$BRAINIO_HOME``, so each
-    move is one rename on one volume.
+    ``os.link`` never replaces an entry (a broken link counts as one): the registered file already
+    there is kept, any other entry stops the call. The staging folder is under ``$BRAINIO_HOME``.
     """
     placed = {}
     for relative, entry in files.items():
@@ -468,10 +468,15 @@ def _place_hosted(builder: DataBuilder, staging: Path, files: dict) -> dict:
         if entry['check'] != 'identical' or file not in builder.sha1:
             continue
         place = brainio_home() / entry['sha1'] / file
-        if place.exists():
-            continue
         place.parent.mkdir(parents=True, exist_ok=True)
-        os.rename(staging / relative, place)
+        try:
+            os.link(staging / relative, place)
+        except FileExistsError:
+            if place.is_file() and _sha1(place) == entry['sha1']:
+                continue
+            raise FileExistsError(f'{place} appeared during the build and is not the registered file; '
+                                  'it is kept: move it away, then run again.') from None
+        os.unlink(staging / relative)
         placed[relative] = place
     return placed
 

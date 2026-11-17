@@ -378,6 +378,28 @@ def test_an_occupied_cache_name_that_is_not_the_registered_file_is_refused_and_k
     assert not (tmp_path / 'brainio' / 'packaged' / 'made-up').exists()
 
 
+def _occupy_during_the_build(monkeypatch, places):
+    """Put a file of the user at each place after the check, before the publication."""
+    from brainscore.data import packaging
+    check = packaging._check
+
+    def occupying(*args, **kwargs):
+        for place in places:
+            place.parent.mkdir(parents=True, exist_ok=True)
+            place.write_bytes(b'mine')
+        return check(*args, **kwargs)
+    monkeypatch.setattr(packaging, '_check', occupying)
+
+
+def test_a_cache_name_occupied_during_the_build_is_not_replaced(tmp_path, monkeypatch, offline):
+    source, sha1 = _hosted(tmp_path, monkeypatch, {'a.bin': b'registered'})
+    place = tmp_path / 'brainio' / sha1['a.bin'] / 'a.bin'
+    _occupy_during_the_build(monkeypatch, [place])
+    with pytest.raises(FileExistsError, match=re.escape(str(place))):
+        package_data('made-up', source=source)
+    assert place.read_bytes() == b'mine'
+
+
 def test_a_file_with_no_expected_record_states_its_counts(tmp_path, monkeypatch, capsys, offline):
     source = _made_up_plugin(tmp_path, monkeypatch, {'table.csv': b'x\n1\n2\n'})
     output = package_data('made-up', source=source, output=tmp_path / 'out')
