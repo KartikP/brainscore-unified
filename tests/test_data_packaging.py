@@ -432,13 +432,41 @@ def test_a_failure_after_a_publication_deletes_or_replaces_nothing_under_brainio
         package_data('made-up', source=source)
         assert all(stat.S_IMODE(place.stat().st_mode) == 0o600 for place in places.values())   # private
         return
-    with pytest.raises(RuntimeError, match='already published') as failed:
+    with pytest.raises(RuntimeError, match='published by this call') as failed:
         package_data('made-up', source=source)
     assert str(places['a.bin']) in str(failed.value)
     assert places['a.bin'].read_bytes() == b'registered a'                 # the registered file stays
     if failure == 'second publication':
         assert places['b.bin'].read_bytes() == b'mine'                     # the user's file is untouched
     assert not (tmp_path / 'brainio' / 'packaged' / 'made-up').exists()
+
+
+def test_a_staging_unlink_error_after_a_link_names_the_published_file(tmp_path, monkeypatch, offline):
+    source, sha1 = _hosted(tmp_path, monkeypatch, {'a.bin': b'registered a'})
+    place = tmp_path / 'brainio' / sha1['a.bin'] / 'a.bin'
+    unlink = os.unlink
+
+    def refuse(path, *args, **kwargs):
+        if '.brainscore-build-' in str(path):
+            raise OSError('staging unlink denied')
+        return unlink(path, *args, **kwargs)
+    monkeypatch.setattr(os, 'unlink', refuse)
+    with pytest.raises(RuntimeError, match='staging unlink denied') as failed:
+        package_data('made-up', source=source)
+    assert str(place) in str(failed.value) and place.read_bytes() == b'registered a'
+
+
+def test_an_interrupt_after_a_publication_names_the_published_file(tmp_path, monkeypatch, offline):
+    source, sha1 = _hosted(tmp_path, monkeypatch, {'a.bin': b'registered a'})
+    place = tmp_path / 'brainio' / sha1['a.bin'] / 'a.bin'
+
+    def interrupt(*args):
+        raise KeyboardInterrupt
+    monkeypatch.setattr(os, 'rename', interrupt)
+    with pytest.raises(KeyboardInterrupt) as interrupted:
+        package_data('made-up', source=source)
+    assert str(place) in '\n'.join(getattr(interrupted.value, '__notes__', []))
+    assert place.read_bytes() == b'registered a'
 
 
 def test_a_relative_brainio_home_is_printed_as_an_absolute_place(tmp_path, monkeypatch, capsys, offline):

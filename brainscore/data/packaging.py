@@ -440,12 +440,15 @@ def package_data(name: str, source: str | Path | None = None,
         if builder.reads == 'brainio' and destination == read_place:
             _place_hosted(builder, staging, files, placed)
         os.rename(staging, destination)
-    except Exception as failure:
+    except BaseException as failure:
         if not placed:
             raise
-        raise RuntimeError(f'{failure}\nThese hosted files were already published; they are the registered '
-                           'files, so they stay:\n' + '\n'.join(f'    {place}' for place in placed.values())
-                           ) from failure
+        retained = ('These hosted files were published by this call as the registered files, and they stay:\n'
+                    + '\n'.join(f'    {place}' for place in placed.values()))
+        if not isinstance(failure, Exception):      # an interrupt stays an interrupt, with the list as a note
+            failure.add_note(retained)
+            raise
+        raise RuntimeError(f'{failure}\n{retained}') from failure
     finally:
         shutil.rmtree(work, ignore_errors=True)
         if staging.exists():
@@ -482,8 +485,8 @@ def _place_hosted(builder: DataBuilder, staging: Path, files: dict, placed: dict
                 continue
             raise FileExistsError(f'{place} appeared during the build and is not the registered file; '
                                   'it is kept: move it away, then run again.') from None
+        placed[relative] = place                  # recorded at once: the link is done
         os.unlink(staging / relative)
-        placed[relative] = place
 
 
 def _report(name: str, builder: DataBuilder, destination: Path, read_place: Path,
