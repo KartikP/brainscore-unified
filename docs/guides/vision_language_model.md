@@ -7,16 +7,34 @@ fitted readout. The regions come from the stated depth hypothesis
 (`DEFAULT_*_REGIONS` in `brainscore/tools/auto_register.py`), not from a layer search;
 each score's provenance says so.
 
-Make a folder `brainscore/models/<name>/` with this `__init__.py` and fill the values:
+A model plugin has the usual three files in `brainscore/models/<name>/`. The builder
+is only a helper that `get_model` calls: a `get_model` that builds a `BrainScoreModel`
+by hand registers the same way ([Wrap your model](wrap_your_model.md)).
+
+`__init__.py`: the registry line, with a lazy import so that `import brainscore` stays light.
 
 ```python
 from brainscore import model_registry
 
 
-def _load():
-    from brainscore.model_helpers.vlm import build_vlm_subject
+def _load():  # defer heavy imports to load time (keep `import brainscore` light)
+    from .model import get_model
+    return get_model('qwen3-vl-4b')
+
+
+model_registry['qwen3-vl-4b'] = _load
+```
+
+`model.py`: `get_model(identifier)` builds the subject. Fill the values:
+
+```python
+from brainscore.model_helpers.vlm import build_vlm_subject
+
+
+def get_model(identifier: str):
+    assert identifier == 'qwen3-vl-4b'
     return build_vlm_subject(
-        'qwen3-vl-4b', 'Qwen/Qwen3-VL-4B-Instruct',      # identifier, Hub identifier
+        identifier, 'Qwen/Qwen3-VL-4B-Instruct',         # identifier, Hub identifier
         'Qwen3VLForConditionalGeneration',               # the transformers class
         vision=('model.visual', 'blocks'),               # module, then its block list
         language=('model.language_model', 'layers'),
@@ -25,10 +43,14 @@ def _load():
         video=True,                                      # the processor takes clips natively
         probabilities='readout',                         # or ('likelihood', 'softmax')
     )
-
-
-model_registry['qwen3-vl-4b'] = _load
 ```
+
+`test.py`: the plugin's own test with the real weights, marked `slow`, as in
+`brainscore/models/qwen3_vl_2b/test.py` (declarations, one neural session, one choice).
+
+Several sizes of one family that share their code go in one folder, with one registry
+line each and `get_model(identifier)` choosing the values, as `qwen25_vl_3b` does for
+its 3B and 7B models; a model with other code gets its own folder.
 
 Find each value:
 

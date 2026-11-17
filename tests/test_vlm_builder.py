@@ -5,7 +5,6 @@ No weights: the checkpoint class is a stand-in set on ``transformers``, the proc
 the download check and the processor pin are replaced, and every real
 ``from_pretrained`` raises, so no test can download or load a checkpoint.
 """
-import inspect
 import sys
 from types import SimpleNamespace
 
@@ -246,10 +245,16 @@ class _AnyLayout(torch.nn.Module):
 
 
 def _builder_registrations():
+    """The registrations whose plugin folder calls the builder (in its __init__.py or model.py)."""
+    from pathlib import Path
     found = []
     for identifier, loader in sorted(model_registry.items()):
         module = sys.modules.get(getattr(loader, '__module__', ''))
-        if module is not None and 'build_vlm_subject' in inspect.getsource(module):
+        if module is None or not getattr(module, '__file__', None):
+            continue
+        folder = Path(module.__file__).parent
+        sources = [folder / name for name in ('__init__.py', 'model.py') if (folder / name).exists()]
+        if any('build_vlm_subject' in source.read_text(encoding='utf-8') for source in sources):
             found.append(identifier)
     return found
 
