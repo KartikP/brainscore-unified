@@ -17,6 +17,19 @@ started with the Python of CogGym's folder (``_coggym_folder.py``). Its pre-flig
 trials and prompts; one process per run serves every repetition and the analysis, and each
 model call comes back here as one request and one reply. The subject, the sessions, the
 recording and ``reset`` stay in this process; nothing is installed into it.
+
+What crosses the pipe, as JSON (UTF-8): the commands and their settings; the prepared trial
+ids, system texts and messages (pictures as CogGym's base64 text, videos as paths); each model
+call (system text, messages, model, temperature, length) and its reply (text, reasoning, token
+usage); the trial rows, summary, slider validation and analysis. Strings, integers of any size,
+finite floats, None and string-keyed objects in order cross unchanged. A tuple arrives as a
+list and a non-string key as a string, as in the trial file CogGym writes in one process; a
+value JSON cannot hold (bytes, a NumPy scalar, a NaN in a reply) stops the run with a clear
+error. CogGym scores only the reply's text, so the values a score depends on cross exactly; the
+trial rows' NaN and infinity reach this process unchanged, and its strict file writing refuses
+them, as in one process. A failure of the subject arrives in the evaluator as an exception of
+the same type name and message, not of the same class. The evaluator's module state lives for
+one run (all its repetitions and its analysis); the pre-flight and each run start a new process.
 """
 from __future__ import annotations
 
@@ -102,6 +115,13 @@ def _answer(adapter):
         except Exception as error:
             # CogGym stores a failed trial with this type and message, as in one process.
             return {'error': [type(error).__name__, str(error)]}
+        for key, value in (reply or {}).items():
+            try:
+                json.dumps(value, allow_nan=False)
+            except (TypeError, ValueError) as error:
+                raise TypeError(
+                    f"The answer's {key!r} cannot go to CogGym's evaluator, which runs in its own "
+                    f'process and stores it in its trial file as JSON: {error}') from None
         return {'reply': reply}
     return answer
 

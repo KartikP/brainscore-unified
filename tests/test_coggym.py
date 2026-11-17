@@ -422,3 +422,12 @@ def test_a_summary_that_cannot_be_saved_keeps_the_completed_trials(reference, tm
     saved = json.loads((tmp_path / 'run/run-001.json').read_text())
     assert [trial['response'] for trial in saved['trials']] == ['answer'] * len(saved['trials'])
     assert saved['trials'] and saved['umi']['summary_status'] == 'pending'
+
+
+def test_an_answer_value_json_cannot_hold_stops_the_run_with_its_name(reference, tmp_path):
+    root, _ = reference
+    runner = coggym.CogGymRunner(root, model='fixture')
+    with pytest.raises(TypeError, match='token_usage'):
+        runner.run(SimpleNamespace(complete_with_metadata=lambda *a: {
+            'text': 'answer', 'reasoning': None, 'token_usage': b'not json'}),
+            output_dir=tmp_path / 'run', reset=lambda repetition: None)
