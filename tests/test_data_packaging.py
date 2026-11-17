@@ -9,9 +9,11 @@ network programs (git, aws) and S3 replaced by stand-ins whose uploads fail.
 import dataclasses
 import hashlib
 import importlib.util
+import json
 import pathlib
 import re
 import shlex
+import shutil
 import socket
 import sys
 import types
@@ -136,6 +138,7 @@ def offline(monkeypatch, tmp_path):
     for name, module in (('boto3', boto3), ('botocore', botocore), ('botocore.config', botocore_config)):
         monkeypatch.setitem(sys.modules, name, module)
     monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path / 'home'))
+    monkeypatch.setenv('BRAINIO_HOME', str(tmp_path / 'brainio'))
     for asset in local.REGISTRY.values():          # every local asset folder is a temporary one
         monkeypatch.setenv(asset.env_var, str(tmp_path / 'assets' / asset.name))
     return stand_ins
@@ -180,6 +183,14 @@ def _sha1(path):
     return hashlib.sha1(path.read_bytes()).hexdigest()
 
 
+def _without_record(name, monkeypatch):
+    """Made-up data is not the real data: drop the declaration's expected record (its sha1)."""
+    builder = data_builder_registry[name]()
+    if builder.sha1:
+        monkeypatch.delitem(data_builder_registry, name)
+        monkeypatch.setitem(data_builder_registry, name, lambda: dataclasses.replace(builder, sha1={}))
+
+
 def test_ewok_packages_from_the_source_folder_of_the_one_rule(tmp_path, monkeypatch, capsys, offline):
     # Synthetic text only; no EWoK sentence is committed to the tests.
     monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path))
@@ -215,26 +226,90 @@ def _made_up_rajalingham():
                                  load_stimulus_set=lambda identifier: stimuli)
 
 
-def test_rajalingham_prints_sha1_and_counts_and_names_the_files_its_tool_reads(
-        tmp_path, monkeypatch, capsys, offline):
-    from brainscore.data.rajalingham2018_2afc import TRIALS_CSV
+def test_rajalingham_checks_a_rebuild_against_the_files_its_tool_reads(tmp_path, monkeypatch, capsys, offline):
+    original = data_builder_registry['rajalingham2018-2afc']()
     monkeypatch.setitem(sys.modules, 'brainscore_vision', _made_up_rajalingham())
-    first = package_data('rajalingham2018-2afc', output=tmp_path / 'first')
+    # The made-up rebuild differs from the registered files, which ship in the plugin folder: the check fails.
+    with pytest.raises(ValueError, match=r'trials\.csv: its content differs from the expected record: rows'):
+        package_data('rajalingham2018-2afc', output=tmp_path / 'first')
+    assert not (tmp_path / 'first').exists()
+    monkeypatch.setitem(data_builder_registry, 'rajalingham-fixture',
+                        lambda: dataclasses.replace(original, sha1={}))
+    first = package_data('rajalingham-fixture', output=tmp_path / 'first')
     printed = capsys.readouterr().out
     for file in ('trials.csv', 'tokens.csv'):
         rows = len(pd.read_csv(first / file))
         assert re.search(rf'{file} .*sha1 {_sha1(first / file)} .*rows {rows}\)', printed)
-    assert 'differs from the registered sha1' in printed          # made-up data is not the registered data
-    # An equal rebuild is told about the files the scoring tool reads, not a download cache.
-    registered = _sha1(first / 'trials.csv')
-    original = data_builder_registry['rajalingham2018-2afc']()
-    monkeypatch.setitem(data_builder_registry, 'rajalingham-fixture',
-                        lambda: dataclasses.replace(original, sha1={'trials.csv': registered}))
-    package_data('rajalingham-fixture', output=tmp_path / 'second')
-    printed = capsys.readouterr().out
-    assert 'equals the registered sha1' in printed
-    assert TRIALS_CSV.parent.relative_to(DATA.parents[1]).as_posix() in printed
-    assert 'BRAINIO_HOME' not in printed
+        assert f'check: no expected record: rows {rows}' in printed
+
+
+def _made_up_plugin(tmp_path, monkeypatch, files, sha1=None):
+    """A plugin whose script copies its source folder: the test chooses the built files.
+
+    Its ``data_packaging`` folder is ``tmp_path / 'scripts'``; its plugin folder is ``tmp_path``.
+    """
+    scripts = tmp_path / 'scripts'
+    scripts.mkdir(exist_ok=True)
+    (scripts / 'made_up_copy.py').write_text(
+        'import shutil, sys\nshutil.copytree(sys.argv[1], sys.argv[2], dirs_exist_ok=True)\n')
+    monkeypatch.syspath_prepend(str(scripts))
+    source = tmp_path / 'source'
+    shutil.rmtree(source, ignore_errors=True)
+    source.mkdir()
+    for file, content in files.items():
+        (source / file).write_bytes(content) if isinstance(content, bytes) else content.to_netcdf(source / file)
+    if 'made-up' in data_builder_registry:
+        return source
+    monkeypatch.setitem(data_builder_registry, 'made-up', lambda: DataBuilder(
+        source='made up', access='public', layout='any files', needs='nothing', writes='the same files',
+        build='python -m made_up_copy {source} {output}', sha1=sha1 or {}))
+    return source
+
+
+def test_a_file_equal_to_its_registered_sha1_is_identical(tmp_path, monkeypatch, capsys, offline):
+    table = b'x,y\n1.0,a\n2.0,b\n'
+    source = _made_up_plugin(tmp_path, monkeypatch, {'table.csv': table},
+                             sha1={'table.csv': hashlib.sha1(table).hexdigest()})
+    package_data('made-up', source=source, output=tmp_path / 'out')
+    assert re.search(r'table\.csv .*\n    check: identical\n', capsys.readouterr().out)
+
+
+def test_a_file_with_other_bytes_and_the_same_content_passes(tmp_path, monkeypatch, capsys, offline):
+    registered = b'x,y\n1.0,a\n2.0,b\n'
+    sha1 = hashlib.sha1(registered).hexdigest()
+    (tmp_path / 'brainio' / sha1).mkdir(parents=True)          # the registered copy in the brainio cache
+    (tmp_path / 'brainio' / sha1 / 'table.csv').write_bytes(registered)
+    source = _made_up_plugin(tmp_path, monkeypatch, {'table.csv': b'x,y\n1.00,a\n2.0000000001,b\n'},
+                             sha1={'table.csv': sha1})
+    package_data('made-up', source=source, output=tmp_path / 'out')
+    assert 'check: same content, bytes differ' in capsys.readouterr().out
+
+
+def test_a_file_whose_content_differs_from_the_record_stops_the_build(tmp_path, monkeypatch, offline):
+    def assembly(values, stimuli):
+        return xr.DataArray(np.array(values, dtype=float), dims=['presentation'],
+                            coords={'stimulus_id': ('presentation', stimuli)}, name='data')
+    source = _made_up_plugin(tmp_path, monkeypatch, {'assy.nc': assembly([0.1, 0.2, 0.3], ['a', 'b', 'c'])})
+    first = package_data('made-up', source=source, output=tmp_path / 'first')
+    # The record a cloud run copies from build.json into data_packaging/expected.json.
+    record = json.loads((first / 'build.json').read_text())['files']
+    (tmp_path / 'scripts' / 'expected.json').write_text(json.dumps({'made-up': record}))
+    source = _made_up_plugin(tmp_path, monkeypatch, {'assy.nc': assembly([0.1, 0.2, 0.33], ['a', 'b', 'd'])})
+    with pytest.raises(ValueError) as failed:
+        package_data('made-up', source=source, output=tmp_path / 'second')
+    message = str(failed.value)
+    assert 'assy.nc: its content differs' in message
+    assert 'coordinates stimulus_id' in message
+    assert re.search(r'variables data: values differ by up to 0\.0\d', message)
+    assert not (tmp_path / 'second').exists()
+
+
+def test_a_file_with_no_expected_record_states_its_counts(tmp_path, monkeypatch, capsys, offline):
+    source = _made_up_plugin(tmp_path, monkeypatch, {'table.csv': b'x\n1\n2\n'})
+    output = package_data('made-up', source=source, output=tmp_path / 'out')
+    assert 'check: no expected record: rows 2' in capsys.readouterr().out
+    assert json.loads((output / 'build.json').read_text())['files']['table.csv']['check'] == \
+        'no expected record: rows 2'
 
 
 def _gifti(path, n_tr):
@@ -261,7 +336,8 @@ def _lahner_source(source):
 
 
 @pytest.mark.parametrize('listed', [True, False], ids=['builds', 'fails'])
-def test_lahner_time_series_reads_the_source_and_never_changes_it(tmp_path, offline, listed):
+def test_lahner_time_series_reads_the_source_and_never_changes_it(tmp_path, monkeypatch, offline, listed):
+    _without_record('lahner2024-timeresolved', monkeypatch)
     source = tmp_path / 'ds005165'
     key = _lahner_source(source)
     before = _tree(source)
@@ -473,6 +549,7 @@ def test_every_builder_has_a_made_up_source_here():
 def _package(name, tmp_path, monkeypatch, offline):
     from brainscore.data.__main__ import main
     source = SOURCES[name](tmp_path, monkeypatch, offline)
+    _without_record(name, monkeypatch)
     arguments = ['package', name, '--output', str(tmp_path / 'out')]
     return main(arguments + (['--source', str(source)] if source else []))
 

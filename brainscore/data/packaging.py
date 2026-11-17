@@ -184,19 +184,158 @@ def _sha1(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _counts(path: Path) -> dict:
-    """Rows of a CSV, dimension sizes of a netCDF file, items of a JSON list."""
+_TOLERANCE = 1e-6      # float parts agree when within this fraction of the sum of magnitudes (at least 1)
+
+
+def _digest(values) -> str:
+    """The sha1 of values compared exactly (text, integers, booleans, coordinates), in order."""
+    digest = hashlib.sha1()
+    for value in values:
+        digest.update(str(value).encode() + b'\x1f')
+    return digest.hexdigest()
+
+
+def _floats(values) -> dict:
+    """Float values as counts of missing values and three sums; the weighted sum sees order."""
+    import numpy as np
+    values = np.asarray(values, dtype=float).ravel()
+    missing = np.isnan(values)
+    values = np.where(missing, 0.0, values)
+    weights = np.arange(1, values.size + 1) / max(values.size, 1)
+    return {'missing': int(missing.sum()), 'sum': float(values.sum()),
+            'weighted': float((values * weights).sum()), 'magnitude': float(np.abs(values).sum())}
+
+
+def _values(values) -> dict:
+    import numpy as np
+    values = np.asarray(values)
+    return _floats(values) if values.dtype.kind == 'f' else {'sha1': _digest(values.ravel())}
+
+
+def _content(path: Path) -> dict:
+    """A small summary of a file's content, by its kind: the unit of the content check.
+
+    CSV: rows, columns, each column's values. JSON: list items, every leaf with its
+    place. netCDF: dimensions, coordinates, data variables. Any other kind: its sha1.
+    Floats are kept as sums (compared with a tolerance); all else as a sha1 (compared exactly).
+    """
     if path.suffix == '.csv':
         import pandas as pd
-        return {'rows': len(pd.read_csv(path, dtype=str, keep_default_na=False))}
+        table = pd.read_csv(path)
+        return {'kind': 'csv', 'rows': len(table), 'columns': list(map(str, table.columns)),
+                'values': {str(column): _values(table[column].to_numpy()) for column in table.columns}}
+    if path.suffix == '.json':
+        content = json.loads(path.read_text())
+        exact, floats = [], []
+
+        def walk(node, place):
+            if isinstance(node, dict):
+                for key in sorted(node):
+                    walk(node[key], f'{place}/{key}')
+            elif isinstance(node, list):
+                for index, item in enumerate(node):
+                    walk(item, f'{place}/{index}')
+            elif isinstance(node, float):
+                floats.append(node)
+            else:
+                exact.append(f'{place}={json.dumps(node)}')
+        walk(content, '')
+        return {'kind': 'json', 'items': len(content) if isinstance(content, list) else None,
+                'leaves': _digest(exact), 'floats': _floats(floats)}
     if path.suffix == '.nc':
         import xarray as xr
         with xr.open_dataset(path) as data:
-            return {str(dim): int(size) for dim, size in data.sizes.items()}
-    if path.suffix == '.json':
-        content = json.loads(path.read_text())
-        return {'items': len(content)} if isinstance(content, list) else {}
-    return {}
+            return {'kind': 'netcdf',
+                    'dimensions': {str(dim): int(size) for dim, size in data.sizes.items()},
+                    'coordinates': {str(name): {'dimensions': list(map(str, coord.dims)),
+                                                'sha1': _digest(coord.values.astype(str).ravel())}
+                                    for name, coord in data.coords.items()},
+                    'variables': {str(name): {'dimensions': list(map(str, variable.dims)), **_values(variable.values)}
+                                  for name, variable in data.data_vars.items()}}
+    return {'kind': 'bytes', 'sha1': _sha1(path)}
+
+
+def _counts(content: dict) -> str:
+    """The counts a person reads: rows of a CSV, dimension sizes of a netCDF file, items of a JSON list."""
+    if content['kind'] == 'csv':
+        return f"rows {content['rows']}"
+    if content['kind'] == 'netcdf':
+        return ', '.join(f'{dim} {size}' for dim, size in content['dimensions'].items())
+    if content['kind'] == 'json' and content['items'] is not None:
+        return f"items {content['items']}"
+    return ''
+
+
+def _differences(built, expected, place: str = '') -> list:
+    """What differs between two content summaries: exact parts equal, float parts within the tolerance."""
+    if isinstance(expected, dict) and 'magnitude' in expected and isinstance(built, dict) and 'magnitude' in built:
+        found = []
+        if built['missing'] != expected['missing']:
+            found.append(f"{place}: missing values {built['missing']} != {expected['missing']}")
+        tolerance = _TOLERANCE * max(1.0, expected['magnitude'])
+        largest = max(abs(built[key] - expected[key]) for key in ('sum', 'weighted', 'magnitude'))
+        if largest > tolerance:
+            found.append(f'{place}: values differ by up to {largest:.6g} (tolerance {tolerance:.3g})')
+        return found
+    if isinstance(expected, dict) and isinstance(built, dict):
+        found = []
+        for key in [*expected, *(key for key in built if key not in expected)]:
+            where = f'{place} {key}'.strip()
+            if key not in built:
+                found.append(f'{where}: absent')
+            elif key not in expected:
+                found.append(f'{where}: not expected')
+            else:
+                found += _differences(built[key], expected[key], where)
+        return found
+    return [] if built == expected else [f'{place}: {built} != {expected}']
+
+
+def brainio_home() -> Path:
+    """Where brainio keeps hosted files: ``$BRAINIO_HOME/<sha1>/<file name>``."""
+    return Path(os.environ.get('BRAINIO_HOME') or '~/.brainio').expanduser()
+
+
+def _packaging_folder(builder: DataBuilder) -> Path:
+    """The plugin's ``data_packaging`` folder: the folder of the build script."""
+    import importlib.util
+    words = shlex.split(builder.build)
+    return Path(importlib.util.find_spec(words[words.index('-m') + 1]).origin).parent
+
+
+def _expected(name: str, builder: DataBuilder) -> dict:
+    """``{file path: entry of build.json}`` that a cloud run recorded in ``data_packaging/expected.json``."""
+    path = _packaging_folder(builder) / 'expected.json'
+    return json.loads(path.read_text()).get(name, {}) if path.exists() else {}
+
+
+def _registered_copy(builder: DataBuilder, file: str, sha1: str) -> Path | None:
+    """The registered file on this machine, found by its sha1: the brainio cache or the plugin folder."""
+    for candidate in (brainio_home() / sha1 / file, _packaging_folder(builder).parent / file):
+        if candidate.is_file() and _sha1(candidate) == sha1:
+            return candidate
+    return None
+
+
+def _check(builder: DataBuilder, recorded: dict, relative: str, entry: dict) -> tuple:
+    """``(outcome, problem)`` of one written file against its expected record; ``problem`` is '' or why it fails."""
+    file = Path(relative).name
+    sha1 = builder.sha1.get(file) or recorded.get('sha1')
+    if not sha1:
+        return f"no expected record: {_counts(entry['content']) or str(entry['bytes']) + ' bytes'}", ''
+    if sha1 == entry['sha1']:
+        return 'identical', ''
+    copy = _registered_copy(builder, file, sha1)
+    expected = _content(copy) if copy else recorded.get('content')
+    if expected is None:
+        return 'failed', (f'its sha1 differs from the expected {sha1}, and no registered copy is on this machine '
+                          f'to compare the content: put the registered file at {brainio_home() / sha1 / file} '
+                          '(`brainscore.load_dataset` fetches a hosted file there), then run again with --output')
+    differences = _differences(entry['content'], expected)
+    if differences:
+        return 'failed', 'its content differs from the expected record: ' + '; '.join(differences[:5]) + (
+            f'; and {len(differences) - 5} more' if len(differences) > 5 else '')
+    return 'same content, bytes differ', ''
 
 
 def package_data(name: str, source: str | Path | None = None,
@@ -244,9 +383,18 @@ def package_data(name: str, source: str | Path | None = None,
             if path.is_symlink():
                 raise ValueError('a data script must not create symlinks')
             relative = path.relative_to(staging).as_posix()
-            files[relative] = {'bytes': path.stat().st_size, 'sha1': _sha1(path), 'counts': _counts(path)}
+            files[relative] = {'bytes': path.stat().st_size, 'sha1': _sha1(path), 'content': _content(path)}
+        recorded = _expected(name, builder)
+        problems = []
+        for relative, entry in files.items():
+            entry['check'], problem = _check(builder, recorded.get(relative, {}), relative, entry)
+            if problem:
+                problems.append(f'  {relative}: {problem}')
+        if problems:
+            raise ValueError('\n'.join([f'The check of the built {name} files failed; nothing was moved '
+                                         f'to {destination}.', *problems]))
         (staging / 'build.json').write_text(json.dumps(
-            {'schema_version': 2, 'name': name, 'source': builder.source, 'files': files},
+            {'schema_version': 3, 'name': name, 'source': builder.source, 'files': files},
             indent=2, allow_nan=False) + '\n')
         # Keep packaged data private by default: some sources forbid redistribution.
         for entry in [staging, *staging.rglob('*')]:
@@ -268,16 +416,9 @@ def _report(name: str, builder: DataBuilder, destination: Path, files: dict) -> 
         if index == _LISTED_FILES:
             print(f'  ... and {len(files) - index} more files (all in build.json)')
             break
-        counts = ', '.join(f'{key} {value}' for key, value in entry['counts'].items())
+        counts = _counts(entry['content'])
         print(f"  {relative}  {entry['bytes']} bytes  sha1 {entry['sha1']}" + (f'  ({counts})' if counts else ''))
-        registered = builder.sha1.get(Path(relative).name)
-        if registered is None:
-            continue
-        if registered == entry['sha1']:
-            print('    equals the registered sha1')
-        else:
-            print(f'    differs from the registered sha1 {registered}; a netCDF file can differ in bytes '
-                  'with equal values, so compare its values with the registered file before you use it')
+        print(f"    check: {entry['check']}")
     # How the plugin's loader takes the files: stated by the plugin, apart from the comparison.
     print(builder.writes)
 
