@@ -129,6 +129,8 @@ def test_a_likelihood_mapping_names_known_layouts_only():
         _subject({'continuation': lambda p, c: {}, 'segments': lambda prompt: ([], {})})
     with pytest.raises(ValueError, match='callable'):
         _subject({'continuation': lambda p, c: {}, 'segment': 'not a part'})
+    with pytest.raises(ValueError, match="likelihood\\['continuation'\\] is a callable part"):
+        _subject({'continuation': None, 'segment': lambda prompt: ([], {})})
 
 
 def test_an_empty_part_is_refused_before_a_forward_pass(tiny):
@@ -259,20 +261,68 @@ def _segments_row(texts, parts):
     return stimuli
 
 
-@pytest.mark.parametrize('settings', [dict(instruction='Read this.'), dict(present=('text',))])
-def test_a_segments_trial_that_shows_more_than_its_text_is_refused_before_any_call(tiny, settings):
-    calls = []
-
+def _recording_segment(calls):
     def segment(prompt):
         calls.append(prompt)
-        return [None], {}
+        return [None] + [-1.0] * (len(prompt.response.segments) - 1), {
+            'layout': 'segment', 'context': 'prefix', 'aggregation': 'sum', 'units': 'bits',
+            'tokenization': {'join': 'stand-in', 'special_tokens': 'none', 'template': 'none',
+                             'truncation': 'none'}}
+    return segment
 
-    subject = _subject({'continuation': lambda p, c: {}, 'segment': segment})
+
+@pytest.mark.parametrize('settings', [dict(instruction='Read this.'), dict(trial_memory='history')])
+def test_a_segments_trial_that_shows_more_than_its_text_is_refused_before_any_call(settings):
+    calls = []
+    memory = 'trial_history' if settings.get('trial_memory') else None
+    subject = BrainScoreModel('tiny-lm', in_channels={'text'}, memory=memory,
+                              likelihood={'continuation': lambda p, c: {}, 'segment': _recording_segment(calls)})
     session = stimulus_session(_segments_row(['the dog'], [('the', 'dog')]), [F6],
                                TaskContext(response=Segments('segments'), **settings))
-    with pytest.raises(ExecutionNotFeasibleError, match='scores the parts of a Segments row only'):
+    # An instruction is a second text part: core refuses the row (the text is not the join).
+    with pytest.raises((ValueError, ExecutionNotFeasibleError), match='join of its parts|earlier trials'):
         subject.participate(session)
     assert calls == []
+
+
+@pytest.mark.parametrize('memory, settings', [('trial_history', {}), (None, dict(present=('text',)))])
+def test_independent_trials_with_their_text_only_are_answered(memory, settings):
+    """A subject that can keep earlier trials, on independent trials, and a task that names the
+    text as its one part, are valid Segments requests."""
+    calls = []
+    subject = BrainScoreModel('tiny-lm', in_channels={'text'}, memory=memory,
+                              likelihood={'continuation': lambda p, c: {}, 'segment': _recording_segment(calls)})
+    session = stimulus_session(_segments_row(['the dog'], [('the', 'dog')]), [F6],
+                               TaskContext(response=Segments('segments'), **settings))
+    subject.participate(session)
+    assert len(calls) == 1
+    np.testing.assert_array_equal(session.collect(F6).values[0, 1:], [-1.0])
+
+
+def test_a_rotary_model_with_a_text_longer_than_its_window_is_refused_before_a_forward_pass(tiny_qwen_vl):
+    """Its slid cache would keep keys rotated at their old positions."""
+    from brainscore.model_helpers.replies import chat_parts
+    network, tokenizer = tiny_qwen_vl
+    network.config.get_text_config().max_position_embeddings = 8
+    calls = []
+    network.register_forward_hook(lambda *args: calls.append(1))
+    with pytest.raises(ValueError, match='rotary positions'):
+        _facade_reading_times(_subject(chat_parts(network, tokenizer)[1]), PASSAGE[:12])
+    assert calls == []
+
+
+def test_each_cached_run_holds_only_its_new_tokens(tiny):
+    from brainscore.model_helpers.causal_lm import _CausalLMParts
+    network, tokenizer = tiny
+    sizes = []
+
+    def record(module, args, kwargs):
+        ids = kwargs['input_ids']
+        sizes.append((ids.untyped_storage().nbytes(), ids.numel() * ids.element_size()))
+
+    network.register_forward_pre_hook(record, with_kwargs=True)
+    _facade_reading_times(_subject(_CausalLMParts(network, tokenizer).likelihood), PASSAGE[:10])
+    assert len(sizes) == 10 and all(stored == held for stored, held in sizes)
 
 
 def test_rows_of_different_widths_are_refused_before_any_call():

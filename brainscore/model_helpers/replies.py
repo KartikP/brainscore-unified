@@ -184,7 +184,9 @@ def _segment_log_probabilities(model, tokenizer, segments: Sequence[str]):
     tokens) after the count of the context before, and every per-token input the
     tokenizer gives reaches the model. The whole schedule is checked against the model's
     window (``max_position_embeddings``) before any forward pass: the first context fits
-    the window, and each later part has fewer new tokens than the window. The first
+    the window, each later part has fewer new tokens than the window, and a model with
+    rotary positions (its text configuration names ``rope_theta``, ``rope_scaling`` or
+    ``rope_parameters``) gets a text that fits the window, because its cache cannot slide. The first
     context runs in full; each later part runs only its new tokens with the key-value cache,
     their positions after the cached ones, and the last logit of the run before. When the
     cache and the new tokens pass the window, the cache keeps its newest ``window - new``
@@ -208,9 +210,17 @@ def _segment_log_probabilities(model, tokenizer, segments: Sequence[str]):
         if steps and total - count >= window:
             raise ValueError(f'part {i + 1} has {total - count} new tokens, as many as the window '
                              f'of {window} or more; it cannot be scored with its context')
-        # Every per-token input the tokenizer gives (ids, mask, token types) reaches the model.
-        steps.append({key: value[..., count:] for key, value in encoded.items()})
+        # Every per-token input the tokenizer gives (ids, mask, token types) reaches the model;
+        # a copy of the new tokens, so the full prefix is not kept.
+        steps.append({key: value[..., count:].clone() for key, value in encoded.items()})
         count = total
+    text_config = model.config.get_text_config()
+    if count > window and any(getattr(text_config, name, None) is not None
+                              for name in ('rope_theta', 'rope_scaling', 'rope_parameters')):
+        # ponytail: a slid cache keeps keys rotated at their old positions; refused, not repaired,
+        # until a passage longer than a rotary model's window is needed
+        raise ValueError(f'the text has {count} tokens, more than the window of {window}, and the '
+                         'model has rotary positions: its cache cannot slide')
     values, past, last = [], None, None
     for inputs in steps:
         inputs = {key: value.to(device) for key, value in inputs.items()}
