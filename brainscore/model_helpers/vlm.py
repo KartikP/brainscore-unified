@@ -60,13 +60,32 @@ def _blocks(model, part: Tuple[str, str]):
     return model.get_submodule(root), [f'{blocks}.{index}' for index in range(count)]
 
 
+def _intervention(model, *parts):
+    """``pytorch_intervention`` on one module that holds each part's blocks under the first name
+    of its block path, so a change names a layer as the region map does. The modules are
+    shared, not copied: recording and generation see the change."""
+    import torch
+    from brainscore.model_helpers.intervention import pytorch_intervention
+    roots = {}
+    for part in parts:
+        if part is None:
+            continue
+        root, blocks = part[0], part[1]
+        name = blocks.split('.')[0]
+        if name in roots:
+            raise ValueError(f'Two parts have block paths that start with {name!r}, so a change named '
+                             f'by a layer would be ambiguous; pass intervention=False.')
+        roots[name] = model.get_submodule(f'{root}.{name}')
+    return pytorch_intervention(torch.nn.ModuleDict(roots))
+
+
 def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
                       vision: Tuple[str, str], language: Tuple[str, str], dtype: str, download_gb: float,
                       pixels: Optional[Mapping[str, Any]] = None, video: bool = False,
                       audio: Optional[Tuple[str, str, Any]] = None,
                       probabilities: Union[str, Tuple[str, str]] = 'readout',
                       device_map: Optional[Union[str, dict]] = None, revision: Optional[str] = None,
-                      chat_template_kwargs: Optional[Mapping] = None,
+                      chat_template_kwargs: Optional[Mapping] = None, intervention: bool = True,
                       provenance: Optional[Mapping[str, Any]] = None):
     """A subject for the vision-language checkpoint ``hf_id``, loaded as ``transformers.<model_class>``.
 
@@ -85,6 +104,10 @@ def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
         on the task's fitting stimuli) or ``('likelihood', 'softmax')``.
     :param device_map: passed to ``from_pretrained``; ``'auto'`` spreads a large model over the
         accelerators with room left for activations. ``None``: one device.
+    :param intervention: wire ``pytorch_intervention`` over the parts' block lists, so the subject
+        takes ``lesion``, ``stimulation`` and ``pharmacological`` and answers ``perturbation``; a
+        change names a layer as its region does (``blocks.10``, ``layers.2``). ``False`` for a
+        family whose parts' block lists start with the same name.
     :param provenance: the registration's own facts, added to the score's provenance.
     """
     if pixels is not None and video:
@@ -130,9 +153,10 @@ def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
         region_layer_map.update({region: LayerSelector(name=layer, modality='audio') for region, layer
                                  in space_layers(audio_blocks, DEFAULT_AUDIO_REGIONS).items()})
 
+    parts = {'intervention': _intervention(model, vision, language, audio)} if intervention else {}
     reply, likelihood = chat_parts(model, processor, chat_template_kwargs=chat_template_kwargs)
     subject = BrainScoreModel(
-        identifier, model, region_layer_map, extractor=extractor,
+        identifier, model, region_layer_map, extractor=extractor, **parts,
         reply=reply, likelihood=likelihood,       # the reply also answers a plain choice
         behavioral_readout_layer=region_layer_map['IT'],
         # Generation answers the rating (reply and readout both give it natively); the

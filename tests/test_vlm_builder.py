@@ -201,6 +201,31 @@ def test_a_choice_session_is_answered_by_the_reply(tmp_path):
     assert list(choices.coords['choice'].values[choices.values.argmax(1)]) == ['dog', 'dog']
 
 
+def test_a_lesion_reaches_the_named_part_and_is_undone(tmp_path):
+    from brainscore_core.events import Perturbation, Selection, StateChange
+    from brainscore_core.streaming_helpers import apply_state_change
+    subject = _build()
+    assert {'lesion', 'stimulation', 'pharmacological'} <= subject.in_channels
+    assert 'perturbation' in subject.out_channels
+    block = subject._subject._model.model.visual.blocks[10]
+    x = torch.ones(1, 4)
+    before = block(x).abs().sum()
+    record = apply_state_change(subject, StateChange(kind='ablation', target=Selection(layer='blocks.10'),
+                                                     perturbation=Perturbation(kind='zero')))
+    assert block(x).abs().sum() == 0
+    apply_state_change(subject, StateChange(kind='reset', handle_id=record.handle_id))
+    assert block(x).abs().sum() == before
+
+
+def test_the_induced_dyslexia_benchmarks_are_compatible():
+    from brainscore.benchmarks.induced_dyslexia.benchmark import InducedDyslexia
+    from brainscore_core.compatibility import check_compatibility
+    benchmark = InducedDyslexia(reading_benchmark=object(), localizer_stimuli=None,
+                                identifier='induced-dyslexia-stand-in')
+    assert check_compatibility(_build(), benchmark).kind == 'full'
+    assert 'perturbation' not in _build(intervention=False).out_channels
+
+
 class _MeanIT(BenchmarkBase):
     """The mean IT response to two pictures."""
 
