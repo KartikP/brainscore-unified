@@ -342,14 +342,32 @@ def test_every_builder_registration_declares_what_its_parts_can_do(monkeypatch):
         assert subject._provenance['region_layer_map_status'].startswith(vlm.DEPTH_HYPOTHESIS), identifier
 
 
-def test_a_tiling_image_processor_gives_the_whole_image_of_each_picture(tmp_path):
-    from brainscore.models._shared import _load_preprocess_images
+def _wide_pictures(folder, n=2):
+    """Pictures three times wider than high: a processor that tiles them gives crops."""
+    from PIL import Image
+    paths = []
+    for index in range(n):
+        paths.append(str(folder / f'wide{index}.png'))
+        Image.new('RGB', (96, 32), (40 * index, 90, 200)).save(paths[-1])
+    return paths
 
-    def tiles(images, return_tensors, **settings):
-        # Five axes, as SmolVLM gives for a list: (samples, tiles, C, H, W). Called on one
-        # picture: its whole image (its red value), then a tile of zeros.
-        whole = [torch.full((3, 2, 2), float(np.asarray(image)[0, 0, 0])) for image in images]
-        return {'pixel_values': torch.stack([torch.stack(whole + [torch.zeros(3, 2, 2)])])}
-    paths = list(_pictures(tmp_path, n=3)['image_file_name'])
-    pixels = _load_preprocess_images(paths, processor=tiles)
-    assert pixels.shape == (3, 3, 2, 2) and list(pixels[:, 0, 0, 0]) == [0, 40, 80]
+
+@pytest.mark.parametrize('processor, whole, tiled', [
+    ('SmolVLMImageProcessor', {'do_image_splitting': False}, {'do_image_splitting': True}),
+    ('Gemma3ImageProcessor', {'do_pan_and_scan': False}, {'do_pan_and_scan': True, 'pan_and_scan_min_crop_size': 8,
+                                                           'pan_and_scan_max_num_crops': 4,
+                                                           'pan_and_scan_min_ratio_to_activate': 1.0}),
+    ('GotOcr2ImageProcessor', {'crop_to_patches': False}, {'crop_to_patches': True, 'min_patches': 2, 'max_patches': 6}),
+])
+def test_one_whole_image_per_picture_or_a_refusal(tmp_path, processor, whole, tiled):
+    """The installed processors of the families: the stated settings give one whole image for
+    each picture; settings that give tiles or crops are refused with the setting to state."""
+    small = {'SmolVLMImageProcessor': dict(size={'longest_edge': 96}, max_image_size={'longest_edge': 32}),
+             'Gemma3ImageProcessor': dict(size={'height': 32, 'width': 32}),
+             'GotOcr2ImageProcessor': dict(size={'height': 32, 'width': 32})}
+    image_processor = getattr(sys.modules['transformers'], processor)(**small[processor])
+    paths = _wide_pictures(tmp_path)
+    pixels = vlm._whole_images(paths, image_processor, whole)
+    assert pixels.shape == (2, 3, 32, 32)
+    with pytest.raises(ValueError, match='not one whole image'):
+        vlm._whole_images(paths, image_processor, tiled)

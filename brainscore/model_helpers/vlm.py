@@ -68,6 +68,30 @@ def _placed(module) -> Optional[str]:
     return str(next(iter(devices)))
 
 
+# The settings that give one whole image for each picture, by family; named in the refusal.
+WHOLE_IMAGE_SETTINGS = "SmolVLM: do_image_splitting=False; Gemma 3: do_pan_and_scan=False; InternVL: crop_to_patches=False"
+
+
+def _whole_images(paths, image_processor, settings):
+    """Each picture as one whole image ``(C, H, W)``, by the image processor with the stated
+    settings; a processor that gives several tiles or crops for one picture is refused."""
+    import numpy as np
+    from PIL import Image
+    rows = []
+    for path in paths:
+        with Image.open(path) as image:
+            pixels = image_processor(images=[image.convert('RGB')], return_tensors='pt', **settings)['pixel_values']
+        shape = tuple(pixels.shape)
+        if len(shape) == 5 and shape[:2] == (1, 1):        # one sample with one image (SmolVLM)
+            pixels = pixels[0]
+        if pixels.ndim != 4 or pixels.shape[0] != 1:
+            raise ValueError(f'{type(image_processor).__name__} gives pixel_values of shape {shape} for one '
+                             f'picture with the settings {settings}, not one whole image. State the setting '
+                             f'that turns tiles and crops off in the registration ({WHOLE_IMAGE_SETTINGS}).')
+        rows.append(pixels.float().numpy())
+    return np.concatenate(rows)
+
+
 def _blocks(model, part: Tuple[str, str]):
     """``(the part's module, the paths of its blocks relative to that module)``."""
     root, blocks = part
@@ -152,15 +176,14 @@ def build_vlm_subject(identifier: str, hf_id: str, model_class: str, *,
     else:
         from brainscore_vision.model_helpers.activations.pca import LayerPCA
         from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
-        from brainscore.models._shared import _load_preprocess_images
         device = _placed(vision_module)
         if device is None:
             raise ValueError(f'{identifier!r}: the vision part is spread over devices (or not loaded), and '
                              f'PytorchWrapper moves its module to one device; place the vision part on one '
                              f'device in device_map.')
         image = PytorchWrapper(model=vision_module, identifier=f'{identifier}-vision', device=device,
-                               preprocessing=partial(_load_preprocess_images, processor=processor.image_processor,
-                                                     **pixels))
+                               preprocessing=partial(_whole_images, image_processor=processor.image_processor,
+                                                     settings=dict(pixels)))
         # Every patch token is kept, too many features for PLS: reduce each layer to 1000.
         LayerPCA.hook(image, n_components=1000)
     extractor = {'vision': image, 'text': TextWrapper(
