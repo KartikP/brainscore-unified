@@ -185,7 +185,7 @@ NEEDS_DOWNLOADS = {
     ('docs/guides/behavior.md', 7): 'a Hugging Face chat model and its processor',
     ('docs/guides/wrap_your_model.md', 6): 'CLIP and its image and text wrappers',
     ('docs/guides/new_output.md', 3): 'a Hugging Face vision-language model and its processor',
-    ('docs/guides/vision_language_model.md', 2): 'a Hugging Face config file',
+    ('docs/guides/wrap_your_model.md', 10): 'a Hugging Face config file',
 }
 
 

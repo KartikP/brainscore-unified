@@ -291,3 +291,75 @@ print(session.collect('behavior:rt').values.tolist())       # [450.0, 450.0]
 ## Register it (optional)
 
 You can always pass the object directly to `brainscore.score`. To load it by name, register a factory. In the Brain-Score repository: copy [templates/new_model](../../templates/new_model) into `brainscore/models`, and implement the factory and its test. In your own package: add the factory to `brainscore.model_registry` when the package is imported, and import the package before you load the model ([Your own package](your_own_package.md)). A Hugging Face vision-language model registers in one call: [Vision-language model](vision_language_model.md).
+
+## Vision-language models from the builder
+
+The values and parts behind [Vision-language model](vision_language_model.md).
+
+### What the subject gives
+
+The parts are wired by default; a registration does not list them.
+
+| Output | Part | Needs |
+|---|---|---|
+| `neural:V1`, `V2`, `V4`, `IT`, `VWFA` | the vision part (VWFA at the IT layer) | pictures; clips with `video` |
+| `neural:language_system` | the language model | text; pictures and clips in an answering pass |
+| `neural:A1` | the audio encoder | `audio` |
+| `behavior:choice`, `rating`, `text` | the reply (writing) | |
+| `behavior:log_probabilities` | the likelihood of each option | a verbatim choice on text |
+| `behavior:probabilities`, `rt` | the readout on the IT layer | the task's fitting stimuli |
+| `perturbation` (inputs `lesion`, `stimulation`, `pharmacological`) | `pytorch_intervention` over both parts | a vision part without `image_processor_kwargs`: a part recorded as `LayerPCA` components gets none (a lesion addresses module units), so induced dyslexia is N/A for it |
+| `motor` (inputs `observation`, `instruction`, `reward`) | `api_policy` with the model's reply as its client | an environment such as `GridGame-reach-5x5` |
+
+The policy asks the model exactly as an API model is asked (the defaults of `api_policy`):
+the rendered frame (`obs_mode='vision'`, resized to 384 pixels) after the mission and the
+numbered legal actions, no earlier moves (`history_window=0`), at most 512 tokens, greedy; the
+reply's first `Action: <number>` (else its last legal number) is the action, and an unusable
+reply takes a seeded random legal action. The reward reaches the policy in its row; the prompt does not show it.
+
+A family that cannot take a part says so with one argument: `intervention=False` when its
+vision and language block paths start with the same name (the builder refuses with this
+advice), `policy=False` to leave out the policy.
+
+### Find each value
+
+1. **Hub identifier**: the instruction-tuned checkpoint (`-Instruct`, `-it`; `-hf` for a
+   repository converted to the transformers classes). Pass `revision=` (the commit on the
+   Hub page) to score one fixed set of weights.
+2. **Class**: `architectures` in the Hub `config.json`. Check that the pinned transformers
+   has it: `python -c "import transformers; transformers.Qwen3VLForConditionalGeneration"`.
+   A mixture-of-experts model has its own class; its paths are the same.
+3. **`vision`, `language`**: build the class from its config on the meta device (no weights)
+   and check that each path ends in the list of repeated blocks:
+
+```python
+import torch
+import transformers
+
+config = transformers.AutoConfig.from_pretrained('Qwen/Qwen3-VL-4B-Instruct')   # config.json only
+with torch.device('meta'):
+    network = transformers.Qwen3VLForConditionalGeneration(config)
+print(network.get_submodule('model.visual.blocks')[0])          # one vision block
+print(len(network.get_submodule('model.language_model.layers')))  # the number of decoder layers
+```
+
+4. **`download_gb`**: the sum of the `*.safetensors` files on the Hub page (the download,
+   in the precision of the files; `dtype` is the precision in memory, `bfloat16`).
+5. **`video`**: `True` when the processor has a `video_processor` that gives
+   `pixel_values_videos` and `video_grid_thw`, and the vision part takes `grid_thw` (Qwen-VL,
+   GLM-4.1V). Clips then also reach the language layer.
+6. **`image_processor_kwargs`**: only for a vision part that takes `(B, C, H, W)` (its processor
+   gives no `image_grid_thw`): the settings that give one whole image per picture, for
+   example `{'do_image_splitting': False}` (SmolVLM), `{'do_pan_and_scan': False}` (Gemma 3),
+   `{'crop_to_patches': False}` (InternVL). The builder refuses a processor that still gives
+   tiles. Each layer is reduced to 1000 components (`LayerPCA`), fitted once on ImageNet
+   validation images (`MT_IMAGENET_PATH`).
+7. **`device_map`**: `'auto'` when the weights (2 bytes per parameter) take more than about
+   two thirds of one accelerator. Each extractor keeps the loaded placement; a vision part
+   given `image_processor_kwargs` must stay on one device. A map that offloads weights to the
+   CPU or the disk is refused at load: give enough accelerators (or a `max_memory` that fits).
+8. **`probabilities`**: `'readout'` for new models (a classifier on the IT layer, fitted on the
+   task's fitting stimuli); `('likelihood', 'softmax')` takes them from the log probabilities
+   of the options, with no fitting.
+9. **`audio`**: no extractor for an audio encoder inside a vision-language model exists yet;
+   leave it out.
