@@ -2,7 +2,7 @@
 
 ## Layout
 
-A test file sits in `tests/test_<part>/`, where `<part>` is the part of the `brainscore` package that it tests (`models`, `model_helpers`, `benchmarks`, `data`, `metrics`, `harnesses`, `experiments`, `tools`, `validation`, `visualization`; `model` for the private `_model` part). A file that tests the package as a whole (discovery, install, documents, templates, architecture rules, top-level modules) is in `tests/test_package/`. `tests/brainscore_model/` holds the `BrainScoreModel` tests. Shared helpers (`*_stand_in.py`, `pseudo_benchmarks.py`, `conftest.py`, `fixtures/`) stay in `tests/`; import them as `from tests.<helper> import ...`.
+A test file sits in `tests/test_<part>/`, where `<part>` is the part of the `brainscore` package that it tests (`models`, `model_helpers`, `benchmarks`, `data`, `metrics`, `harnesses`, `experiments`, `tools`, `validation`, `visualization`; `model` for the private `_model` part). A test of one benchmark plugin is in that plugin's folder: `brainscore/benchmarks/<name>/test.py`, and more files as `test_<topic>.py` beside it; `tests/test_benchmarks/` keeps the tests of shared benchmark code and of several benchmarks. A file that tests the package as a whole (discovery, install, documents, templates, architecture rules, top-level modules) is in `tests/test_package/`. `tests/brainscore_model/` holds the `BrainScoreModel` tests. Shared helpers (`*_stand_in.py`, `pseudo_benchmarks.py`, `conftest.py`, `fixtures/`) stay in `tests/`; import them as `from tests.<helper> import ...`.
 
 Use the coordinated environment from [install/README.md](../install/README.md).
 
