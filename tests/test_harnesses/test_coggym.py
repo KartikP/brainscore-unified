@@ -425,13 +425,8 @@ def test_a_call_with_no_written_answer_reaches_coggym_as_a_call_with_no_reply(re
     assert saved['umi']['status'] == 'complete'
     assert saved['umi']['coverage']['no_answer_trials'] == len(saved['trials'])
     assert saved['umi']['coverage']['error_trials'] == 0
-    # Core's stored missing row of each trial, with core's reason, is in the saved record.
-    rows = {row['stimulus_id']: row for row in saved['umi']['core_answers']}
-    assert set(rows) == {trial['trial_id'] for trial in saved['trials']}
-    assert all(row['response_state'] == 'missing' and row['value'] is None and row['response_reason']
-               for row in rows.values())
-    for issue in saved['umi']['response_validation']['issues']:
-        assert issue['reason'] == rows[issue['trial_id']]['response_reason']
+    # One form for a saved answer: no second copy of core's rows in CogGym's file.
+    assert 'core_answers' not in saved['umi']
 
 
 def test_an_answer_core_stores_as_invalid_reaches_coggym_as_its_text():

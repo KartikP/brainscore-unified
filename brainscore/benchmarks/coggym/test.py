@@ -453,11 +453,13 @@ def test_all_answers_missing_and_no_row_is_a_result_marked_invalid(scored_refere
     assert (score.attrs['n_trials'], score.attrs['n_missing']) == (3, 3)
     assert score.attrs['result_validity'] == 'invalid'
     assert 'no fit' in score.attrs['result_validity_reason']
-    # Each answer keeps core's reason, as in core's stored row in the saved record.
+    # Each answer keeps core's reason (not CogGym's own words for a call with no reply).
     run = json.loads((tmp_path / 'registered/coggym/run-001.json').read_text())
-    reasons = [row['response_reason'] for row in run['umi']['core_answers']]
-    assert len(reasons) == 3 and all(row['response_state'] == 'missing' for row in run['umi']['core_answers'])
-    assert score.attrs['response_validation']['reason_counts'] == {reasons[0]: 3}
+    issues = run['umi']['response_validation']['issues']
+    assert {issue['trial_id'] for issue in issues} == {'trial-0', 'trial-1', 'trial-2'}
+    assert all(issue['response_state'] == 'missing' for issue in issues)
+    (reason, count), = score.attrs['response_validation']['reason_counts'].items()
+    assert count == 3 and reason != 'no_answer'
     saved = _saved_score(tmp_path)
     assert (saved.attrs['n_trials'], saved.attrs['n_missing']) == (3, 3)
     assert saved.attrs['result_validity'] == 'invalid'

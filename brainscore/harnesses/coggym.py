@@ -253,8 +253,8 @@ class _SubjectAdapter:
     failed call, CogGym's own record of a call with no reply; the run goes on and the
     trial's answers are counted ``missing`` with core's reason. An answer core stores as
     ``invalid`` reaches CogGym as its text, and its answers are counted ``invalid`` with
-    core's reason. Core's stored row of each such trial (``answers``, by CogGym's trial id;
-    a retry of the trial replaces it) goes in the repetition's file (``umi.core_answers``).
+    core's reason. The adapter keeps core's stored row of each such trial (``answers``, by
+    CogGym's trial id; a retry of the trial replaces it) for the answer states.
 
     A trial the subject cannot serve (``ExecutionNotFeasibleError``, for example a
     trial with more pictures than the subject takes) is kept in ``refusal``; no
@@ -547,8 +547,6 @@ class CogGymRunner:
                 'umi': {**self.describe(), 'coverage': coverage,
                         'status': 'complete' if complete else 'failed',
                         'response_validation': validation,
-                        # Core's stored row of each answer that is missing or invalid.
-                        'core_answers': list(answers.values()),
                         'summary_status': 'pending'},
             }
             path = directory / f'run-{repetition:03d}.json'
