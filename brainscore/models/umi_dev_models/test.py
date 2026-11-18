@@ -563,6 +563,10 @@ def _small(model_class, config):
     text, vision = config.text_config, config.vision_config
     for key, value in dict(num_hidden_layers=2, intermediate_size=64, num_attention_heads=2, num_key_value_heads=1).items():
         setattr(text, key, value)
+    if getattr(text, 'layer_types', None):
+        # One type for each layer kept: the cache has one layer for each type, and a cache with layers
+        # that no pass fills is never ready, so Gemma 3 treats every generation step as the first.
+        text.layer_types = text.layer_types[:text.num_hidden_layers]
     if model_class.startswith('Qwen3VL'):
         text.hidden_size, text.head_dim = 64, 128                # rope sections sum to head_dim / 2
         vision.depth, vision.hidden_size, vision.num_heads, vision.intermediate_size = 4, 64, 2, 64
