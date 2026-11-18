@@ -69,8 +69,8 @@ def test_gpt2_small_reading_times_equal_the_old_gpt2_on_futrell2018(monkeypatch)
     received = []
     digest_text = LegacyBenchmarkFacade.digest_text
 
-    def recording_digest_text(self, text):
-        output = digest_text(self, text)
+    def recording_digest_text(self, text, *args, **kwargs):
+        output = digest_text(self, text, *args, **kwargs)
         received.append(output['behavior'])
         return output
 

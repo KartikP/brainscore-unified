@@ -333,7 +333,7 @@ def test_a_segments_task_is_answered_by_the_language_model_with_the_shared_score
                   'tokenization': {'join': SEGMENT_JOIN, 'special_tokens': 'tokenizer_default',
                                    'template': 'none', 'truncation': 2048}}
 
-    def scorer(network, tokenizer, segments, sliding_window=False):
+    def scorer(network, tokenizer, segments, sliding_window=False, **unused):
         scored.append((network, tokenizer, segments, sliding_window))
         return [float('nan'), -1.5, -2.5], parameters
 
