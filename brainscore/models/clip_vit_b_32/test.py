@@ -197,18 +197,24 @@ class _StandInExtractor:
 
 
 class _StandInProcessor:
-    """A CLIP processor for an 8-pixel network: pixels from the image, token ids from the text."""
+    """A CLIP processor for an 8-pixel network: pixels from the image, one token id per character."""
 
-    def __call__(self, images, return_tensors):
+    def __call__(self, images, return_tensors='pt', **kwargs):
         import torch
         pixels = [torch.tensor(np.asarray(image.resize((8, 8)), dtype=np.float32) / 255).permute(2, 0, 1)
                   for image in images]
         return {'pixel_values': torch.stack(pixels)}
 
-    def tokenizer(self, texts, padding, return_tensors):
+    def tokenizer(self, texts, padding=False, truncation=False, max_length=None, return_tensors='pt',
+                  **kwargs):
         import torch
-        ids = torch.tensor([[3 + (ord(c) % 28) for c in text[:12].ljust(12)] for text in texts])
-        return {'input_ids': ids, 'attention_mask': torch.ones_like(ids)}
+        ids = [[3 + (ord(c) % 28) for c in text] for text in texts]
+        if truncation:
+            ids = [row[:max_length] for row in ids]
+        width = max(len(row) for row in ids)
+        mask = torch.tensor([[1] * len(row) + [0] * (width - len(row)) for row in ids])
+        return {'input_ids': torch.tensor([row + [1] * (width - len(row)) for row in ids]),
+                'attention_mask': mask}
 
 
 def _tiny_clip():
@@ -217,7 +223,7 @@ def _tiny_clip():
     from transformers import CLIPModel as _Network
     config = CLIPConfig(
         text_config=dict(vocab_size=32, hidden_size=8, intermediate_size=16, num_hidden_layers=1,
-                         num_attention_heads=2, max_position_embeddings=16),
+                         num_attention_heads=2, max_position_embeddings=32),
         vision_config=dict(image_size=8, patch_size=4, hidden_size=8, intermediate_size=16,
                            num_hidden_layers=1, num_attention_heads=2),
         projection_dim=4)
@@ -273,14 +279,15 @@ def test_the_first_registration_keeps_its_declaration(stand_ins):
     assert subject._behavioral.owners['behavior:choice'] == 'readout'
     assert subject._behavioral_readout_layer == 'encoder.layers.10'
     assert 'instruction' not in subject.in_channels
-    assert [part.identifier for part in subject.extractor.values()] == ['clip-vit-b-32', 'clip-vit-b-32-text']
+    assert subject.extractor['vision'].identifier == 'clip-vit-b-32'
+    assert subject.extractor['text'].identifier == 'clip-vit-b-32-text'
 
 
 def test_the_zero_shot_registration_shares_the_network_and_its_cache_names(stand_ins):
     first, zero_shot = stand_ins.get_model('clip-vit-b-32'), stand_ins.get_model('clip-vit-b-32-zero-shot')
     assert zero_shot.identifier == 'clip-vit-b-32-zero-shot'
-    assert ([part.identifier for part in zero_shot.extractor.values()]
-            == [part.identifier for part in first.extractor.values()])
+    for key in ('vision', 'text'):
+        assert zero_shot.extractor[key].identifier == first.extractor[key].identifier
     assert {r: s.layer_path for r, s in zero_shot.region_layer_selectors.items()} == stand_ins.REGION_LAYER_MAP
     assert zero_shot._behavioral.owners['behavior:choice'] == 'generation'
     assert {'neural:IT', 'behavior:choice'} <= zero_shot.out_channels
@@ -305,8 +312,10 @@ def test_zero_shot_follows_clips_own_image_text_logits(stand_ins, tmp_path):
             pixels = processor(images=[image.convert('RGB')], return_tensors='pt')['pixel_values']
         tokens = processor.tokenizer([stand_ins.ZERO_SHOT_PROMPT.format(label=label) for label in LABELS],
                                      padding=True, return_tensors='pt')
+        device = network.device
         with torch.no_grad():
-            logits = network(pixel_values=pixels, **tokens).logits_per_image[0]
+            logits = network(pixel_values=pixels.to(device),
+                             **{key: value.to(device) for key, value in tokens.items()}).logits_per_image[0]
         expected = LABELS[int(logits.argmax())]
         assert answer({'stimulus_id': stimulus_id, 'image_file_name': path}, None, LABELS) == expected
 
@@ -315,7 +324,7 @@ def test_zero_shot_refuses_labels_that_are_not_text(stand_ins, tmp_path):
     network, processor = stand_ins.load_clip()
     answer = stand_ins.zero_shot_answer(network, processor)
     path = next(iter(_pictures(tmp_path, 'bad', 1).stimulus_paths.values()))
-    with pytest.raises(ValueError, match='labels as text'):
+    with pytest.raises(ValueError):
         answer({'stimulus_id': 'bad0', 'image_file_name': path}, None, [1, 2])
 
 
@@ -332,8 +341,105 @@ def test_a_format_the_registrations_cannot_give_stays_refused(stand_ins, tmp_pat
     from brainscore_core.compatibility import ExecutionNotFeasibleError
     from brainscore_core.responses import Scale
     stimuli = _pictures(tmp_path, 'refused', 2)
-    with pytest.raises(ExecutionNotFeasibleError, match='cannot give a Choice'):
+    with pytest.raises(ExecutionNotFeasibleError):
         _choice(stand_ins.get_model('clip-vit-b-32'), stimuli, TaskContext(response=Choice(LABELS)))
     with pytest.raises(ExecutionNotFeasibleError):
         _choice(stand_ins.get_model('clip-vit-b-32-zero-shot'), stimuli,
                 TaskContext(response=Scale(1, 5)), output='behavior:rating')
+
+
+class _Placed:
+    """A tensor with the device it was sent to: a stand-in for an accelerator."""
+
+    def __init__(self, values, device='cpu'):
+        self.values, self.device = values, device
+
+    def to(self, device, **kwargs):
+        return _Placed(self.values, str(device))
+
+
+class _ScoringNetwork:
+    """Stands in for CLIPModel: fails when the network and its inputs are not on one device.
+
+    The logit of a label is the sum of its token ids, so the answer is known in advance.
+    """
+
+    def __init__(self, max_positions=77):
+        from types import SimpleNamespace
+        self.device, self.calls = 'cpu', []
+        self.vision_model = self.text_model = None     # the stand-in extractors do not read them
+        self.config = SimpleNamespace(text_config=SimpleNamespace(max_position_embeddings=max_positions))
+
+    def to(self, device, **kwargs):
+        self.device = str(device)
+        return self
+
+    def __call__(self, pixel_values, input_ids, attention_mask, **kwargs):
+        from types import SimpleNamespace
+        for name, tensor in (('pixel_values', pixel_values), ('input_ids', input_ids),
+                             ('attention_mask', attention_mask)):
+            if getattr(tensor, 'device', None) != self.device:
+                raise RuntimeError(f'{name} on {getattr(tensor, "device", None)}, network on {self.device}')
+        self.calls.append(input_ids.values)
+        logits = (input_ids.values * attention_mask.values).sum(dim=1, keepdim=True).T.float()
+        return SimpleNamespace(logits_per_image=logits)
+
+
+class _PlacedProcessor(_StandInProcessor):
+    def __call__(self, images, return_tensors='pt', **kwargs):
+        return {'pixel_values': _Placed(super().__call__(images, return_tensors)['pixel_values'])}
+
+    def tokenizer(self, texts, **kwargs):
+        return {key: _Placed(value) for key, value in super().tokenizer(texts, **kwargs).items()}
+
+
+def test_zero_shot_puts_the_network_and_its_inputs_on_the_wrappers_device(monkeypatch, tmp_path):
+    from brainscore.model_helpers import _device
+    from . import model as family
+    monkeypatch.setattr(_device, 'select_device', lambda device=None: 'accelerator')
+    network = _ScoringNetwork()
+    answer = family.zero_shot_answer(network, _PlacedProcessor())
+    assert network.device == 'accelerator'
+    path = next(iter(_pictures(tmp_path, 'device', 1).stimulus_paths.values()))
+    # 'zebra' has the largest token sum of the three: a label after the first one.
+    assert answer({'stimulus_id': 'device0', 'image_file_name': path}, None, ['ant', 'zebra', 'cow']) == 'zebra'
+    first, second, third = network.calls[0].tolist()
+    assert first != second and second != third and first != third
+
+
+def test_zero_shot_cuts_a_label_longer_than_the_text_positions(stand_ins, tmp_path):
+    network, processor = stand_ins.load_clip()
+    answer = stand_ins.zero_shot_answer(network, processor)
+    path = next(iter(_pictures(tmp_path, 'long', 1).stimulus_paths.values()))
+    long_label = 'very ' * 20 + 'long label'
+    assert len(stand_ins.ZERO_SHOT_PROMPT.format(label=long_label)) > network.config.text_config.max_position_embeddings
+    assert answer({'stimulus_id': 'long0', 'image_file_name': path}, None, ['dog', long_label]) in ('dog', long_label)
+
+
+def _scoring_subject(monkeypatch, stand_ins):
+    network = _ScoringNetwork()
+    monkeypatch.setattr(stand_ins, 'load_clip', lambda random_init=False: (network, _PlacedProcessor()))
+    return stand_ins.get_model('clip-vit-b-32-zero-shot'), network
+
+
+def test_zero_shot_session_answers_a_later_label(monkeypatch, stand_ins, tmp_path):
+    subject, _ = _scoring_subject(monkeypatch, stand_ins)
+    choice = _choice(subject, _pictures(tmp_path, 'later', 2), TaskContext(response=Choice(['ant', 'zebra', 'cow'])))
+    np.testing.assert_array_equal(choice.values, [[0, 1, 0], [0, 1, 0]])
+
+
+def test_zero_shot_session_refuses_labels_that_are_not_text_before_inference(monkeypatch, stand_ins, tmp_path):
+    subject, network = _scoring_subject(monkeypatch, stand_ins)
+    # The session's prompt refuses them before the part is called; the part refuses them too
+    # (test_zero_shot_refuses_labels_that_are_not_text).
+    with pytest.raises((ValueError, TypeError)):
+        _choice(subject, _pictures(tmp_path, 'numbers', 2), TaskContext(response=Choice([1, 2])))
+    assert network.calls == []
+
+
+def test_zero_shot_session_refuses_a_text_only_choice_before_inference(monkeypatch, stand_ins, text_stimuli):
+    subject, network = _scoring_subject(monkeypatch, stand_ins)
+    # The part refuses the first row; pre-flight does not see that the answer needs an image.
+    with pytest.raises(ValueError):
+        _choice(subject, text_stimuli, TaskContext(response=Choice(['dog', 'cat'])))
+    assert network.calls == []

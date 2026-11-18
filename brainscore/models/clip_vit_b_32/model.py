@@ -75,12 +75,20 @@ def zero_shot_answer(clip_model, clip_processor):
     """The ``answer`` part of the zero-shot registration: CLIP's own zero-shot method.
 
     The image and the prompt of each label (``ZERO_SHOT_PROMPT``) go through the
-    projection heads; the cosine similarity scaled by ``logit_scale`` gives one
-    logit per label, and the label with the largest softmax probability is the
-    answer. The labels are the task's own; a label that is not text is refused.
+    network; its ``logits_per_image`` (the cosine similarity of the projections
+    scaled by ``logit_scale``) gives one logit per label, and the label with the
+    largest softmax probability is the answer. The labels are the task's own; a label that is not text is refused.
     CLIP takes no instruction: the instruction is not shown.
     """
     from brainscore.model_helpers.api_behavioral import _row_parts
+    from brainscore.model_helpers._device import select_device
+
+    # The complete network (projection heads included) and its inputs go to the
+    # device the wrappers select.
+    device = select_device()
+    clip_model.to(device)
+    # A prompt longer than the checkpoint's text positions is cut at that limit.
+    limit = clip_model.config.text_config.max_position_embeddings
 
     def answer(stimulus_row, instruction, label_set: List[str]) -> str:
         if not label_set or not all(isinstance(label, str) for label in label_set):
@@ -93,14 +101,14 @@ def zero_shot_answer(clip_model, clip_processor):
             image = image.convert('RGB')
         pixels = clip_processor(images=[image], return_tensors='pt')['pixel_values']
         tokens = clip_processor.tokenizer([ZERO_SHOT_PROMPT.format(label=label) for label in label_set],
-                                          padding=True, return_tensors='pt')
+                                          padding=True, truncation=True, max_length=limit,
+                                          return_tensors='pt')
         with torch.no_grad():
-            image_embedding = clip_model.get_image_features(pixel_values=pixels)
-            text_embeddings = clip_model.get_text_features(**tokens)
-            image_embedding = image_embedding / image_embedding.norm(dim=-1, keepdim=True)
-            text_embeddings = text_embeddings / text_embeddings.norm(dim=-1, keepdim=True)
-            logits = clip_model.logit_scale.exp() * image_embedding @ text_embeddings.T
-        return label_set[int(logits.softmax(dim=-1)[0].argmax())]
+            # CLIP's own image-text logits (cosine times logit_scale) in transformers 4 and 5.
+            probabilities = clip_model(
+                pixel_values=pixels.to(device), input_ids=tokens['input_ids'].to(device),
+                attention_mask=tokens['attention_mask'].to(device)).logits_per_image.softmax(dim=-1)
+        return label_set[int(probabilities[0].argmax())]
 
     return answer
 
