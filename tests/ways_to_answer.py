@@ -1,191 +1,99 @@
-"""The table of registered models by ways to answer, built with stand-in parts.
+"""The table of registered models by ways to answer, made from the rows each plugin states.
 
-Run it in its own process (it replaces ``transformers``, the extractors and the
-checkpoint loaders for the whole process):
+Each plugin folder that registers models states one row for each of its identifiers in
+``ways_to_answer.json``: the inputs, the regions, the ways to answer it has (writing,
+likelihood, readout) and, for each kind of answer, the way that gives it. The plugin's own
+``test.py`` checks its rows with ``check_statement`` on a model it builds offline (a small
+model of its real class, or a stand-in of its stated layout). This file builds nothing.
 
     python -m tests.ways_to_answer docs/reference/ways_to_answer.md     # the reference page
-    python -m tests.ways_to_answer --json                               # the rows, for a test
-
-Every identifier in ``model_registry`` is built through its registry loader. No weights,
-no processor files and no network: ``transformers`` gives stand-in networks, the extractors
-are stand-ins that compute nothing, the download checks pass, and a socket connection
-raises. The table holds only declared facts: inputs, regions, the ways the model has
-(writing, likelihood, readout) and, for each kind of answer, the way that gives it.
 """
-import importlib.abc
-import importlib.machinery
 import json
-import socket
 import sys
-import types
-from unittest import mock
+from pathlib import Path
 
+STATEMENT = 'ways_to_answer.json'
 REGENERATE = 'python -m tests.ways_to_answer docs/reference/ways_to_answer.md'
 WAYS = {'generation': 'writing', 'likelihood': 'likelihood', 'readout': 'readout'}
-# The towers whose layer names decide which extractor records a region: a registration whose
-# regions span two input families without naming the family needs the real layer names.
-# Depth 64 covers every registered layer; depth is not a declared fact.
-SKELETONS = {
-    'Qwen2_5_VLForConditionalGeneration': ('model.visual.blocks', 'model.language_model.layers'),
-    'Qwen3_5ForConditionalGeneration': ('model.visual.blocks', 'model.language_model.layers'),
-    'Blip2ForConditionalGeneration': ('vision_model.encoder.layers', 'language_model.model.decoder.layers'),
-    'Wav2Vec2Model': ('encoder.layers',),
-}
-VJEPA1_BACKBONE = ('blocks',)
 
 
-def _no_network(*args, **kwargs):
-    raise RuntimeError('the table is built without a network')
+def statement_file(identifier, registry) -> Path:
+    """The statement file of the folder whose module registers ``identifier``."""
+    return Path(sys.modules[registry[identifier].__module__].__file__).parent / STATEMENT
 
 
-def _network_class():
-    import torch
-
-    class Network(torch.nn.Module):
-        """A stand-in network: one parameter, and a child module for every attribute asked."""
-
-        def __init__(self, *args, skeleton=None, **kwargs):
-            super().__init__()
-            # Set in the dictionaries: the setters ask hasattr, which would make a child here.
-            self._parameters['weight'] = torch.nn.Parameter(torch.zeros(1))
-            self._listed = False                 # True: its layer names are real, an extractor lists them
-            for path in SKELETONS.get(type(self).__name__, ()) if skeleton is None else skeleton:
-                parent = self
-                parent._listed = True
-                for name in path.split('.'):
-                    parent = getattr(parent, name)
-                    parent._listed = True
-                for index in range(64):
-                    parent._modules[str(index)] = torch.nn.Identity()
-
-        @classmethod
-        def from_pretrained(cls, *args, **kwargs):
-            return cls()
-
-        def __getattr__(self, name):
-            try:
-                return super().__getattr__(name)
-            except AttributeError:
-                if name.startswith('_'):
-                    raise
-                child = Network()
-                self._modules[name] = child
-                return child
-    return Network
+def _missing(identifier, path) -> str:
+    folder = path.parent.name
+    return (f"'{identifier}' (folder {folder}) has no row in {folder}/{STATEMENT}. Add one line "
+            f'"{identifier}": {{"inputs": [...], "regions": [...], "ways": [...], "answers": {{...}}}} '
+            f"with what its subject declares, and check it in the folder's test.py with "
+            f'tests.ways_to_answer.check_statement(subject).')
 
 
-class _Transformers(importlib.abc.MetaPathFinder, importlib.abc.Loader):
-    """``transformers`` and its submodules: every name is a stand-in network class."""
-
-    def __init__(self, network):
-        self.network = network
-
-    def find_spec(self, name, path, target=None):
-        if name == 'transformers' or name.startswith('transformers.'):
-            return importlib.machinery.ModuleSpec(name, self, is_package=True)
-
-    def create_module(self, spec):
-        module = types.ModuleType(spec.name)
-        module.__path__ = []
-
-        def attribute(name):
-            if name.startswith('__'):
-                raise AttributeError(name)
-            return type(name, (self.network,), {})
-        module.__getattr__ = attribute
-        return module
-
-    def exec_module(self, module):
-        pass
+def stated_rows(registry) -> dict:
+    """Each registered identifier with the row its folder states; raises naming every one without."""
+    rows, missing = {}, []
+    for identifier in sorted(registry):
+        path = statement_file(identifier, registry)
+        stated = json.loads(path.read_text()) if path.exists() else {}
+        if identifier in stated:
+            rows[identifier] = stated[identifier]
+        else:
+            missing.append(_missing(identifier, path))
+    if missing:
+        raise ValueError('\n'.join(missing))
+    return rows
 
 
-def _extractor_class(network):
-    class Extractor:
-        """A stand-in extractor: it lists the layers of the network it wraps when they are real."""
-
-        def __init__(self, *args, **kwargs):
-            self.identifier = kwargs.get('identifier', 'stand-in')
-            model = kwargs.get('model', args[0] if args else None)
-            if model is not None and not (isinstance(model, network) and not model._listed):
-                names = [name for name, _ in model.named_modules() if name]
-                self.layer_names = lambda: names
-
-        def __call__(self, *args, **kwargs):
-            raise AssertionError('a stand-in extractor computes nothing')
-    return Extractor
-
-
-def install_stand_ins():
-    """Replace every heavy part in this process. Call before ``import brainscore``."""
-    socket.socket.connect = _no_network
-    network = _network_class()
-    sys.modules.pop('transformers', None)
-    sys.meta_path.insert(0, _Transformers(network))
-    extractor = _extractor_class(network)
-    import brainscore_core.hf_compat as hf_compat
-    hf_compat.pin_image_processor = lambda processor, *args, **kwargs: processor
-    import brainscore.models._downloads as downloads
-    downloads.hf_preflight = lambda *args, **kwargs: {}
-    for module, name in [('brainscore.model_helpers.text_wrapper', 'TextWrapper'),
-                         ('brainscore.model_helpers.vlm_vision_wrapper', 'VLMVisionWrapper'),
-                         ('brainscore.model_helpers.vlm_video_wrapper', 'VLMVideoWrapper'),
-                         ('brainscore.model_helpers.video_wrapper', 'VideoWrapper'),
-                         ('brainscore.model_helpers.audio_wrapper', 'AudioWrapper'),
-                         ('brainscore_vision.model_helpers.activations.pytorch', 'PytorchWrapper')]:
-        setattr(importlib.import_module(module), name, extractor)
-    importlib.import_module('brainscore_vision.model_helpers.activations.pca').LayerPCA = mock.MagicMock()
-    # The checkpoint loaders that read a file of their own (not through transformers).
-    vjepa1 = importlib.import_module('brainscore.models.vjepa_v1.model')
-    vjepa1.load_backbone = lambda identifier: network(skeleton=VJEPA1_BACKBONE)
-    qwen25 = importlib.import_module('brainscore.models.qwen25_vl_3b.model')
-    qwen25._bf16_provenance = lambda *args: {'checkpoint': 'stand-in'}     # hashes checkpoint files
-
-
-def _row(subject):
-    """The declared facts of one subject."""
+def declared_row(subject, parts=None) -> dict:
+    """The row of a built ``subject``: inputs, regions and kinds of answers from its declarations;
+    the ways and the way for each kind from ``parts``, the ``BrainScoreModel`` whose wired parts
+    answer (the subject itself, or the one it forwards to). ``parts`` None: the subject answers
+    with its own code."""
     outputs = sorted(subject.out_channels)
     kinds = [channel.split(':', 1)[1] for channel in outputs if channel.startswith('behavior:')]
-    from brainscore import BrainScoreModel
-    subject = getattr(subject, '_subject', subject)    # a subject that adds provenance to another
-    if not isinstance(subject, BrainScoreModel):       # a subject with its own code, no parts
-        return {'inputs': sorted(subject.in_channels),
-                'regions': [c.split(':', 1)[1] for c in outputs if c.startswith('neural:')],
-                'ways': [], 'answers': {kind: 'own code' for kind in kinds}}
+    row = {'inputs': sorted(subject.in_channels),
+           'regions': [channel.split(':', 1)[1] for channel in outputs if channel.startswith('neural:')]}
+    if parts is None:
+        return {**row, 'ways': [], 'answers': {kind: 'own code' for kind in kinds}}
     from brainscore._model.behavioral import _formats_by_part
-    parts = _formats_by_part(subject)
-    if not subject.extractor:
-        parts.pop('readout', None)         # a readout layer without an extractor never answers
-    owners = subject._behavioral.owners    # the part that gives each kind (rule 4.11)
-    answers = {}
-    for kind in kinds:
-        # rt comes with probabilities, from the same part.
-        owner = owners.get(f'behavior:{kind}') or owners.get('behavior:probabilities')
-        answers[kind] = WAYS[owner]
-    return {'inputs': sorted(subject.in_channels),
-            'regions': [c.split(':', 1)[1] for c in outputs if c.startswith('neural:')],
-            'ways': [WAYS[part] for part in ('generation', 'likelihood', 'readout') if part in parts],
-            'answers': answers}
+    wired = _formats_by_part(parts)
+    if not parts.extractor:
+        wired.pop('readout', None)         # a readout layer without an extractor never answers
+    owners = parts._behavioral.owners      # the part that gives each kind (rule 4.11)
+    # rt comes with probabilities, from the same part.
+    answers = {kind: WAYS[owners.get(f'behavior:{kind}') or owners.get('behavior:probabilities')]
+               for kind in kinds}
+    return {**row, 'ways': [WAYS[part] for part in WAYS if part in wired], 'answers': answers}
 
 
-def build_rows():
-    """Each registered identifier with its declared facts, or the error that stopped its build."""
-    install_stand_ins()
-    from brainscore import model_registry
-    rows = {}
-    for identifier in sorted(model_registry):
-        try:
-            rows[identifier] = _row(model_registry[identifier]())
-        except Exception as error:         # recorded, so one broken loader does not hide the others
-            rows[identifier] = {'error': f'{type(error).__name__}: {str(error).splitlines()[0][:200]}'}
-    return rows
+def check_statement(subject, parts=None, registry=None) -> None:
+    """Fail when the row its folder states for ``subject`` differs from what it declares."""
+    if registry is None:
+        from brainscore import model_registry as registry
+    path = statement_file(subject.identifier, registry)
+    stated = json.loads(path.read_text()).get(subject.identifier) if path.exists() else None
+    if stated is None:
+        raise AssertionError(_missing(subject.identifier, path))
+    declared = declared_row(subject, parts)
+    if stated != declared:
+        raise AssertionError(f"{path.parent.name}/{STATEMENT} states for '{subject.identifier}' {stated}; "
+                             f'its subject declares {declared}. State what it declares, then run '
+                             f'{REGENERATE}.')
 
 
 def _cell(values):
     return ', '.join(values) if values else '-'
 
 
+def cells(row) -> str:
+    """The table cells of one row after its models cell."""
+    answers = _cell([f'{kind} ({way})' for kind, way in row['answers'].items()])
+    return f'{_cell(row["inputs"])} | {_cell(row["regions"])} | {_cell(row["ways"])} | {answers} |'
+
+
 def markdown(rows):
-    """The page: two sentences, the table (identifiers with equal facts share a row), the command."""
+    """The page: two sentences, the table (identifiers with equal rows share a line), the command."""
     groups = {}
     for identifier, row in rows.items():
         groups.setdefault(json.dumps(row, sort_keys=True), []).append(identifier)
@@ -201,23 +109,17 @@ def markdown(rows):
         '| --- | --- | --- | --- | --- |',
     ]
     for key, identifiers in sorted(groups.items(), key=lambda item: sorted(item[1])[0]):
-        row = json.loads(key)
         models = ', '.join(f'`{identifier}`' for identifier in sorted(identifiers))
-        if 'error' in row:
-            lines.append(f'| {models} | not built: {row["error"]} | | | |')
-            continue
-        answers = _cell([f'{kind} ({way})' for kind, way in row['answers'].items()])
-        lines.append(f'| {models} | {_cell(row["inputs"])} | {_cell(row["regions"])} | '
-                     f'{_cell(row["ways"])} | {answers} |')
+        lines.append(f'| {models} | {cells(json.loads(key))}')
     lines += ['',
               '"own code": the subject is not a `BrainScoreModel`; its own `participate` gives the '
-              'answer (`chance-baseline` gives uniform probabilities).',
+              'answer.',
               '',
               "A model that answers through a provider's API builds without a key and without a "
               "network; it needs the provider's key only to answer.",
               '',
-              'The table is generated from the registrations with stand-in parts (no weights, no '
-              'network). Regenerate it from the folder `unified`:',
+              f'Each plugin states its rows in `{STATEMENT}` in its folder and checks them in its own '
+              'test. Regenerate the table from the folder `unified`:',
               '',
               '```bash',
               REGENERATE,
@@ -227,11 +129,8 @@ def markdown(rows):
 
 
 def main(argv):
-    rows = build_rows()
-    if argv[:1] == ['--json']:
-        print(json.dumps(rows, indent=1, sort_keys=True))
-        return
-    page = markdown(rows)
+    from brainscore import model_registry
+    page = markdown(stated_rows(model_registry))
     if argv:
         with open(argv[0], 'w') as file:
             file.write(page)

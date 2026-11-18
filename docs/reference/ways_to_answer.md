@@ -19,11 +19,11 @@ Each registered model answers with the parts its registration wires: writing (a 
 | `random-wav2vec2-base` | audio, control | A1 | - | - |
 | `videomae-base`, `vjepa1-vitl`, `vjepa2-vitl` | control, vision:video | IT, V1, V2, V4 | - | - |
 
-"own code": the subject is not a `BrainScoreModel`; its own `participate` gives the answer (`chance-baseline` gives uniform probabilities).
+"own code": the subject is not a `BrainScoreModel`; its own `participate` gives the answer.
 
 A model that answers through a provider's API builds without a key and without a network; it needs the provider's key only to answer.
 
-The table is generated from the registrations with stand-in parts (no weights, no network). Regenerate it from the folder `unified`:
+Each plugin states its rows in `ways_to_answer.json` in its folder and checks them in its own test. Regenerate the table from the folder `unified`:
 
 ```bash
 python -m tests.ways_to_answer docs/reference/ways_to_answer.md
