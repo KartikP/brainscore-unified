@@ -27,7 +27,8 @@ def _missing(identifier, path) -> str:
     return (f"'{identifier}' (folder {folder}) has no row in {folder}/{STATEMENT}. Add one line "
             f'"{identifier}": {{"inputs": [...], "regions": [...], "ways": [...], "answers": {{...}}}} '
             f"with what its subject declares, and check it in the folder's test.py with "
-            f'tests.ways_to_answer.check_statement(subject).')
+            f'tests.ways_to_answer.check_statement(subject, parts) (parts: the BrainScoreModel whose '
+            f'parts answer; None for a subject that answers with its own code).')
 
 
 def stated_rows(registry) -> dict:
