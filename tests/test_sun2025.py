@@ -129,8 +129,8 @@ def test_a_subject_with_no_video_input_is_na_before_compute(build):
 
 
 def test_missing_data_names_the_prepare_command(tmp_path, monkeypatch):
-    monkeypatch.setenv('BRAINSCORE_SUN2025_ROOT', str(tmp_path / 'absent'))
-    with pytest.raises(local.LocalDataMissing, match='python -m brainscore.data prepare Sun2025'):
+    monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path / 'absent'))
+    with pytest.raises(local.LocalDataMissing, match='python -m brainscore.data package sun2025'):
         brainscore.load_stimulus_set('Sun2025-second-order-motion')
 
 
@@ -259,7 +259,7 @@ def test_a_file_missing_inside_a_build_names_its_path_and_the_command(build, tmp
     clip.unlink()
     with pytest.raises(local.LocalDataMissing) as missing:
         brainscore.load_stimulus_set('Sun2025-second-order-motion', root=build)
-    assert str(clip) in str(missing.value) and 'python -m brainscore.data prepare' in str(missing.value)
+    assert str(clip) in str(missing.value) and 'python -m brainscore.data package sun2025' in str(missing.value)
     empty = tmp_path / 'no-build'
     empty.mkdir()
     with pytest.raises(local.LocalDataMissing, match=str(empty)):

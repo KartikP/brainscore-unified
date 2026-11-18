@@ -1,4 +1,10 @@
-"""Build lossless, probe-centered clips and human vectors from pinned sources."""
+"""Build lossless, probe-centered clips and human vectors from pinned sources.
+
+The packaging command runs this script: ``python -m brainscore.data package sun2025``.
+A source folder with a ``source-manifest.json`` (an earlier fetch) is read; otherwise the
+pinned files are fetched into the work folder first.
+"""
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -6,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .fetch import GITHUB_REVISION, HF_REVISION
+from .fetch import GITHUB_REVISION, HF_REVISION, fetch_source
 
 DISPLAY = {'fps': 30, 'frames': 16, 'width': 600, 'height': 600,
            'source_scale': 1.5, 'aperture_radius': 300, 'probe_frames': list(range(5, 11)),
@@ -135,3 +141,17 @@ def build(source: Path, destination: Path) -> dict:
                 'source_manifest_sha256': checksum(manifest_path)}
     (destination / 'manifest.json').write_text(json.dumps(manifest, indent=2, allow_nan=False) + '\n')
     return manifest
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--source', type=Path, required=True)
+    parser.add_argument('--work', type=Path, required=True)
+    parser.add_argument('--out', type=Path, required=True)
+    parser.add_argument('--scenes', type=int, nargs='+', default=list(range(1, 41)))
+    args = parser.parse_args()
+    source = args.source
+    if not (source / 'source-manifest.json').is_file():
+        source = args.work / 'source'
+        fetch_source(source, args.scenes)
+    build(source, args.out)

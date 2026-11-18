@@ -800,10 +800,45 @@ def _rajalingham_source(tmp_path, monkeypatch, offline):
     monkeypatch.setitem(sys.modules, 'brainscore_vision', _made_up_rajalingham())
 
 
+def _sun2025_source(tmp_path, monkeypatch, offline):
+    """An earlier fetch of scene 1 in the fetched layout; the trial table is a stand-in for the
+    spreadsheet (read_excel), the frames are flat gray PNGs."""
+    import cv2
+    from brainscore.data.sun2025.data_packaging.fetch import GITHUB_REVISION, HF_REVISION
+    source = tmp_path / 'sun2025'
+    table = pd.DataFrame([dict(MovI=scene, modulation=modulation, fliptype=flip, flowU=scene / 10, flowV=-scene / 10,
+                               R=0.0, G=0.0, B=0.0, picX=512.0, picY=512.0)
+                          for scene in range(1, 41) for modulation in range(1, 8) for flip in (1, 2, 3, 4)])
+    monkeypatch.setattr(pd, 'read_excel', lambda path: table.copy())
+    gt = {'Avg_gt_X': [scene / 10 * 1.5 / np.sqrt(2) for scene in range(1, 41)],
+          'Avg_gt_Y': [-scene / 10 * 1.5 / np.sqrt(2) for scene in range(1, 41)]}
+    responses = {f'Mod{m}_avg_res_{axis}': [1.0] * 40 for m in range(1, 8) for axis in ('X', 'Y')}
+    names = ['second-order-exp/Static_AllTrails_Final_shuffled.xlsx']
+    (source / 'second-order-exp').mkdir(parents=True)
+    (source / names[0]).write_bytes(b'stand-in: read_excel gives the table')
+    for participant in (1, 2, 3):
+        names.append(f'second-order-exp/data/participant{participant}/data.csv')
+        (source / names[-1]).parent.mkdir(parents=True)
+        pd.DataFrame({**gt, **responses}).to_csv(source / names[-1], index=False)
+    gray = np.full((1024, 1024, 3), 128, dtype=np.uint8)
+    for modulation in range(1, 8):
+        folder = source / f'human_static/image/Scene_1/type_{modulation}'
+        folder.mkdir(parents=True)
+        for frame in range(16):
+            cv2.imwrite(str(folder / f'frame_{frame:04d}.png'), gray)
+            names.append(f'human_static/image/Scene_1/type_{modulation}/frame_{frame:04d}.png')
+    files = {name: {'sha256': hashlib.sha256((source / name).read_bytes()).hexdigest()} for name in names}
+    (source / 'source-manifest.json').write_text(json.dumps(
+        {'schema_version': 1, 'github_revision': GITHUB_REVISION, 'hf_revision': HF_REVISION,
+         'scenes': [1], 'files': files}))
+    return source
+
+
 SOURCES = {'ewok': _ewok_source, 'lebel2023': _lebel_source, 'algonauts2025': _algonauts_film_source,
            'lahner2024-frames': _lahner_clips_source,
            'lahner2024-sound': _lahner_clips_source, 'lahner2024-timeresolved': _lahner_series_source,
-           'lahner2024-motion': _lahner_motion_source, 'rajalingham2018-2afc': _rajalingham_source}
+           'lahner2024-motion': _lahner_motion_source, 'rajalingham2018-2afc': _rajalingham_source,
+           'sun2025': _sun2025_source}
 UPLOAD_FLAGS = {'lebel2023': '--upload', 'lahner2024-timeresolved': '--upload-to-s3',
                 'lahner2024-motion': '--upload-to-s3'}
 

@@ -29,29 +29,33 @@ Intelligence (2025).
 
 ## Download and package
 
-Run these commands on a compute machine, not on a laptop. The packaging step needs
-numpy, pandas, openpyxl and opencv-python with the FFV1 encoder. Choose new output
-directories; existing data is never overwritten.
+Run the packaging on a compute machine, not on a laptop. It needs numpy, pandas,
+openpyxl and opencv-python with the FFV1 encoder. The output folder must be new;
+existing data is never overwritten.
 
-    python -m brainscore.data.sun2025.data_packaging.fetch /data/sun2025/source
-    python -m brainscore.data prepare Sun2025-second-order-motion \
-        --source /data/sun2025/source --output /data/sun2025/prepared
-    export BRAINSCORE_SUN2025_ROOT=/data/sun2025/prepared
+    python -m brainscore.data package sun2025
 
-`--scenes 1` after the fetch output fetches one scene (28 trials) for a first check.
-The fetch reads bounded ranges of the archive, so it does not store the 9.88 GB ZIP;
-it keeps the source frames it uses. The GitHub files are refused when their SHA-256
-differs from the pinned value; archive members are checked against their ZIP CRC.
+The script fetches the pinned files, then writes the prepared build to
+`$BRAINSCORE_DATA_HOME/sun2025-prepared`, where the loaders read it. The fetch reads
+bounded ranges of the archive, so it does not store the 9.88 GB ZIP; it keeps the
+source frames it uses in a work folder that is deleted after the build. The GitHub
+files are refused when their SHA-256 differs from the pinned value; archive members
+are checked against their ZIP CRC.
+
+To keep the fetched source, or to fetch one scene (28 trials) for a first check,
+fetch it first and give the folder as the source:
+
+    python -m brainscore.data.sun2025.data_packaging.fetch ~/brainscore-data/sources/sun2025 --scenes 1
+    python -m brainscore.data package sun2025
 
     import brainscore
     stimuli = brainscore.load_stimulus_set('Sun2025-second-order-motion')
     human = brainscore.load_dataset('Sun2025-second-order-motion')
 
 Pass `root=` to read another build. Loaders never download. Without a build, they
-raise with the commands above (`python -m brainscore.data sun2025-prepared` prints
-them). `load_stimulus_set` checks the SHA-256 of every file the build manifest lists,
+raise with the packaging command. `load_stimulus_set` checks the SHA-256 of every file the build manifest lists,
 the clips included; `load_dataset` checks every listed file except the clips.
-A listed file that is missing raises with its path and the prepare command.
+A listed file that is missing raises with its path and the packaging command.
 The human assembly has presentation, participant and axis dimensions: three
 participants and two image axes (x right, y down). A presentation is a scene and
 modulation pair after the four human reports are unflipped and averaged. Stimulus
@@ -96,9 +100,21 @@ calculating direction or speed. All four valid answers are required.
 ## Files
 
 - `data_packaging/fetch.py`: pinned source acquisition and the source manifest.
-- `data_packaging/prepare.py`: reference alignment, rendering and packaging.
+- `data_packaging/prepare.py`: reference alignment, rendering and packaging; the script that
+  `package_data('sun2025')` runs.
 - `data.py`: checked stimulus and human-assembly loading.
 - `__init__.py`: the local asset, and the dataset, stimulus-set and builder registration.
 - `tests/test_sun2025.py`: loading, checksums, the missing-data error and the benchmark.
 
 There are no neural recordings in this plugin.
+
+## Rebuild
+
+### sun2025
+
+- Source: https://github.com/anoymized/multi-order-motion-model (revision c5886559, Apache-2.0) and https://huggingface.co/datasets/sunana/mateiral-controlled-motion-dataset (revision a7e83195, MIT)
+- Access: public, no account.
+- Needs: numpy, pandas, openpyxl and opencv-python with the FFV1 encoder; the PNG frames of 40 scenes, read in ranges from the 9.9 GB archive (the archive is not stored); a compute machine, not a laptop.
+- Command: `python -m brainscore.data package sun2025`. Source folder: none: the script fetches the pinned files itself. A folder that holds an earlier fetch (`source-manifest.json` and the files it lists, written by `python -m brainscore.data.sun2025.data_packaging.fetch <new folder>`) is read in its place. Output (or `--output <new folder>`): the folder the benchmarks read, `$BRAINSCORE_DATA_HOME/sun2025-prepared` (`~/brainscore-data/sun2025-prepared` by default).
+- Writes: `clips/` (1,120 lossless FFV1 clips), `stimuli.json`, `human-responses.json`, `source-manifest.json` and `manifest.json` with the SHA-256 of every file.
+- Check: the printed counts; no sha1 is recorded for these files
