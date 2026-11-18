@@ -38,7 +38,9 @@ def build_auditory_mask(label_indices: Iterable[int] = None) -> np.ndarray:
     label_indices = tuple(label_indices) if label_indices is not None \
         else DEFAULT_AUDITORY_LABELS
 
-    atlas = fetch_atlas_surf_destrieux()
+    from brainscore.data.local import data_home
+    # One named place in the data home, as every local data set; nilearn fetches it there once.
+    atlas = fetch_atlas_surf_destrieux(data_dir=str(data_home() / 'destrieux-atlas'))
     left = atlas['map_left']
     right = atlas['map_right']
     if left.shape[0] != 10242 or right.shape[0] != 10242:

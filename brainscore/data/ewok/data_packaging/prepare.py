@@ -1,10 +1,16 @@
-"""Convert native EWoK CSV/Parquet or the authors' paper archive locally."""
+"""Convert native EWoK CSV/Parquet or the authors' paper archive locally.
+
+    python -m brainscore.data.ewok.data_packaging.prepare <source> <output folder>
+
+``python -m brainscore.data package ewok`` runs it.
+"""
 import hashlib
 import io
 import json
 import os
 from pathlib import Path
 import re
+import sys
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -16,34 +22,6 @@ HF_REVISION = '34d912a608066c92e2990a0328ffc3bd9a716042'
 TEXT_COLUMNS = ('Context1', 'Context2', 'Target1', 'Target2')
 KEY_COLUMNS = ('Domain', 'MetaTemplateID', 'TemplateID', 'Version')
 MAX_TABLE_BYTES = 32 * 1024 * 1024
-
-
-def resolve(request_id: str) -> tuple[Path, dict]:
-    """Use existing Hugging Face access; never accept terms or log credentials."""
-    if request_id != HF_REPOSITORY:
-        raise ValueError(
-            'EWoK supports the dataset ID ewok-core/ewok-core-1.0. '
-            'Author approval codes are not download IDs; alternatively use --source.'
-        )
-    try:
-        from huggingface_hub import snapshot_download
-    except ImportError:
-        raise ImportError('Install brainscore[ewok-data] for hosted EWoK access') from None
-    try:
-        path = snapshot_download(
-            repo_id=HF_REPOSITORY, repo_type='dataset', revision=HF_REVISION,
-            allow_patterns=['data/test/ewok-core-1.0.parquet'],
-        )
-    except Exception:
-        # Upstream HTTP errors can include credentials or private access URLs.
-        raise PermissionError(
-            'Could not obtain EWoK. Request access from the authors on Hugging Face, '
-            'authenticate with hf auth login or HF_TOKEN, and retry. '
-            'You can also use --source with already downloaded files.'
-        ) from None
-    return Path(path) / 'data/test/ewok-core-1.0.parquet', {
-        'method': 'huggingface', 'repository': HF_REPOSITORY, 'revision': HF_REVISION,
-    }
 
 
 def _read_table(raw: bytes, suffix: str):
@@ -166,3 +144,7 @@ def build(source: Path, destination: Path) -> dict:
     }
     (destination / 'manifest.json').write_text(json.dumps(metadata, indent=2) + '\n')
     return metadata
+
+
+if __name__ == '__main__':
+    build(Path(sys.argv[1]), Path(sys.argv[2]))

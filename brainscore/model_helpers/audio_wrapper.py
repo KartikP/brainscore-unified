@@ -153,9 +153,8 @@ class AudioWrapper(CachingExtractor):
         self._batch_size = batch_size
         self._audio_loader = audio_loader or _default_audio_loader
 
-        from brainscore.model_helpers._device import select_device
-        self._device = select_device(device)
-        self._model = self._model.to(self._device)
+        from brainscore.model_helpers._device import place_model
+        self._model, self._device = place_model(self._model, device)
 
         self._target_sample_rate = (
             target_sample_rate

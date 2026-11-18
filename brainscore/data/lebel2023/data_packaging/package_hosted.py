@@ -1,7 +1,7 @@
 """Build the hosted LeBel2023-UTS03 files from the source pickle and upload them.
 
-    BRAINSCORE_LEBEL_PICKLE=/path/to/UTS03-assembly.pkl \\
-        python -m brainscore.data.lebel2023.data_packaging.package_hosted --out /tmp/lebel [--upload]
+    python -m brainscore.data.lebel2023.data_packaging.package_hosted \\
+        --pickle /path/to/assembly_lebel_uts03.pkl --out /tmp/lebel [--upload]
 
 Writes three files with the registered default settings, then prints each one's
 sha1 and, with ``--upload``, its S3 version id, to paste into ``hosted.py``:
@@ -28,10 +28,10 @@ def sha1(path: Path) -> str:
     return digest.hexdigest()
 
 
-def write(out: Path) -> dict:
+def write(out: Path, pickle: Path | None = None) -> dict:
     out.mkdir(parents=True, exist_ok=True)
-    tr_stimuli, assembly = build(context_window_tr=DEFAULT_CONTEXT_TR)
-    word_stimuli, _, _ = build_word_level(context_words=DEFAULT_CONTEXT_WORDS)
+    tr_stimuli, assembly = build(pickle, context_window_tr=DEFAULT_CONTEXT_TR)
+    word_stimuli, _, _ = build_word_level(pickle, context_words=DEFAULT_CONTEXT_WORDS)
     files = {'assembly': out / f'assy_{ASSEMBLY_ID}.nc',
              'TR stimuli': out / f'stimulus_{TR_STIMULI_ID}.csv',
              'word stimuli': out / f'stimulus_{WORD_STIMULI_ID}.csv'}
@@ -53,10 +53,12 @@ def upload(path: Path) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--pickle', type=Path, help='the source pickle; default: the source folder of '
+                        "package_data('lebel2023')")
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--upload', action='store_true')
     args = parser.parse_args()
-    for label, path in write(args.out).items():
+    for label, path in write(args.out, args.pickle).items():
         version = upload(path) if args.upload else None
         print(f'{label}: file={path.name} sha1={sha1(path)} version_id={version}')
 

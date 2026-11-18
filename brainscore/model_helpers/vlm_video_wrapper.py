@@ -18,6 +18,7 @@ import numpy as np
 
 from brainscore_core.responses import part_columns
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+from brainscore.model_helpers._device import input_device
 from brainscore.model_helpers._extractors import LiveRecording, as_float32, value
 
 
@@ -81,9 +82,9 @@ class VLMVideoWrapper:
             inputs = self._inputs(path)
             with LiveRecording(self._model, self._model, layers, as_float32, self._steps,
                                _grid) as recording, torch.no_grad():
-                parameter = next(self._model.parameters())
-                self._model(inputs['pixel_values_videos'].to(parameter.device, parameter.dtype),
-                            grid_thw=inputs['video_grid_thw'].to(parameter.device))
+                device, dtype = input_device(self._model), next(self._model.parameters()).dtype
+                self._model(inputs['pixel_values_videos'].to(device, dtype),
+                            grid_thw=inputs['video_grid_thw'].to(device))
                 per_clip.append(recording.take())
         steps = {len(clip[layers[0]]) for clip in per_clip}
         if len(steps) != 1:

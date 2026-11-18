@@ -26,7 +26,10 @@ Obtain the approximately 3 GB assembly from the [source repository's download in
 From the repository root, in the coordinated notebook environment:
 
 ```bash
-export BRAINSCORE_LEBEL_PICKLE=/path/to/assembly_lebel_uts03.pkl
+# The LeBel source pickle, in its one place
+SOURCE="$(python -c "from brainscore.data.packaging import source_folder; print(source_folder('lebel2023'))")"
+mkdir -p "$SOURCE"
+mv /path/to/assembly_lebel_uts03.pkl "$SOURCE"/
 python notebooks/figure_sources/measure_whole_brain.py
 python notebooks/figure_sources/render_whole_brain_figures.py
 ```

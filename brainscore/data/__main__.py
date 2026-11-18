@@ -1,44 +1,41 @@
-"""Build a dataset from native files or an author-supported access identifier."""
+"""Package a data plugin from its original source, or list the plugins and local assets.
+
+    python -m brainscore.data                       each plugin's source place, and the local assets
+    python -m brainscore.data package <name> [--source <folder>] [--output <new folder>]
+    python -m brainscore.data <asset name>          how to obtain one local asset
+"""
 import argparse
 import sys
+
 from . import local
-from brainscore import data_builder_registry
-from .preparation import prepare_dataset
+from .packaging import listing, package_data
 
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
-    # Preserve the existing asset-status and named-asset commands.
     if not argv:
+        print(listing())
+        print()
         print(local.format_status())
         return 0
-    if argv[0] not in ('prepare', 'list', '-h', '--help'):
+    if argv[0] not in ('package', '-h', '--help'):
         if argv[0] not in local.REGISTRY:
             print(f'unknown asset {argv[0]!r}; known: {sorted(local.REGISTRY)}')
             return 1
         print(local.REGISTRY[argv[0]].instructions())
         return 0
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest='command', required=True)
-    commands.add_parser('list', help='List available local data builders')
-    prepare = commands.add_parser('prepare', help='Build and validate a local dataset')
-    prepare.add_argument('dataset')
-    location = prepare.add_mutually_exclusive_group(required=True)
-    location.add_argument('--source', help='Path to the authors’ native data')
-    location.add_argument('--request-id', help='Identifier supported by this data provider')
-    prepare.add_argument('--output', required=True, help='New local output directory')
+    package = commands.add_parser('package', help='Package a data plugin from its original source')
+    package.add_argument('name')
+    package.add_argument('--source', help='the folder of the original source data')
+    package.add_argument('--output', help='a new folder in place of the place where the benchmarks read the data')
     args = parser.parse_args(argv)
-    if args.command == 'list':
-        print('\n'.join(sorted(data_builder_registry)))
-        return 0
     try:
-        result = prepare_dataset(
-            args.dataset, source=args.source, request_id=args.request_id,
-            output=args.output,
-        )
-    except (ValueError, FileNotFoundError, FileExistsError, PermissionError, ImportError) as error:
+        package_data(args.name, source=args.source, output=args.output)
+    except (ValueError, FileNotFoundError, FileExistsError, PermissionError, ImportError,
+            NotImplementedError, RuntimeError) as error:
         parser.exit(2, f'{error}\n')
-    print(f'Prepared {args.dataset} at {result}')
     return 0
 
 

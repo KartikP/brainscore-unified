@@ -1,7 +1,7 @@
 """Cut the frames a stills-only subject sees from each BOLDMoments clip.
 
 Writes one PNG per (clip, sample time) into the local asset ``lahner2024-frames``
-(``BRAINSCORE_LAHNER_FRAMES_DIR``, default ``~/brainscore-data/lahner2024/frames``).
+(``$BRAINSCORE_DATA_HOME/lahner2024-frames``, default ``~/brainscore-data/lahner2024-frames``).
 The Lahner2024 benchmarks read these files and extract nothing themselves.
 
 Usage:
@@ -51,8 +51,7 @@ def extract_frame(video_path, time_ms: float, frames_dir: Path) -> str:
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--frames-dir', type=Path, default=LAHNER_FRAMES.resolved(),
-                        help=f'where to write the frames (default: {LAHNER_FRAMES.env_var} '
-                             f'or ~/{LAHNER_FRAMES.default_path})')
+                        help=f'where to write the frames (default: {LAHNER_FRAMES.resolved()})')
     parser.add_argument('--sample-times-ms', type=float, nargs='+',
                         default=list(DEFAULT_SAMPLE_TIMES_MS),
                         help='times of the frames in each clip, in milliseconds')

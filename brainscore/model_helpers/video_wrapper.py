@@ -236,9 +236,8 @@ class VideoWrapper(CachingExtractor):
         self._out_of_bound = out_of_bound
         self._max_clip_ms = max_clip_ms
 
-        from brainscore.model_helpers._device import select_device
-        self._device = select_device(device)
-        self._model = self._model.to(self._device)
+        from brainscore.model_helpers._device import place_model
+        self._model, self._device = place_model(self._model, device)
 
         self._identifier = identifier or model.__class__.__name__
 

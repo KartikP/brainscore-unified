@@ -492,14 +492,14 @@ def pseudo_ewok(folder):
     Items 0 and 1 are version 0, item 2 version 1, so such a subject scores 0.5."""
     import pandas as pd
     import brainscore
-    from brainscore.data.preparation import prepare_dataset
+    from brainscore.data import package_data
     rows = [dict(Domain='pseudo-domain', MetaTemplateID='1', TemplateID=str(i), Version=str(version),
                  Context1=f'pseudo context A {i}', Context2=f'pseudo context B {i}',
                  Target1=f'pseudo target {first} {i}', Target2=f'pseudo target {second} {i}')
             for i, version, (first, second) in [(0, 0, 'AB'), (1, 0, 'AB'), (2, 1, 'BA')]]
     source = folder / 'pseudo-ewok.csv'
     pd.DataFrame(rows).to_csv(source, index=False)
-    root = prepare_dataset('EWoK-core-1.0', source=source, output=folder / 'pseudo-ewok-build')
+    root = package_data('ewok', source=source, output=folder / 'pseudo-ewok-build')
     return brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=root,
                                      output_dir=folder / 'pseudo-ewok-run')
 

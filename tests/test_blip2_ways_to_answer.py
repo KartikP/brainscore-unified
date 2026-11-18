@@ -283,12 +283,12 @@ def test_two_pictures_are_refused(registered, tmp_path):
 def ewok(tmp_path):
     """A prepared EWoK data set of two made-up items (no EWoK sentence)."""
     import pandas as pd
-    from brainscore.data.preparation import prepare_dataset
+    from brainscore.data import package_data
     rows = [dict(Domain='synthetic-domain', MetaTemplateID='1', TemplateID=str(i), Version='0',
                  Context1=f'fixture context A {i}', Context2=f'fixture context B {i}',
                  Target1=f'fixture target A {i}', Target2=f'fixture target B {i}') for i in range(2)]
     pd.DataFrame(rows).to_csv(tmp_path / 'native.csv', index=False)
-    return prepare_dataset('EWoK-core-1.0', source=tmp_path / 'native.csv', output=tmp_path / 'build')
+    return package_data('ewok', source=tmp_path / 'native.csv', output=tmp_path / 'build')
 
 
 def test_ewok_log_probabilities_become_applicable_and_run(registered, ewok, tmp_path):
