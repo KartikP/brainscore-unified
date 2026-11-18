@@ -1,6 +1,6 @@
 """Benchmark plugins keep their tests in their own folders (``test.py``, ``test_<topic>.py``).
 
-Use the marking of ``tests/conftest.py``, so that a test here has the same tier
-markers when it runs with the suite or on its own.
+The same plugins as ``tests/conftest.py``, so that a test here has the same tier markers and the
+CPU fixture when it runs with the suite or alone from the checkout.
 """
-from tests.conftest import pytest_collection_modifyitems  # noqa: F401
+pytest_plugins = ['brainscore.validation.cpu_profile', 'tests.markers']
