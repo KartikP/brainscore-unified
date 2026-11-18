@@ -131,28 +131,37 @@ def get_model(identifier: str) -> BrainScoreModel:
         max_length=77,
     )
 
+    region_layer_map = {
+        region: LayerSelector(
+            name=layer,
+            modality='text' if region == 'language_system' else 'vision',
+        )
+        for region, layer in REGION_LAYER_MAP.items()
+    }
+    extractor = {
+        'vision': vision_wrapper,
+        'text': text_wrapper,
+    }
+    # Behavioral readout uses the final vision encoder block (matches
+    # the 'IT' layer convention). Behavioral benchmarks like Ferguson2024
+    # will fit a logistic readout on top of this layer's features.
+    if zero_shot:
+        # The answer part owns the choice; the readout keeps the probabilities.
+        return BrainScoreModel(
+            identifier=identifier,
+            model=clip_model,
+            region_layer_map=region_layer_map,
+            extractor=extractor,
+            behavioral_readout_layer='encoder.layers.10',
+            answer=zero_shot_answer(clip_model, clip_processor),
+            capability_config={'behavior-sessions': {'behavior:choice': 'generation'}},
+        )
+    # The readout derives the choice from its probabilities by argmax.
     return BrainScoreModel(
         identifier=identifier,
         model=clip_model,
-        region_layer_map={
-            region: LayerSelector(
-                name=layer,
-                modality='text' if region == 'language_system' else 'vision',
-            )
-            for region, layer in REGION_LAYER_MAP.items()
-        },
-        extractor={
-            'vision': vision_wrapper,
-            'text': text_wrapper,
-        },
-        # Behavioral readout uses the final vision encoder block (matches
-        # the 'IT' layer convention). Behavioral benchmarks like Ferguson2024
-        # will fit a logistic readout on top of this layer's features.
+        region_layer_map=region_layer_map,
+        extractor=extractor,
         behavioral_readout_layer='encoder.layers.10',
-        # clip-vit-b-32: the readout derives the choice from its probabilities by argmax.
-        # The zero-shot registration: the answer part owns the choice; the readout keeps
-        # the probabilities.
-        answer=zero_shot_answer(clip_model, clip_processor) if zero_shot else None,
-        capability_config={'behavior-sessions': {
-            'behavior:choice': 'generation' if zero_shot else ('readout', 'argmax')}},
+        capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}},
     )
