@@ -581,7 +581,7 @@ def test_streamed_table_with_two_input_columns_presents_each_row_once():
     """Each input column is its own event; the row is still presented once (rule 4.5).
 
     On base b296d09 this gave four calls and four presentations (A, A, B, B).
-    tests/test_stream_rows_once.py covers the fix in full.
+    tests/brainscore_model/test_stream_rows_once.py covers the fix in full.
     """
     calls = []
     model = BrainScoreModel('stream', extractor={'text': keyed('t', calls)},

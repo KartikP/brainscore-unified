@@ -102,7 +102,7 @@ Behavioral data (what participants answered) is a `BehavioralAssembly` with one 
 the value.
 
 `templates/new_data/` is a complete data plugin with loaders for stimuli, recordings and
-participant choices, image files and tests. Its test goes to `tests/test_<name>.py`.
+participant choices, image files and tests. Its test goes to `tests/test_data/test_<name>.py`.
 
 Say how your files are built from the source: register a factory of a `DataBuilder` beside the registry lines, with your `data_packaging/` script as its command. `package_data` fills in `{source}` and `{output}`, runs the script, and prints the sha1 and counts of what it wrote.
 
@@ -127,7 +127,7 @@ data_builder_registry['mystudy2026'] = lambda: DataBuilder(
 print(data_builder_registry['mystudy2026']().readme('mystudy2026'))
 ```
 
-`requires` names what the source folder must hold; a source that lacks it gets the error with the facts above. A script reads the source and never changes it: it writes into `{output}`, and downloads or intermediate files go into `{work}`, a private folder removed after the build. A dataset that cannot be rebuilt yet states `cannot=` (what is known, what a maintainer needs); one that is read as published leaves out `build`. `tests/test_data_packaging.py` fails a data plugin without a declaration or with a README that differs from it, and prints the block to paste.
+`requires` names what the source folder must hold; a source that lacks it gets the error with the facts above. A script reads the source and never changes it: it writes into `{output}`, and downloads or intermediate files go into `{work}`, a private folder removed after the build. A dataset that cannot be rebuilt yet states `cannot=` (what is known, what a maintainer needs); one that is read as published leaves out `build`. `tests/test_data/test_data_packaging.py` fails a data plugin without a declaration or with a README that differs from it, and prints the block to paste.
 
 Hosted files are fetched once, checked against a sha1 and cached (see `brainscore/data/lebel2023/hosted.py`). Data you may not redistribute stays local: declare it as a `LocalAsset` in your plugin's `__init__.py`, so users get instructions instead of a missing-file error, and `python -m brainscore.data` lists it. Name the command that prepares it in `prepare`. Its place follows from its name: `$BRAINSCORE_DATA_HOME/<asset name>`. Read the location with `local.path(...)` when the data is needed, not at import. A second asset with the same name is refused.
 
@@ -150,4 +150,4 @@ except local.LocalDataMissing as missing:
     print(missing)                             # where to get it, where to put it, the command
 ```
 
-A benchmark reaches its data only through `load_dataset` / `load_stimulus_set`, or the identifiers and constants a plugin's package exports. It never imports a plugin's modules; `tests/test_data_boundaries.py` checks this.
+A benchmark reaches its data only through `load_dataset` / `load_stimulus_set`, or the identifiers and constants a plugin's package exports. It never imports a plugin's modules; `tests/test_package/test_data_boundaries.py` checks this.

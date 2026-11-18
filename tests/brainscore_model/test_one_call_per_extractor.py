@@ -180,7 +180,7 @@ def test_vlm_vision_regions_share_one_call(images, streaming):
 def test_vlm_video_regions_share_one_call(tmp_path, streaming):
     cv2 = pytest.importorskip('cv2')
     from brainscore.model_helpers.vlm_video_wrapper import VLMVideoWrapper
-    from tests.test_vlm_video_wrapper import Processor, Tower
+    from tests.test_model_helpers.test_vlm_video_wrapper import Processor, Tower
     paths = []
     for index, moving in enumerate((True, False)):
         path = tmp_path / f'clip{index}.avi'

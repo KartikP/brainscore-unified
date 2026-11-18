@@ -328,8 +328,8 @@ def test_every_registration_answers_each_format_with_the_part_of_its_part_set():
     format it declares is answered by the part that the part set's statement gives (the Qwen
     family: either probabilities statement). A statement that only names an owner the part set
     already has is valid. The Qwen registrations are also built by their registry loaders
-    (``tests/test_qwen_probability_statements.py``), the readout-only ones by their builders
-    (``tests/test_readout_registrations.py``)."""
+    (``tests/test_models/test_qwen_probability_statements.py``), the readout-only ones by their builders
+    (``tests/test_models/test_readout_registrations.py``)."""
     registrations, expanded, not_literal = _registrations()
     assert set(EXPANDED) <= expanded, 'a call listed in EXPANDED no longer expands keywords: remove its line'
     assert {'models/qwen36_27b/model.py', 'models/blip2_opt_2_7b/model.py',
