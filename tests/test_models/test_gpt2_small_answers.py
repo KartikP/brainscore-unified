@@ -23,8 +23,9 @@ VOCABULARY = 31
 
 
 class _Tokenizer:
-    """One token for each character."""
+    """One token for each character; its limit is the one the GPT-2 tokenizer states."""
     eos_token, pad_token, eos_token_id, pad_token_id = 'e', 'e', 0, 0
+    model_max_length = 1024
 
     def __call__(self, text, add_special_tokens=False):
         return {'input_ids': [1 + ord(character) % (VOCABULARY - 1) for character in text]}
@@ -105,14 +106,19 @@ def test_declares_the_log_probabilities_and_keeps_its_readout_outputs(gpt2_small
 
 
 def test_the_text_extractor_cuts_contexts_at_the_window_of_gpt2(monkeypatch):
-    """Regression: at the wrapper default (512) Blank2014 contexts are cut short of the 1,024 of GPT-2."""
+    """Regression: a cut at 512 tokens shortens Blank2014 contexts; GPT-2 takes 1,024."""
+    import torch
     import brainscore.model_helpers.text_wrapper as text_wrapper
-    built = []
+    real, built = text_wrapper.TextWrapper, []
     gpt2_stand_ins(monkeypatch, lambda: _language_model(False), _Tokenizer)
     monkeypatch.setattr(text_wrapper, 'TextWrapper',
                         lambda *args, **kwargs: built.append(_Extractor(False, *args, **kwargs)) or built[-1])
     brainscore.load_model('gpt2-small')
-    assert [extractor.settings.get('max_length') for extractor in built] == [1024]
+    (extractor,) = built
+    # The registration's tokenizer and settings, on a small network: the limit the real wrapper uses.
+    settings = {key: value for key, value in extractor.settings.items() if key not in ('model', 'tokenizer')}
+    wrapper = real(torch.nn.Linear(1, 1), extractor.settings['tokenizer'], device='cpu', **settings)
+    assert wrapper._max_length == 1024
 
 
 def test_a_lexical_decision_choice_is_answered_by_the_readout(monkeypatch):
