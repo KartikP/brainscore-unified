@@ -104,6 +104,7 @@ def test_gpt2_small_reading_times_equal_the_old_gpt2_on_futrell2018(monkeypatch)
     with open(os.environ.get('READING_TIMES_PARITY_OUT', 'reading-times-parity.json'), 'w') as f:
         json.dump(record, f, indent=1)
     assert len(received) == 2                            # one prediction call in each scored run
+    assert min(record['forward_passes']) > 0            # the hooks saw the forwards of both runs
     assert record['tokens'] > record['window']          # the passage crosses the window
     assert record['devices'][0] == record['devices'][1] and record['attention'][0] == record['attention'][1]
     assert record['fed_ids'][0] == record['fed_ids'][1]
