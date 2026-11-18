@@ -19,27 +19,26 @@ def installed_argument(argument):
     return str(metadata.distribution('brainscore').locate_file(argument))
 
 
-def plugin_nodeid(path, nodeid):
-    """Name a benchmark plugin test by its file below ``brainscore/benchmarks/``.
+def plugin_nodeid(path):
+    """The test ID of a benchmark plugin test file: its path from ``brainscore/benchmarks/`` on.
 
     An installed run collects the plugin tests from site-packages, outside the
     rootdir, so pytest names them relative to a different folder. The file path
-    and the test suffix give the same name in every run.
+    gives the same name in every run. None for a file outside the plugins.
     """
     parts = Path(path).parts
     starts = [i for i in range(len(parts) - 1) if parts[i:i + 2] == ('brainscore', 'benchmarks')]
-    if not starts:
-        return nodeid
-    _, sep, rest = nodeid.partition('::')
-    return '/'.join(parts[starts[-1]:]) + sep + rest
+    return '/'.join(parts[starts[-1]:]) if starts else None
 
 
 @pytest.hookimpl(tryfirst=True)
-def pytest_collectstart(collector):
-    # Rename the module before its tests are built, so that every test ID, also
-    # those an xdist worker sends to the controller, starts with the canonical path.
-    if isinstance(collector, pytest.Module):
-        collector._nodeid = plugin_nodeid(collector.path, collector.nodeid)
+def pytest_pycollect_makemodule(module_path, parent):
+    # Give the module its canonical ID when pytest builds it, so that every test ID,
+    # also those an xdist worker sends to the controller, starts with the canonical path.
+    nodeid = plugin_nodeid(module_path)
+    if nodeid is not None:
+        return pytest.Module.from_parent(parent, path=module_path, nodeid=nodeid)
+    return None
 
 
 def pytest_addoption(parser):
