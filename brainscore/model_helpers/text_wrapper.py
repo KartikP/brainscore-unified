@@ -91,6 +91,29 @@ def align_word_times_to_tokens(word_ids, word_onsets_ms, word_durations_ms):
 
 
 
+# Hugging Face states 1e20 or 1e30 as a tokenizer's ``model_max_length`` when it has no limit.
+_NO_LIMIT = int(1e20)
+
+
+def _model_window(model, tokenizer, identifier):
+    """The most tokens the model takes: the tokenizer's ``model_max_length`` when it is a real
+    limit (as the old language helper cuts), else ``max_position_embeddings`` of the network's
+    text configuration. None when there is no tokenizer (nothing is cut)."""
+    if tokenizer is None:
+        return None
+    limit = getattr(tokenizer, 'model_max_length', None)
+    if isinstance(limit, int) and 0 < limit < _NO_LIMIT:
+        return limit
+    config = getattr(model, 'config', None)
+    config = getattr(config, 'get_text_config', lambda: config)()   # a composite model's text part
+    limit = getattr(config, 'max_position_embeddings', None)
+    if isinstance(limit, int) and 0 < limit < _NO_LIMIT:
+        return limit
+    raise ValueError(f'{identifier}: neither the tokenizer nor the model configuration states a token '
+                     'limit, so a long text cannot be cut at the model window. State max_length=<tokens> '
+                     'for the TextWrapper in the registration.')
+
+
 class TextWrapper(CachingExtractor):
     """Text model wrapper symmetric with PytorchWrapper.
 
@@ -102,7 +125,8 @@ class TextWrapper(CachingExtractor):
             registrations with the same weights and settings share one entry.
         layer_aggregation: How to reduce (batch, seq_len, hidden) to (batch, hidden).
             'last' for causal models, 'mean' for encoders.
-        max_length: Max token length for truncation.
+        max_length: The most tokens of one text; a longer text keeps its newest
+            tokens. Default (None): the model's own window (``_model_window``).
         batch_size: Number of texts per forward pass.
         provenance: Optional model provenance (revision, dtype, settings). When
             given, a copy is set as ``attrs['provenance']`` on every returned
@@ -125,7 +149,7 @@ class TextWrapper(CachingExtractor):
     VALID_AGGREGATIONS = ('last', 'mean', 'sequence')
 
     def __init__(self, model, tokenizer, identifier=None,
-                 layer_aggregation='last', max_length=512,
+                 layer_aggregation='last', max_length=None,
                  batch_size=32, provenance=None, device=None):
         import torch
         checked_aggregation(layer_aggregation, self.VALID_AGGREGATIONS)
@@ -143,7 +167,8 @@ class TextWrapper(CachingExtractor):
         except AttributeError:                       # exotic tokenizers
             pass
         self._layer_aggregation = layer_aggregation
-        self._max_length = max_length
+        self._max_length = max_length if max_length is not None else _model_window(
+            model, tokenizer, identifier or model.__class__.__name__)
         self._batch_size = batch_size
         from brainscore.model_helpers._device import place_model
         self._model, self._device = place_model(self._model, device)

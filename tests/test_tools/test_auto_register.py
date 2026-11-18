@@ -421,7 +421,7 @@ def test_live_registration_uses_the_documented_extractor_mapping(modality):
         )
     else:
         subject = auto_register(
-            make_gpt(), identifier='mapping-text', tokenizer=SimpleNamespace(),
+            make_gpt(), identifier='mapping-text', tokenizer=SimpleNamespace(model_max_length=64),
         )
     assert set(subject.extractor) == {modality}
     assert subject.required_channels == set()

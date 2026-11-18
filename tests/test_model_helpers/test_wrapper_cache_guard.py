@@ -100,7 +100,8 @@ def _tokenizer():
     vocab = {'[PAD]': 0, '[UNK]': 1, 'the': 2, 'cat': 3, 'sat': 4, 'on': 5, 'mat': 6, 'dog': 7, 'ran': 8}
     backend = tokenizers.Tokenizer(tokenizers.models.WordLevel(vocab=vocab, unk_token='[UNK]'))
     backend.pre_tokenizer = tokenizers.pre_tokenizers.Whitespace()
-    return PreTrainedTokenizerFast(tokenizer_object=backend, unk_token='[UNK]', pad_token='[PAD]')
+    return PreTrainedTokenizerFast(tokenizer_object=backend, unk_token='[UNK]', pad_token='[PAD]',
+                                   model_max_length=64)
 
 
 def text_wrapper(**settings):

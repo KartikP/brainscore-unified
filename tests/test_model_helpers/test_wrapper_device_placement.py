@@ -24,7 +24,7 @@ def _text(model, device=None):
     from brainscore.model_helpers.text_wrapper import TextWrapper
 
     class _Tokenizer:
-        pad_token, eos_token = '<pad>', '<eos>'
+        pad_token, eos_token, model_max_length = '<pad>', '<eos>', 64
 
         def cache_config(self):
             return {'stand-in': 'tokenizer'}
