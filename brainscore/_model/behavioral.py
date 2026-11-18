@@ -451,7 +451,8 @@ class BehavioralReadout:
         a reaction-time link names the rt format; it is no setting of the choice.
 
         A session that requests ``behavior:log_probabilities`` is answered by the
-        likelihood, its only native owner, and only for a verbatim Choice; the
+        likelihood, its only native owner: for a ``Segments`` task by its ``segment``
+        layout, else only for a verbatim Choice; the
         choice and the probabilities it also requests come from that same pass
         (``softmax_argmax``, ``softmax``), so the likelihood runs once. The owner
         of the task's choice must also be able to serve the task, except in a
@@ -481,8 +482,26 @@ class BehavioralReadout:
 
     def _choose(self, task, formats, recording=False):
         from brainscore_core.compatibility import ExecutionNotFeasibleError
-        from brainscore_core.responses import Choice, Scale
+        from brainscore_core.responses import Choice, Scale, Segments
         owner, response = self.owner, task.response
+        if isinstance(response, Segments):
+            # Only a likelihood part that states the segment layout answers it (ADR-0075).
+            if owner._segment_likelihood is None:
+                raise ExecutionNotFeasibleError(
+                    f"Subject '{owner.identifier}' cannot give {LOG_PROBABILITIES} for a "
+                    "Segments task: its likelihood= part states no 'segment' layout "
+                    "(likelihood={'continuation': ..., 'segment': ...}).", task_type=task.task_type)
+            # The segment part scores the row's parts only: no instruction (it could stand in
+            # for the row's text) and no earlier trials. The parts each trial shows are checked
+            # before any call (_segment_answers).
+            shown = [name for name, on in (('an instruction', bool((task.instruction or '').strip())),
+                                           ("earlier trials (trial_memory='history')",
+                                            task.trial_memory != 'none')) if on]
+            if shown:
+                raise ExecutionNotFeasibleError(
+                    f"Subject '{owner.identifier}' scores the parts of a Segments row only; it "
+                    f"cannot show {' or '.join(shown)}.", task_type=task.task_type)
+            return 'likelihood', None
         readout_wired = (owner._behavioral_readout_layer is not None
                          and bool(owner._extractors) and task.fitting_stimuli is not None)
         requested = set(formats)
@@ -577,7 +596,7 @@ class BehavioralReadout:
         probabilities next to a reply are scored first, from the same prompt,
         so the recording is still the prompt pass.
         """
-        from brainscore_core.responses import Choice, Scale, Text, labels_of
+        from brainscore_core.responses import Choice, Scale, Segments, Text, labels_of
         owner, task = self.owner, self.task
         response, path, probability_source = task.response, self.response_path, self.probability_source
         planned = self._planned(task, channels)
@@ -588,6 +607,8 @@ class BehavioralReadout:
         # (for a session with its table, the plan built them before the readout fit).
         shown = openable_paths(stimuli, task)   # the parts see paths that open; the stored answer keeps the table
         prompts, row_labels, axis = trial_prompts(task, shown)
+        if isinstance(response, Segments):
+            return self._segment_answers(stimuli, shown, prompts, channels, layers)
         neural, outputs, extras = {}, {}, []
         rt_source = None   # (float64 probabilities, row validity, record) for a reaction time
 
@@ -743,6 +764,55 @@ class BehavioralReadout:
                       for region, assembly in neural.items()}
         stamp = self._stamp(path, 'readout extraction' if path == 'readout' else 'prompt')
         return ({c: outputs[c] for c in channels},
+                {r: a.assign_attrs(recording={**a.attrs.get('recording', {}), **stamp})
+                 for r, a in neural.items()})
+
+    def _segment_answers(self, stimuli, shown, prompts, channels, layers):
+        """Answer a ``Segments`` task with the likelihood's ``segment`` part: one row of log
+        probabilities for each stimulus, positions 1 to R, with the part's parameters.
+
+        A value that is not finite stays as given; its row is invalid with the reason of each
+        such position (position 1: no conditioning context, as no token of the first part
+        has a prediction).
+        """
+        import json
+        from brainscore_core.compatibility import ExecutionNotFeasibleError
+        owner = self.owner
+        # Before any compute: one trial that shows one text.
+        kinds = {tuple(kind for kind, _ in prompt.parts) for prompt in prompts}
+        if len(prompts) > 1 or kinds - {('text',)}:
+            # ponytail: one Segments trial per session, so no row is scored before a later row
+            # is refused; several passages need one session each
+            raise ExecutionNotFeasibleError(
+                f"Subject '{owner.identifier}' answers one Segments trial in a session, and it shows "
+                f"one text (no picture); got {len(prompts)} trials with parts {sorted(kinds)}",
+                task_type=self.task.task_type)
+
+        def call(row, prompt):
+            parts.note('likelihood', owner._segment_likelihood, serves=channels)
+            return owner._segment_likelihood(prompt)
+
+        results, neural = per_stimulus(owner, stimuli, layers, call, prompts, shown)
+        if len({json.dumps(parameters, sort_keys=True) for _, parameters in results}) > 1:
+            raise ExecutionNotFeasibleError(
+                f"Subject '{owner.identifier}' gave the Segments rows of one session different "
+                'records', task_type=self.task.task_type)
+        # None: a part with no scored token, as the part states it.
+        unscored = [[value is None for value in row] for row, _ in results]
+        values = np.array([[np.nan if value is None else value for value in row]
+                           for row, _ in results], dtype=np.float64)
+        reasons = [' and '.join(f'position {i + 1}: '
+                                + ('no conditioning context' if gaps[i] else 'not finite')
+                                for i in np.flatnonzero(~np.isfinite(row)))
+                   for row, gaps in zip(values, unscored)]
+        record = response_record(LOG_PROBABILITIES, 'likelihood', category='model-derived',
+                                 parameters=results[0][1])
+        axis = [str(i) for i in range(1, values.shape[1] + 1)]
+        answer = answers.log_probabilities(values, stimuli, axis, record).assign_coords(
+            answer_valid=('presentation', [not reason for reason in reasons]),
+            parse_error=('presentation', reasons))
+        stamp = self._stamp('likelihood', 'prompt')
+        return ({c: answer for c in channels},
                 {r: a.assign_attrs(recording={**a.attrs.get('recording', {}), **stamp})
                  for r, a in neural.items()})
 
