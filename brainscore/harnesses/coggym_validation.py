@@ -119,12 +119,27 @@ def _agrees(value, query, parsed):
     )
 
 
+def _native_value(parsed, query):
+    """Whether CogGym's parser gave this slider a value (it scores only such answers)."""
+    if not isinstance(parsed, dict):
+        return False
+    if query.type == 'single-slider':
+        return parsed.get('value') is not None
+    values = parsed.get('values')
+    return isinstance(values, dict) and bool(values) and all(v is not None for v in values.values())
+
+
 def validate_slider_responses(trials: Sequence[Any], results: Sequence[dict]) -> dict:
     """Report invalid slider answers; leave native responses and scores untouched.
 
     Require explicit question assignments, finite ratings within the scale, and
     agreement with the native parser. Do not repair, clamp, or drop answers.
     Other question types keep their native evaluation behavior.
+
+    Each issue has a ``response_state`` (Contract Rule 6.2): ``missing`` when CogGym's
+    parser gave the answer no value (CogGym leaves it out of its fit), ``invalid`` when
+    CogGym read a value that this check rejects (CogGym keeps it in its fit). An
+    answer with no issue is ``valid``.
     """
     by_id = {result.get('trial_id'): result for result in results}
     checked, issues = 0, []
@@ -153,7 +168,11 @@ def validate_slider_responses(trials: Sequence[Any], results: Sequence[dict]) ->
                 except ValueError:
                     reason = 'invalid_rating'
             if reason:
-                issues.append({'trial_id': trial.id, 'query': query.tag, 'reason': reason})
+                parsed_answers = result.get('parsed')
+                parsed = parsed_answers.get(query.tag) if isinstance(parsed_answers, dict) else None
+                state = 'invalid' if _native_value(parsed, query) else 'missing'
+                issues.append({'trial_id': trial.id, 'query': query.tag, 'reason': reason,
+                               'response_state': state})
     return {
         'policy': SLIDER_VALIDATION_POLICY,
         'status': 'invalid' if issues else 'valid' if checked else 'not_applicable',

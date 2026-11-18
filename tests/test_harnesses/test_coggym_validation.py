@@ -137,3 +137,11 @@ def test_question_labels_still_require_native_parser_agreement():
     )
     assert report['invalid_queries'] == 2
     assert all(issue['reason'] == 'reference_parse_mismatch' for issue in report['issues'])
+
+
+def test_each_rejected_answer_has_a_state():
+    # CogGym read a value the check rejects: invalid; CogGym read none: missing.
+    assert validate('Maybe 20.', {'rating': {'value': 20}})['issues'][0]['response_state'] == 'invalid'
+    assert validate('no idea', {'rating': {'value': None}})['issues'][0]['response_state'] == 'missing'
+    report = validate_slider_responses([SimpleNamespace(id='trial-1', queries=[query()])], [])
+    assert report['issues'][0]['response_state'] == 'missing'
