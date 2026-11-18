@@ -589,12 +589,16 @@ class CogGymRunner:
                 register(path)
                 raise
         rows, summary, skipped = analyzed['rows'], analyzed['summary'], analyzed['skipped']
-        saved = [json.loads(path.read_text()) for path in artifacts]
+        coverage, scorable = [], 0
+        for path in artifacts:   # one repetition file at a time: a trial file can be large
+            run = json.loads(path.read_text())
+            coverage.append(run['umi']['coverage'])
+            scorable += run['summary']['n_scorable_queries']
         result = {'configuration': self.describe(), 'experiments': rows,
                   'summary': summary, 'skipped': skipped,
-                  'repetitions': [run['umi']['coverage'] for run in saved],
+                  'repetitions': coverage,
                   # CogGym's own count of the queries its fit can use, over the repetitions.
-                  'n_scorable_queries': sum(run['summary']['n_scorable_queries'] for run in saved)}
+                  'n_scorable_queries': scorable}
         # The detector's findings, counted by reason; the validity of the score is the
         # benchmark's decision.
         result['response_validation'] = {
