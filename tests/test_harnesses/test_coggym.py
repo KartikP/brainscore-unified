@@ -469,7 +469,7 @@ class _ProviderWithStateFields:
     invalid = {'trial-2': 'not a state of this provider'}
     refusal = None
 
-    def complete_with_metadata(self, system, messages, model, temperature, max_tokens):
+    def complete_with_metadata(self, system, messages, *args, **kwargs):
         if messages[0]['content'] == 'trial-1':
             raise RuntimeError('the provider failed on this trial')
         return {'text': 'an answer', 'reasoning': None, 'token_usage': None}
@@ -503,7 +503,7 @@ class _RateLimitedThenSilent(Subject):
             raise RuntimeError('rate limit')
         while (event := session.next_input()) is not None:
             if self.calls > 2 and event.channel == 'text':
-                session.respond(StreamEvent('behavior:text', 'an answer', event.t_ms, dict(event.meta)))
+                session.respond(StreamEvent('behavior:text', '{"answer": 42}', event.t_ms, dict(event.meta)))
 
     def reset(self):
         pass
@@ -514,24 +514,29 @@ def test_a_retry_between_trials_of_one_prompt_keeps_the_state_with_its_trial(ref
     missing state stays with the first trial, where CogGym records the call with no reply."""
     root, stand_in = reference
     stand_in.cli('''
-def build_messages(trial, experiment):
+def _selected_trials(*args, **kwargs):
+    query = SimpleNamespace(tag='rating', type='single-slider', slider_config={'min': 0, 'max': 100}, option=[])
+    return [SimpleNamespace(id=trial, queries=[query]) for trial in TRIALS]
+
+
+def build_messages(trial, experiment, *args, **kwargs):
     return 'system', [{'role': 'user', 'content': 'one shared prompt'}]
 
 
-def _run_experiment(experiment, selected, provider, model, temperature, max_tokens):
+def _run_experiment(experiment, selected, provider, model, *args, **kwargs):
     results = []
     for trial in selected:
         system, messages = build_messages(trial, experiment)
         try:
             for attempt in range(2):      # as CogGym's call_with_retry: again on a rate limit
                 try:
-                    raw = provider.complete_with_metadata(system, messages, model, temperature, max_tokens)
+                    raw = provider.complete_with_metadata(system, messages, model, *args)
                     break
                 except Exception as error:
                     if 'rate limit' not in str(error) or attempt == 1:
                         raise
             results.append({'trial_id': trial.id, 'response': raw['text'],
-                            'scores': {'answer': {'scorable': True}}})
+                            'parsed': {'rating': {'value': 42}}, 'scores': {'rating': {'scorable': True}}})
         except Exception as error:
             results.append({'trial_id': trial.id, 'error': str(error), 'model': model})
     return results
@@ -545,3 +550,8 @@ def _run_experiment(experiment, selected, provider, model, temperature, max_toke
     assert saved['umi']['coverage']['no_answer_trials'] == 1
     assert saved['umi']['coverage']['error_trials'] == 0
     assert saved['umi']['status'] == 'complete'
+    # The saved trial identity on its own: the missing answer is trial-0's.
+    issues = saved['umi']['response_validation']['issues']
+    assert [issue['trial_id'] for issue in issues] == ['trial-0']
+    # Core's reason on its own: not CogGym's error text of the call.
+    assert issues[0]['response_state'] == 'missing' and issues[0]['reason'] != saved['trials'][0]['error']
