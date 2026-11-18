@@ -152,3 +152,10 @@ def test_each_rejected_answer_has_a_state():
     assert validate('no idea', {'rating': {'value': None}})['issues'][0]['response_state'] == 'missing'
     report = validate_responses([SimpleNamespace(id='trial-1', queries=[query()])], [])
     assert report['issues'][0]['response_state'] == 'missing'
+
+
+def test_repeated_numbering_in_one_answer_is_invalid_and_does_not_stop_the_check():
+    # One numbered answer holds a value, not a second numbered list: no depth to run out of.
+    report = validate('1. ' * 5000 + '50', {'rating': {'value': 50}})
+    assert report['issues'][0]['response_state'] == 'invalid'
+    assert validate('1. 50', {'rating': {'value': 50}})['issues'] == []

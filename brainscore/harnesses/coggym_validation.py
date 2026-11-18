@@ -39,10 +39,7 @@ def _segments(raw, queries):
     if not isinstance(raw, str):
         raise ValueError('Missing response')
     tags = [query.tag for query in queries]
-    text = raw.strip()
-    fence = re.fullmatch(r'```(?:json)?\s*\n?(.*?)\s*```', text, flags=re.DOTALL)
-    if fence:
-        text = fence[1]
+    text = _unfenced(raw)
     try:
         documents = _documents(text)
     except ValueError:
@@ -56,7 +53,30 @@ def _segments(raw, queries):
             raise ValueError('Ambiguous answer format') from None
         if parts[1::2] != [str(i) for i in range(1, len(queries) + 1)]:
             raise ValueError('Ambiguous question numbering')
-        return [_segments(part, [query])[0] for part, query in zip(parts[2::2], queries)]
+        return [_numbered_part(part, query) for part, query in zip(parts[2::2], queries)]
+    return _assigned(documents, queries, tags)
+
+
+def _unfenced(text):
+    text = text.strip()
+    fence = re.fullmatch(r'```(?:json)?\s*\n?(.*?)\s*```', text, flags=re.DOTALL)
+    return fence[1] if fence else text
+
+
+def _numbered_part(text, query):
+    """One numbered answer holds a value (a rating or a JSON value), not a second numbered list."""
+    text = _unfenced(text)
+    try:
+        documents = _documents(text)
+    except ValueError:
+        match = re.fullmatch(rf'(?:Answer:\s*)?({_NUMBER})', text, flags=re.IGNORECASE)
+        if not match:
+            raise ValueError('Ambiguous answer format') from None
+        return match[1]
+    return _assigned(documents, [query], [query.tag])[0]
+
+
+def _assigned(documents, queries, tags):
     if len(documents) == len(queries) and len(documents) > 1 and all(
         isinstance(value, dict) for value in documents
     ):
