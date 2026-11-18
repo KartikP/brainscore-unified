@@ -1,6 +1,6 @@
 """The per-pull-request selection leaves out every qualification test.
 
-``conftest.py`` marks a test without a tier ``unit``, so most qualification tests
+``tests/markers.py`` marks a test without a tier ``unit``, so most qualification tests
 are ``unit`` tests too. ``unit or integration and not qualification`` reads as
 ``unit or (integration and not qualification)`` and keeps them; the selection
 must bracket the tiers.
@@ -53,3 +53,11 @@ def test_the_unified_selection_leaves_out_qualification_tests_unless_full(tmp_pa
     arguments = suite_arguments('unified', SUITES['unified'])
     marks = arguments[arguments.index('-m') + 1]
     assert _selected(tmp_path, marks) == expected
+
+
+def test_the_marking_hook_is_registered_once(request):
+    # Both conftest files (tests/, brainscore/benchmarks/) name the marking plugin; a joint
+    # collection must still run it once, or every test gets its markers twice.
+    from tests import markers
+    hooks = request.config.pluginmanager.hook.pytest_collection_modifyitems.get_hookimpls()
+    assert [hook.function for hook in hooks].count(markers.pytest_collection_modifyitems) == 1

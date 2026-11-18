@@ -175,3 +175,43 @@ def test_workspace_rejects_incomplete_run(tmp_path, monkeypatch, failure):
     assert workspace.qualify(root, out) == 1
     report = json.loads(out.read_text())
     assert all(row['returncode'] != 0 for row in report['repositories'].values())
+
+
+def test_a_plugin_test_collected_from_another_folder_keeps_its_source_id(tmp_path):
+    # An installed run collects the plugin tests from site-packages, outside the rootdir.
+    plugin = tmp_path / 'site' / 'brainscore' / 'benchmarks' / 'demo'
+    plugin.mkdir(parents=True)
+    (plugin / 'test_demo.py').write_text('class TestDemo:\n    def test_ok(self): pass\n')
+    run = tmp_path / 'run'
+    run.mkdir()
+    (run / 'pytest.ini').write_text('[pytest]\n')
+    report = run / 'checks.json'
+    env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD='1')
+    env['PYTHONPATH'] = os.pathsep.join([str(Path(__file__).resolve().parents[2]),
+                                         *(str(Path(part or '.').resolve())
+                                           for part in env.get('PYTHONPATH', '').split(os.pathsep))])
+    result = subprocess.run([
+        sys.executable, '-m', 'pytest', str(plugin / 'test_demo.py'), '-q',
+        '-p', 'brainscore.validation.required_checks', '--umi-check-report', str(report),
+    ], cwd=run, env=env, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
+    evidence = json.loads(report.read_text())
+    expected = 'brainscore/benchmarks/demo/test_demo.py::TestDemo::test_ok'
+    assert evidence['selected'] == [expected]
+    assert evidence['passed'] == [expected]
+
+
+def test_installed_mode_refuses_a_wheel_without_a_plugin_test(tmp_path):
+    import zipfile
+    from brainscore.validation.workspace import missing_plugin_tests
+    checkout = tmp_path / 'unified'
+    plugin = checkout / 'brainscore' / 'benchmarks' / 'demo'
+    plugin.mkdir(parents=True)
+    for name in ('test.py', 'test_topic.py'):
+        (plugin / name).write_text('')
+    wheels = tmp_path / 'wheels'
+    wheels.mkdir()
+    with zipfile.ZipFile(wheels / 'brainscore-0.1-py3-none-any.whl', 'w') as archive:
+        archive.writestr('brainscore-0.1.dist-info/RECORD',
+                         'brainscore/benchmarks/demo/test.py,sha256=x,0\n')
+    assert missing_plugin_tests(checkout, wheels) == ['brainscore/benchmarks/demo/test_topic.py']

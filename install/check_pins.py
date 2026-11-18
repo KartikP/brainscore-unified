@@ -82,7 +82,7 @@ def github_file(repository: str, ref: str, path: str, api: bool = False) -> Opti
     """Return one file at one ref, or None when GitHub does not serve it.
 
     ``api=True`` reads ``path`` as a JSON endpoint of the repository instead
-    (for example ``compare/<base>...<head>``).
+    (for example ``git/trees/<ref>``).
     """
     url = (f'https://api.github.com/repos/{repository}/{quote(path, safe="/.")}' if api else
            f'https://api.github.com/repos/{repository}/contents/{quote(path)}?ref={quote(ref)}')
@@ -96,6 +96,36 @@ def github_file(repository: str, ref: str, path: str, api: bool = False) -> Opti
             return response.read().decode()
     except (HTTPError, URLError):
         return None
+
+
+def _tree_difference(repository: str, base: str, head: str, prefix: str = '') -> Optional[set[str]]:
+    """The paths whose content differs between two trees (or commits) on GitHub; None when unknown.
+
+    Content, not history, decides: equal tree objects are equal code, so a
+    squash merge or a commit on a kept branch with the same files gives no path.
+    Only subtrees whose object differs are read.
+    """
+    if base == head:
+        return set()
+    entries = []
+    for ref in (base, head):
+        text = github_file(repository, ref, f'git/trees/{ref}', api=True)
+        if text is None:
+            return None
+        entries.append({entry['path']: (entry['type'], entry['sha']) for entry in json.loads(text)['tree']})
+    old, new = entries
+    changed = set()
+    for name in old.keys() | new.keys():
+        if old.get(name) == new.get(name):
+            continue
+        if old.get(name, ('',))[0] == new.get(name, ('',))[0] == 'tree':
+            inner = _tree_difference(repository, old[name][1], new[name][1], f'{prefix}{name}/')
+            if inner is None:
+                return None
+            changed |= inner
+        else:
+            changed.add(f'{prefix}{name}')
+    return changed
 
 
 @dataclass
@@ -126,10 +156,7 @@ class Source:
             result = subprocess.run(['git', '-C', str(self.path), 'diff', '--name-only', revision, '--'],
                                     capture_output=True, text=True)
             return set(result.stdout.split()) if result.returncode == 0 else None
-        text = github_file(self.repository, self.ref, f'compare/{revision}...{self.ref}', api=True)
-        if text is None:
-            return None
-        return {entry['filename'] for entry in json.loads(text).get('files', [])}
+        return _tree_difference(self.repository, revision, self.ref)
 
     def read_at(self, revision: str, path: str) -> Optional[str]:
         """Read a file at another commit of this repository."""

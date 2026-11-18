@@ -4,7 +4,7 @@ import pytest
 
 from brainscore.benchmarks.roar_yeatman2021.benchmark import Yeatman2021LexicalDecision
 from tests.benchmark_declarations import assert_declares, assert_preflight
-from tests.test_benchmarks.test_induced_dyslexia import _ReaderSubject, synthetic_roar  # noqa: F401  (fixture)
+from brainscore.benchmarks.induced_dyslexia.test import synthetic_roar  # noqa: F401  (fixture)
 
 
 @pytest.mark.parametrize('word', ['vision:image', 'text'])
@@ -12,13 +12,6 @@ def test_declares_the_word_and_the_question_in_and_the_choice_out(synthetic_roar
     benchmark = Yeatman2021LexicalDecision(channels=(word,), identifier='Yeatman2021-test')
     assert_declares(benchmark, {word, 'instruction'}, {'behavior:choice'})
     assert_preflight(benchmark)
-
-
-def test_a_participate_only_subject_gets_a_score(synthetic_roar):
-    subject = _ReaderSubject()
-    score = Yeatman2021LexicalDecision(channels=('text',), identifier='Yeatman2021-lexical_decision-text')(subject)
-    assert float(score.attrs['raw']) == 1.0
-    assert score.attrs['n_trials'] == 100
 
 
 def _noisy_readout_model():

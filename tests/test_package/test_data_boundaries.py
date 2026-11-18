@@ -13,6 +13,7 @@ import pytest
 pytestmark = pytest.mark.unit
 
 import brainscore
+from tests.architecture_support import plugin_test
 
 # The installed package, so this also holds when tests run outside the checkout.
 ROOT = Path(brainscore.__file__).resolve().parent
@@ -35,7 +36,7 @@ def _data_imports(path: Path):
 
 def test_benchmarks_do_not_import_data_plugin_modules():
     offenders = []
-    for path in sorted((ROOT / 'benchmarks').rglob('*.py')):
+    for path in sorted(path for path in (ROOT / 'benchmarks').rglob('*.py') if not plugin_test(path)):
         for line, module in _data_imports(path):
             parts = module.split('.')
             if parts[:2] == ['brainscore', 'data'] and len(parts) > 3 and parts[2] in PLUGINS:

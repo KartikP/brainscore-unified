@@ -18,7 +18,7 @@ import pytest
 import brainscore
 import brainscore.benchmarks  # noqa: F401  (registers the unified benchmarks)
 from brainscore_core.compatibility import benchmark_required_input_channels
-from tests.test_benchmarks.test_induced_dyslexia import synthetic_roar  # noqa: F401  (fixture)
+from brainscore.benchmarks.induced_dyslexia.test import synthetic_roar  # noqa: F401  (fixture)
 
 
 REGISTERED = [

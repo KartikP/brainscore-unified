@@ -6,6 +6,9 @@ import socket
 
 import pytest
 
+# The same canonical test IDs as the required-check plugin.
+from .required_checks import pytest_pycollect_makemodule  # noqa: F401
+
 
 def pytest_addoption(parser) -> None:
     parser.addoption('--umi-integration-profile', required=False)

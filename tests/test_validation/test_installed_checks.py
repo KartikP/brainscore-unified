@@ -235,6 +235,9 @@ def test_workspace_requires_installed_evidence(tmp_path, monkeypatch, identity):
 
     monkeypatch.setattr(workspace.subprocess, 'check_output', git)
     monkeypatch.setattr(workspace.subprocess, 'run', run)
+    # The installed mode compares the plugin test files with the brainscore wheel.
+    with zipfile.ZipFile(tmp_path / 'brainscore-1.0-py3-none-any.whl', 'w') as archive:
+        archive.writestr('brainscore-1.0.dist-info/RECORD', '')
     output = tmp_path / 'report.json'
     assert workspace.qualify(checkout.parent, output, mode='installed', wheels=tmp_path) == 1
     assert json.loads(output.read_text())['tier'] == 'installed-offline'
