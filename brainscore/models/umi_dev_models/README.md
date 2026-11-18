@@ -45,7 +45,7 @@ measurements of the same weights.
 | neural language_system, from text | all | |
 | neural language_system during an answer | none | the study's rule above (Qwen3-VL and Gemma 3 also need a general change, below) |
 | vision layers as LayerPCA(1000) of the patch tokens | SmolVLM2, InternVL3, Gemma 3 | Qwen-VL records the hidden width, no PCA. Gemma 3 first takes the mean of each 4 x 4 block of its 64 x 64 patch grid (256 tokens, the pool of Gemma 3's own projector; `token_pool` in the values, named in the provenance): its whole grid (4096 tokens x 1152) gives a PCA fit that SVD refuses |
-| clips (`vision:video`), from the vision part | Qwen3-VL | the other processors give no flattened clip patches; Qwen2.5-VL's clip path is not checked yet |
+| clips (`vision:video`), from the vision part | Qwen3-VL, Qwen2.5-VL | the other processors give no flattened clip patches. Qwen2.5-VL's video processor states no frame rate and no sampling; the study states 2 frames per second with sampling on (`video_sampling` in the values, named in the provenance): chosen by the study, not from the model card (the cached settings files state no rate); Qwen3-VL's processor states the same rate itself |
 | behavior: choice, probabilities, log_probabilities, rating, rt, text | all | |
 | perturbation (lesion, stimulation, pharmacological) | Qwen3-VL, Qwen2.5-VL | the other families record their vision layers as PCA components, and a lesion addresses the module's units |
 | motor (grid game), from the observation | all | |
@@ -82,6 +82,8 @@ Add one entry to `model_configs.json` and one registry line to `__init__.py`. Th
   `image_grid_thw` (Qwen-VL); otherwise the settings that give one whole image per picture
   (`do_image_splitting`, `do_pan_and_scan`, `crop_to_patches` set to false).
 - `video`: `true` only for the flattened-patch layout with a video processor.
+- `video_sampling` (optional): `fps` and `do_sample_frames` for a video processor that states no rate,
+  with the `source` of the values.
 - `token_pool` (optional): the side of the block of the patch grid that a whole-picture layer averages
   before its PCA; only when the whole grid is too large for the fit (Gemma 3: 4).
 - `device_map`: `"auto"` when the weights (2 bytes per parameter) take more than about two thirds

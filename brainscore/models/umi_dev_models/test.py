@@ -300,6 +300,20 @@ def test_each_declared_output_comes_out_of_one_session(stand_in, identifier):
         assert np.array_equal(_collect(subject, pictures, ['neural:IT'], passive)['neural:IT'].values, intact)
 
 
+@pytest.mark.parametrize('identifier', [i for i in IDENTIFIERS if study.MODEL_CONFIGS[i].get('video_sampling')])
+def test_a_clip_is_sampled_at_the_stated_rate(stand_in, monkeypatch, identifier):
+    """A video processor that states no rate and no sampling (Qwen2.5-VL's) gets the study's stated
+    frame sampling, and clips are recorded."""
+    monkeypatch.setattr(_clip_patches, 'fps', None)
+    monkeypatch.setattr(_clip_patches, 'do_sample_frames', False, raising=False)
+    subject = model_registry[identifier]()
+    stated = study.MODEL_CONFIGS[identifier]['video_sampling']
+    assert (_clip_patches.fps, _clip_patches.do_sample_frames) == (stated['fps'], stated['do_sample_frames'])
+    assert 'video_sampling' in subject._provenance
+    clip = _collect(subject, _clip(stand_in), ['neural:IT'], TaskContext(task_type='passive'))['neural:IT']
+    assert clip.shape[0] == 1 and np.isfinite(clip.values).all()
+
+
 @pytest.mark.parametrize('identifier', IDENTIFIERS)
 def test_the_language_layer_during_a_task_is_refused_before_compute(stand_in, identifier):
     """One session for regions, one for an answer: a session that asks for the language layer under a task

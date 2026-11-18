@@ -73,7 +73,8 @@
     "dtype": "bfloat16",
     "download_gb": 7.6,
     "image_processor_kwargs": null,
-    "video": false,
+    "video": true,
+    "video_sampling": {"fps": 2.0, "do_sample_frames": true, "source": "chosen by the study, not from the model card"},
     "device_map": null,
     "packages": []
   },
@@ -86,7 +87,8 @@
     "dtype": "bfloat16",
     "download_gb": 16.6,
     "image_processor_kwargs": null,
-    "video": false,
+    "video": true,
+    "video_sampling": {"fps": 2.0, "do_sample_frames": true, "source": "chosen by the study, not from the model card"},
     "device_map": null,
     "packages": []
   },
