@@ -51,7 +51,9 @@ def _run_experiment(experiment, selected, provider, model, temperature, max_toke
 
 
 def aggregate_experiment(rows):
-    return {'n_trials': len(rows)}
+    # CogGym's summary counts the queries its fit can use.
+    return {'n_trials': len(rows), 'n_scorable_queries': sum(
+        bool(score.get('scorable')) for row in rows for score in row.get('scores', {}).values())}
 '''
 
 ANALYZE = '''

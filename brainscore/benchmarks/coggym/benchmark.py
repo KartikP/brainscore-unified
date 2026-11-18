@@ -193,7 +193,7 @@ class CogGymBenchmark(BenchmarkBase):
             n_answers = sum(len(part) for part in states)
             n_valid = sum(part.count('valid') for part in states)
             # CogGym makes a row exactly when its fit has a scorable query (its own count).
-            scorable = sum(part['scorable_queries'] for part in result['repetitions'])
+            scorable = result['n_scorable_queries']
             if rows:
                 value, n_items = rows[0]['r2'], rows[0].get('n_items')
             elif not scorable:

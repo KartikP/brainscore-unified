@@ -474,6 +474,19 @@ def test_an_absent_row_that_the_counts_do_not_explain_is_a_fault_of_the_run(scor
         _registered(root, tmp_path)(_Answers(omit=lambda trial: False))
 
 
+def test_scorable_queries_in_one_repetition_only_need_a_row(scored_reference, tmp_path):
+    """CogGym's summary counts scorable queries in the second repetition only: no row is a
+    fault of the analysis."""
+    root, stand_in = scored_reference
+    _trial_queries(stand_in, scorable=False)      # a recount of the trial scores would give zero
+    _no_row(stand_in)
+    stand_in.cli("SUMMARIES = []\n\n\ndef aggregate_experiment(rows, *args, **kwargs):\n"
+                 "    SUMMARIES.append(rows)\n"
+                 "    return {'n_scorable_queries': 2 if len(SUMMARIES) == 2 else 0}\n")
+    with pytest.raises(RuntimeError, match='scorable'):
+        _registered(root, tmp_path, repetitions=2)(_Answers(omit=lambda trial: False))
+
+
 def test_valid_answers_with_no_human_data_and_no_row_are_a_result_marked_invalid(scored_reference, tmp_path):
     """Zero scorable queries: CogGym makes no row, and that is the experiment's result."""
     root, stand_in = scored_reference
