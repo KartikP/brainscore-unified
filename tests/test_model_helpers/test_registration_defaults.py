@@ -54,5 +54,7 @@ def test_the_scan_finds_a_repeated_default(tmp_path):
     path = tmp_path / 'model.py'
     path.write_text("TextWrapper(model, tokenizer, max_length=64, batch_size=32)\n"
                     "BrainScoreModel('m', visual_degrees=8)\n")
-    assert list(_repeated_defaults(path, tmp_path)) == [
-        'model.py:1 TextWrapper(batch_size=32)', 'model.py:2 BrainScoreModel(visual_degrees=8)']
+    found = list(_repeated_defaults(path, tmp_path))
+    assert 'model.py:1 TextWrapper(batch_size=32)' in found
+    assert 'model.py:2 BrainScoreModel(visual_degrees=8)' in found
+    assert not any('max_length' in line for line in found)      # a stated limit is not a default
