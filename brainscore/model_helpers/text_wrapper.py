@@ -96,19 +96,19 @@ _NO_LIMIT = int(1e20)
 
 
 def _model_window(model, tokenizer, identifier):
-    """The most tokens the model takes: the tokenizer's ``model_max_length`` when it is a real
-    limit (as the old language helper cuts), else ``max_position_embeddings`` of the network's
-    text configuration. None when there is no tokenizer (nothing is cut)."""
+    """The most tokens the model can read: the smallest real limit among the tokenizer's
+    ``model_max_length`` and ``max_position_embeddings`` of the network's text configuration
+    (a text longer than the decoder's positions cannot be read). None when there is no
+    tokenizer (nothing is cut)."""
     if tokenizer is None:
         return None
-    limit = getattr(tokenizer, 'model_max_length', None)
-    if isinstance(limit, int) and 0 < limit < _NO_LIMIT:
-        return limit
     config = getattr(model, 'config', None)
     config = getattr(config, 'get_text_config', lambda: config)()   # a composite model's text part
-    limit = getattr(config, 'max_position_embeddings', None)
-    if isinstance(limit, int) and 0 < limit < _NO_LIMIT:
-        return limit
+    limits = [limit for limit in (getattr(tokenizer, 'model_max_length', None),
+                                  getattr(config, 'max_position_embeddings', None))
+              if isinstance(limit, int) and 0 < limit < _NO_LIMIT]
+    if limits:
+        return min(limits)
     raise ValueError(f'{identifier}: neither the tokenizer nor the model configuration states a token '
                      'limit, so a long text cannot be cut at the model window. State max_length=<tokens> '
                      'for the TextWrapper in the registration.')

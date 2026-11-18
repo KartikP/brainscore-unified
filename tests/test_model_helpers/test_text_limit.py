@@ -24,6 +24,11 @@ def test_a_tokenizer_limit_is_the_window():
     assert TextWrapper(_network(48), _Tokenizer(40), device='cpu')._max_length == 40
 
 
+def test_the_smaller_real_limit_is_the_window():
+    # A text longer than the decoder's positions cannot be read, whatever the tokenizer states.
+    assert TextWrapper(_network(32), _Tokenizer(40), device='cpu')._max_length == 32
+
+
 def test_a_placeholder_limit_gives_the_position_limit_of_the_configuration():
     # Hugging Face states int(1e30) when a tokenizer has no limit.
     assert TextWrapper(_network(48), _Tokenizer(int(1e30)), device='cpu')._max_length == 48
@@ -43,7 +48,32 @@ def test_no_tokenizer_needs_no_limit():
     assert TextWrapper(_network(), None, device='cpu')._max_length is None
 
 
-def test_the_limit_is_in_the_recorded_settings_and_the_cache_key():
-    short, long = (TextWrapper(_network(), _Tokenizer(limit), device='cpu') for limit in (512, 1024))
-    assert short.cache_config()['settings']['_max_length'] == 512
-    assert short.cache_config() != long.cache_config()
+def test_the_limit_alone_changes_the_cache_key(monkeypatch):
+    """One network, one tokenizer, one input: only the limit differs, and the real key differs."""
+    from brainscore.model_helpers._extractors import cache_signature
+    from tests.test_model_helpers.test_wrapper_cache_guard import _TextNet, _eighths, _tokenizer
+    monkeypatch.delenv('RESULTCACHING_DISABLE', raising=False)     # the key is made only with the store on
+    network, tokenizer = _eighths(_TextNet(), 1), _tokenizer()
+    window, stated = (TextWrapper(network, tokenizer, max_length=limit, device='cpu') for limit in (None, 32))
+    assert window.cache_config()['settings']['_max_length'] == 64
+    keys = [cache_signature(wrapper, '_from_texts_stored', ['the cat'], 'texts-1') for wrapper in (window, stated)]
+    assert None not in keys and keys[0] != keys[1]
+
+
+class _Seen(torch.nn.Module):
+    """Keeps the token ids of its last pass."""
+
+    def __init__(self):
+        super().__init__()
+        self.embed = torch.nn.Embedding(9, 2)
+
+    def forward(self, input_ids=None, attention_mask=None, **_):
+        self.seen = input_ids.tolist()
+        return self.embed(input_ids)
+
+
+def test_a_long_text_keeps_its_newest_tokens():
+    from tests.test_model_helpers.test_wrapper_cache_guard import _tokenizer
+    network, tokenizer = _Seen(), _tokenizer()
+    TextWrapper(network, tokenizer, max_length=2, device='cpu')(['the cat sat'], ['embed'])
+    assert network.seen == [tokenizer.convert_tokens_to_ids(['cat', 'sat'])]
