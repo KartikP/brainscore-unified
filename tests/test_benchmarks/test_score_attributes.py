@@ -8,6 +8,7 @@ import pytest
 from brainscore.benchmarks import benchmark_score, not_estimated
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
+from tests.architecture_support import plugin_test
 
 pytestmark = pytest.mark.unit
 
@@ -86,7 +87,7 @@ def test_no_unified_benchmark_writes_the_common_attributes_by_hand():
     files = [*root.joinpath('benchmarks').rglob('*.py'), *root.joinpath('harnesses').rglob('*.py')]
     offenders = []
     for path in files:
-        if path.name == '_score.py':
+        if path.name == '_score.py' or plugin_test(path):
             continue
         for node in ast.walk(ast.parse(path.read_text())):
             # score.attrs['raw'] = ... / score.attrs['ceiling'] = ...

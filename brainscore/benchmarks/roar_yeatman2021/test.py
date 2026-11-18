@@ -13,10 +13,22 @@ import numpy as np
 import pytest
 
 from brainscore_core.compatibility import benchmark_required_input_channels
+from brainscore.benchmarks.roar_yeatman2021.benchmark import Yeatman2021LexicalDecision
+from brainscore.benchmarks.induced_dyslexia.test import _ReaderSubject, synthetic_roar  # noqa: F401  (fixture)
 
-pytestmark = pytest.mark.slow  # loads CLIP + the ROAR benchmark data — run on demand
+# The cases marked slow load CLIP and the ROAR benchmark data (run on demand). The first case
+# uses synthetic words, so the offline run of this file has a test.
+slow = pytest.mark.slow
 
 
+def test_a_participate_only_subject_gets_a_score(synthetic_roar):
+    subject = _ReaderSubject()
+    score = Yeatman2021LexicalDecision(channels=('text',), identifier='Yeatman2021-lexical_decision-text')(subject)
+    assert float(score.attrs['raw']) == 1.0
+    assert score.attrs['n_trials'] == 100
+
+
+@slow
 class TestRoarYeatman2021:
     @pytest.fixture(scope='class')
     def benchmark(self):
@@ -75,6 +87,7 @@ class TestRoarYeatman2021:
         assert score.attrs['dyslexia_threshold'] == 0.65
 
 
+@slow
 class TestParameterizedChannels:
     """Direct construction with the `channels` parameter (toolbox path).
 
@@ -150,6 +163,7 @@ class TestParameterizedChannels:
         assert np.isclose(bm_vision._human_accuracy, bm_text._human_accuracy)
 
 
+@slow
 def test_the_retired_alias_is_not_registered():
     """``Yeatman2021-lexical_decision`` is gone; the two pinned variants remain."""
     import brainscore

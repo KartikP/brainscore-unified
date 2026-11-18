@@ -15,7 +15,7 @@ from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice
 from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-from tests.test_benchmarks.test_ewok import likelihood_subject, tiny_lm  # noqa: F401  (tiny_lm is a fixture)
+from brainscore.benchmarks.ewok.test import likelihood_subject, tiny_lm  # noqa: F401  (tiny_lm is a fixture)
 
 pytestmark = pytest.mark.unit
 

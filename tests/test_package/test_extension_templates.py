@@ -325,7 +325,7 @@ def test_benchmark_scores_a_model_as_the_earlier_template_did(benchmark):
 
 
 def test_benchmark_template_dummy_candidate_is_scorable(benchmark):
-    template_tests = _load('new_benchmark/test_benchmark.py', 'umi_template_benchmark_tests')
+    template_tests = _load('new_benchmark/test.py', 'umi_template_benchmark_tests')
     subject = template_tests.DummySubject()
     score = benchmark(subject)
     assert np.isfinite(float(score))

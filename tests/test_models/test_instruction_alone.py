@@ -15,7 +15,7 @@ from brainscore import BrainScoreModel
 from brainscore.benchmarks.roar_yeatman2021.benchmark import Yeatman2021LexicalDecision
 from brainscore_core.compatibility import check_channel_compatibility
 from tests.test_model_helpers.test_causal_lm import subject as causal_lm  # noqa: F401  (fixture)
-from tests.test_benchmarks.test_induced_dyslexia import synthetic_roar  # noqa: F401  (fixture)
+from brainscore.benchmarks.induced_dyslexia.test import synthetic_roar  # noqa: F401  (fixture)
 
 pytestmark = pytest.mark.unit
 

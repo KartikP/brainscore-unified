@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.architecture_support import plugin_test
+
 pytestmark = pytest.mark.unit
 
 PACKAGES = ('brainscore_core', 'brainscore_vision', 'brainscore_language', 'brainscore')
@@ -69,7 +71,8 @@ def _maintained_files():
         assert spec is not None and spec.submodule_search_locations, package
         target = Path(list(spec.submodule_search_locations)[0]) / inside
         assert target.exists(), target
-        files = [target] if target.is_file() else sorted(target.rglob('*.py'))
+        files = [target] if target.is_file() else [
+            path for path in sorted(target.rglob('*.py')) if not plugin_test(path)]
         for path in files:
             yield package, path
 

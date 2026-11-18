@@ -104,7 +104,10 @@ markers = [
     "serial: starts subprocesses or measures time; runs alone on one pytest-xdist worker",
     "qualification: documented examples and qualification runs; push to v2 and nightly only",
 ]
-python_files = ["test_*.py", "*_test.py"]
+python_files = ["test_*.py", "*_test.py", "test.py"]
+# A plain `pytest` collects the suite and the benchmark plugin tests; a model plugin's test.py
+# loads real weights and runs only when its folder is named.
+testpaths = ["tests", "brainscore/benchmarks"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 # templates/ holds fill-me-in scaffolds (Ellipsis/TODO placeholders), not real
