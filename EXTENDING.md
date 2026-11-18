@@ -26,7 +26,7 @@ stimulus_set_registry: Dict[str, Callable[[], StimulusSet]]
 metric_registry:       Dict[str, Callable[[], Metric]]
 benchmark_registry:    Dict[str, Callable[[], Benchmark]]
 model_registry:        Dict[str, Callable[[], Subject]]
-data_builder_registry: Dict[str, Callable[[], DataBuilder]]   # local builds of protected data
+data_builder_registry: Dict[str, Callable[[], DataBuilder]]   # how each data plugin is packaged (package_data)
 ```
 
 Each `load_*` checks this package first, then falls back to the legacy domain
@@ -39,7 +39,7 @@ A plugin is a subpackage whose `__init__.py` adds a factory to the
 matching registry. Every subpackage of `brainscore/{models,benchmarks,data,metrics}/` whose
 name does not start with `_` is imported when `brainscore` is imported, so a new folder
 registers by its presence; no other file changes. A plugin in another package (another repository) registers when you import that package before you load it; there is no entry point. Load by id.
-A plugin's test goes in `tests/test_<name>.py` of the Brain-Score repository, or in the tests of your own package ([Your own package](docs/guides/your_own_package.md)).
+A model or benchmark plugin's test is `test.py` in the plugin's folder (`brainscore/models/<name>/test.py`, `brainscore/benchmarks/<name>/test.py`). Another plugin's test goes in `tests/test_<part>/test_<name>.py`, where `<part>` is the part of `brainscore` the plugin belongs to (for example `test_metrics`) of the Brain-Score repository, or in the tests of your own package ([Your own package](docs/guides/your_own_package.md)).
 The folders in `templates/` are such plugins; started from the `templates/` folder, this
 runs as written:
 

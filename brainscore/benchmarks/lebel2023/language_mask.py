@@ -8,14 +8,14 @@ deficit. This module builds the mask so both can be reported.
 The atlas is an external Fedorenko-lab resource (`osf.io/kzwbh`,
 doi:10.17605/OSF.IO/KZWBH), not redistributed here. Download its **FS Atlas**
 archive — the FreeSurfer-surface arm, which avoids projecting from an MNI volume
-— and point ``BRAINSCORE_LANA_ATLAS`` at the directory holding
-``LH_LanA_n804.nii.gz`` and ``RH_LanA_n804.nii.gz``.
+— and put the directory holding
+``LH_LanA_n804.nii.gz`` and ``RH_LanA_n804.nii.gz`` at ``$BRAINSCORE_DATA_HOME/lana-atlas``.
 
 Those files are fsaverage7 (163842 vertices per hemisphere) and this benchmark
 is fsaverage5 (10242). FreeSurfer's icosahedra are hierarchical, so fsaverage5
 is exactly the first 10242 vertices of fsaverage7 rather than something needing
 interpolation. That is checked rather than assumed: see
-``tests/test_lebel2023_language_mask.py``.
+``brainscore/benchmarks/lebel2023/test_language_mask.py``.
 """
 
 import pathlib

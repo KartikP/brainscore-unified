@@ -17,12 +17,21 @@ def package_root(package):
     return Path(list(spec.submodule_search_locations)[0])
 
 
+def plugin_test(path):
+    """A plugin's own test file (``benchmarks/<plugin>/test.py``, ``test_<topic>.py``; the same
+    under ``models/``): a test that lives beside the plugin, not library code."""
+    path = Path(path)
+    return path.parent.parent.name in ('benchmarks', 'models') and (
+        path.name == 'test.py' or path.name.startswith('test_'))
+
+
 def python_files(root, folders=('',)):
-    """(path relative to root, source) for every .py file below the folders."""
+    """(path relative to root, source) for every .py file below the folders, without plugin tests."""
     root = Path(root)
     for folder in folders:
         target = root / folder
-        files = [target] if target.is_file() else sorted(target.rglob('*.py'))
+        files = [target] if target.is_file() else [
+            path for path in sorted(target.rglob('*.py')) if not plugin_test(path)]
         for path in files:
             yield path.relative_to(root).as_posix(), path.read_text(encoding='utf-8')
 

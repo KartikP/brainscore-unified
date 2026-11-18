@@ -1,4 +1,4 @@
-"""The session plan: built once when a session starts, read by the session parts.
+"""The session plan: built once when a session starts, read by the capabilities.
 
 ``participate`` builds one plan (``_model/plan.py``) before any setup or compute;
 a combination that cannot run is refused there. The calls a session makes to

@@ -70,7 +70,8 @@ def get_model(identifier: str) -> BrainScoreModel:
         # the re-map (raw 0.81 at both), confirming the two are independent.
         behavioral_readout_layer='h.11',
         # The likelihood gives the log probabilities of the options of a verbatim choice.
-        likelihood=_CausalLMParts(language_model, tokenizer).likelihood,
+        # GPT-2 has learned absolute positions: its cache can slide past the 1,024-token window.
+        likelihood=_CausalLMParts(language_model, tokenizer, sliding_window=True).likelihood,
         # The readout derives the choice from its probabilities by argmax; the readout
         # also gives the probabilities and the rating.
         capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}},

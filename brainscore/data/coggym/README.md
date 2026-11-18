@@ -100,3 +100,14 @@ CogGym keeps its trial selection and scoring.
 There is no CogGym request-ID resolver in UMI. Access to additional datasets
 does not automatically register them or extend this pinned public subset.
 Follow the authors' access and distribution terms for any additional files.
+
+## Rebuild
+
+### coggym
+
+- Source: CogGym (Ying et al.), https://github.com/lance-ying/coggym at a pinned commit. The repository holds `LICENSE` (MIT) and `DATA_LICENSE.md`.
+- Access: public, no account.
+- Needs: git and the packages of `brainscore/harnesses/coggym_requirements.txt`, in a folder of its own.
+- Command: none: nothing to package.
+- Writes: Nothing to package: the first `load_benchmark("CogGym...")` makes the checkout and its environment (see this plugin's README).
+- Check: nothing to compare.

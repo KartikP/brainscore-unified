@@ -1,10 +1,44 @@
 """Pytest plugin: report selected checks and fail on unexpected skips."""
+from importlib import metadata
 import json
 from pathlib import Path
 
 import pytest
 
 from .optional_checks import OPTIONAL_SKIPS
+
+# Benchmark plugins keep their tests in their own folders. An installed run takes
+# them from the installed package, not from a copy: a copy would import as source.
+PLUGIN_TESTS = 'brainscore/benchmarks'
+
+
+def installed_argument(argument):
+    """The installed copy of a benchmark plugin test path; any other argument unchanged."""
+    if argument != PLUGIN_TESTS and not argument.startswith(PLUGIN_TESTS + '/'):
+        return argument
+    return str(metadata.distribution('brainscore').locate_file(argument))
+
+
+def plugin_nodeid(path):
+    """The test ID of a benchmark plugin test file: its path from ``brainscore/benchmarks/`` on.
+
+    An installed run collects the plugin tests from site-packages, outside the
+    rootdir, so pytest names them relative to a different folder. The file path
+    gives the same name in every run. None for a file outside the plugins.
+    """
+    parts = Path(path).parts
+    starts = [i for i in range(len(parts) - 1) if parts[i:i + 2] == ('brainscore', 'benchmarks')]
+    return '/'.join(parts[starts[-1]:]) if starts else None
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_pycollect_makemodule(module_path, parent):
+    # Give the module its canonical ID when pytest builds it, so that every test ID,
+    # also those an xdist worker sends to the controller, starts with the canonical path.
+    nodeid = plugin_nodeid(module_path)
+    if nodeid is not None:
+        return pytest.Module.from_parent(parent, path=module_path, nodeid=nodeid)
+    return None
 
 
 def pytest_addoption(parser):

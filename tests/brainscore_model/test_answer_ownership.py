@@ -15,6 +15,7 @@ from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice, Scale, Text
 from brainscore_core.streaming_helpers import stimulus_session
+from tests.architecture_support import plugin_test
 from tests.brainscore_model.test_behavior_paths import FITTING, STIMULI, _features
 
 pytestmark = pytest.mark.unit
@@ -283,7 +284,7 @@ def _registrations():
     groups; the constructor checks them."""
     root = Path(brainscore.__file__).parent
     found, expanded, not_literal = [], set(), set()
-    for path in sorted(root.rglob('*.py')):
+    for path in sorted(path for path in root.rglob('*.py') if not plugin_test(path)):
         where = path.relative_to(root).as_posix()
         for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
             if isinstance(node, ast.Call) and 'BrainScoreModel' in (
@@ -328,8 +329,8 @@ def test_every_registration_answers_each_format_with_the_part_of_its_part_set():
     format it declares is answered by the part that the part set's statement gives (the Qwen
     family: either probabilities statement). A statement that only names an owner the part set
     already has is valid. The Qwen registrations are also built by their registry loaders
-    (``tests/test_qwen_probability_statements.py``), the readout-only ones by their builders
-    (``tests/test_readout_registrations.py``)."""
+    (``tests/test_models/test_qwen_probability_statements.py``), the readout-only ones by their builders
+    (``tests/test_models/test_readout_registrations.py``)."""
     registrations, expanded, not_literal = _registrations()
     assert set(EXPANDED) <= expanded, 'a call listed in EXPANDED no longer expands keywords: remove its line'
     assert {'models/qwen36_27b/model.py', 'models/blip2_opt_2_7b/model.py',

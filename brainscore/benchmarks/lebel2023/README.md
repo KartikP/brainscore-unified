@@ -22,10 +22,10 @@ and peak near 8 GB.
 
 ## Data
 
-With the default settings the loaders fetch hosted files and check their sha1. For other context settings, build the data from the source pickle: point `BRAINSCORE_LEBEL_PICKLE` at it, or place it
-at `~/Downloads/assembly_lebel_uts03.pkl`. The first load converts it to a
-`NeuroidAssembly` and caches the result under `~/.brainscore-umi-cache/lebel2023`
-(override with `BRAINSCORE_LEBEL_CACHE`); later loads take under a second. See the [data README](../../data/lebel2023/README.md).
+With the default settings the loaders fetch hosted files and check their sha1. For other context settings, build the data from the source pickle: place it
+at `$BRAINSCORE_DATA_HOME/sources/lebel2023/assembly_lebel_uts03.pkl` (default data home `~/brainscore-data`). The first load converts it to a
+`NeuroidAssembly` and caches the result under `$BRAINSCORE_DATA_HOME/lebel2023-converted`
+(`~/brainscore-data/lebel2023-converted` by default); later loads take under a second. See the [data README](../../data/lebel2023/README.md).
 
 Two properties of the source drive `data.py`:
 
@@ -38,7 +38,7 @@ Two properties of the source drive `data.py`:
   all the loader can assert, and getting it backwards places features five samples early.
   That inversion made the regression fit BOLD from words up to six seconds in the future
   and roughly halved every score here before it was caught; it is now pinned by
-  `tests/test_lebel2023_data.py::TestTrimDirection`.
+  `tests/test_data/test_lebel2023_data.py::TestTrimDirection`.
 
 BOLD arrives as raw uncentered intensity (mean ≈ 27000) and is standardised per vertex per
 story during scoring.
@@ -161,8 +161,8 @@ The ordering `last < sum ~ average < Lanczos` reproduces the reference pipeline'
 `language_mask.py` builds the LanA language-network mask on this surface, so the
 reference pipeline's statistic (a mean within the mask) can be reported next to this
 benchmark's median over all cortex. The atlas is an external Fedorenko-lab resource
-([osf.io/kzwbh](https://osf.io/kzwbh/)); download its *FS Atlas* archive and point
-`BRAINSCORE_LANA_ATLAS` at the directory. Without it the mask tests skip and nothing else
+([osf.io/kzwbh](https://osf.io/kzwbh/)); download its *FS Atlas* archive and put
+the directory at `$BRAINSCORE_DATA_HOME/lana-atlas`. Without it the mask tests skip and nothing else
 changes.
 
 The mask is applied to the existing whole-cortex fit rather than refitting on the masked
@@ -230,7 +230,7 @@ across stories and aligned with the large BOLD response to a story starting, so 
 carrying no stimulus information scored 0.054 against GPT-2's 0.063. The benchmark was
 mostly measuring story onsets. Those TRs are now excluded rather than padded
 (`_delay_within_stories` returns a `has_full_history` mask), which is regression-tested in
-`tests/test_lebel2023_benchmark.py::TestDelays::test_constant_features_carry_no_signal_after_masking`.
+`brainscore/benchmarks/lebel2023/test.py::TestDelays::test_constant_features_carry_no_signal_after_masking`.
 
 ## Known limits
 

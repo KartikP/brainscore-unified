@@ -90,7 +90,7 @@ benchmark_registry: Dict[str, Callable[[], Benchmark]] = _Registry()
 metric_registry: Dict[str, Callable[[], Metric]] = _Registry()
 data_registry: Dict[str, Callable[..., Any]] = _Registry()
 stimulus_set_registry: Dict[str, Callable[..., Any]] = _Registry()
-# Lazy factories of local data builders (``brainscore.data.preparation.DataBuilder``).
+# Factories of how each data plugin is packaged from its source (``brainscore.data.packaging.DataBuilder``).
 data_builder_registry: Dict[str, Callable[[], Any]] = _Registry()
 
 
@@ -141,7 +141,7 @@ def _populate_unified_registries() -> None:
     ``from .model import get_model`` to call time, so heavy deps
     (torch/transformers/cv2/sklearn) load only when a model is actually
     loaded — not on ``import brainscore``. Guarded by
-    ``tests/test_import_hygiene.py``.
+    ``tests/test_package/test_import_hygiene.py``.
     """
     try:
         from . import data  # noqa: F401

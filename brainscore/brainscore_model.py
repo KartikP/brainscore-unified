@@ -74,7 +74,7 @@ def _one_session_at_a_time(model):
 class BrainScoreModel(Subject):
     """The one concrete subject, assembled from parts (extractors, region map,
     answer, reply, likelihood, policy, intervention, capabilities). Evaluated
-    through ``participate``, which selects the one session part that runs the
+    through ``participate``, which selects the one capability that runs the
     session; ``process`` is a convenience outside the contract. A legacy vision
     or language benchmark reaches it through
     :class:`~brainscore_core.legacy_facade.LegacyBenchmarkFacade`, which
@@ -158,6 +158,15 @@ class BrainScoreModel(Subject):
             probability}``; scores candidate replies without generating. Gives
             choices and their implied probabilities. Run the prompt on its own
             before any candidate, so a recording during scoring is the prompt pass.
+            Or a mapping by layout, ``{'continuation': that callable, 'segment':
+            (prompt) -> (values, parameters)}``: the ``segment`` entry answers a
+            ``Segments`` task on ``behavior:log_probabilities`` with one log
+            probability for each of the row's parts (``prompt.response.segments``),
+            given the earlier parts (``None`` for a part with no scored token), and
+            the record's parameters of what it computed (layout, context,
+            tokenization, aggregation, units). A plain callable states the
+            continuation layout only; a ``Segments`` task is then refused before
+            any call.
         :param policy: ``row -> {output channel: payload}``; chooses an action for
             closed-loop / embodied evaluation. A row is a mapping of channel ->
             payload for one step; the policy needs no Brain-Score import. A value
@@ -237,7 +246,8 @@ class BrainScoreModel(Subject):
         self._visual_degrees = visual_degrees
         self._capability_config = dict(capability_config or {})
         self._behavioral_readout_layer = behavioral_readout_layer
-        self._answer, self._reply, self._likelihood = answer, reply, likelihood
+        self._answer, self._reply = answer, reply
+        self._likelihood, self._segment_likelihood = _likelihood_layouts(likelihood)
         self._memory = memory
         self._policy = policy
         self._policy_in_channels = frozenset(policy_in_channels)
@@ -383,7 +393,10 @@ class BrainScoreModel(Subject):
         first = min(c.order for c in claims)
         winners = [c for c in claims if c.order == first]
         if len(winners) > 1:
-            raise ValueError(f'Ambiguous session handlers: {[c.identifier for c in winners]}')
+            raise ValueError(
+                f'Ambiguous capabilities: {[c.identifier for c in winners]} both claim '
+                f'{sorted(channels)} at order {first}. Narrow the claims of one capability '
+                '(supports_session), or give one capability a lower order.')
         return winners[0]
 
     @property
@@ -492,14 +505,14 @@ class BrainScoreModel(Subject):
     def participate(self, session) -> None:
         """Run a session through the one registered capability that claims it.
 
-        The handler sees only the streams this model declares in
+        The capability sees only the streams this model declares in
         ``in_channels``; every other stream the experiment sends is skipped
         before it reaches any part (Contract Rules v3, rule 5.5).
 
         ``BRAINSCORE_REGIONS_PER_PASS`` is read and checked here, once, for every
         kind of session (see ``brainscore._model.channels``). The session's plan
         (``_model/plan.py``) is built once, before any setup or compute, and the
-        session parts read it; a combination that cannot run is refused there.
+        capabilities read it; a combination that cannot run is refused there.
         """
         from brainscore_core.score_metadata import note_session
         from ._model.channels import regions_per_pass
@@ -515,12 +528,12 @@ class BrainScoreModel(Subject):
                 from .capabilities.registry import _setup_once
                 # Every part notes its calls in the session's log, from set-up (a readout fit) on.
                 with parts.session_log() as log:
-                    _setup_once(self, self._session_plan.handler)
+                    _setup_once(self, self._session_plan.capability)
                     # A task the session configures ends with the session (rule 4.5).
                     # Weights are hashed once per session for the activation cache key;
                     # inside score() the run's scope is reused.
                     with self._behavioral.session_scope(), weight_fingerprint_scope():
-                        self._session_plan.handler.participate(self, session)
+                        self._session_plan.capability.participate(self, session)
                         # Once per session: the parts that ran and their facts, to the run
                         # record (no response is changed). A failed session sends nothing.
                         note_session(session, provenance=provenance.session_entry(self, session, log))
@@ -619,7 +632,7 @@ class BrainScoreModel(Subject):
         (``policy=agent.act`` resets ``agent``), once per object: two parts of
         one owner reset it one time.
         """
-        parts = [self._policy, self._answer, self._reply, self._likelihood,
+        parts = [self._policy, self._answer, self._reply, self._likelihood, self._segment_likelihood,
                  *self._extractors.values()]
         seen, failures = set(), []
         for part in parts:
@@ -657,3 +670,20 @@ class BrainScoreModel(Subject):
         the legacy benchmark facade, which places vision stimuli by it.
         """
         return self._visual_degrees
+
+
+def _likelihood_layouts(likelihood):
+    """``(continuation part, segment part)`` of a ``likelihood=`` argument: a callable is the
+    continuation layout; a mapping names its layouts (``'continuation'``, required, and
+    ``'segment'``)."""
+    from collections.abc import Mapping
+    if not isinstance(likelihood, Mapping):
+        return likelihood, None
+    unknown = set(likelihood) - {'continuation', 'segment'}
+    if unknown or 'continuation' not in likelihood:
+        raise ValueError(f"likelihood= maps the layouts 'continuation' (required) and 'segment' "
+                         f"to their parts; got {sorted(likelihood)}")
+    for layout, part in likelihood.items():
+        if not callable(part):
+            raise ValueError(f"likelihood['{layout}'] is a callable part, not {type(part).__name__}")
+    return likelihood['continuation'], likelihood.get('segment')

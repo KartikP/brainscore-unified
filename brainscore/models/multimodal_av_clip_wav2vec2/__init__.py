@@ -1,5 +1,4 @@
 from brainscore import model_registry
-from ._ids import SUPPORTED_IDENTIFIERS
 
 
 def _make(_id):  # defer heavy model.py import to load time
@@ -9,5 +8,7 @@ def _make(_id):  # defer heavy model.py import to load time
     return _load
 
 
-for _ident in SUPPORTED_IDENTIFIERS:
-    model_registry[_ident] = _make(_ident)
+model_registry['clip-wav2vec2'] = _make('clip-wav2vec2')
+model_registry['random-clip-wav2vec2'] = _make('random-clip-wav2vec2')
+model_registry['clip-random-wav2vec2'] = _make('clip-random-wav2vec2')
+model_registry['random-clip-random-wav2vec2'] = _make('random-clip-random-wav2vec2')

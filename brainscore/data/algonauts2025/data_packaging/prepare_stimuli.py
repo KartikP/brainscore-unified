@@ -267,7 +267,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     parser.add_argument('--movies', nargs='+', default=None,
                         help='only these films (stimulus ids), for a short run')
     parser.add_argument('--prepared-root', type=Path, default=None,
-                        help='the prepared files (default: BRAINSCORE_ALGONAUTS_PREPARED)')
+                        help='the prepared files (default: $BRAINSCORE_DATA_HOME/algonauts2025-prepared)')
     parser.add_argument('--workers', type=int, default=8)
     args = parser.parse_args(argv)
 

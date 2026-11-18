@@ -221,8 +221,10 @@ def test_missing_input_is_refused_before_any_extractor_runs():
 def layered(kind, calls, numbering='per_layer', label=None):
     """An extractor that returns one block per requested layer.
 
-    ``numbering='across_layers'`` copies VideoWrapper._package, which numbers
-    ``neuroid_num`` over all requested layers of one call.
+    ``numbering='across_layers'`` numbers ``neuroid_num`` over all requested
+    layers of one call: an extractor that does not declare
+    ``independent_layers``. (VideoWrapper numbered its units this way before
+    85efaeb3; it now numbers them from zero in each layer and declares it.)
     """
     def extract(stimuli, layers):
         calls.append((kind, tuple(layers)))
@@ -581,7 +583,7 @@ def test_streamed_table_with_two_input_columns_presents_each_row_once():
     """Each input column is its own event; the row is still presented once (rule 4.5).
 
     On base b296d09 this gave four calls and four presentations (A, A, B, B).
-    tests/test_stream_rows_once.py covers the fix in full.
+    tests/brainscore_model/test_stream_rows_once.py covers the fix in full.
     """
     calls = []
     model = BrainScoreModel('stream', extractor={'text': keyed('t', calls)},

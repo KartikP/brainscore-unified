@@ -1,7 +1,7 @@
 """The plan of one session: decided once when it starts, before any compute.
 
 ``BrainScoreModel.participate`` builds it with ``plan_session`` and keeps it as
-``model._session_plan`` while the session runs. The session parts and the
+``model._session_plan`` while the session runs. The capabilities and the
 answering code read it instead of deciding again (Contract Rules 4.5, 5.14):
 which capability runs the session, the pass plan of
 ``BRAINSCORE_REGIONS_PER_PASS``, how the trials are delivered, and the part
@@ -20,7 +20,7 @@ from brainscore_core.streaming_helpers import refuse_variance, session_outputs
 class SessionPlan:
     """What one session runs, decided at its start."""
 
-    handler: object                     # the capability that runs the session
+    capability: object                  # the capability that runs the session
     regions_per_pass: str               # 'all' or 'one' (BRAINSCORE_REGIONS_PER_PASS)
     answers: Tuple[str, ...]            # the requested behavior channels, in request order
     regions: Tuple[str, ...]            # the requested regions, in request order
@@ -65,7 +65,7 @@ def plan_session(model, session, passes: str) -> SessionPlan:
     task = getattr(session, 'task', None)
     task_type = getattr(task, 'task_type', None) if task is not None else None
     try:
-        handler = model.check_session_support(outputs)
+        capability = model.check_session_support(outputs)
     except ExecutionNotFeasibleError as error:
         raise ExecutionNotFeasibleError(
             f"Session refused (task type {task_type if task is not None else 'none'!r}): {error}",
@@ -75,11 +75,11 @@ def plan_session(model, session, passes: str) -> SessionPlan:
     streaming = bool(getattr(session, 'streaming', False))
     history = 'memory:trial_history' in model.traits
 
-    from ..capabilities.sessions import _BEHAVIOR, _MOTOR, _NEURAL
+    from ..capabilities.built_in import _BEHAVIOR, _MOTOR, _NEURAL
     from .recording import plan_recordings
-    if handler is _NEURAL:
+    if capability is _NEURAL:
         task_path = task is not None and task.task_type != 'passive'
-    elif handler is _BEHAVIOR:
+    elif capability is _BEHAVIOR:
         task_path = True
     else:
         task_path = False
@@ -97,7 +97,7 @@ def plan_session(model, session, passes: str) -> SessionPlan:
             if regions and pick[0] != 'readout' and stimuli is not None:
                 # Regions recorded during the answering pass: refused, or grouped, before any fit.
                 recordings = plan_recordings(model, stimuli, _region_layers(model, regions))
-    elif handler is _NEURAL:
+    elif capability is _NEURAL:
         refuse_variance(model, session)
         per_trial = history and (task is None or task.trial_memory == 'none')
         delivery = 'stream' if streaming else 'per_trial' if per_trial else 'table'
@@ -111,10 +111,10 @@ def plan_session(model, session, passes: str) -> SessionPlan:
                                     multi, passes) + (multi,)
     else:
         delivery = 'stream' if streaming else 'table'
-        if handler is _MOTOR and regions:
+        if capability is _MOTOR and regions:
             # Regions recorded during each policy step: refused, or grouped, before the first step.
             recordings = plan_recordings(model, None, _region_layers(model, regions))
-    return SessionPlan(handler=handler, regions_per_pass=passes, answers=answers, regions=regions,
+    return SessionPlan(capability=capability, regions_per_pass=passes, answers=answers, regions=regions,
                        task_path=task_path, delivery=delivery, pick=pick, pick_key=pick_key,
                        by_answer=by_answer, recordings=recordings, passive=passive)
 
@@ -139,7 +139,7 @@ def _spans_several_inputs(stimuli) -> bool:
 
 
 def _region_layers(model, regions) -> dict:
-    """``{region: its layer paths}``, as the session parts build it."""
+    """``{region: its layer paths}``, as the capabilities build it."""
     from .recording import region_selector
     return {region: list(region_selector(model, region).layer_paths) for region in regions}
 
@@ -167,6 +167,14 @@ def _refuse_task_session(model, session, task, answers, regions) -> None:
         raise ExecutionNotFeasibleError(
             "'behavior' needs TaskContext(response=...); a passive task gives no answer.",
             channels={'behavior'}, task_type=task.task_type)
+    from brainscore_core.responses import Segments
+    stimuli = _presented_table(session)
+    if isinstance(task.response, Segments) and stimuli is not None and len(stimuli) > 1:
+        # Every delivery (whole table, trial by trial, streamed): no row is scored before a
+        # later row is refused. The batch check in the segment answer covers other sources.
+        raise ExecutionNotFeasibleError(
+            f"Subject '{model.identifier}' answers one Segments trial in a session; the session "
+            f"presents {len(stimuli)} trials", channels=set(answers), task_type=task.task_type)
     # A format the task's response does not name was refused when the session was built (core).
     refuse_variance(model, session)
 

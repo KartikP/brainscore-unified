@@ -199,7 +199,7 @@
       "id": "native-text",
       "repository": "unified",
       "pytest_args": [
-        "tests/test_text_wrapper.py"
+        "tests/test_model_helpers/test_text_wrapper.py"
       ],
       "models": [
         "openai/clip-vit-base-patch32",
@@ -220,27 +220,27 @@
       "acceptance": "Encoder/causal/per-token checks and CLIP/GPT-2 process() dispatch execute on CPU; repeated outputs alone do not prove a cache hit.",
       "activation": "pending pinned assets and bounded Linux qualification",
       "expected_collection": [
-        "tests/test_text_wrapper.py::TestTextWrapperEncoderMode::test_shape",
-        "tests/test_text_wrapper.py::TestTextWrapperEncoderMode::test_hidden_dim",
-        "tests/test_text_wrapper.py::TestTextWrapperEncoderMode::test_stimulus_id_coord",
-        "tests/test_text_wrapper.py::TestTextWrapperEncoderMode::test_stimulus_set_meta_attached",
-        "tests/test_text_wrapper.py::TestTextWrapperEncoderMode::test_layer_coord",
-        "tests/test_text_wrapper.py::TestTextWrapperEncoderMode::test_neuroid_id_coord",
-        "tests/test_text_wrapper.py::TestTextWrapperEncoderMode::test_different_layers_different_features",
-        "tests/test_text_wrapper.py::TestTextWrapperBatching::test_large_batch",
-        "tests/test_text_wrapper.py::TestTextWrapperCaching::test_second_call_uses_cache",
-        "tests/test_text_wrapper.py::TestTextWrapperIntegration::test_works_as_brainscore_model_preprocessor",
-        "tests/test_text_wrapper.py::TestTextWrapperCausalMode::test_shape",
-        "tests/test_text_wrapper.py::TestTextWrapperCausalMode::test_stimulus_set_meta_attached",
-        "tests/test_text_wrapper.py::TestTextWrapperCausalMode::test_last_token_uses_attention_mask",
-        "tests/test_text_wrapper.py::TestTextWrapperCausalMode::test_different_layers_different_features",
-        "tests/test_text_wrapper.py::TestTextWrapperPerToken::test_invalid_aggregation_raises",
-        "tests/test_text_wrapper.py::TestTextWrapperPerToken::test_dims_include_time_bin",
-        "tests/test_text_wrapper.py::TestTextWrapperPerToken::test_token_length_coord_attached",
-        "tests/test_text_wrapper.py::TestTextWrapperPerToken::test_long_input_is_chunked_not_truncated",
-        "tests/test_text_wrapper.py::TestTextWrapperPerToken::test_padding_is_nan_past_token_length",
-        "tests/test_text_wrapper.py::TestTextWrapperPerToken::test_per_token_features_differ_across_positions",
-        "tests/test_text_wrapper.py::TestTextWrapperCausalMode::test_process_matches_wrapper"
+        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperEncoderMode::test_shape",
+        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperEncoderMode::test_hidden_dim",
+        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperEncoderMode::test_stimulus_id_coord",
+        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperEncoderMode::test_stimulus_set_meta_attached",
+        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperEncoderMode::test_layer_coord",
+        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperEncoderMode::test_neuroid_id_coord",
+        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperEncoderMode::test_different_layers_different_features",
+        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperBatching::test_large_batch",
+        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperCaching::test_second_call_uses_cache",
+        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperIntegration::test_works_as_brainscore_model_preprocessor",
+        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperCausalMode::test_shape",
+        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperCausalMode::test_stimulus_set_meta_attached",
+        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperCausalMode::test_last_token_uses_attention_mask",
+        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperCausalMode::test_different_layers_different_features",
+        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperPerToken::test_invalid_aggregation_raises",
+        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperPerToken::test_dims_include_time_bin",
+        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperPerToken::test_token_length_coord_attached",
+        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperPerToken::test_long_input_is_chunked_not_truncated",
+        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperPerToken::test_padding_is_nan_past_token_length",
+        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperPerToken::test_per_token_features_differ_across_positions",
+        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperCausalMode::test_process_matches_wrapper"
       ],
       "expected_count": 21,
       "device": "cpu",
@@ -252,7 +252,7 @@
       "id": "native-vlm",
       "repository": "unified",
       "pytest_args": [
-        "tests/test_vlm_vision_wrapper.py"
+        "tests/test_model_helpers/test_vlm_vision_wrapper.py"
       ],
       "models": [
         "Qwen/Qwen2.5-VL-3B-Instruct"
@@ -272,14 +272,14 @@
       "acceptance": "Per-image outputs, patch grouping and process() dispatch pass with the extracted vision module on CUDA in float16.",
       "activation": "pending pinned assets and bounded Linux qualification",
       "expected_collection": [
-        "tests/test_vlm_vision_wrapper.py::TestVLMVisionWrapperBasic::test_shape_is_per_image",
-        "tests/test_vlm_vision_wrapper.py::TestVLMVisionWrapperBasic::test_stimulus_id_coord",
-        "tests/test_vlm_vision_wrapper.py::TestVLMVisionWrapperBasic::test_finite_activations",
-        "tests/test_vlm_vision_wrapper.py::TestVLMVisionWrapperBasic::test_layer_coord",
-        "tests/test_vlm_vision_wrapper.py::TestPatchToImageAggregation::test_each_image_gets_independent_vector",
-        "tests/test_vlm_vision_wrapper.py::TestPatchToImageAggregation::test_different_images_different_activations",
-        "tests/test_vlm_vision_wrapper.py::TestCaching::test_second_call_hits_cache",
-        "tests/test_vlm_vision_wrapper.py::TestVLMVisionWrapperIntegration::test_works_as_brainscore_model_preprocessor"
+        "tests/test_model_helpers/test_vlm_vision_wrapper.py::TestVLMVisionWrapperBasic::test_shape_is_per_image",
+        "tests/test_model_helpers/test_vlm_vision_wrapper.py::TestVLMVisionWrapperBasic::test_stimulus_id_coord",
+        "tests/test_model_helpers/test_vlm_vision_wrapper.py::TestVLMVisionWrapperBasic::test_finite_activations",
+        "tests/test_model_helpers/test_vlm_vision_wrapper.py::TestVLMVisionWrapperBasic::test_layer_coord",
+        "tests/test_model_helpers/test_vlm_vision_wrapper.py::TestPatchToImageAggregation::test_each_image_gets_independent_vector",
+        "tests/test_model_helpers/test_vlm_vision_wrapper.py::TestPatchToImageAggregation::test_different_images_different_activations",
+        "tests/test_model_helpers/test_vlm_vision_wrapper.py::TestCaching::test_second_call_hits_cache",
+        "tests/test_model_helpers/test_vlm_vision_wrapper.py::TestVLMVisionWrapperIntegration::test_works_as_brainscore_model_preprocessor"
       ],
       "expected_count": 8,
       "device": "cuda",
@@ -291,7 +291,7 @@
       "id": "behavioral-roar",
       "repository": "unified",
       "pytest_args": [
-        "tests/test_roar_benchmark.py::TestRoarYeatman2021"
+        "brainscore/benchmarks/roar_yeatman2021/test.py::TestRoarYeatman2021"
       ],
       "models": [
         "clip-vit-b-32"
@@ -312,11 +312,11 @@
       "acceptance": "All five split, leakage, human-reference, threshold and CLIP score checks pass; retain the raw score separately from ceiling-adjusted score.",
       "activation": "pending pinned assets and bounded Linux qualification",
       "expected_collection": [
-        "tests/test_roar_benchmark.py::TestRoarYeatman2021::test_split_sizes",
-        "tests/test_roar_benchmark.py::TestRoarYeatman2021::test_no_train_test_leakage",
-        "tests/test_roar_benchmark.py::TestRoarYeatman2021::test_human_accuracy_on_test",
-        "tests/test_roar_benchmark.py::TestRoarYeatman2021::test_dyslexia_threshold",
-        "tests/test_roar_benchmark.py::TestRoarYeatman2021::test_score_clip"
+        "brainscore/benchmarks/roar_yeatman2021/test.py::TestRoarYeatman2021::test_split_sizes",
+        "brainscore/benchmarks/roar_yeatman2021/test.py::TestRoarYeatman2021::test_no_train_test_leakage",
+        "brainscore/benchmarks/roar_yeatman2021/test.py::TestRoarYeatman2021::test_human_accuracy_on_test",
+        "brainscore/benchmarks/roar_yeatman2021/test.py::TestRoarYeatman2021::test_dyslexia_threshold",
+        "brainscore/benchmarks/roar_yeatman2021/test.py::TestRoarYeatman2021::test_score_clip"
       ],
       "expected_count": 5,
       "device": "cpu",
@@ -329,7 +329,7 @@
       "id": "native-environment-smolvlm",
       "repository": "unified",
       "pytest_args": [
-        "tests/test_external_qualification.py::test_native_trained_smolvlm_qualification"
+        "tests/test_package/test_external_qualification.py::test_native_trained_smolvlm_qualification"
       ],
       "models": [
         "HuggingFaceTB/SmolVLM-256M-Instruct"
@@ -348,7 +348,7 @@
       "acceptance": "On two seeded 4x4 boards of at most six steps, recorded and restored Experiment runs give the same applied actions and total rewards as a direct GridGameEnv loop; after Ablate on half of one MLP projection the selected outputs are zero and the others unchanged; no hooks remain. Changed actions are reported, not required. This qualifies tool and session behavior with a trained model, not navigation performance.",
       "activation": "pending pinned assets and bounded Linux qualification",
       "expected_collection": [
-        "tests/test_external_qualification.py::test_native_trained_smolvlm_qualification"
+        "tests/test_package/test_external_qualification.py::test_native_trained_smolvlm_qualification"
       ],
       "expected_count": 1,
       "device": "cpu",

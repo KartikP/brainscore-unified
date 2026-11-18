@@ -127,6 +127,9 @@ def main():
     parser.add_argument('--data-cache', type=Path,
                         default=Path('/tmp/ds005165_cache'),
                         help='Where to cache downloaded OpenNeuro files.')
+    parser.add_argument('--source-dir', type=Path, default=None,
+                        help='A local copy of ds005165, read only: a file found here is not '
+                             'downloaded, and nothing here is changed or deleted.')
     parser.add_argument('--participants', nargs='+', default=PARTICIPANTS)
     parser.add_argument('--tasks', nargs='+', default=list(TASKS),
                         help="Which task names to include (default: test + train).")
@@ -162,7 +165,8 @@ def main():
             participant_cache = args.data_cache / 'derivatives' / 'versionB' / 'fmriprep' / participant
             for task in args.tasks:
                 run_records.extend(extract_participant_task_runs(
-                    participant=participant, task=task, data_cache=args.data_cache))
+                    participant=participant, task=task, data_cache=args.data_cache,
+                    source_dir=args.source_dir))
             # Purge giis for this participant — extracted time-series already in records[].
             # Keep events.tsv files (small) under the raw cache path.
             if participant_cache.exists():
@@ -215,6 +219,7 @@ def extract_participant_task_runs(
     participant: str,
     task: str,
     data_cache: Path,
+    source_dir: Optional[Path] = None,
 ) -> List[dict]:
     """Per (participant, task), iterate runs across sessions; for each run download
     fsaverage L+R surface BOLD + events.tsv, downsample to fsaverage5, package
@@ -264,9 +269,9 @@ def extract_participant_task_runs(
                       f'{participant}_{session}_task-{task}_{run}_events.tsv')
 
         # 3. Download all three (cached locally).
-        L_local = _s3_download(L_key, data_cache)
-        R_local = _s3_download(R_key, data_cache)
-        events_local = _s3_download(events_key, data_cache)
+        L_local = _s3_download(L_key, data_cache, source_dir)
+        R_local = _s3_download(R_key, data_cache, source_dir)
+        events_local = _s3_download(events_key, data_cache, source_dir)
 
         # 4. Load gii → (n_TR, n_vertices_full_fsaverage), downsample to fsaverage5
         ts_L = _load_gii_and_downsample(L_local)   # (n_TR, 10242)
@@ -310,14 +315,20 @@ def extract_participant_task_runs(
     return records
 
 
-def _s3_download(s3_key: str, cache_dir: Path) -> Path:
-    """Cached download from openneuro.org S3. Returns local path."""
+def _s3_download(s3_key: str, cache_dir: Path, source_dir: Optional[Path] = None) -> Path:
+    """Cached download from openneuro.org S3. Returns local path.
+
+    A file in ``source_dir`` (a local copy of ds005165) is read where it is, never
+    copied, changed or deleted; only ``cache_dir`` receives downloads.
+    """
     import subprocess
     # s3_key may be path-like (no scheme) — strip leading "ds005165/" if present
     if s3_key.startswith('ds005165/'):
         relative = s3_key[len('ds005165/'):]
     else:
         relative = s3_key
+    if source_dir is not None and (Path(source_dir) / relative).exists():
+        return Path(source_dir) / relative
     local_path = cache_dir / relative
     if local_path.exists():
         return local_path

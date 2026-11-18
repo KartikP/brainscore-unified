@@ -1,5 +1,5 @@
 """Tests are the spec. A tool should: load by identifier, and give the result it promises
-on a small subject. Move this file to tests/test_<your_name>.py and adapt it.
+on a small subject. Move this file to tests/test_tools/test_<your_name>.py and adapt it.
 """
 import os
 
