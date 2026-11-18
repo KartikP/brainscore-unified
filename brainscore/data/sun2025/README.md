@@ -104,7 +104,8 @@ calculating direction or speed. All four valid answers are required.
   `package_data('sun2025')` runs.
 - `data.py`: checked stimulus and human-assembly loading.
 - `__init__.py`: the local asset, and the dataset, stimulus-set and builder registration.
-- `tests/test_sun2025.py`: loading, checksums, the missing-data error and the benchmark.
+- `tests/test_data/test_sun2025_data.py`: loading, checksums and the missing-data error;
+  the benchmark's tests are in `brainscore/benchmarks/sun2025/test.py`.
 
 There are no neural recordings in this plugin.
 
