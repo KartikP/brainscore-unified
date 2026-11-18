@@ -300,16 +300,27 @@ def test_each_declared_output_comes_out_of_one_session(stand_in, identifier):
         assert np.array_equal(_collect(subject, pictures, ['neural:IT'], passive)['neural:IT'].values, intact)
 
 
-@pytest.mark.parametrize('identifier', [i for i in IDENTIFIERS if study.MODEL_CONFIGS[i].get('video_sampling')])
+QWEN_VIDEO = [i for i in IDENTIFIERS if study.MODEL_CONFIGS[i].get('video_sampling')]
+_KEYS = ('fps', 'min_frames', 'max_frames', 'do_sample_frames')
+
+
+def _frames_kept(n_frames, clip_hz, settings):
+    """The frame count of the Qwen video processors' sampling (transformers sample_frames)."""
+    if not settings['do_sample_frames']:
+        return n_frames
+    wanted = int(n_frames / clip_hz * settings['fps'])
+    return min(min(max(wanted, settings['min_frames']), settings['max_frames']), n_frames)
+
+
+@pytest.mark.parametrize('identifier', QWEN_VIDEO)
 def test_a_clip_is_sampled_at_the_stated_rate(stand_in, monkeypatch, identifier):
-    """A video processor that states no rate and no sampling (Qwen2.5-VL's) gets the study's stated
-    frame sampling, and clips are recorded."""
+    """The stated frame sampling reaches the processor and the provenance, and clips are recorded."""
     monkeypatch.setattr(_clip_patches, 'fps', None)
     monkeypatch.setattr(_clip_patches, 'do_sample_frames', False, raising=False)
     subject = model_registry[identifier]()
     stated = study.MODEL_CONFIGS[identifier]['video_sampling']
-    assert (_clip_patches.fps, _clip_patches.do_sample_frames) == (stated['fps'], stated['do_sample_frames'])
-    assert 'video_sampling' in subject._provenance
+    assert {k: getattr(_clip_patches, k) for k in _KEYS} == {k: stated[k] for k in _KEYS}
+    assert 'video_sampling' in subject._provenance and 'qwen-vl-utils' in subject._provenance['video_sampling']
     clip = _collect(subject, _clip(stand_in), ['neural:IT'], TaskContext(task_type='passive'))['neural:IT']
     assert clip.shape[0] == 1 and np.isfinite(clip.values).all()
 
@@ -702,3 +713,18 @@ def test_qualify_the_family(identifier, monkeypatch, tmp_path):
     mixed = TaskContext(response=Text(max_tokens=2), present=('image', 'text'))
     with pytest.raises(ExecutionNotFeasibleError):
         _collect(subject, trials, ['behavior:text', 'neural:language_system'], mixed)
+
+
+@pytest.mark.parametrize('identifier', [next(i for i in QWEN_VIDEO if 'qwen2.5' in i),
+                                        next(i for i in QWEN_VIDEO if 'qwen3' in i)])
+def test_the_stated_sampling_keeps_the_frame_count(stand_in, monkeypatch, identifier):
+    """A 16-frame clip at 30 Hz gives 4 frames; a long clip gives the count of the settings before the
+    change (the processor's class defaults, with the study's rate and sampling on for Qwen2.5-VL)."""
+    before = {'fps': 2.0, 'min_frames': 4, 'max_frames': 768, 'do_sample_frames': True}
+    for key in _KEYS:
+        monkeypatch.setattr(_clip_patches, key, None, raising=False)
+    model_registry[identifier]()
+    after = {k: getattr(_clip_patches, k) for k in _KEYS}
+    assert _frames_kept(16, 30, after) == _frames_kept(16, 30, before) == 4
+    assert _frames_kept(30 * 600, 30, after) == _frames_kept(30 * 600, 30, before)
+

@@ -9,6 +9,7 @@
     "download_gb": 4.3,
     "image_processor_kwargs": null,
     "video": true,
+    "video_sampling": {"fps": 2.0, "min_frames": 4, "max_frames": 768, "do_sample_frames": true, "source": "the model authors' tool `qwen-vl-utils`: 2 frames per second, at least 4 frames, at most 768"},
     "device_map": null,
     "packages": []
   },
@@ -22,6 +23,7 @@
     "download_gb": 8.9,
     "image_processor_kwargs": null,
     "video": true,
+    "video_sampling": {"fps": 2.0, "min_frames": 4, "max_frames": 768, "do_sample_frames": true, "source": "the model authors' tool `qwen-vl-utils`: 2 frames per second, at least 4 frames, at most 768"},
     "device_map": null,
     "packages": []
   },
@@ -35,6 +37,7 @@
     "download_gb": 17.5,
     "image_processor_kwargs": null,
     "video": true,
+    "video_sampling": {"fps": 2.0, "min_frames": 4, "max_frames": 768, "do_sample_frames": true, "source": "the model authors' tool `qwen-vl-utils`: 2 frames per second, at least 4 frames, at most 768"},
     "device_map": null,
     "packages": []
   },
@@ -48,6 +51,7 @@
     "download_gb": 66.7,
     "image_processor_kwargs": null,
     "video": true,
+    "video_sampling": {"fps": 2.0, "min_frames": 4, "max_frames": 768, "do_sample_frames": true, "source": "the model authors' tool `qwen-vl-utils`: 2 frames per second, at least 4 frames, at most 768"},
     "device_map": "auto",
     "packages": []
   },
@@ -61,6 +65,7 @@
     "download_gb": 62.1,
     "image_processor_kwargs": null,
     "video": true,
+    "video_sampling": {"fps": 2.0, "min_frames": 4, "max_frames": 768, "do_sample_frames": true, "source": "the model authors' tool `qwen-vl-utils`: 2 frames per second, at least 4 frames, at most 768"},
     "device_map": "auto",
     "packages": []
   },
@@ -74,7 +79,7 @@
     "download_gb": 7.6,
     "image_processor_kwargs": null,
     "video": true,
-    "video_sampling": {"fps": 2.0, "do_sample_frames": true, "source": "chosen by the study, not from the model card"},
+    "video_sampling": {"fps": 2.0, "min_frames": 4, "max_frames": 768, "do_sample_frames": true, "source": "the model authors' tool `qwen-vl-utils`: 2 frames per second, at least 4 frames, at most 768"},
     "device_map": null,
     "packages": []
   },
@@ -88,7 +93,7 @@
     "download_gb": 16.6,
     "image_processor_kwargs": null,
     "video": true,
-    "video_sampling": {"fps": 2.0, "do_sample_frames": true, "source": "chosen by the study, not from the model card"},
+    "video_sampling": {"fps": 2.0, "min_frames": 4, "max_frames": 768, "do_sample_frames": true, "source": "the model authors' tool `qwen-vl-utils`: 2 frames per second, at least 4 frames, at most 768"},
     "device_map": null,
     "packages": []
   },

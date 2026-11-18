@@ -289,9 +289,9 @@ def get_model(identifier: str):
         device=_one_device(identifier, language_module, 'language'))}
     if config['video']:
         from brainscore.model_helpers.vlm_video_wrapper import VLMVideoWrapper
-        # The study's frame sampling, where the processor states none (Qwen2.5-VL: fps None, sampling off);
-        # on the processor, so a recording and an answer sample a clip alike.
-        for key in ('fps', 'do_sample_frames') if config.get('video_sampling') else ():
+        # The stated frame sampling (the Qwen authors' tool), on the processor, so a recording and an
+        # answer sample a clip alike.
+        for key in ('fps', 'min_frames', 'max_frames', 'do_sample_frames') if config.get('video_sampling') else ():
             setattr(processor.video_processor, key, config['video_sampling'][key])
         extractor['video'] = VLMVideoWrapper(vision_module, processor, identifier=f'{identifier}-video')
     reply, likelihood = chat_parts(model, processor if pixels is None else _StatedProcessor(processor, pixels))
@@ -313,5 +313,5 @@ def get_model(identifier: str):
         'intervention': 'on' if parts else 'off: the vision layers are recorded as LayerPCA components',
         **({'token_pool': f"mean of each {config['token_pool']} x {config['token_pool']} block of the patch "
                           f"grid, before LayerPCA"} if config.get('token_pool') else {}),
-        **({'video_sampling': "fps {fps}, do_sample_frames {do_sample_frames} ({source})".format(**config['video_sampling'])}
+        **({'video_sampling': "fps {fps}, min_frames {min_frames}, max_frames {max_frames}, do_sample_frames {do_sample_frames} ({source})".format(**config['video_sampling'])}
            if config.get('video_sampling') else {})})
