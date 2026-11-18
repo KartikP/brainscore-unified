@@ -14,7 +14,7 @@ for experiments.
    `'<your-id>': ('brainscore.tools.<your_name>', 'YourTool', False)`.
    The last value says whether `load_tool(..., artifact=...)` loads a saved, fitted tool.
    The module is imported only when `load_tool` asks for it.
-4. Move `test_tool.py` to `tests/test_<your_name>.py`, adapt it and run it.
+4. Move `test_tool.py` to `tests/test_tools/test_<your_name>.py`, adapt it and run it.
 
 A tool in your own package (outside Brain-Score) is added with
 `register_tool('<your-id>', YourTool)` from `brainscore.tools`. Call it when your package is

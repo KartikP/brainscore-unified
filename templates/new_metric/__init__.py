@@ -2,7 +2,7 @@
 
 To install: copy this folder to ``brainscore/metrics/your_name/``; it registers by
 its presence (no other file changes). Put the
-test in ``tests/test_<your_name>.py``.
+test in ``tests/test_metrics/test_<your_name>.py``.
 """
 from brainscore import metric_registry
 from .metric import YourMetric

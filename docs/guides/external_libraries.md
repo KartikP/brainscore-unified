@@ -2,7 +2,7 @@
 
 This guide is for the maintainer of an experiment library: a collection of experiments with people, each with stimuli, a procedure and the people's responses. You map each experiment to a Brain-Score benchmark once. The experiment then runs on every model that fits, with Brain-Score's tools (recording, lesions, replay) and with your data as the reference. You get a column: results for every model. A modeler who adapts a model once gets a row: results on every experiment that fits, yours included.
 
-Two libraries are mapped today: CogGym (`brainscore/benchmarks/coggym/`, `brainscore/harnesses/coggym.py`) and EWoK (`brainscore/benchmarks/ewok/`, `brainscore/data/ewok/`). Their code and tests (`tests/test_coggym.py`, `tests/test_coggym_benchmark.py`, `tests/test_ewok.py`) are the full examples.
+Two libraries are mapped today: CogGym (`brainscore/benchmarks/coggym/`, `brainscore/harnesses/coggym.py`) and EWoK (`brainscore/benchmarks/ewok/`, `brainscore/data/ewok/`). Their code and tests (`tests/test_harnesses/test_coggym.py`, `tests/test_benchmarks/test_coggym_benchmark.py`, `tests/test_benchmarks/test_ewok.py`) are the full examples.
 
 ## What your library gives
 

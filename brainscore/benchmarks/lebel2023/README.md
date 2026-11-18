@@ -38,7 +38,7 @@ Two properties of the source drive `data.py`:
   all the loader can assert, and getting it backwards places features five samples early.
   That inversion made the regression fit BOLD from words up to six seconds in the future
   and roughly halved every score here before it was caught; it is now pinned by
-  `tests/test_lebel2023_data.py::TestTrimDirection`.
+  `tests/test_data/test_lebel2023_data.py::TestTrimDirection`.
 
 BOLD arrives as raw uncentered intensity (mean ≈ 27000) and is standardised per vertex per
 story during scoring.
@@ -230,7 +230,7 @@ across stories and aligned with the large BOLD response to a story starting, so 
 carrying no stimulus information scored 0.054 against GPT-2's 0.063. The benchmark was
 mostly measuring story onsets. Those TRs are now excluded rather than padded
 (`_delay_within_stories` returns a `has_full_history` mask), which is regression-tested in
-`tests/test_lebel2023_benchmark.py::TestDelays::test_constant_features_carry_no_signal_after_masking`.
+`tests/test_benchmarks/test_lebel2023_benchmark.py::TestDelays::test_constant_features_carry_no_signal_after_masking`.
 
 ## Known limits
 

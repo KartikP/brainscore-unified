@@ -95,7 +95,7 @@ done
 die() { echo "run_candidate: $*" >&2; exit 1; }
 
 # The environment of each workflow job. offline-tests.yml sets the same values
-# in its job env blocks; tests/test_run_candidate.py checks that they agree.
+# in its job env blocks; tests/test_package/test_run_candidate.py checks that they agree.
 job_env() {
     export RESULTCACHING_DISABLE=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 BS_INSTALL_DEPENDENCIES=no
     case "$1" in
@@ -424,8 +424,8 @@ phase_installed_checks() {
     "$PYTHON" "$WORK/unified/examples/partner_integration.py" --out "$TMP_DIR/partner-demo"
     "$PYTHON" -I -m umi_partner_tool --out "$TMP_DIR/external-tool-demo"
     "$PYTHON" -I -m umi_partner_tool.toolbox --out "$TMP_DIR/installed-examples"
-    "$PYTHON" -I -m pytest "$WORK/unified/tests/test_production_tools.py" \
-        "$WORK/unified/tests/test_droid_policy.py" "$WORK/unified/examples/partner_tool/tests" \
+    "$PYTHON" -I -m pytest "$WORK/unified/tests/test_tools/test_production_tools.py" \
+        "$WORK/unified/tests/test_harnesses/test_droid_policy.py" "$WORK/unified/examples/partner_tool/tests" \
         -q --import-mode=importlib -p no:cacheprovider --junitxml="$QUAL/external-examples.xml"
 }
 
@@ -478,7 +478,7 @@ phase_openpi_instrumentation_record() {
 
 phase_openpi_client_test() {
     cd "$WORK/unified"
-    PYTHONPATH="$WORK/unified:$WORK/core" "$PYTHON" -m pytest tests/test_openpi_remote.py -q -ra \
+    PYTHONPATH="$WORK/unified:$WORK/core" "$PYTHON" -m pytest tests/test_experiments/test_openpi_remote.py -q -ra \
         -p no:cacheprovider -p brainscore.validation.required_checks \
         --umi-repository openpi-client \
         --umi-check-report "$QUAL/openpi-client.json" \
@@ -489,7 +489,7 @@ phase_openpi_client_test() {
 phase_openpi_instrumentation_test() {
     cd "$WORK/unified"
     OPENPI_SOURCE="$WORK/openpi" PYTHONPATH="$WORK/unified:$WORK/core" \
-        "$PYTHON" -m pytest tests/test_openpi_instrumentation.py tests/test_libero_transport.py -q -ra \
+        "$PYTHON" -m pytest tests/test_experiments/test_openpi_instrumentation.py tests/test_experiments/test_libero_transport.py -q -ra \
         -p no:cacheprovider -p brainscore.validation.required_checks \
         --umi-repository openpi-instrumentation \
         --umi-check-report "$QUAL/openpi-instrumentation.json" \

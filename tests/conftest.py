@@ -32,7 +32,7 @@ for _variable in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS',
 # The activation store is off unless a run says otherwise: a plain `pytest` must never write to the
 # shared store. The store reads its folder when a wrapper class is imported, so this comes before any
 # import of a wrapper. An explicit value wins; a test that needs the store on sets it and points the
-# wrapper's storage object at its own folder (see tests/test_score_provenance.py).
+# wrapper's storage object at its own folder (see tests/test_model_helpers/test_score_provenance.py).
 os.environ.setdefault('RESULTCACHING_DISABLE', '1')
 
 import pytest
