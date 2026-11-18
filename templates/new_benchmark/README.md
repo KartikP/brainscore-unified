@@ -11,7 +11,7 @@ See `EXTENDING.md` (Seam 2) for the contract.
    metric via `load_metric(...)`, and `__call__(subject)`.
 3. Pick your identifier in `benchmark_registry['<your-id>']`.
 4. Nothing else to edit: the folder registers by its presence.
-5. Move `test_benchmark.py` to `tests/test_<your_name>.py`, adapt it and run it.
+5. Move `test_benchmark.py` to `tests/test_benchmarks/test_<your_name>.py`, adapt it and run it.
 
 ## Variants
 

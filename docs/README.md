@@ -37,7 +37,6 @@ Each guide answers one "how do I" question.
 - [Feature status](reference/features.md): what is core, what is advanced, and what is still experimental; old names and their replacements.
 - [Activation caching](reference/caching.md): what the activation cache key holds, its limits, and how to turn it off.
 - [Large model downloads](reference/model_downloads.md): the download check of the large checkpoints and how to allow the download.
-- [Ways to answer](reference/ways_to_answer.md): each registered model's inputs, regions and ways to answer, and the way that gives each kind of answer.
 - [Experiments](../notebooks/README.md#experiments): worked studies that use the concepts.
 
 Older documentation, including qualification records and audits, is kept unchanged in the folder `docs/archive/`; it is not maintained.

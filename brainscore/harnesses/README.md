@@ -48,7 +48,7 @@ version) and the package list.
 ## What you write
 
 Three parts, all in `brainscore/harnesses/`. The test
-`tests/test_outside_library.py` runs the blocks below as written.
+`tests/test_harnesses/test_outside_library.py` runs the blocks below as written.
 
 ### 1. The description
 
@@ -246,7 +246,7 @@ Transport:
 
 ## Test the integration offline
 
-`tests/test_outside_library.py` makes Lanternfield's folder and runs one command through
+`tests/test_harnesses/test_outside_library.py` makes Lanternfield's folder and runs one command through
 `ChildProcess`, with no network and no install: stand-ins replace `git` and the Python
 that makes the environment and runs pip (`tests/command_stand_ins.py`, `stand_ins`), and
 the clone copies a small checkout from the test. Copy it for a new library: give the

@@ -25,9 +25,9 @@ from brainscore_core.streaming_helpers import stimulus_session
 from tests.brainscore_model.test_answer_ownership import _registrations
 from tests.brainscore_model.test_behavior_paths import FITTING, STIMULI, _features
 from tests.brainscore_model.stage2_answers_baseline import RATINGS
-from tests.test_causal_lm import subject as causal_lm  # noqa: F401  (fixture)
-from tests.test_ewok import native, prepared  # noqa: F401  (fixtures)
-from tests.test_induced_dyslexia import synthetic_roar  # noqa: F401  (fixture)
+from tests.test_model_helpers.test_causal_lm import subject as causal_lm  # noqa: F401  (fixture)
+from tests.test_benchmarks.test_ewok import native, prepared  # noqa: F401  (fixtures)
+from tests.test_benchmarks.test_induced_dyslexia import synthetic_roar  # noqa: F401  (fixture)
 
 pytestmark = pytest.mark.unit
 
@@ -45,7 +45,7 @@ NEURAL_ONLY = ('benchmarks/grid_game/benchmark.py', 'models/multimodal_av_blip2_
 # Declared behavior formats per library call, before the owner statements and now (a
 # likelihood part now also gives behavior:log_probabilities natively).
 # The Qwen2.5-VL builder states the probabilities part of each registration (not a literal
-# the scan reads; tests/test_qwen_probability_statements.py checks it); qwen3.6-27b has its parts.
+# the scan reads; tests/test_models/test_qwen_probability_statements.py checks it); qwen3.6-27b has its parts.
 DECLARED = {
     'model_helpers/causal_lm.py': ({B, CH, P, RA, RT, TE}, {CH, P, LP, RA, RT, TE}),
     'models/api_closed/model.py': ({B, CH, RA, TE}, {B, CH, RA, TE}),

@@ -16,8 +16,8 @@ import time
 import numpy as np
 
 from brainscore.experiments import Experiment, RecordInputsOutputs, SessionProtocol
-from brainscore.models.mirage import MirageRuntime, MirageSubject
-from brainscore.models.mirage.model import Clip, OUTPUT_CHANNEL, PARTICIPANTS
+from mirage import MirageRuntime, MirageSubject
+from mirage.model import Clip, OUTPUT_CHANNEL, PARTICIPANTS
 from brainscore_core.streaming import Session, StreamEvent
 
 

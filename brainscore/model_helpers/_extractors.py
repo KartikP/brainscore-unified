@@ -12,7 +12,7 @@ code outside the wrapper classes too: this module, and what the wrappers call
 (``video_wrapper._window_features``, ``_shared_clock``, ``_edges_from_centers``,
 ``brainscore.temporal.window_plan``, ``brainscore_core.assembly_builder``). A
 change here raises the ``_VERSION`` of every wrapper class that uses the
-changed code. ``tests/test_wrapper_cache_guard.py`` fails when values move
+changed code. ``tests/test_model_helpers/test_wrapper_cache_guard.py`` fails when values move
 under an unchanged ``_VERSION``.
 """
 import inspect
@@ -378,7 +378,7 @@ def cache_signature(wrapper, stored: str, inputs, stimuli_identifier, *, setting
             warnings.warn(
                 f'{kind(wrapper)} has no _VERSION of its own, so it extracts every time and does not use '
                 f'the activation cache. To cache it, add _VERSION = 1 to its class body and a guard test '
-                f'that pins its values (see tests/test_wrapper_cache_guard.py).', stacklevel=3)
+                f'that pins its values (see tests/test_model_helpers/test_wrapper_cache_guard.py).', stacklevel=3)
         return (None, None) if settings else None
     return extraction_fingerprint({'configuration': wrapper.cache_config(), 'inputs': inputs},
                                   cache_identifier=f'{kind(wrapper)}.{stored}',

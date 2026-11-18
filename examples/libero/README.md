@@ -165,8 +165,8 @@ UMI test environment. `OPENPI_SOURCE` must point to the pinned checkout above:
 ```bash
 python -m pip install -r examples/libero/requirements-tools-cpu.txt
 OPENPI_SOURCE=/path/to/openpi python -m pytest \
-  tests/test_openpi_instrumentation.py \
-  tests/test_openpi_remote.py -q
+  tests/test_experiments/test_openpi_instrumentation.py \
+  tests/test_experiments/test_openpi_remote.py -q
 ```
 
 The CPU requirements cover the test fixture. Loading a full trained checkpoint

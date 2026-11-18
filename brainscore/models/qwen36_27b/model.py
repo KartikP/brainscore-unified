@@ -99,7 +99,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     from brainscore.models._downloads import hf_preflight
     download = hf_preflight(identifier, HF_IDENTIFIER, 55.6)
     # Imported here, not at module scope: importing brainscore must not pull in
-    # torch or transformers, which is asserted by tests/test_import_hygiene.py.
+    # torch or transformers, which is asserted by tests/test_package/test_import_hygiene.py.
     import torch
     try:
         from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration

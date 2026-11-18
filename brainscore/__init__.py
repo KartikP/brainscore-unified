@@ -141,7 +141,7 @@ def _populate_unified_registries() -> None:
     ``from .model import get_model`` to call time, so heavy deps
     (torch/transformers/cv2/sklearn) load only when a model is actually
     loaded — not on ``import brainscore``. Guarded by
-    ``tests/test_import_hygiene.py``.
+    ``tests/test_package/test_import_hygiene.py``.
     """
     try:
         from . import data  # noqa: F401
