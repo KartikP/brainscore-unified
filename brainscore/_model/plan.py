@@ -75,7 +75,7 @@ def plan_session(model, session, passes: str) -> SessionPlan:
     streaming = bool(getattr(session, 'streaming', False))
     history = 'memory:trial_history' in model.traits
 
-    from ..capabilities.sessions import _BEHAVIOR, _MOTOR, _NEURAL
+    from ..capabilities.built_in import _BEHAVIOR, _MOTOR, _NEURAL
     from .recording import plan_recordings
     if handler is _NEURAL:
         task_path = task is not None and task.task_type != 'passive'
