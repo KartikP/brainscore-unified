@@ -8,8 +8,12 @@ the architecture map at https://brain-score.github.io/public/UMI/architecture.ht
 1. Copy this folder to `brainscore/models/<your_name>/`.
 2. Edit `model.py`: load your backbone, configure its wrapper, and pass `extractor={'vision': wrapper}` (or `text`/`audio`). Set `region_layer_map` to the layers you will record.
 3. Edit `__init__.py`. Pick your identifier in `model_registry['<your-id>']`. Keep the import of `model.py` inside `_load()`: `import brainscore` must not load torch.
-4. Nothing else to edit: the folder registers by its presence.
-5. Move `test_model.py` to `tests/test_<your_name>.py`, adapt it and run it.
+4. Edit `ways_to_answer.json`: one line for each identifier, with the inputs, regions, ways to answer
+   and kinds of answers its subject declares. `test_its_stated_row` checks the line; a registered
+   identifier without a line fails the shared test `tests/test_ways_to_answer.py`. Regenerate the
+   page with `python -m tests.ways_to_answer docs/reference/ways_to_answer.md`.
+5. Nothing else to edit: the folder registers by its presence.
+6. Move `test_model.py` to `tests/test_<your_name>.py`, adapt it and run it.
 
 Before you copy anything, try the template from the `templates/` folder. Importing a
 template registers it, and the benchmark template scores the model template offline:

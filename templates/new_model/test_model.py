@@ -97,3 +97,11 @@ def test_multi_region_carries_provenance(tiny_stimuli):
         assembly = session.collect(f'neural:{region}')
         assert assembly.sizes['neuroid'] > 0
         assert len(set(np.asarray(assembly['layer'].values).astype(str))) >= 1
+
+
+def test_its_stated_row():
+    """The line of ways_to_answer.json in this folder states what the subject declares."""
+    import brainscore
+    from tests.ways_to_answer import check_statement
+    model = brainscore.load_model('your-model')
+    check_statement(model, model)   # a BrainScoreModel: its own wired parts answer (rule 4.11)
