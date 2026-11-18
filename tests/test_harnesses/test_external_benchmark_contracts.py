@@ -17,8 +17,8 @@ from brainscore.experiments import Experiment, RecordInputsOutputs
 from brainscore.harnesses.coggym import CogGymRunner
 
 from tests.test_harnesses.test_coggym import PIXEL, image_part, reference, make_subject, reply_with_trial
-from tests.test_benchmarks.test_coggym_benchmark import scored_reference
-from tests.test_benchmarks.test_ewok import native, prepared, likelihood_subject, NativeModel, EWoKProvider
+from brainscore.benchmarks.coggym.test import scored_reference
+from brainscore.benchmarks.ewok.test import native, prepared, likelihood_subject, NativeModel, EWoKProvider
 
 pytestmark = pytest.mark.unit
 

@@ -230,7 +230,7 @@ across stories and aligned with the large BOLD response to a story starting, so 
 carrying no stimulus information scored 0.054 against GPT-2's 0.063. The benchmark was
 mostly measuring story onsets. Those TRs are now excluded rather than padded
 (`_delay_within_stories` returns a `has_full_history` mask), which is regression-tested in
-`tests/test_benchmarks/test_lebel2023_benchmark.py::TestDelays::test_constant_features_carry_no_signal_after_masking`.
+`brainscore/benchmarks/lebel2023/test.py::TestDelays::test_constant_features_carry_no_signal_after_masking`.
 
 ## Known limits
 

@@ -4,7 +4,7 @@ import pytest
 
 from brainscore.benchmarks.roar_yeatman2021.benchmark import Yeatman2021LexicalDecision
 from tests.benchmark_declarations import assert_declares, assert_preflight
-from tests.test_benchmarks.test_induced_dyslexia import _ReaderSubject, synthetic_roar  # noqa: F401  (fixture)
+from brainscore.benchmarks.induced_dyslexia.test import _ReaderSubject, synthetic_roar  # noqa: F401  (fixture)
 
 
 @pytest.mark.parametrize('word', ['vision:image', 'text'])
