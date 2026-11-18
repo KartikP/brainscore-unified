@@ -167,6 +167,14 @@ def _refuse_task_session(model, session, task, answers, regions) -> None:
         raise ExecutionNotFeasibleError(
             "'behavior' needs TaskContext(response=...); a passive task gives no answer.",
             channels={'behavior'}, task_type=task.task_type)
+    from brainscore_core.responses import Segments
+    stimuli = _presented_table(session)
+    if isinstance(task.response, Segments) and stimuli is not None and len(stimuli) > 1:
+        # Every delivery (whole table, trial by trial, streamed): no row is scored before a
+        # later row is refused. The batch check in the segment answer covers other sources.
+        raise ExecutionNotFeasibleError(
+            f"Subject '{model.identifier}' answers one Segments trial in a session; the session "
+            f"presents {len(stimuli)} trials", channels=set(answers), task_type=task.task_type)
     # A format the task's response does not name was refused when the session was built (core).
     refuse_variance(model, session)
 

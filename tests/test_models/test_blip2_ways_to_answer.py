@@ -321,3 +321,28 @@ def test_a_coggym_experiment_becomes_applicable_and_runs(registered, scored_refe
     assert score.attrs.get('status') != 'N/A'
     assert score.attrs['n_valid'] == score.attrs['n_trials'] > 0
     assert all(('max_new_tokens', 7) in call[2] for call in calls if call[0] == 'generate')
+
+
+def test_a_segments_task_is_answered_by_the_language_model_with_the_shared_scorer(registered, monkeypatch):
+    from brainscore.models.blip2_opt_2_7b import model as blip2
+    from brainscore_core.responses import Segments
+    from brainscore.model_helpers.replies import _SEGMENT_JOIN as SEGMENT_JOIN
+    model, _, _ = registered()
+    scored = []
+    parameters = {'layout': 'segment', 'context': 'prefix', 'aggregation': 'sum', 'units': 'bits',
+                  'tokenization': {'join': SEGMENT_JOIN, 'special_tokens': 'tokenizer_default',
+                                   'template': 'none', 'truncation': 2048}}
+
+    def scorer(network, tokenizer, segments, sliding_window=False, **unused):
+        scored.append((network, tokenizer, segments, sliding_window))
+        return [float('nan'), -1.5, -2.5], parameters
+
+    monkeypatch.setattr(blip2, "_segment_log_probabilities", scorer)
+    stimuli = _texts('seg', ['the dog ran'], segments=[('the', 'dog', 'ran')])
+    answer = _run(model, stimuli, ['behavior:log_probabilities'],
+                  TaskContext(response=Segments('segments')))['behavior:log_probabilities']
+    (network, tokenizer, segments, sliding_window), = scored
+    assert network.name == 'language model' and segments == ('the', 'dog', 'ran')
+    assert sliding_window      # OPT's learned positions: the registration states the slide
+    assert answer.attrs['response']['parameters']['layout'] == 'segment'
+    np.testing.assert_array_equal(answer.values[0, 1:], [-1.5, -2.5])
