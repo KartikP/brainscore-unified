@@ -18,7 +18,7 @@ Where your protocol fixes the exact text, use `Choice(..., verbatim=True)`: the 
 
 **The outputs it requests.** `requested_output_channels` names the formats your metric reads: `behavior:choice`, `behavior:probabilities`, `behavior:log_probabilities`, `behavior:rating`, `behavior:rt` or `behavior:text`. A model that cannot give one of them is not applicable.
 
-**Its own scoring.** Your metric compares the stored answers with your human data and states what it does with an invalid and with a missing trial. A library that parses free text itself requests `behavior:text` and parses the text (CogGym does). A score that can differ from the number of your own evaluator says why in `score.attrs['input_adaptation']`.
+**Its own scoring.** Your metric compares the stored answers with your human data and states what it does with an invalid and with a missing trial. A library that parses free text itself requests `behavior:text` and parses the text (CogGym does). The parse keeps the library's own number; a check of its own can give each answer a state without changing a value. CogGym's check `coggym-slider-v1` marks a slider answer `invalid` when CogGym read a value the check rejects, and `missing` when CogGym read none; the score carries the counts, and above 10 percent invalid and missing answers it is returned with `result_validity == 'invalid'`, not raised. A score that can differ from the number of your own evaluator says why in `score.attrs['input_adaptation']`.
 
 ## What Brain-Score gives back
 
