@@ -11,11 +11,11 @@ with sufficient free space.
 
 ## Runtime boundary
 
-- `brainscore/models/mirage/runtime.py` runs in the Python 3.11 UMI host. It stages one clip, starts the
+- `examples/mirage_umi/mirage/runtime.py` runs in the Python 3.11 UMI host. It stages one clip, starts the
   configured Python executable, enforces the whole-process timeout, terminates
   the process group on timeout/interruption, reads predictions and provenance,
   and removes temporary files.
-- `brainscore/models/mirage/worker.py` runs in the separate Python 3.12 environment. It checks the pinned
+- `examples/mirage_umi/mirage/worker.py` runs in the separate Python 3.12 environment. It checks the pinned
   MIRAGE source and checkpoint, calls upstream `run_inference`, and writes the
   output array and provenance for the host.
 

@@ -75,20 +75,6 @@ def test_the_not_found_message_needs_no_parent_edit():
     assert "from . import" not in message
 
 
-def test_import_brainscore_loads_only_the_init_of_a_dormant_plugin():
-    """MIRAGE registers nothing and is on hold: the discovery imports its __init__ only."""
-    import subprocess
-    code = ("import sys, brainscore\n"
-            "loaded = sorted(m for m in sys.modules if m.startswith('brainscore.models.mirage.'))\n"
-            "assert 'brainscore.models.mirage' in sys.modules\n"
-            "assert not loaded, loaded\n"
-            "from brainscore.models.mirage import MirageRuntime, MirageSubject\n"
-            "assert MirageSubject.__module__ == 'brainscore.models.mirage.model'\n"
-            "assert MirageRuntime.__module__ == 'brainscore.models.mirage.runtime'\n")
-    result = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
-    assert result.returncode == 0, result.stderr[-2000:]
-
-
 def test_a_failed_plugin_leaves_no_entry_it_registered_before_its_error(kind_folder):
     brainscore._import_plugins(kind_folder)
     assert 'discovery-partial' not in brainscore.model_registry          # a factory of the package

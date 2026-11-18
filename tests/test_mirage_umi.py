@@ -9,13 +9,15 @@ import time
 import numpy as np
 import pytest
 
+sys.path.insert(0, str(Path(__file__).parents[1] / 'examples/mirage_umi'))
+
 from brainscore.experiments import (
     Experiment, RecordInputsOutputs, SessionProtocol, compare_outputs, read_events,
     replay_sessions,
 )
-from brainscore.models.mirage import MirageRuntime, MirageSubject
-from brainscore.models.mirage.model import OUTPUT_CHANNEL, Prediction
-from brainscore.models.mirage.runtime import MirageRuntimeError, MirageTimeout
+from mirage import MirageRuntime, MirageSubject
+from mirage.model import OUTPUT_CHANNEL, Prediction
+from mirage.runtime import MirageRuntimeError, MirageTimeout
 from brainscore_core.contract import Subject
 from brainscore_core.streaming import Session, Source, StreamEvent
 
@@ -189,7 +191,7 @@ def test_runtime_failure_timeout_and_temporary_file_cleanup(video, tmp_path, fai
     }[failure]
     executable.write_text(f'#!{sys.executable}\n{body}\n')
     executable.chmod(0o755)
-    from brainscore.models.mirage.model import _clip
+    from mirage.model import _clip
     predictor = runtime(tmp_path, executable)
     clip = _clip({event.channel: event for event in inputs(video)})
     started = time.monotonic()
@@ -201,7 +203,7 @@ def test_runtime_failure_timeout_and_temporary_file_cleanup(video, tmp_path, fai
 
 
 def test_python311_worker_fails_clearly_without_importing_upstream(video, tmp_path):
-    from brainscore.models.mirage.model import _clip
+    from mirage.model import _clip
     predictor = runtime(tmp_path, sys.executable)
     predictor.timeout_s = 2
     with pytest.raises(MirageRuntimeError, match='requires Python 3.12'):
@@ -245,7 +247,7 @@ np.save(request['output'], np.ones((2, 1000), dtype=np.float32))
 Path(request['provenance']).write_text(json.dumps({{'participant': request['participant']}}))
 ''')
     executable.chmod(0o755)
-    from brainscore.models.mirage.model import _clip
+    from mirage.model import _clip
     predictor = runtime(tmp_path, executable)
     predictor.timeout_s = 3
     result = predictor(_clip({event.channel: event for event in inputs(video)}))
@@ -269,7 +271,7 @@ Path({str(pid_file)!r}).write_text(str(child.pid))
 time.sleep(30)
 ''')
     executable.chmod(0o755)
-    from brainscore.models.mirage.model import _clip
+    from mirage.model import _clip
     predictor = runtime(tmp_path, executable)
     predictor.timeout_s = 0.5
     try:

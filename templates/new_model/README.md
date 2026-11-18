@@ -9,7 +9,7 @@ the architecture map at https://brain-score.github.io/public/UMI/architecture.ht
 2. Edit `model.py`: load your backbone, configure its wrapper, and pass `extractor={'vision': wrapper}` (or `text`/`audio`). Set `region_layer_map` to the layers you will record.
 3. Edit `__init__.py`. Pick your identifier in `model_registry['<your-id>']`. Keep the import of `model.py` inside `_load()`: `import brainscore` must not load torch.
 4. Nothing else to edit: the folder registers by its presence.
-5. Move `test_model.py` to `tests/test_<your_name>.py`, adapt it and run it.
+5. Keep `test.py` in the folder, adapt it and run it: `pytest brainscore/models/<your_name>/test.py`. The plugin checks also run the generic suite, `brainscore/model_helpers/generic_plugin_tests.py`, for each identifier your `__init__.py` registers; it needs no file from you.
 
 Before you copy anything, try the template from the `templates/` folder. Importing a
 template registers it, and the benchmark template scores the model template offline:

@@ -3,7 +3,8 @@
 The registry loaders build the registrations with stand-in weights, extractors, answer, reply
 and likelihood parts; the sessions run through ``participate``. qwen2.5-vl-3b, -7b, -3b-bf16 and
 qwen3.6-27b state the readout (fitted on the task's fitting stimuli); the variants with the
-word-form region (-vwfa) state the likelihood with softmax.
+word-form region (-vwfa) state the likelihood with softmax. The default registration also keeps
+its text route (generation) and its log-probability route (likelihood).
 """
 import sys
 import types
@@ -15,7 +16,7 @@ from PIL import Image
 from brainscore import model_registry
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
-from brainscore_core.responses import Choice
+from brainscore_core.responses import Choice, Text
 from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
@@ -158,3 +159,33 @@ def test_a_vwfa_registration_answers_probabilities_from_its_likelihood(registere
     assert calls == [('likelihood', 's0'), ('likelihood', 's1')]
     implied = np.exp([SCORES[label] for label in LABELS])
     np.testing.assert_allclose(answer.values, [implied / implied.sum()] * 2, rtol=1e-6)
+
+
+def _sentences(options=False):
+    rows = [{'stimulus_id': 't0', 'sentence': 'a word'}, {'stimulus_id': 't1', 'sentence': 'another'}]
+    if options:
+        for row in rows:
+            row['options'] = LABELS
+    stimuli = StimulusSet(rows)
+    stimuli.identifier = f'qwen-statements-sentences-{options}'
+    return stimuli
+
+
+def test_the_default_registration_writes_text_with_its_reply(registered):
+    """qwen2.5-vl-3b keeps its text route: free text comes from the generation part."""
+    model, calls = registered('qwen2.5-vl-3b')
+    session = stimulus_session(_sentences(), ['behavior:text'], TaskContext(instruction='Say it.', response=Text()))
+    model.participate(session)
+    assert session.collect('behavior:text').attrs['response']['method'] == 'generation'
+    assert ('reply', 't0') in calls
+
+
+def test_the_default_registration_gives_log_probabilities_with_its_likelihood(registered):
+    """qwen2.5-vl-3b keeps its log-probability route: the likelihood part scores each option."""
+    model, calls = registered('qwen2.5-vl-3b')
+    session = stimulus_session(_sentences(options=True), ['behavior:log_probabilities'],
+                               TaskContext(response=Choice('options', verbatim=True)))
+    model.participate(session)
+    answer = session.collect('behavior:log_probabilities')
+    assert answer.attrs['response']['method'] == 'likelihood'
+    assert ('likelihood', 't0') in calls
