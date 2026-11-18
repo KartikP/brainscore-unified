@@ -122,7 +122,8 @@ def _facts(obj, settings) -> dict:
     """What a part states about itself, read once per session.
 
     A caching wrapper states the settings fingerprints of its calls (``settings``), where
-    its network's parameters are, their dtypes and its batch size. A network recorded by
+    its network's parameters are, their dtypes, its batch size and, for a text wrapper, the
+    token limit it cut each text at (``max_length``, also when the store is off). A network recorded by
     forward hooks states where its parameters are and their dtypes. Any other part (a
     plain function, the legacy ``PytorchWrapper``, an answer, reply, likelihood or policy
     callable, a readout classifier) states none of these. The device the inputs are sent
@@ -130,16 +131,17 @@ def _facts(obj, settings) -> dict:
     """
     from brainscore.model_helpers._extractors import CachingExtractor
     facts = {'settings': NOT_STATED, 'parameter_devices': NOT_STATED, 'parameter_dtypes': NOT_STATED,
-             'batch_size': NOT_STATED}
+             'batch_size': NOT_STATED, 'max_length': NOT_STATED}
     network = getattr(obj, '_model', None) if isinstance(obj, CachingExtractor) else obj
     if isinstance(obj, CachingExtractor) or _is_network(obj):
         parameters = list(network.parameters()) if hasattr(network, 'parameters') else []
         facts.update(parameter_devices=_parameter_devices(parameters),
                      parameter_dtypes=_one(str(p.dtype) for p in parameters))
     if isinstance(obj, CachingExtractor):
-        batch_size = getattr(obj, '_batch_size', None)
+        batch_size, max_length = getattr(obj, '_batch_size', None), getattr(obj, '_max_length', None)
         facts.update(settings=_one(settings or ()),
-                     batch_size=batch_size if batch_size is not None else NOT_STATED)
+                     batch_size=batch_size if batch_size is not None else NOT_STATED,
+                     max_length=max_length if max_length is not None else NOT_STATED)
     return facts
 
 
