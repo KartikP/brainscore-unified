@@ -2,7 +2,7 @@
 
 ## Layout
 
-A test file sits in `tests/test_<part>/`, where `<part>` is the part of the `brainscore` package that it tests (`models`, `model_helpers`, `benchmarks`, `data`, `metrics`, `harnesses`, `experiments`, `tools`, `validation`, `visualization`; `model` for the private `_model` part). A test of one benchmark plugin is in that plugin's folder: `brainscore/benchmarks/<name>/test.py`, and more files as `test_<topic>.py` beside it; `tests/test_benchmarks/` keeps the tests of shared benchmark code and of several benchmarks. A file that tests the package as a whole (discovery, install, documents, templates, architecture rules, top-level modules) is in `tests/test_package/`. `tests/brainscore_model/` holds the `BrainScoreModel` tests. Shared helpers (`*_stand_in.py`, `pseudo_benchmarks.py`, `conftest.py`, `fixtures/`) stay in `tests/`; import them as `from tests.<helper> import ...`.
+A test file sits in `tests/test_<part>/`, where `<part>` is the part of the `brainscore` package that it tests (`models`, `model_helpers`, `benchmarks`, `data`, `metrics`, `harnesses`, `experiments`, `tools`, `validation`, `visualization`; `model` for the private `_model` part). A test of one benchmark plugin is in that plugin's folder: `brainscore/benchmarks/<name>/test.py`, and more files as `test_<topic>.py` beside it; `tests/test_benchmarks/` keeps the tests of shared benchmark code and of several benchmarks. A file that tests the package as a whole (discovery, install, documents, templates, architecture rules, top-level modules) is in `tests/test_package/`. `tests/brainscore_model/` holds the `BrainScoreModel` tests. Shared helpers (`*_stand_in.py`, `pseudo_benchmarks.py`, `conftest.py`, `markers.py`, `fixtures/`) stay in `tests/`; import them as `from tests.<helper> import ...`.
 
 Use the coordinated environment from [install/README.md](../install/README.md).
 
@@ -25,13 +25,13 @@ GitHub Actions builds the four pinned wheels, runs installed examples, and execu
 | `slow` | Real models, datasets or expensive computation |
 | `private_access` | Restricted resources, usually combined with `slow` |
 
-For a quick unified-only run:
+For a quick unified-only run, from `unified/` (the same selection as the per-PR runner):
 
 ```bash
-pytest -m "unit or integration"
+RESULTCACHING_DISABLE=1 pytest tests brainscore/benchmarks -m "(unit or integration) and not qualification"
 ```
 
-This plain command permits skips. Use the coordinated runner for required-check accounting. Fixture tests and scientific qualification are separate evidence.
+With no path, pytest collects the same two folders (`testpaths` in `pyproject.toml`). It never collects a model plugin's `test.py`, because that file loads real weights; name the model folder to run it. A benchmark plugin folder can run alone from the checkout (`pytest brainscore/benchmarks/<name>`) with the same markers. A plugin folder collected from an installed wheel without the checkout is not supported, because its tests import helpers from `tests/`. This plain command permits skips. Use the coordinated runner for required-check accounting. Fixture tests and scientific qualification are separate evidence.
 
 ## OpenPI client checks
 
