@@ -1,0 +1,3 @@
+{
+  "qwen3.6-27b": {"inputs": ["control", "instruction", "lesion", "pharmacological", "stimulation", "text", "vision:image", "vision:video"], "regions": ["IT", "V1", "V2", "V4", "language_system"], "ways": ["writing", "likelihood", "readout"], "answers": {"choice": "writing", "log_probabilities": "likelihood", "probabilities": "readout", "rating": "writing", "rt": "readout", "text": "writing"}}
+}

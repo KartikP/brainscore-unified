@@ -1,0 +1,3 @@
+{
+  "random-wav2vec2-base": {"inputs": ["audio", "control"], "regions": ["A1"], "ways": [], "answers": {}}
+}

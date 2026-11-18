@@ -1,0 +1,6 @@
+{
+  "clip-random-wav2vec2": {"inputs": ["audio", "control", "vision:image"], "regions": ["A1", "IT", "V1", "V2", "V4"], "ways": [], "answers": {}},
+  "clip-wav2vec2": {"inputs": ["audio", "control", "vision:image"], "regions": ["A1", "IT", "V1", "V2", "V4"], "ways": [], "answers": {}},
+  "random-clip-random-wav2vec2": {"inputs": ["audio", "control", "vision:image"], "regions": ["A1", "IT", "V1", "V2", "V4"], "ways": [], "answers": {}},
+  "random-clip-wav2vec2": {"inputs": ["audio", "control", "vision:image"], "regions": ["A1", "IT", "V1", "V2", "V4"], "ways": [], "answers": {}}
+}

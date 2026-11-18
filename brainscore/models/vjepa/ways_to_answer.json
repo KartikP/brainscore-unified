@@ -1,0 +1,3 @@
+{
+  "vjepa2-vitl": {"inputs": ["control", "vision:video"], "regions": ["IT", "V1", "V2", "V4"], "ways": [], "answers": {}}
+}

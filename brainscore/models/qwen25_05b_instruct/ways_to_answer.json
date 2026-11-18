@@ -1,0 +1,3 @@
+{
+  "qwen2.5-0.5b-instruct": {"inputs": ["control", "instruction", "lesion", "pharmacological", "stimulation", "text"], "regions": ["language_system"], "ways": ["writing", "likelihood"], "answers": {"choice": "writing", "log_probabilities": "likelihood", "probabilities": "likelihood", "rating": "writing", "rt": "likelihood", "text": "writing"}}
+}

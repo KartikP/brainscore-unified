@@ -1,0 +1,3 @@
+{
+  "random-vit-b-32": {"inputs": ["control", "text", "vision:image"], "regions": ["IT", "V1", "V2", "V4", "language_system"], "ways": ["readout"], "answers": {"choice": "readout", "probabilities": "readout", "rating": "readout", "rt": "readout"}}
+}

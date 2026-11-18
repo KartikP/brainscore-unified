@@ -1,0 +1,9 @@
+{
+  "claude-haiku-behavioral": {"inputs": ["control", "instruction", "text", "vision:image"], "regions": [], "ways": ["writing"], "answers": {"choice": "writing", "rating": "writing", "text": "writing"}},
+  "claude-opus-behavioral": {"inputs": ["control", "instruction", "text", "vision:image"], "regions": [], "ways": ["writing"], "answers": {"choice": "writing", "rating": "writing", "text": "writing"}},
+  "deepseek-chat-behavioral": {"inputs": ["control", "instruction", "text"], "regions": [], "ways": ["writing"], "answers": {"choice": "writing", "rating": "writing", "text": "writing"}},
+  "deepseek-r1-behavioral": {"inputs": ["control", "instruction", "text"], "regions": [], "ways": ["writing"], "answers": {"choice": "writing", "rating": "writing", "text": "writing"}},
+  "gpt-4o-behavioral": {"inputs": ["control", "instruction", "text", "vision:image"], "regions": [], "ways": ["writing"], "answers": {"choice": "writing", "rating": "writing", "text": "writing"}},
+  "llama-3.3-70b-behavioral": {"inputs": ["control", "instruction", "text"], "regions": [], "ways": ["writing"], "answers": {"choice": "writing", "rating": "writing", "text": "writing"}},
+  "or-claude-sonnet-behavioral": {"inputs": ["control", "instruction", "text", "vision:image"], "regions": [], "ways": ["writing"], "answers": {"choice": "writing", "rating": "writing", "text": "writing"}}
+}

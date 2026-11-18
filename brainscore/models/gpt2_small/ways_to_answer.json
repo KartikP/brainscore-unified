@@ -1,0 +1,3 @@
+{
+  "gpt2-small": {"inputs": ["control", "instruction", "text"], "regions": ["language_system"], "ways": ["likelihood", "readout"], "answers": {"choice": "readout", "log_probabilities": "likelihood", "probabilities": "readout", "rating": "readout", "rt": "readout"}}
+}

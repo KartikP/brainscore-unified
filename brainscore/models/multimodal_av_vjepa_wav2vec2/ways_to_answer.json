@@ -1,0 +1,6 @@
+{
+  "random-vjepa1-random-wav2vec2": {"inputs": ["audio", "control", "vision:video"], "regions": ["A1", "IT", "V1", "V4"], "ways": [], "answers": {}},
+  "random-vjepa1-wav2vec2": {"inputs": ["audio", "control", "vision:video"], "regions": ["A1", "IT", "V1", "V4"], "ways": [], "answers": {}},
+  "vjepa1-random-wav2vec2": {"inputs": ["audio", "control", "vision:video"], "regions": ["A1", "IT", "V1", "V4"], "ways": [], "answers": {}},
+  "vjepa1-wav2vec2": {"inputs": ["audio", "control", "vision:video"], "regions": ["A1", "IT", "V1", "V4"], "ways": [], "answers": {}}
+}
