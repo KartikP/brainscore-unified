@@ -19,15 +19,27 @@ def installed_argument(argument):
     return str(metadata.distribution('brainscore').locate_file(argument))
 
 
-def source_nodeid(nodeid):
-    """Name a benchmark plugin test by its source path.
+def plugin_nodeid(path, nodeid):
+    """Name a benchmark plugin test by its file below ``brainscore/benchmarks/``.
 
     An installed run collects the plugin tests from site-packages, outside the
-    rootdir, so pytest names them by a path that climbs out of it.
+    rootdir, so pytest names them relative to a different folder. The file path
+    and the test suffix give the same name in every run.
     """
-    path, sep, rest = nodeid.partition('::')
-    start = path.find(PLUGIN_TESTS + '/')
-    return path[start:] + sep + rest if start > 0 else nodeid
+    parts = Path(path).parts
+    starts = [i for i in range(len(parts) - 1) if parts[i:i + 2] == ('brainscore', 'benchmarks')]
+    if not starts:
+        return nodeid
+    _, sep, rest = nodeid.partition('::')
+    return '/'.join(parts[starts[-1]:]) + sep + rest
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_collectstart(collector):
+    # Rename the module before its tests are built, so that every test ID, also
+    # those an xdist worker sends to the controller, starts with the canonical path.
+    if isinstance(collector, pytest.Module):
+        collector._nodeid = plugin_nodeid(collector.path, collector.nodeid)
 
 
 def pytest_addoption(parser):
@@ -56,20 +68,20 @@ class RequiredChecks:
         self.skipped = []
 
     def pytest_collection_finish(self, session):
-        self.selected = [source_nodeid(item.nodeid) for item in session.items]
+        self.selected = [item.nodeid for item in session.items]
 
     @pytest.hookimpl(optionalhook=True)
     def pytest_xdist_node_collection_finished(self, node, ids):
         # With pytest-xdist the controller does not collect; every worker sends
         # the same list.
-        self.selected = [source_nodeid(nodeid) for nodeid in ids]
+        self.selected = list(ids)
 
     def pytest_deselected(self, items):
         self.deselected.extend(item.nodeid for item in items)
 
     def _record_skip(self, report):
         reason = str(report.longrepr)
-        expected = self.allowed.get(source_nodeid(report.nodeid))
+        expected = self.allowed.get(report.nodeid)
         self.skipped.append({
             'nodeid': report.nodeid,
             'reason': reason,
