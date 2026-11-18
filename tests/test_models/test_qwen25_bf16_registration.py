@@ -1,0 +1,133 @@
+"""Precision identities and reply metadata, with tiny stand-ins and no weights."""
+import hashlib
+import json
+import sys
+from types import SimpleNamespace
+
+import pytest
+import torch
+
+from brainscore import load_model, model_registry
+from brainscore_core import TaskContext
+from brainscore_core.responses import Text
+from brainscore_core.streaming_helpers import stimulus_session
+from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+from brainscore.models.qwen25_vl_3b import model as registration
+from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
+
+
+@pytest.fixture
+def build(monkeypatch, tmp_path):
+    import transformers.utils.hub as hub
+
+    calls, wrappers = [], []
+    weights = tmp_path / 'shard.safetensors'
+    weights.write_bytes(b'fixture weights')
+    (tmp_path / 'model.safetensors.index.json').write_text(json.dumps({'weight_map': {'weight': weights.name}}))
+    class FakeModel(torch.nn.Module):
+        def __init__(self, dtype):
+            super().__init__()
+            self.weight = torch.nn.Parameter(torch.zeros(1, dtype=dtype))
+            visual = torch.nn.Module()                 # model.visual.blocks.{0-31}
+            visual.blocks = torch.nn.ModuleList([torch.nn.Identity() for _ in range(32)])
+            language_model = torch.nn.Module()         # model.language_model.layers.{0-35}
+            language_model.layers = torch.nn.ModuleList([torch.nn.Identity() for _ in range(36)])
+            self.model = SimpleNamespace(visual=visual, language_model=language_model)
+            self.generation_config = SimpleNamespace(to_dict=lambda: {'max_length': 20})
+        @property
+        def device(self):
+            return self.weight.device
+        @property
+        def dtype(self):
+            return self.weight.dtype
+        def generate(self, **kwargs):
+            return torch.tensor([[1, 2, 3, 4]])
+    def load(name, **kwargs):
+        calls.append((name, kwargs))
+        return FakeModel(kwargs['torch_dtype'])
+    class Inputs(dict):
+        def to(self, device):
+            return self
+    class Processor:
+        tokenizer = SimpleNamespace(decode=lambda *a, **k: 'Yes')
+        image_processor = SimpleNamespace(to_dict=lambda: {'do_resize': True})
+        def apply_chat_template(self, *a, **k):
+            return 'prompt'
+        def __call__(self, **kwargs):
+            return Inputs(input_ids=torch.tensor([[1, 2, 3]]))
+    processor = Processor()
+    class Wrapper:
+        def __init__(self, **kwargs):
+            self.identifier = kwargs['identifier']
+            self.model = kwargs['model']
+            wrappers.append(kwargs)
+        def layer_names(self):
+            return [name for name, _ in self.model.named_modules() if name]
+        def __call__(self, stimuli, layers):
+            raise AssertionError('This fixture must not extract activations')
+    monkeypatch.setitem(sys.modules, 'transformers', SimpleNamespace(__version__='fixture',
+        Qwen2_5_VLForConditionalGeneration=SimpleNamespace(from_pretrained=load),
+        AutoProcessor=SimpleNamespace(from_pretrained=lambda *a, **k: processor)))
+    monkeypatch.setattr(hub, 'cached_file', lambda repo, name, **kwargs: str(tmp_path / name))
+    monkeypatch.setattr(registration, 'pin_image_processor', lambda value, *a, **k: value)
+    monkeypatch.setattr('brainscore.models._downloads.hf_preflight', lambda *a, **k: {'local_files_only': True, **k})
+    monkeypatch.setattr('brainscore.model_helpers._device.select_device', lambda: torch.device('cpu'))
+    monkeypatch.setattr('brainscore.model_helpers.vlm_vision_wrapper.VLMVisionWrapper', Wrapper)
+    monkeypatch.setattr('brainscore.model_helpers.text_wrapper.TextWrapper', Wrapper)
+    return calls, wrappers
+
+
+def test_bf16_is_a_separate_lazy_registration_and_uses_pinned_precision(build):
+    calls, wrappers = build
+    assert registration.BF16_IDENTIFIER in model_registry
+    subject = load_model(registration.BF16_IDENTIFIER)
+    assert calls == [('Qwen/Qwen2.5-VL-3B-Instruct', {'torch_dtype': torch.bfloat16,
+                     'local_files_only': True, 'revision': registration.BF16_REVISION})]
+    assert subject.identifier == 'qwen2.5-vl-3b-bf16'
+    assert [entry['identifier'] for entry in wrappers] == ['qwen2.5-vl-3b-bf16-vision', 'qwen2.5-vl-3b-bf16-text']
+    assert {'behavior:text', 'neural:IT', 'neural:language_system'} <= subject.out_channels
+    assert 'lesion' not in subject.in_channels
+    assert subject.visual_degrees() == 8   # the legacy facade places stimuli by it
+    assert subject.output_inputs == subject._subject.output_inputs
+    session = stimulus_session(StimulusSet([{'stimulus_id': 'a', 'sentence': 'red?'}]), ['behavior:text'], task=TaskContext(response=Text()))
+    subject.participate(session)
+    response = session.collect('behavior:text')
+    assert response.values.tolist() == ['Yes']
+    provenance = response.attrs['provenance']
+    assert provenance['dtype'] == 'torch.bfloat16' and provenance['device'] == 'cpu'
+    assert provenance['revision'] == registration.BF16_REVISION
+    assert provenance['weights_sha256'] == {'shard.safetensors': hashlib.sha256(b'fixture weights').hexdigest()}
+    assert provenance['reply_generation'] == {'max_new_tokens': 64, 'do_sample': False}
+
+
+@pytest.mark.parametrize('identifier', ['qwen2.5-vl-3b', 'qwen2.5-vl-7b',
+                                      'qwen2.5-vl-3b-vwfa', 'qwen2.5-vl-7b-vwfa'])
+def test_existing_registrations_keep_float16_without_new_revision_or_cache_keys(build, identifier):
+    calls, wrappers = build
+    subject = load_model(identifier)
+    assert calls[0][1] == {'torch_dtype': torch.float16, 'local_files_only': True}
+    assert subject.identifier == identifier
+    assert [entry['identifier'] for entry in wrappers] == [f'{identifier}-vision', f'{identifier}-text']
+
+
+@pytest.mark.parametrize('identifier', ['qwen2.5-vl-3b', 'qwen2.5-vl-7b', 'qwen2.5-vl-3b-vwfa',
+                                        'qwen2.5-vl-7b-vwfa', registration.BF16_IDENTIFIER])
+def test_vision_extractor_keeps_its_identifier_and_cache_key(build, monkeypatch, identifier):
+    """The registration builds VLMVisionWrapper itself; identifier and cache settings are unchanged."""
+    built = []
+
+    def construct(**kwargs):                     # the real wrapper, kept for inspection
+        built.append(VLMVisionWrapper(**kwargs))
+        return built[-1]
+    monkeypatch.setattr('brainscore.model_helpers.vlm_vision_wrapper.VLMVisionWrapper', construct)
+    monkeypatch.setattr('brainscore.model_helpers._device.select_device',
+                        lambda device=None: torch.device('cpu'))
+    load_model(identifier)
+    (vision,) = built
+    assert vision.identifier == f'{identifier}-vision'
+    settings = vision.cache_config()['settings']
+    assert {key: settings[key] for key in ('_layer_aggregation', '_batch_size')} == {
+        '_layer_aggregation': 'mean', '_batch_size': 4}
+    assert vision._patch_counts({'image_grid_thw': [(1, 2, 3)]}) == [6]
+    # The cache key names the wrapper class, not the registration.
+    assert vision.cache_config()['kind'] == 'brainscore.model_helpers.vlm_vision_wrapper.VLMVisionWrapper'
