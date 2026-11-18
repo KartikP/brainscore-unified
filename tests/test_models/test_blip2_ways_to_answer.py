@@ -17,7 +17,7 @@ from PIL import Image
 import brainscore
 from brainscore import model_registry
 from tests.test_harnesses.test_coggym import reference  # noqa: F401  (a fixture)
-from tests.test_benchmarks.test_coggym_benchmark import scored_reference  # noqa: F401  (a fixture)
+from brainscore.benchmarks.coggym.test import scored_reference  # noqa: F401  (a fixture)
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice, Scale, Text
 from brainscore_core.streaming_helpers import stimulus_session

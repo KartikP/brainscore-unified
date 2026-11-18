@@ -10,7 +10,7 @@ import brainscore
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 
 from tests.test_harnesses.test_coggym import make_subject, reference, reply_with_trial  # noqa: F401  (reference is a fixture)
-from tests.test_benchmarks.test_coggym_benchmark import scored_reference  # noqa: F401  (a fixture)
+from brainscore.benchmarks.coggym.test import scored_reference  # noqa: F401  (a fixture)
 
 pytestmark = pytest.mark.unit
 

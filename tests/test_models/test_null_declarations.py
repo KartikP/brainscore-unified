@@ -3,7 +3,7 @@ on the benchmarks they are floors for."""
 from brainscore_core.compatibility import check_compatibility
 
 from brainscore.models.chance_baseline.model import ChanceBaseline
-from tests.test_benchmarks.test_induced_dyslexia import synthetic_roar  # noqa: F401  (fixture)
+from brainscore.benchmarks.induced_dyslexia.test import synthetic_roar  # noqa: F401  (fixture)
 
 
 class _BehavioralBenchmark:

@@ -158,4 +158,6 @@ than three rows is refused with a `ValueError`. `brainscore/benchmarks/lahner202
 - Build the score with `benchmark_score`, so it says whether the value is raw or ceiled (`normalized`) and carries its `ceiling`; record how the ceiling was computed.
 - How a model answers (its answer function or its readout) is a property of the model. A behavioral benchmark that accepts both fills in the instruction and `fitting_stimuli`; to compare the paths, score one model built for each path ([Behavior](behavior.md)).
 
+The test of a benchmark is `test.py` in its folder, `brainscore/benchmarks/<name>/test.py`; more files for the same benchmark go beside it as `test_<topic>.py`. The plugin checks run these files with `-m "not slow"`, and the offline checks collect them with the `tests` folder; mark a test that needs real data or weights with `pytest.mark.slow`. `templates/new_benchmark/test.py` is the start.
+
 [Lesson 2](../../notebooks/lessons/02_your_first_benchmark.ipynb) builds a complete toy benchmark. Registered examples live in `brainscore/benchmarks/`.

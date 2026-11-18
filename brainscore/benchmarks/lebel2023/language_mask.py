@@ -15,7 +15,7 @@ Those files are fsaverage7 (163842 vertices per hemisphere) and this benchmark
 is fsaverage5 (10242). FreeSurfer's icosahedra are hierarchical, so fsaverage5
 is exactly the first 10242 vertices of fsaverage7 rather than something needing
 interpolation. That is checked rather than assumed: see
-``tests/test_benchmarks/test_lebel2023_language_mask.py``.
+``brainscore/benchmarks/lebel2023/test_language_mask.py``.
 """
 
 import pathlib

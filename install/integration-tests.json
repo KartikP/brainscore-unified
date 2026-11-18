@@ -291,7 +291,7 @@
       "id": "behavioral-roar",
       "repository": "unified",
       "pytest_args": [
-        "tests/test_benchmarks/test_roar_benchmark.py::TestRoarYeatman2021"
+        "brainscore/benchmarks/roar_yeatman2021/test.py::TestRoarYeatman2021"
       ],
       "models": [
         "clip-vit-b-32"
@@ -312,11 +312,11 @@
       "acceptance": "All five split, leakage, human-reference, threshold and CLIP score checks pass; retain the raw score separately from ceiling-adjusted score.",
       "activation": "pending pinned assets and bounded Linux qualification",
       "expected_collection": [
-        "tests/test_benchmarks/test_roar_benchmark.py::TestRoarYeatman2021::test_split_sizes",
-        "tests/test_benchmarks/test_roar_benchmark.py::TestRoarYeatman2021::test_no_train_test_leakage",
-        "tests/test_benchmarks/test_roar_benchmark.py::TestRoarYeatman2021::test_human_accuracy_on_test",
-        "tests/test_benchmarks/test_roar_benchmark.py::TestRoarYeatman2021::test_dyslexia_threshold",
-        "tests/test_benchmarks/test_roar_benchmark.py::TestRoarYeatman2021::test_score_clip"
+        "brainscore/benchmarks/roar_yeatman2021/test.py::TestRoarYeatman2021::test_split_sizes",
+        "brainscore/benchmarks/roar_yeatman2021/test.py::TestRoarYeatman2021::test_no_train_test_leakage",
+        "brainscore/benchmarks/roar_yeatman2021/test.py::TestRoarYeatman2021::test_human_accuracy_on_test",
+        "brainscore/benchmarks/roar_yeatman2021/test.py::TestRoarYeatman2021::test_dyslexia_threshold",
+        "brainscore/benchmarks/roar_yeatman2021/test.py::TestRoarYeatman2021::test_score_clip"
       ],
       "expected_count": 5,
       "device": "cpu",
