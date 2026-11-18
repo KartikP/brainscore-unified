@@ -125,6 +125,7 @@
     "dtype": "bfloat16",
     "download_gb": 8.6,
     "image_processor_kwargs": {"do_pan_and_scan": false},
+    "token_pool": 4,
     "video": false,
     "device_map": null,
     "packages": []
@@ -138,6 +139,7 @@
     "dtype": "bfloat16",
     "download_gb": 24.4,
     "image_processor_kwargs": {"do_pan_and_scan": false},
+    "token_pool": 4,
     "video": false,
     "device_map": null,
     "packages": []
@@ -151,6 +153,7 @@
     "dtype": "bfloat16",
     "download_gb": 54.9,
     "image_processor_kwargs": {"do_pan_and_scan": false},
+    "token_pool": 4,
     "video": false,
     "device_map": "auto",
     "packages": []

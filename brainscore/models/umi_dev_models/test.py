@@ -32,8 +32,9 @@ REPLY = ['dog']    # the words the stand-in writes; a test may set another reply
 class _Part(torch.nn.Module):
     """A model part with four blocks at the stated block path; it runs them in order."""
 
-    def __init__(self, blocks, words=False):
+    def __init__(self, blocks, words=False, tokens=None):
         super().__init__()
+        self._tokens = tokens       # a picture as this many patch tokens (a square grid), for a pooled layer
         parent = self
         *names, last = blocks.split('.')
         for name in names:
@@ -48,6 +49,8 @@ class _Part(torch.nn.Module):
         self.passes += 1
         x = self.embed(input_ids) if self.embed is not None else (
             pixel_values.reshape(len(pixel_values), -1)[:, :4].to(next(self.parameters()).dtype))
+        if self._tokens:
+            x = x[:, None, :].expand(-1, self._tokens, -1)
         for block in self.get_submodule(self._path):
             x = torch.tanh(block(x))
         return SimpleNamespace(last_hidden_state=x)
@@ -66,7 +69,7 @@ class _StatedLayout(torch.nn.Module):
                 if name not in parent._modules:
                     parent.add_module(name, torch.nn.Module())
                 parent = parent._modules[name]
-            parent.add_module(last, _Part(blocks, words))
+            parent.add_module(last, _Part(blocks, words, None if words or not config.get('token_pool') else 16))
         self._vision, self._language = config['vision'][0], config['language'][0]
         self.head = torch.nn.Linear(4, len(WORDS))
 
@@ -198,6 +201,13 @@ def test_the_depth_rule():
     assert vision == {'V1': 'blocks.3', 'V2': 'blocks.8', 'V4': 'blocks.16', 'IT': 'blocks.28', 'VWFA': 'blocks.28'}
     assert study.depth_layers([f'l{i}' for i in range(36)], study.DEPTH_TABLE['language']) == {'language_system': 'l23'}
     assert study.depth_layers([f'l{i}' for i in range(26)], {'V1': 0.10}) == {'V1': 'l3'}     # 2.5 rounds up
+
+
+def test_the_token_pool_averages_blocks_of_the_patch_grid():
+    grid = np.arange(16, dtype=np.float32).reshape(1, 16, 1)          # a 4 x 4 grid, row by row
+    assert study._pool_tokens(grid, 2)[0, :, 0].tolist() == [2.5, 4.5, 10.5, 12.5]
+    with pytest.raises(ValueError):
+        study._pool_tokens(np.zeros((1, 12, 1), np.float32), 2)
 
 
 def test_every_identifier_is_registered_with_its_suffix():

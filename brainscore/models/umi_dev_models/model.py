@@ -189,16 +189,30 @@ class _StatedProcessor:
         return self._processor(*args, **{**self._settings, **kwargs})
 
 
-def _pixel_extractor():
+def _pool_tokens(activity, kernel):
+    """Patch tokens ``(B, N, C)`` on a square grid, row by row, as the mean of each ``kernel`` x ``kernel``
+    block of the grid: ``(B, N / kernel**2, C)``."""
+    import math
+    count, n, width = activity.shape
+    side = math.isqrt(n)
+    if side * side != n or side % kernel:
+        raise ValueError(f'{n} patch tokens are not a square grid with a side divisible by {kernel}.')
+    cells = side // kernel
+    return activity.reshape(count, cells, kernel, cells, kernel, width).mean((2, 4)).reshape(count, cells * cells, width)
+
+
+def _pixel_extractor(token_pool=None):
     """``PytorchWrapper`` that exports a bfloat16 activation as float32 (NumPy has no bfloat16), through
-    the extractors' own hook helper; the network computes in bfloat16, other dtypes export unchanged."""
+    the extractors' own hook helper; the network computes in bfloat16, other dtypes export unchanged.
+    With ``token_pool``, each layer's patch tokens are pooled (``_pool_tokens``) before any PCA."""
     from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
     from brainscore.model_helpers._extractors import _hook, as_numpy
 
     class Float32Export(PytorchWrapper):
         def register_hook(self, layer, layer_name, target_dict):
             def keep(output, name=layer_name):
-                target_dict[name] = as_numpy(output)
+                activity = as_numpy(output)
+                target_dict[name] = activity if token_pool is None else _pool_tokens(activity, token_pool)
             return _hook(layer, layer_name, keep)
     return Float32Export
 
@@ -257,10 +271,11 @@ def get_model(identifier: str):
         from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
         image = VLMVisionWrapper(model=vision_module, processor=processor, identifier=f'{identifier}-vision',
                                  device=_one_device(identifier, vision_module, 'vision'))
-    else:                       # whole pictures as (B, C, H, W); every patch token kept, so PCA to 1000
+    else:                       # whole pictures as (B, C, H, W); every patch token kept (or pooled), so PCA to 1000
         from brainscore_vision.model_helpers.activations.pca import LayerPCA
-        image = _pixel_extractor()(
-            model=vision_module, identifier=f'{identifier}-vision',
+        pool = config.get('token_pool')
+        image = _pixel_extractor(pool)(
+            model=vision_module, identifier=f'{identifier}-vision' + (f'-pool{pool}' if pool else ''),
             device=_one_device(identifier, vision_module, 'vision'),
             preprocessing=partial(_whole_images, image_processor=processor.image_processor, settings=pixels))
         LayerPCA.hook(image, n_components=1000)
@@ -286,4 +301,6 @@ def get_model(identifier: str):
         'device_map': config['device_map'],
         'region_layer_map_status': f'{DEPTH_HYPOTHESIS}: {depths}; no layer search',
         'readout_layer': f"{region_layer_map['IT']} (the IT layer of the vision part)",
-        'intervention': 'on' if parts else 'off: the vision layers are recorded as LayerPCA components'})
+        'intervention': 'on' if parts else 'off: the vision layers are recorded as LayerPCA components',
+        **({'token_pool': f"mean of each {config['token_pool']} x {config['token_pool']} block of the patch "
+                          f"grid, before LayerPCA"} if config.get('token_pool') else {})})
