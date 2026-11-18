@@ -15,7 +15,8 @@ One registration declares, and answers through ``participate`` (or ``process``):
   ``verbatim`` choice it scores ``f"{text} {option}"`` as plain text, with no
   chat template and no beginning-of-sequence token, as EWoK's ``score`` does;
   otherwise the text is a user turn of the chat template and each option is
-  scored as the assistant's reply.
+  scored as the assistant's reply. Under a ``Segments`` task it gives the log
+  probability of each part given the earlier parts.
 """
 from copy import deepcopy
 from typing import Any, Mapping, Optional, Sequence
@@ -24,7 +25,8 @@ from brainscore import BrainScoreModel
 from brainscore_core.responses import Choice, Text
 from brainscore.model_helpers._device import input_device
 
-from brainscore.model_helpers.replies import _generation_settings, _plain_text_scores, _scores_alone
+from brainscore.model_helpers.replies import (_Layouts, _generation_settings, _plain_text_scores,
+                                             _scores_alone, _segment_log_probabilities)
 from brainscore.model_helpers.text_wrapper import TextWrapper
 from brainscore.model_helpers.intervention import pytorch_intervention
 
@@ -33,8 +35,11 @@ class _CausalLMParts:
     """The ``reply`` and ``likelihood`` parts of a text-only causal LM."""
 
     def __init__(self, model: Any, tokenizer: Any, chat_template_kwargs: Optional[dict] = None,
-                 max_new_tokens: int = 256) -> None:
+                 max_new_tokens: int = 256, sliding_window: bool = False) -> None:
+        # sliding_window: the registration states that the model's cache can slide (learned
+        # absolute positions), so a text longer than its window is scored as the old helper does.
         self.model, self.tokenizer = model, tokenizer
+        self.sliding_window = sliding_window
         self.chat_template_kwargs = dict(chat_template_kwargs or {})
         self.max_new_tokens = max_new_tokens
         if tokenizer.pad_token_id is None:
@@ -69,7 +74,17 @@ class _CausalLMParts:
                                       **settings)[:, enc['input_ids'].shape[1]:]
         return self.tokenizer.decode(out[0], skip_special_tokens=True).strip()
 
-    def likelihood(self, prompt, candidates: Sequence[str]) -> dict:
+    @property
+    def likelihood(self) -> _Layouts:
+        """The likelihood part: ``likelihood(prompt, candidates)`` scores options after the
+        trial's text; ``likelihood['segment']`` scores the parts of a Segments row."""
+        return _Layouts(self._continuation, self._segments)
+
+    def _segments(self, prompt):
+        return _segment_log_probabilities(self.model, self.tokenizer, prompt.response.segments,
+                                          sliding_window=self.sliding_window)
+
+    def _continuation(self, prompt, candidates: Sequence[str]) -> dict:
         """The summed log probability of each candidate after the trial's text."""
         if isinstance(prompt.response, Choice) and prompt.response.verbatim:
             return _plain_text_scores(self.model, self.tokenizer, prompt, candidates)

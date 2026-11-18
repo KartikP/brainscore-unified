@@ -299,7 +299,15 @@ def drive_behavior_and_neural_session(subject, session, driver: str = "interact"
                                  times[index]) for index in range(len(stimuli)))
         else:
             batches = [(0, (stimuli, None))]
+    from brainscore_core.compatibility import ExecutionNotFeasibleError
+    from brainscore_core.responses import Segments
     for index, (batch, t_ms) in batches:
+        if index and isinstance(task.response, Segments):
+            # A source with no known table (the plan checks a known one): the second trial is
+            # refused when it arrives, before its compute.
+            raise ExecutionNotFeasibleError(
+                f"Subject '{subject.identifier}' answers one Segments trial in a session; a "
+                "second trial arrived", channels=set(answers), task_type=task.task_type)
         if index == 0 or task.trial_memory == 'none':
             subject._begin_episode()
         behavior, neural = subject._behavioral.respond(batch, answers, regions)
