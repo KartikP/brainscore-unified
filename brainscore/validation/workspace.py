@@ -16,6 +16,8 @@ import subprocess
 import sys
 import tempfile
 
+from .required_checks import PLUGIN_TESTS, installed_argument
+
 # Keep offline selections explicit: mixed files contain real-model/data tests.
 SUITES = {
     'core': [
@@ -95,6 +97,7 @@ SUITES = {
     ],
     'unified': [
         'tests',
+        'brainscore/benchmarks',
         '-m',
         'unit or integration',
     ],
@@ -200,6 +203,8 @@ def qualify(root, out, *, mode='source', wheels=None):
         log = out.with_name(f'{out.stem}-{repo}.log')
         checks = out.with_name(f'{out.stem}-{repo}-checks.json')
         checks.unlink(missing_ok=True)
+        if mode == 'installed':
+            suite = [installed_argument(argument) for argument in suite]
         command = [sys.executable, '-m', 'pytest', *suite_arguments(repo, suite), '-q', '-ra',
                    '-p', 'no:cacheprovider', '-p', 'brainscore.validation.required_checks',
                    '-p', 'brainscore.validation.cpu_profile',
@@ -245,6 +250,7 @@ def qualify(root, out, *, mode='source', wheels=None):
             returncode = 1
         selected_files = {node.split('::')[0] for node in (evidence or {}).get('selected', [])}
         inventory = {str(path.relative_to(checkout)) for path in (checkout/'tests').rglob('test_*.py')}
+        inventory |= {str(path.relative_to(checkout)) for path in (checkout/PLUGIN_TESTS).rglob('test*.py')}
         report['repositories'][repo] = {'base_commit': commit, 'working_changes_sha256': digest.hexdigest(),
             'dirty': bool(diff or untracked), 'returncode': returncode, 'log': str(log),
             'command': command, 'checks': evidence,

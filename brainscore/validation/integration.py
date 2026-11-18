@@ -20,6 +20,7 @@ import time
 import psutil
 
 from .revisions import REPOSITORIES, verify
+from .required_checks import installed_argument
 from .workspace import stage_tests
 
 
@@ -221,7 +222,7 @@ def qualify(*, root: Path, revisions: Path, wheels: Path, manifest: Path,
                 identity = output / f'{phase}-installed.json'
                 command = [sys.executable, '-I', '-m', 'brainscore.validation.installed',
                            '--stage', str(stage), '--wheels', str(wheels), '--identity', str(identity),
-                           *profile['pytest_args'], '-q', '-ra', '-p', 'no:cacheprovider',
+                           *map(installed_argument, profile['pytest_args']), '-q', '-ra', '-p', 'no:cacheprovider',
                            '-p', 'pytest_check.plugin', '-p', 'pytest_mock',
                            '-p', 'brainscore.validation.integration_checks',
                            '--umi-integration-profile', str(lock),

@@ -6,6 +6,8 @@ import socket
 
 import pytest
 
+from .required_checks import source_nodeid
+
 
 def pytest_addoption(parser) -> None:
     parser.addoption('--umi-integration-profile', required=False)
@@ -45,12 +47,12 @@ class IntegrationChecks:
             self.collection_errors.append(report.nodeid)
 
     def pytest_collection_finish(self, session) -> None:
-        self.selected = [item.nodeid for item in session.items]
+        self.selected = [source_nodeid(item.nodeid) for item in session.items]
         if not self.expected or sorted(self.selected) != sorted(self.expected):
             raise pytest.UsageError('Integration selection differs from the reviewed test IDs')
 
     def pytest_runtest_logreport(self, report) -> None:
-        self.phases.setdefault(report.nodeid, {})[report.when] = report.outcome
+        self.phases.setdefault(source_nodeid(report.nodeid), {})[report.when] = report.outcome
 
     @pytest.hookimpl(trylast=True)
     def pytest_sessionfinish(self, session, exitstatus) -> None:

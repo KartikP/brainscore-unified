@@ -1,10 +1,33 @@
 """Pytest plugin: report selected checks and fail on unexpected skips."""
+from importlib import metadata
 import json
 from pathlib import Path
 
 import pytest
 
 from .optional_checks import OPTIONAL_SKIPS
+
+# Benchmark plugins keep their tests in their own folders. An installed run takes
+# them from the installed package, not from a copy: a copy would import as source.
+PLUGIN_TESTS = 'brainscore/benchmarks'
+
+
+def installed_argument(argument):
+    """The installed copy of a benchmark plugin test path; any other argument unchanged."""
+    if argument != PLUGIN_TESTS and not argument.startswith(PLUGIN_TESTS + '/'):
+        return argument
+    return str(metadata.distribution('brainscore').locate_file(argument))
+
+
+def source_nodeid(nodeid):
+    """Name a benchmark plugin test by its source path.
+
+    An installed run collects the plugin tests from site-packages, outside the
+    rootdir, so pytest names them by a path that climbs out of it.
+    """
+    path, sep, rest = nodeid.partition('::')
+    start = path.find(PLUGIN_TESTS + '/')
+    return path[start:] + sep + rest if start > 0 else nodeid
 
 
 def pytest_addoption(parser):
@@ -33,20 +56,20 @@ class RequiredChecks:
         self.skipped = []
 
     def pytest_collection_finish(self, session):
-        self.selected = [item.nodeid for item in session.items]
+        self.selected = [source_nodeid(item.nodeid) for item in session.items]
 
     @pytest.hookimpl(optionalhook=True)
     def pytest_xdist_node_collection_finished(self, node, ids):
         # With pytest-xdist the controller does not collect; every worker sends
         # the same list.
-        self.selected = list(ids)
+        self.selected = [source_nodeid(nodeid) for nodeid in ids]
 
     def pytest_deselected(self, items):
         self.deselected.extend(item.nodeid for item in items)
 
     def _record_skip(self, report):
         reason = str(report.longrepr)
-        expected = self.allowed.get(report.nodeid)
+        expected = self.allowed.get(source_nodeid(report.nodeid))
         self.skipped.append({
             'nodeid': report.nodeid,
             'reason': reason,

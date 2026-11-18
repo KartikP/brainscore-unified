@@ -15,6 +15,7 @@ from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice, Scale, Text
 from brainscore_core.streaming_helpers import stimulus_session
+from tests.architecture_support import plugin_test
 from tests.brainscore_model.test_behavior_paths import FITTING, STIMULI, _features
 
 pytestmark = pytest.mark.unit
@@ -283,7 +284,7 @@ def _registrations():
     groups; the constructor checks them."""
     root = Path(brainscore.__file__).parent
     found, expanded, not_literal = [], set(), set()
-    for path in sorted(root.rglob('*.py')):
+    for path in sorted(path for path in root.rglob('*.py') if not plugin_test(path)):
         where = path.relative_to(root).as_posix()
         for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
             if isinstance(node, ast.Call) and 'BrainScoreModel' in (
