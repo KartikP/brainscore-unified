@@ -90,6 +90,13 @@ def test_a_registered_readout_model_gives_choices_in_an_experiment(identifier, m
         ('derived', 'argmax', 'readout')
 
 
+
+@pytest.mark.parametrize('identifier', sorted(BUILDERS))
+def test_a_registered_readout_model_states_its_row(identifier, monkeypatch):
+    from tests.ways_to_answer import check_statement
+    subject = BUILDERS[identifier](monkeypatch).get_model(identifier)
+    check_statement(subject, subject)
+
 def test_the_behavior_recorder_records_the_formats_it_names(monkeypatch, tmp_path):
     subject = BUILDERS['gpt2-small'](monkeypatch).get_model('gpt2-small')
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)
