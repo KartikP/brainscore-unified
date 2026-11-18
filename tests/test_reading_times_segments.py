@@ -338,12 +338,15 @@ def test_each_cached_run_holds_only_its_new_tokens(tiny):
     assert len(sizes) == 10 and all(stored == held for stored, held in sizes)
 
 
-def test_a_session_of_several_segments_trials_is_refused_before_any_call():
-    """No row is scored before a later row could be refused."""
+@pytest.mark.parametrize('memory, streaming', [(None, False), ('trial_history', False), (None, True)])
+def test_a_session_of_several_segments_trials_is_refused_before_any_call(memory, streaming):
+    """No row is scored before a later row could be refused: the whole table, a subject that
+    takes the table one trial at a time, and a streamed table."""
     calls = []
-    subject = _subject({'continuation': lambda p, c: {}, 'segment': _recording_segment(calls)})
+    subject = BrainScoreModel('tiny-lm', in_channels={'text'}, memory=memory,
+                              likelihood={'continuation': lambda p, c: {}, 'segment': _recording_segment(calls)})
     session = stimulus_session(_segments_row(['the dog', 'the dog'], [('the', 'dog'), ('the', 'dog')]), [F6],
-                               TaskContext(response=Segments('segments')))
+                               TaskContext(response=Segments('segments')), streaming=streaming)
     with pytest.raises(ExecutionNotFeasibleError, match='one Segments trial in a session'):
         subject.participate(session)
     assert calls == []
