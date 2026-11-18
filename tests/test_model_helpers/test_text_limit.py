@@ -93,5 +93,28 @@ def test_an_out_of_memory_batch_names_the_limit_and_the_remedy():
     wrapper = TextWrapper(_OutOfMemory(), _tokenizer(), identifier='big', max_length=48, device='cpu')
     with pytest.raises(torch.OutOfMemoryError) as error:
         wrapper(['the cat sat', 'dog'], ['embed'])
+    assert 'out of memory' in str(error.value)   # the original error, not a new one
+    note = ' '.join(error.value.__notes__)
     for fragment in ('big', 'limit 48', '3 tokens', 'smaller max_length'):
-        assert fragment in str(error.value)
+        assert fragment in note
+
+
+def test_an_out_of_memory_batch_without_token_ids_keeps_the_memory_error():
+    class _Embeddings:
+        model_max_length = 8
+
+        def __call__(self, texts, **_):
+            return {'inputs_embeds': torch.zeros(len(texts), 3, 2)}
+
+    class _Network(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.embed = torch.nn.Embedding(9, 2)
+
+        def forward(self, **_):
+            raise torch.OutOfMemoryError('out of memory')
+
+    wrapper = TextWrapper(_Network(), _Embeddings(), identifier='big', device='cpu')
+    with pytest.raises(torch.OutOfMemoryError) as error:
+        wrapper(['the cat sat'], ['embed'])
+    assert '3 tokens' in ' '.join(error.value.__notes__)

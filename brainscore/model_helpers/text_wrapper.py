@@ -397,11 +397,14 @@ class TextWrapper(CachingExtractor):
             try:
                 self._model(**tokens)
             except torch.OutOfMemoryError as error:
-                raise torch.OutOfMemoryError(
+                # The original error stays; the note only adds what the registration can change.
+                widths = [int(value.shape[1]) for value in tokens.values() if value.dim() >= 2]
+                longest = f'{max(widths)} tokens' if widths else 'an unknown number of tokens'
+                error.add_note(
                     f'{self._identifier}: a padded batch of {len(texts)} texts, the longest '
-                    f'{tokens["input_ids"].shape[-1]} tokens (limit {self._max_length}), ran out of '
-                    f'accelerator memory. State a smaller max_length (or batch_size) for the '
-                    f'TextWrapper in the registration.') from error
+                    f'{longest} (limit {self._max_length}), ran out of accelerator memory. State a '
+                    f'smaller max_length (or batch_size) for the TextWrapper in the registration.')
+                raise
             return recording.take()
 
     def _reduce(self, layer_results, mask, _row=None):
