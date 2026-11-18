@@ -120,8 +120,8 @@ def test_optional_permission_is_scoped_to_test_and_reason():
 ])
 def test_client_profile_rejects_the_offline_skip_exemption(tmp_path, profile, expected_code):
     """A missing client may skip in the base job, but must fail its dedicated job."""
-    tests = tmp_path / 'tests'
-    tests.mkdir()
+    tests = tmp_path / 'tests' / 'test_experiments'   # the path the exemption names
+    tests.mkdir(parents=True)
     (tests / 'test_openpi_remote.py').write_text(
         'import pytest\n'
         'def test_ok(): pass\n'
