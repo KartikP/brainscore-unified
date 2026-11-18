@@ -2,8 +2,9 @@ name: offline tests
 # Every step after the checkouts runs install/run_candidate.sh. A development
 # machine runs the same script with "all"; keep the commands in the script.
 # Per pull request: ubuntu tests and the OpenPI jobs. The macOS legs, the
-# qualification tests and the examples run on push to v2, on workflow_dispatch
-# (the nightly-v2 workflow dispatches it), and on pull requests that carry the
+# qualification tests and the examples run on push to v2, on a manual start
+# (gh workflow run offline-tests.yml --ref unified-model-interface-v2), and on
+# pull requests that carry the
 # run-macos label. Skipped jobs report success, so required checks stay green.
 on:
   push:

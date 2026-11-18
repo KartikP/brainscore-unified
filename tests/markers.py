@@ -17,7 +17,7 @@ SERIAL_FILES = {
     'test_mirage_umi.py', 'test_mirage_overhead.py',
 }
 # Qualification and documented-example tests. The per-PR tier skips them (see
-# brainscore.validation.workspace); push to v2 and the nightly run include them.
+# brainscore.validation.workspace); push to v2 and a manual full run include them.
 QUALIFICATION_FILES = {'test_external_qualification.py', 'test_mirage_umi.py', 'test_mirage_overhead.py'}
 QUALIFICATION_TESTS = {
     'test_contrastive_steering_tool.py::test_documented_steering_example_runs',

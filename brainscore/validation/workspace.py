@@ -114,7 +114,7 @@ WORKERS = '4'
 def suite_arguments(repo, suite):
     """Return the pytest selection for one repository.
 
-    UMI_FULL=1 (push to v2, nightly, run-macos label) keeps the qualification
+    UMI_FULL=1 (push to v2, a manual start, run-macos label) keeps the qualification
     tests; every other run deselects them.
     """
     suite = list(suite)
