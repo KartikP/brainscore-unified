@@ -13,9 +13,10 @@ LOAD = 'brainscore.model_helpers.generic_plugin_tests.load_model'
 
 
 def _declared(identifier='dummy', in_channels=('text',), out_channels=('behavior:choice',),
-              required_channels=()):
+              required_channels=(), output_inputs=None, traits=()):
     return SimpleNamespace(identifier=identifier, in_channels=set(in_channels),
-                           out_channels=set(out_channels), required_channels=set(required_channels))
+                           out_channels=set(out_channels), required_channels=set(required_channels),
+                           output_inputs=output_inputs or {}, traits=set(traits))
 
 
 def test_a_valid_declaration_passes_with_one_load(mocker):
@@ -36,6 +37,8 @@ def test_a_valid_declaration_passes_with_one_load(mocker):
     dict(in_channels=('behavior:choice',)),         # reversed direction: an output as input
     dict(in_channels=('text:bogus',)),              # illegal address: text takes none
     dict(required_channels=('audio',)),             # not an input channel
+    dict(output_inputs={'behavior:choice': {'audio'}}),   # answers from an input it does not take
+    dict(traits=('memory:trial_history',)),         # keeps trials but cannot see where one starts
 ])
 def test_a_bad_identifier_or_declaration_fails(mocker, declared):
     mocker.patch(LOAD, return_value=_declared(**declared))
