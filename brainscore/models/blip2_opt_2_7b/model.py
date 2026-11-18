@@ -190,7 +190,9 @@ def _make_parts(blip_model, blip_processor, max_new_tokens: int = 64):
 
     def segments(prompt):
         # A Segments task: BLIP-2's own language model scores the text alone.
-        return _segment_log_probabilities(blip_model.language_model, tokenizer, prompt.response.segments)
+        # OPT has learned absolute positions: its cache can slide past the 2,048-token window.
+        return _segment_log_probabilities(blip_model.language_model, tokenizer, prompt.response.segments,
+                                          sliding_window=True)
 
     return reply, {'continuation': likelihood, 'segment': segments}
 

@@ -173,7 +173,7 @@ class _Layouts(_AbcMapping):
 _SEGMENT_JOIN = 'one space; parts of white space only dropped; no space before . , ! ? ; :'
 
 
-def _segment_log_probabilities(model, tokenizer, segments: Sequence[str]):
+def _segment_log_probabilities(model, tokenizer, segments: Sequence[str], sliding_window: bool = False):
     """The log probability, in bits, of each part of one text given the parts before it.
 
     ``(values, parameters)``: one value for each part (``None`` for a part with no scored
@@ -184,9 +184,10 @@ def _segment_log_probabilities(model, tokenizer, segments: Sequence[str]):
     tokens) after the count of the context before, and every per-token input the
     tokenizer gives reaches the model. The whole schedule is checked against the model's
     window (``max_position_embeddings``) before any forward pass: the first context fits
-    the window, each later part has fewer new tokens than the window, and a model with
-    rotary positions (its text configuration names ``rope_theta``, ``rope_scaling`` or
-    ``rope_parameters``) gets a text that fits the window, because its cache cannot slide. The first
+    the window and each later part has fewer new tokens than the window. A text longer than
+    the window needs ``sliding_window=True``: the registration's statement that its cache can
+    slide (learned absolute positions, as GPT-2 and OPT have). Without it such a text is
+    refused, because a slid cache keeps rotary keys at their old positions. The first
     context runs in full; each later part runs only its new tokens with the key-value cache,
     their positions after the cached ones, and the last logit of the run before. When the
     cache and the new tokens pass the window, the cache keeps its newest ``window - new``
@@ -206,21 +207,19 @@ def _segment_log_probabilities(model, tokenizer, segments: Sequence[str]):
         encoded = tokenizer(prepare_context(segments[:i + 1]), return_tensors='pt')
         total = encoded['input_ids'].shape[-1]
         if not steps and total > window:
-            raise ValueError(f'part 1 has {total} tokens, more than the window of {window}')
+            raise ExecutionNotFeasibleError(f'part 1 has {total} tokens, more than the window of {window}')
         if steps and total - count >= window:
-            raise ValueError(f'part {i + 1} has {total - count} new tokens, as many as the window '
-                             f'of {window} or more; it cannot be scored with its context')
+            raise ExecutionNotFeasibleError(f'part {i + 1} has {total - count} new tokens, as many as '
+                                            f'the window of {window} or more; it cannot be scored '
+                                            'with its context')
         # Every per-token input the tokenizer gives (ids, mask, token types) reaches the model;
         # a copy of the new tokens, so the full prefix is not kept.
         steps.append({key: value[..., count:].clone() for key, value in encoded.items()})
         count = total
-    text_config = model.config.get_text_config()
-    if count > window and any(getattr(text_config, name, None) is not None
-                              for name in ('rope_theta', 'rope_scaling', 'rope_parameters')):
-        # ponytail: a slid cache keeps keys rotated at their old positions; refused, not repaired,
-        # until a passage longer than a rotary model's window is needed
-        raise ValueError(f'the text has {count} tokens, more than the window of {window}, and the '
-                         'model has rotary positions: its cache cannot slide')
+    if count > window and not sliding_window:
+        raise ExecutionNotFeasibleError(
+            f'the text has {count} tokens, more than the window of {window}, and the registration '
+            'does not state that its cache can slide (sliding_window=True)')
     values, past, last = [], None, None
     for inputs in steps:
         inputs = {key: value.to(device) for key, value in inputs.items()}

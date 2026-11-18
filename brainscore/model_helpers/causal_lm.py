@@ -34,8 +34,11 @@ class _CausalLMParts:
     """The ``reply`` and ``likelihood`` parts of a text-only causal LM."""
 
     def __init__(self, model: Any, tokenizer: Any, chat_template_kwargs: Optional[dict] = None,
-                 max_new_tokens: int = 256) -> None:
+                 max_new_tokens: int = 256, sliding_window: bool = False) -> None:
+        # sliding_window: the registration states that the model's cache can slide (learned
+        # absolute positions), so a text longer than its window is scored as the old helper does.
         self.model, self.tokenizer = model, tokenizer
+        self.sliding_window = sliding_window
         self.chat_template_kwargs = dict(chat_template_kwargs or {})
         self.max_new_tokens = max_new_tokens
         if tokenizer.pad_token_id is None:
@@ -77,7 +80,8 @@ class _CausalLMParts:
         return _Layouts(self._continuation, self._segments)
 
     def _segments(self, prompt):
-        return _segment_log_probabilities(self.model, self.tokenizer, prompt.response.segments)
+        return _segment_log_probabilities(self.model, self.tokenizer, prompt.response.segments,
+                                          sliding_window=self.sliding_window)
 
     def _continuation(self, prompt, candidates: Sequence[str]) -> dict:
         """The summed log probability of each candidate after the trial's text."""
