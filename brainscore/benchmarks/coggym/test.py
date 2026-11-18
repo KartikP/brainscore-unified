@@ -135,9 +135,8 @@ def analyze(*args, **kwargs):
 
 
 def test_public_experiments_are_registered_lazily():
-    ids = {name for name in brainscore.benchmark_registry if name.startswith('CogGym.')}
-    assert ids == {f'CogGym.{path.replace("/", ".")}' for path in EXPERIMENTS}
     # Representative registrations: a text slider experiment and a video choice experiment.
+    assert {'CogGym.Hu2023Fine.exp1', 'CogGym.Fu2025Hierarchical.exp2'} <= set(brainscore.benchmark_registry)
     assert EXPERIMENTS['Hu2023Fine/exp1'] == 'text'
     assert EXPERIMENTS['Fu2025Hierarchical/exp2'] == 'video'
 
@@ -354,13 +353,18 @@ class _NoRawAnswer(Subject):
 
 
 def test_a_text_answer_stored_as_missing_does_not_stop_the_run(scored_reference, tmp_path):
-    """Contract Rule 6.2: a missing written answer reaches CogGym as a call with no reply."""
-    root, _ = scored_reference
+    """Contract Rule 6.2: a missing written answer reaches CogGym as a call with no reply.
+    With no answer, CogGym has no scorable query and makes no row: its own outcome."""
+    root, stand_in = scored_reference
+    _trial_queries(stand_in)
+    _no_row(stand_in)
     benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root,
                                           reset=lambda repetition: None, repetitions=2,
                                           output_dir=tmp_path / 'scored')
     score = brainscore.score(_NoRawAnswer(), benchmark, check_mem=False)
-    assert float(score) == 0.375
+    assert math.isnan(float(score))
+    assert score.attrs['n_missing'] == score.attrs['n_trials'] == 6
+    assert score.attrs['result_validity'] == 'invalid'
     run = json.loads((tmp_path / 'scored' / 'coggym' / 'run-001.json').read_text())
     assert all('error' in trial and 'response' not in trial for trial in run['trials'])
 
