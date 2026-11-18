@@ -126,12 +126,12 @@ def _refuse_start(identifier: str, folder: Path, error: ChildFailed) -> None:
             f'lacks the package.') from error
 
 
-def _answer(adapter):
-    """The parent's side of a model call: the adapter's reply, or the failure CogGym records."""
+def _answer(complete):
+    """The parent's side of a model call: the reply of ``complete(call)``, or the failure
+    CogGym records."""
     def answer(call):
         try:
-            reply = adapter.complete_with_metadata(call['system'], call['messages'], call['model'],
-                                                   call['temperature'], call['max_tokens'])
+            reply = complete(call)
         except Exception as error:
             # CogGym stores a failed trial with this type and message, as in one process.
             return {'error': [type(error).__name__, str(error)]}
@@ -268,7 +268,10 @@ class _SubjectAdapter:
         # prompt, and CogGym calls them in trial order, so the k-th call is the k-th such trial.
         self.prompt_calls = {}
 
-    def complete_with_metadata(self, system, messages, model, temperature, max_tokens):
+    def complete(self, call):
+        """Answer one model call of CogGym (its system text, messages and settings)."""
+        system, messages = call['system'], call['messages']
+        temperature, max_tokens = call['temperature'], call['max_tokens']
         if self.refusal is not None:
             raise self.refusal      # an earlier trial was refused: no further trial runs
         key = _prompt_key(system, messages)
@@ -466,12 +469,10 @@ class CogGymRunner:
                 )
             # Translate CogGym's model calls into sessions on the common channels.
             # This is where the external evaluator connects to UMI tools.
-            return self._run(
-                lambda repetition: _SubjectAdapter(
-                    subject, context, repetition, self._prompt_trials,
-                ),
-                context.directory / 'coggym', reset, register,
-            )
+            def start(repetition):
+                adapter = _SubjectAdapter(subject, context, repetition, self._prompt_trials)
+                return adapter.complete, adapter
+            return self._run(start, context.directory / 'coggym', reset, register)
 
         # The adapter records its own sessions, so no subject method is observed.
         return CallableProtocol(
@@ -491,26 +492,33 @@ class CogGymRunner:
         """
         if not callable(getattr(adapter, 'complete_with_metadata', None)):
             raise TypeError('The adapter must implement complete_with_metadata')
-        return self._run(lambda repetition: adapter, Path(output_dir), reset, lambda path: None)
 
-    def _repetitions(self, child, adapter_factory, directory, reset, register):
-        """Each repetition: reset (in this process), CogGym's run (in the evaluator), its file."""
+        def complete(call):
+            return adapter.complete_with_metadata(call['system'], call['messages'], call['model'],
+                                                  call['temperature'], call['max_tokens'])
+        # Only Brain-Score's session adapter states answers; any failure of this one is a failure.
+        return self._run(lambda repetition: (complete, None), Path(output_dir), reset, lambda path: None)
+
+    def _repetitions(self, child, start, directory, reset, register):
+        """Each repetition: reset (in this process), CogGym's run (in the evaluator), its file.
+
+        ``start(repetition)`` gives the function that answers CogGym's calls and Brain-Score's
+        session adapter (``None`` for a direct run), the only source of answer states."""
         artifacts, validations = [], []
         for repetition in range(1, self.repetitions + 1):
             reset(repetition)
-            adapter = adapter_factory(repetition)
+            complete, adapter = start(repetition)
             ran = child.ask({'do': 'run', 'model': self.model, 'temperature': self.temperature,
-                             'max_tokens': self.max_tokens}, _answer(adapter))
+                             'max_tokens': self.max_tokens}, _answer(complete))
             # A trial the subject could not serve ends the run with the subject's own reason.
-            refusal = getattr(adapter, 'refusal', None)
-            if refusal is not None:
-                raise refusal
+            if adapter is not None and adapter.refusal is not None:
+                raise adapter.refusal
             results = ran['results']
             # Keep reference parsing and scoring intact. The state of each requested answer
             # comes from the check; an answer core stored as invalid keeps core's state.
-            validation = _core_states(ran['validation'], results, getattr(adapter, 'invalid', {}))
+            validation = _core_states(ran['validation'], results, {} if adapter is None else adapter.invalid)
             validations.append(validation)
-            no_reply = getattr(adapter, 'no_reply', {})
+            no_reply = {} if adapter is None else adapter.no_reply
             failed = [result for result in results
                       if 'error' in result and result.get('trial_id') not in no_reply]
             coverage = {
@@ -561,7 +569,7 @@ class CogGymRunner:
                 raise RuntimeError(f'CogGym returned incomplete or failed trials; inspect {path}')
         return artifacts, validations
 
-    def _run(self, adapter_factory, directory, reset, register):
+    def _run(self, start, directory, reset, register):
         if not callable(reset):
             raise TypeError('Supply a reset(repetition) callback for your adapter')
         _check_checkout(self.checkout)
@@ -570,7 +578,7 @@ class CogGymRunner:
         # repetitions and the analysis, as in one process. It is stopped and reaped on any exit.
         with _evaluator(self.folder, directory / 'evaluator') as child:
             child.ask({'do': 'prepare', 'experiment': self.experiment, 'trial_ids': list(self._trials)})
-            artifacts, validations = self._repetitions(child, adapter_factory, directory, reset, register)
+            artifacts, validations = self._repetitions(child, start, directory, reset, register)
             try:
                 analyzed = child.ask({'do': 'analyze', 'paths': [str(path) for path in artifacts]})
             except ChildFailed as error:

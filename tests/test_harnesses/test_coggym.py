@@ -458,3 +458,27 @@ def test_an_answer_value_json_cannot_hold_stops_the_run_with_its_name(reference,
         runner.run(SimpleNamespace(complete_with_metadata=lambda *a: {
             'text': 'answer', 'reasoning': None, 'token_usage': b'not json'}),
             output_dir=tmp_path / 'run', reset=lambda repetition: None)
+
+
+class _ProviderWithStateFields:
+    """A caller's own CogGym provider that happens to have fields of the session adapter's names."""
+
+    no_reply = {'trial-1': 'not a state of this provider'}
+    invalid = {'trial-2': 'not a state of this provider'}
+    refusal = None
+
+    def complete_with_metadata(self, system, messages, model, temperature, max_tokens):
+        if messages[0]['content'] == 'trial-1':
+            raise RuntimeError('the provider failed on this trial')
+        return {'text': 'an answer', 'reasoning': None, 'token_usage': None}
+
+
+def test_the_direct_runner_reads_no_state_from_the_callers_provider(reference, tmp_path):
+    """A real failure of the caller's provider stays a failed run (rule 6.2: only core states answers)."""
+    root, _ = reference
+    runner = coggym.CogGymRunner(root, model='fixture')
+    with pytest.raises(RuntimeError, match='incomplete or failed'):
+        runner.run(_ProviderWithStateFields(), output_dir=tmp_path / 'direct', reset=lambda repetition: None)
+    saved = json.loads((tmp_path / 'direct/run-001.json').read_text())
+    assert saved['umi']['coverage']['error_trials'] == 1
+    assert saved['umi']['coverage']['no_answer_trials'] == 0
