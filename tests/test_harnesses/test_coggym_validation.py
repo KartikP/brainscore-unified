@@ -1,10 +1,10 @@
-"""Reject invented slider ratings without changing the reference parser."""
+"""Give each answer a state; reject invented slider ratings without changing the reference parser."""
 from copy import deepcopy
 from types import SimpleNamespace
 
 import pytest
 
-from brainscore.harnesses.coggym_validation import validate_slider_responses
+from brainscore.harnesses.coggym_validation import validate_responses
 
 
 def query(tag='rating', kind='single-slider', options=()):
@@ -15,7 +15,7 @@ def validate(raw, parsed, queries=None):
     trial = SimpleNamespace(id='trial-1', queries=queries or [query()])
     results = [{'trial_id': trial.id, 'response': raw, 'parsed': parsed}]
     before = deepcopy(results)
-    report = validate_slider_responses([trial], results)
+    report = validate_responses([trial], results)
     assert results == before
     return report
 
@@ -34,8 +34,7 @@ def validate(raw, parsed, queries=None):
 ])
 def test_permissive_native_parse_does_not_make_invalid_text_valid(raw):
     report = validate(raw, {'rating': {'value': 0}})
-    assert report['status'] == 'invalid'
-    assert report['checked_queries'] == report['invalid_queries'] == 1
+    assert report['checked_queries'] == len(report['issues']) == 1
     assert report['issues'][0]['trial_id'] == 'trial-1'
     assert report['issues'][0]['query'] == 'rating'
 
@@ -44,8 +43,7 @@ def test_permissive_native_parse_does_not_make_invalid_text_valid(raw):
                                   '```json\n{"answer": 42}\n```'])
 def test_unambiguous_single_rating_matches_native_value(raw):
     report = validate(raw, {'rating': {'value': 42.0}})
-    assert report['status'] == 'valid'
-    assert report['invalid_queries'] == 0
+    assert report['issues'] == []
 
 
 @pytest.mark.parametrize('raw', [
@@ -60,7 +58,7 @@ def test_unambiguous_single_rating_matches_native_value(raw):
 ])
 def test_multiple_answers_are_assigned_explicitly(raw):
     report = validate(raw, {'left': {'value': 42}, 'right': {'value': 61}}, [query('left'), query('right')])
-    assert report['status'] == 'valid'
+    assert report['issues'] == []
     assert report['checked_queries'] == 2
 
 
@@ -77,7 +75,7 @@ def test_multiple_answers_are_assigned_explicitly(raw):
 ])
 def test_ambiguous_multi_question_answers_are_rejected(raw):
     report = validate(raw, {'left': {'value': 42}, 'right': {'value': 61}}, [query('left'), query('right')])
-    assert report['status'] == 'invalid'
+    assert report['issues']
 
 
 def test_disagreement_with_native_parser_is_not_silently_corrected():
@@ -88,45 +86,54 @@ def test_disagreement_with_native_parser_is_not_silently_corrected():
 def test_multi_slider_requires_every_named_option_and_native_agreement():
     queries = [query('ratings', 'multi-slider', ['A', 'B'])]
     parsed = {'ratings': {'values': {'A': 10, 'B': 90}}}
-    assert validate('{"A": 10, "B": 90}', parsed, queries)['status'] == 'valid'
-    assert validate('{"answer": {"A": 10, "B": 90}}', parsed, queries)['status'] == 'valid'
-    assert validate('{"A": 10}', parsed, queries)['status'] == 'invalid'
-    assert validate('{"A": [10], "B": 90}', parsed, queries)['status'] == 'invalid'
+    assert validate('{"A": 10, "B": 90}', parsed, queries)['issues'] == []
+    assert validate('{"answer": {"A": 10, "B": 90}}', parsed, queries)['issues'] == []
+    assert validate('{"A": 10}', parsed, queries)['issues']
+    assert validate('{"A": [10], "B": 90}', parsed, queries)['issues']
 
 
-def test_mixed_questions_only_validate_slider_answers():
-    queries = [query('choice', 'multi-choice'), query('rating')]
-    report = validate('{"choice": "A", "rating": 42}', {'rating': {'value': 42}}, queries)
+def test_every_requested_answer_is_counted_and_a_choice_takes_coggyms_parse():
+    queries = [query('choice', 'multi-choice', ['A', 'B']), query('rating')]
+    parsed = {'choice': {'selected': 'A', 'selected_index': 0}, 'rating': {'value': 42}}
+    report = validate('{"choice": "A", "rating": 42}', parsed, queries)
+    assert report['checked_queries'] == 2
+    assert report['issues'] == []
+
+
+def test_a_choice_coggym_could_not_read_is_missing():
+    queries = [query('choice', 'multi-choice', ['A', 'B'])]
+    report = validate('any native response', {'choice': {'selected': 'x', 'selected_index': -1}}, queries)
     assert report['checked_queries'] == 1
-    assert report['status'] == 'valid'
-
-
-def test_trials_without_sliders_are_not_reinterpreted():
-    report = validate('any native response', {}, [query('choice', 'multi-choice')])
-    assert report['status'] == 'not_applicable'
-    assert report['checked_queries'] == 0
+    assert report['issues'][0]['response_state'] == 'missing'
 
 
 def test_missing_response_is_not_validated_as_success():
     trial = SimpleNamespace(id='trial-1', queries=[query()])
-    report = validate_slider_responses([trial], [])
-    assert report['status'] == 'invalid'
+    report = validate_responses([trial], [])
+    assert report['issues'][0]['response_state'] == 'missing'
 
 
-def test_duplicate_question_tags_cannot_broadcast_one_rating():
-    report = validate('{"rating": 42}', {'rating': {'value': 42}}, [query(), query()])
-    assert report['invalid_queries'] == 2
+@pytest.mark.parametrize('kind', ['single-slider', 'multi-choice'])
+def test_coggyms_entry_of_a_call_with_no_reply_is_missing_for_every_question_type(kind):
+    trial = SimpleNamespace(id='trial-1', queries=[query('answer', kind, ['A', 'B'])])
+    report = validate_responses([trial], [{'trial_id': 'trial-1', 'error': 'no answer', 'model': 'm'}])
+    assert [(issue['response_state'], issue['reason']) for issue in report['issues']] == [('missing', 'no_answer')]
+
+
+def test_duplicate_question_tags_are_a_fault_of_the_run():
+    with pytest.raises(ValueError, match='one tag'):
+        validate('{"rating": 42}', {'rating': {'value': 42}}, [query(), query()])
 
 
 def test_question_labels_preserve_mixed_query_order():
-    queries = [query('choice', 'multi-choice'), query('ratings', 'multi-slider', ['A', 'B'])]
+    queries = [query('choice', 'multi-choice', ['A', 'B']), query('ratings', 'multi-slider', ['A', 'B'])]
     report = validate(
         '{"Question 2": {"answer": {"A": 10, "B": 90}}, "Question 1": "A"}',
-        {'ratings': {'values': {'A': 10, 'B': 90}}},
+        {'choice': {'selected': 'A', 'selected_index': 0}, 'ratings': {'values': {'A': 10, 'B': 90}}},
         queries,
     )
-    assert report['status'] == 'valid'
-    assert report['checked_queries'] == 1
+    assert report['issues'] == []
+    assert report['checked_queries'] == 2
 
 
 def test_question_labels_still_require_native_parser_agreement():
@@ -135,7 +142,7 @@ def test_question_labels_still_require_native_parser_agreement():
         {'left': {'value': 61}, 'right': {'value': 42}},
         [query('left'), query('right')],
     )
-    assert report['invalid_queries'] == 2
+    assert len(report['issues']) == 2
     assert all(issue['reason'] == 'reference_parse_mismatch' for issue in report['issues'])
 
 
@@ -143,5 +150,5 @@ def test_each_rejected_answer_has_a_state():
     # CogGym read a value the check rejects: invalid; CogGym read none: missing.
     assert validate('Maybe 20.', {'rating': {'value': 20}})['issues'][0]['response_state'] == 'invalid'
     assert validate('no idea', {'rating': {'value': None}})['issues'][0]['response_state'] == 'missing'
-    report = validate_slider_responses([SimpleNamespace(id='trial-1', queries=[query()])], [])
+    report = validate_responses([SimpleNamespace(id='trial-1', queries=[query()])], [])
     assert report['issues'][0]['response_state'] == 'missing'

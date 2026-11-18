@@ -21,7 +21,7 @@ recording and ``reset`` stay in this process; nothing is installed into it.
 What crosses the pipe, as JSON (UTF-8): the commands and their settings; the prepared trial
 ids, system texts and messages (pictures as CogGym's base64 text, videos as paths); each model
 call (system text, messages, model, temperature, length) and its reply (text, reasoning, token
-usage); the trial rows, summary, slider validation and analysis. Strings, integers of any size,
+usage); the trial rows, summary, answer states and analysis. Strings, integers of any size,
 finite floats, None and string-keyed objects in order cross unchanged. A tuple arrives as a
 list and a non-string key as a string, as in the trial file CogGym writes in one process; a
 value JSON cannot hold (bytes, a NumPy scalar, a NaN in a reply) stops the run with a clear
@@ -34,6 +34,7 @@ one run (all its repetitions and its analysis); the pre-flight and each run star
 from __future__ import annotations
 
 import base64
+from collections import Counter
 import dataclasses
 import hashlib
 import json
@@ -562,13 +563,13 @@ class CogGymRunner:
         result = {'configuration': self.describe(), 'experiments': rows,
                   'summary': summary, 'skipped': skipped,
                   'repetitions': [json.loads(path.read_text())['umi']['coverage'] for path in artifacts]}
-        checked = sum(report['checked_queries'] for report in validations)
-        invalid = sum(report['invalid_queries'] for report in validations)
+        # The detector's findings, counted by reason; the validity of the score is the
+        # benchmark's decision.
         result['response_validation'] = {
             'policy': SLIDER_VALIDATION_POLICY,
-            'status': 'invalid' if invalid else 'valid' if checked else 'not_applicable',
-            'checked_queries': checked,
-            'invalid_queries': invalid,
+            'checked_queries': sum(report['checked_queries'] for report in validations),
+            'reason_counts': dict(Counter(issue['reason'] for report in validations
+                                          for issue in report['issues'])),
             'repetitions': validations,
         }
         path = directory / 'analysis.json'
