@@ -3,12 +3,11 @@
 Real weights and data (slow tier, cloud). Both registrations load the checkpoint ``gpt2``;
 the test refuses any snapshot other than the qualified one (``GPT2_SNAPSHOT``) and a tokenizer
 whose Futrell2018 ids differ from the qualified ones, and it needs both models on one device
-with one attention implementation. It writes what it ran (library
-versions, the snapshot of each model, tokenizer classes, devices, attention
-implementation) to ``READING_TIMES_PARITY_OUT`` (default ``reading-times-parity.json``).
-It compares the token ids of every prefix (by digest), the NaN mask, the dtype and the bytes
-of every finite value, and the raw and normalized scores of the normal scoring entry point.
-No model is moved for the comparison.
+with one attention implementation. The evidence comes from the two scored runs themselves
+(``brainscore.score``): the token ids fed to every forward pass of each model, and the
+predictions the facade hands to Futrell2018. It compares those ids, the NaN mask, the dtype
+and the bytes of every finite value, and the raw and normalized scores. It writes what it ran
+to ``READING_TIMES_PARITY_OUT`` (default ``reading-times-parity.json``). No model is moved.
 """
 import hashlib
 import json
@@ -26,20 +25,23 @@ GPT2_SNAPSHOT = '607a30d783dfa663caf39e06633721c8d4cfcd7e'
 FUTRELL_IDS = (12370, 'e975c59f453e6f5acfa40054e69078f2')
 
 
-def _digests(tokenizer, words):
-    from brainscore_core.text import prepare_context
-    return [hashlib.md5(np.asarray(tokenizer(prepare_context(words[:i + 1]))['input_ids'],
-                                   dtype=np.int64).tobytes()).hexdigest() for i in range(len(words))]
+def _digest(arrays) -> str:
+    """One digest of a sequence of id arrays, their lengths included."""
+    md5 = hashlib.md5()
+    for array in arrays:
+        md5.update(np.int64(len(array)).tobytes())
+        md5.update(np.asarray(array, dtype=np.int64).tobytes())
+    return md5.hexdigest()
 
 
-def test_gpt2_small_reading_times_equal_the_old_gpt2_on_futrell2018():
+def test_gpt2_small_reading_times_equal_the_old_gpt2_on_futrell2018(monkeypatch):
     import torch
     import transformers
     import brainscore
     from brainscore import model_registry
-    from brainscore_core.legacy_facade import subject_for_benchmark
+    from brainscore_core.legacy_facade import LegacyBenchmarkFacade, READING_TIME_POLICY
+    from brainscore_core.text import prepare_context
     from brainscore_language import load_benchmark, load_model
-    from brainscore_language.artificial_subject import ArtificialSubject
 
     benchmark = load_benchmark('Futrell2018-pearsonr')
     words = list(benchmark.data['word'].values)
@@ -49,22 +51,35 @@ def test_gpt2_small_reading_times_equal_the_old_gpt2_on_futrell2018():
     parts = new._segment_likelihood.__self__       # the shared causal-model parts
     snapshots = [reference.basemodel.config._commit_hash, parts.model.config._commit_hash]
     assert snapshots == [GPT2_SNAPSHOT, GPT2_SNAPSHOT], snapshots
-    from brainscore_core.text import prepare_context
     for tokenizer in (reference.tokenizer, parts.tokenizer):
         ids = np.asarray(tokenizer(prepare_context(words))['input_ids'], dtype=np.int64)
         assert (len(ids), hashlib.md5(ids.tobytes()).hexdigest()) == FUTRELL_IDS
 
-    reference.start_behavioral_task(ArtificialSubject.Task.reading_times)
-    old_values = reference.digest_text(words)['behavior'].values
-    facade = subject_for_benchmark(new, benchmark)
-    facade.start_behavioral_task(ArtificialSubject.Task.reading_times)
-    new_values = facade.digest_text(words)['behavior'].values
+    # What each model is fed during its scored run, and what Futrell2018 receives.
+    fed = {'old': [], 'new': []}
 
-    old_digests, new_digests = _digests(reference.tokenizer, words), _digests(parts.tokenizer, words)
+    def recorder(name):
+        def record(module, args, kwargs):
+            ids = kwargs['input_ids'] if 'input_ids' in kwargs else args[0]
+            fed[name].append(ids.detach().cpu().numpy().ravel())
+        return record
+
+    reference.basemodel.register_forward_pre_hook(recorder('old'), with_kwargs=True)
+    parts.model.register_forward_pre_hook(recorder('new'), with_kwargs=True)
+    received = []
+    digest_text = LegacyBenchmarkFacade.digest_text
+
+    def recording_digest_text(self, text):
+        output = digest_text(self, text)
+        received.append(output['behavior'])
+        return output
+
+    monkeypatch.setattr(LegacyBenchmarkFacade, 'digest_text', recording_digest_text)
+    old_score = brainscore.score(old, benchmark, check_mem=False)
+    new_score = brainscore.score(new, benchmark, check_mem=False)
+    old_values, new_values = (assembly.values for assembly in received)
     old_nan, new_nan = np.isnan(old_values), np.isnan(new_values)
     finite = ~old_nan
-    old_score = brainscore.score(old, benchmark)
-    new_score = brainscore.score(new, benchmark)
     record = {
         'transformers': transformers.__version__, 'torch': torch.__version__, 'snapshots': snapshots,
         'tokenizers': [type(reference.tokenizer).__name__, type(parts.tokenizer).__name__],
@@ -74,7 +89,9 @@ def test_gpt2_small_reading_times_equal_the_old_gpt2_on_futrell2018():
                       parts.model.config._attn_implementation],
         'parts': len(words), 'tokens': FUTRELL_IDS[0],
         'window': reference.basemodel.config.max_position_embeddings,
-        'prefix_differences': sum(a != b for a, b in zip(old_digests, new_digests)),
+        'forward_passes': [len(fed['old']), len(fed['new'])],
+        'fed_ids': [_digest(fed['old']), _digest(fed['new'])],
+        'predictions': [len(old_values), len(new_values)],
         'nan_masks_equal': bool(np.array_equal(old_nan, new_nan)),
         'dtypes': [str(old_values.dtype), str(new_values.dtype)],
         'finite_bytes_equal': bool(old_values.dtype == new_values.dtype and np.array_equal(old_nan, new_nan)
@@ -86,12 +103,12 @@ def test_gpt2_small_reading_times_equal_the_old_gpt2_on_futrell2018():
     }
     with open(os.environ.get('READING_TIMES_PARITY_OUT', 'reading-times-parity.json'), 'w') as f:
         json.dump(record, f, indent=1)
-    from brainscore_core.legacy_facade import READING_TIME_POLICY
+    assert len(received) == 2                            # one prediction call in each scored run
     assert record['tokens'] > record['window']          # the passage crosses the window
     assert record['devices'][0] == record['devices'][1] and record['attention'][0] == record['attention'][1]
-    assert READING_TIME_POLICY in (record['new_answer_policy'] or '')
-    assert record['new_n_invalid'] == int(np.isnan(new_values).any())   # the one passage trial
-    assert record['prefix_differences'] == 0
+    assert record['fed_ids'][0] == record['fed_ids'][1]
     assert record['nan_masks_equal'] and record['dtypes'][0] == record['dtypes'][1]
     assert record['finite_bytes_equal']
+    assert READING_TIME_POLICY in (record['new_answer_policy'] or '')
+    assert record['new_n_invalid'] == int(new_nan.any())   # the one passage trial
     assert record['raw'][0] == record['raw'][1] and record['score'][0] == record['score'][1]
