@@ -76,9 +76,8 @@ class VLMVisionWrapper(CachingExtractor):
         self._processor = processor
         self._layer_aggregation = checked_aggregation(layer_aggregation, self.VALID_AGGREGATIONS)
         self._batch_size = batch_size
-        from brainscore.model_helpers._device import select_device
-        self._device = select_device(device)
-        self._model = self._model.to(self._device)
+        from brainscore.model_helpers._device import place_model
+        self._model, self._device = place_model(self._model, device)
 
         self._identifier = identifier or model.__class__.__name__
 

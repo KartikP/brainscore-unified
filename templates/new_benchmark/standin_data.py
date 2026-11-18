@@ -7,7 +7,6 @@ scored against them.
 import io
 import os
 import tempfile
-from pathlib import Path
 
 import numpy as np
 from PIL import Image
@@ -71,7 +70,8 @@ def load_assembly():
 
     # The images are the same on every load, so they are written once, to one folder in the
     # Brain-Score home, and reused.
-    directory = Path(os.getenv('BRAINSCORE_HOME', '~/.brain-score')).expanduser() / 'your_benchmark_stimuli'
+    from brainscore.data.local import data_home
+    directory = data_home() / 'your_benchmark_stimuli'
     directory.mkdir(parents=True, exist_ok=True)
     paths = {}
     for i, sid in enumerate(stimulus_ids):

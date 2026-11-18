@@ -182,6 +182,7 @@ NEEDS_DOWNLOADS = {
     ('docs/guides/score_a_model.md', 1): 'CLIP weights and the MajajHong2015 data',
     ('docs/guides/existing_models.md', 0): 'alexnet weights and the MajajHong2015 data',
     ('docs/guides/data.md', 0): 'the hosted LeBel2023 assembly',
+    ('docs/guides/data.md', 1): 'the EWoK native table and the LeBel source pickle',
     ('docs/guides/behavior.md', 7): 'a Hugging Face chat model and its processor',
     ('docs/guides/wrap_your_model.md', 6): 'CLIP and its image and text wrappers',
     ('docs/guides/new_output.md', 3): 'a Hugging Face vision-language model and its processor',
@@ -371,7 +372,7 @@ def test_the_benchmark_template_writes_its_stimuli_once_to_one_folder(tmp_path, 
     import io
     from PIL import Image
     import brainscore
-    monkeypatch.setenv('BRAINSCORE_HOME', str(tmp_path))
+    monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path))
     module = _load('new_benchmark/standin_data.py', 'umi_template_benchmark_stimuli')
     if 'your-benchmark' in brainscore.benchmark_registry:      # the import registers it
         del brainscore.benchmark_registry['your-benchmark']
@@ -394,7 +395,7 @@ def test_the_benchmark_template_writes_its_stimuli_once_to_one_folder(tmp_path, 
 ])
 def test_a_template_refuses_a_link_where_a_stimulus_goes(tmp_path, monkeypatch, template, folder, load):
     import brainscore
-    monkeypatch.setenv('BRAINSCORE_HOME', str(tmp_path))
+    monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path))
     module = _load(template, 'umi_template_link_' + folder)
     if 'your-benchmark' in brainscore.benchmark_registry:      # the import registers it
         del brainscore.benchmark_registry['your-benchmark']
@@ -414,7 +415,7 @@ def test_a_template_refuses_a_link_where_a_stimulus_goes(tmp_path, monkeypatch, 
 def test_two_threads_write_the_template_stimuli_at_once(tmp_path, monkeypatch, template, folder, load):
     import brainscore
     from concurrent.futures import ThreadPoolExecutor
-    monkeypatch.setenv('BRAINSCORE_HOME', str(tmp_path))
+    monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path))
     module = _load(template, 'umi_template_threads_' + folder)
     if 'your-benchmark' in brainscore.benchmark_registry:
         del brainscore.benchmark_registry['your-benchmark']

@@ -13,8 +13,9 @@ from collections import Counter
 from pathlib import Path
 from typing import Dict, Optional, Sequence
 
-from brainscore import data_registry, stimulus_set_registry
+from brainscore import data_builder_registry, data_registry, stimulus_set_registry
 from brainscore.data import local
+from brainscore.data.packaging import DataBuilder
 
 # Friends benchmarks: every registered identifier that reads the prepared files.
 _ALGONAUTS_IDENTIFIERS = (
@@ -22,39 +23,42 @@ _ALGONAUTS_IDENTIFIERS = (
     + ['Algonauts2025-friends-sub01-video',
        'Algonauts2025-friends-sub01-video-audio'])
 
-ALGONAUTS_ROOT = local.register(local.LocalAsset(
-    name='algonauts2025-root',
-    env_var='BRAINSCORE_ALGONAUTS_ROOT',
-    default_path='algonauts_2025',
-    kind='stimuli',
-    why_local='The stimuli are the Friends and Movie10 films; the fMRI is '
-              'released under a data-use agreement the downloader signs.',
-    source='https://github.com/courtois-neuromod/algonauts_2025.competitors',
-    obtain='The competition dataset via DataLad (~130 GB: 129 GB stimuli, ~1 GB '
-           'fMRI per subject). Ubuntu 22.04 ships a git-annex too old for '
-           'current DataLad; install it from conda-forge instead.',
-    prepare='python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly '
-            '--algonauts-root <root> --subjects 1',
-    used_by=_ALGONAUTS_IDENTIFIERS,
-))
+# Packages from $BRAINSCORE_DATA_HOME/sources/algonauts2025 into the folder the benchmarks read.
+_PACKAGE = 'python -m brainscore.data package algonauts2025'
 
 ALGONAUTS_PREPARED = local.register(local.LocalAsset(
     name='algonauts2025-prepared',
-    env_var='BRAINSCORE_ALGONAUTS_PREPARED',
-    default_path='.brainio/algonauts2025',
     kind='neural data',
-    why_local='The converter builds these files from the provider files above; '
-              'Brain-Score does not host them.',
+    why_local='The packaging builds these files from the competition files (the Friends and Movie10 '
+              'films and the fMRI, shared under CC0); Brain-Score does not host them.',
     source='https://github.com/courtois-neuromod/algonauts_2025.competitors',
-    obtain='Nothing to download. Run the converter on the dataset above; it '
-           'writes the per-TR assemblies and stimulus tables that the '
-           'benchmarks read. Then cut the films into one file per scan with '
-           'brainscore.data.algonauts2025.data_packaging.prepare_stimuli '
-           '(see brainscore/data/algonauts2025/README.md).',
-    prepare='python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly '
-            '--algonauts-root <root> --output-root <this folder> --subjects 1',
+    obtain='The competition dataset via DataLad (~130 GB), put at $BRAINSCORE_DATA_HOME/sources/algonauts2025; '
+           'the command below then writes the assemblies, stimulus tables and per-scan media that the '
+           'benchmarks read (see brainscore/data/algonauts2025/README.md).',
+    prepare=_PACKAGE,
     used_by=_ALGONAUTS_IDENTIFIERS,
 ))
+
+data_builder_registry['algonauts2025'] = lambda: DataBuilder(
+    source='the Algonauts 2025 competition data (Courtois NeuroMod): '
+           'https://github.com/courtois-neuromod/algonauts_2025.competitors; its Terms section states that the '
+           'data is shared under CC0.',
+    access='public, no account: the DataLad instructions of the page above download it with no form and no '
+           'account (140.6 GB, about 40 minutes measured).',
+    layout='the DataLad dataset as it installs: `fmri/sub-0X/...` (HDF5 responses and '
+           '`target_sample_number/`) and `stimuli/` (`movies/`, `transcripts/`), kept together.',
+    needs='DataLad and git-annex (from conda-forge on Ubuntu 22.04), h5py, ffmpeg and ffprobe; '
+          '140.6 GB in; out 17.5 GB: 3.36 GB of assemblies and tables, 4.78 GB of clips, 1.51 GB of frames '
+          'and 7.77 GB of sound; the packaging took 110 minutes (measured once).',
+    writes='per participant 1, 2, 3, 5 and split: `algonauts2025_<split>_sub0X.nc` (friends: the fMRI; '
+           'friends_s7 and ood: placeholders with no fMRI), `algonauts2025_stim_<split>.csv`, and one '
+           'file per scan of the training films: `frames/` (all participants), `clips/` and `sound/` '
+           '(participant 1), the media of the six registered benchmarks.',
+    reads=ALGONAUTS_PREPARED.name,
+    build='python -m brainscore.data.algonauts2025.data_packaging.package --source {source} --out {output}',
+    requires=('fmri/sub-0*/func/*.h5', 'fmri/sub-0*/target_sample_number/*.npy',
+              'stimuli/movies/friends', 'stimuli/movies/movie10', 'stimuli/movies/ood'),
+)
 
 
 PARTICIPANTS = (1, 2, 3, 5)

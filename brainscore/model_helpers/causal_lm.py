@@ -23,6 +23,7 @@ from typing import Any, Mapping, Optional, Sequence
 
 from brainscore import BrainScoreModel
 from brainscore_core.responses import Choice, Text
+from brainscore.model_helpers._device import input_device
 
 from brainscore.model_helpers.replies import (_Layouts, _generation_settings, _plain_text_scores,
                                              _scores_alone, _segment_log_probabilities)
@@ -46,7 +47,7 @@ class _CausalLMParts:
 
     @property
     def device(self):
-        return next(self.model.parameters()).device
+        return input_device(self.model)
 
     def format(self, prompt) -> str:
         """Chat-template a trial: earlier trials as turns, then its text, ending with the assistant's turn."""

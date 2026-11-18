@@ -16,7 +16,6 @@ result is still benchmark-usable.
 import io
 import os
 import tempfile
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -64,9 +63,10 @@ def _build_example_files():
     Yours will instead point at images already on disk and read a CSV of metadata.
     The only thing that must survive is the SHAPE of what this returns.
     """
-    # The images are the same on every call, so they are written once, to one folder in the
-    # Brain-Score home, and reused.
-    directory = Path(os.getenv('BRAINSCORE_HOME', '~/.brain-score')).expanduser() / 'your_data_stimuli'
+    # The images are the same on every call, so they are written once, to one named folder in the
+    # data home ($BRAINSCORE_DATA_HOME, default ~/brainscore-data), and reused.
+    from brainscore.data.local import data_home
+    directory = data_home() / 'your_data_stimuli'
     directory.mkdir(parents=True, exist_ok=True)
     rows = []
     for i in range(N_STIMULI):
