@@ -1,10 +1,14 @@
+from pathlib import Path
+
 import pytest
 
 from brainscore import load_model
+from brainscore_core.plugin_management.parse_plugin_changes import get_plugin_ids
+
+HERE = Path(__file__).parent
 
 
-
-@pytest.mark.parametrize('identifier', ['qwen2.5-vl-3b', 'qwen2.5-vl-3b-vwfa', 'qwen2.5-vl-7b', 'qwen2.5-vl-7b-vwfa', 'qwen2.5-vl-3b-bf16'])
+@pytest.mark.parametrize('identifier', get_plugin_ids('models', [HERE.name], str(HERE.parents[1])))
 def test_has_identifier(identifier):
     model = load_model(identifier)
     assert model.identifier == identifier
