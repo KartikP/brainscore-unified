@@ -6,7 +6,9 @@ Neither mode replaces scientific or first-use qualification.
 """
 import argparse
 import base64
+import csv
 import hashlib
+import io
 from importlib import metadata
 import json
 import os
@@ -15,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 
 from .required_checks import PLUGIN_TESTS, installed_argument
 
@@ -165,6 +168,20 @@ def _stage_installed_file(checkout: Path, destination: Path, name: str) -> None:
     target.write_bytes(data)
 
 
+def missing_plugin_tests(checkout: Path, wheels: Path) -> list:
+    """Benchmark plugin test files of the checkout that the brainscore wheel's RECORD lacks.
+
+    The installed run collects these files from the installed package, so a file
+    the wheel does not ship would silently drop out of the selection.
+    """
+    source = {str(path.relative_to(checkout)) for path in (checkout/PLUGIN_TESTS).rglob('test*.py')}
+    wheel, = wheels.glob('brainscore-*.whl')
+    with zipfile.ZipFile(wheel) as archive:
+        record = next(name for name in archive.namelist() if name.endswith('.dist-info/RECORD'))
+        shipped = {row[0] for row in csv.reader(io.StringIO(archive.read(record).decode())) if row}
+    return sorted(source - shipped)
+
+
 def qualify(root, out, *, mode='source', wheels=None):
     root, out = Path(root).resolve(), Path(out).resolve()
     if mode not in ('source', 'installed'):
@@ -232,10 +249,15 @@ def qualify(root, out, *, mode='source', wheels=None):
                            '--stage', str(cwd), '--wheels', str(wheels),
                            '--identity', str(identity), '-p', 'brainscore.validation.installed',
                            *command[3:]]
+            missing = missing_plugin_tests(checkout, wheels) if mode == 'installed' and repo == 'unified' else []
             try:
-                run = subprocess.run(command, cwd=cwd, env=run_env, stdout=handle,
-                                     stderr=subprocess.STDOUT, timeout=1800)
-                returncode = run.returncode
+                if missing:
+                    returncode = 1
+                    handle.write(f'FAIL: the brainscore wheel lacks plugin test files: {missing}\n')
+                else:
+                    run = subprocess.run(command, cwd=cwd, env=run_env, stdout=handle,
+                                         stderr=subprocess.STDOUT, timeout=1800)
+                    returncode = run.returncode
             except subprocess.TimeoutExpired:
                 returncode = 124
                 handle.write('\nFAIL: required suite exceeded the 30-minute limit\n')

@@ -200,3 +200,18 @@ def test_a_plugin_test_collected_from_another_folder_keeps_its_source_id(tmp_pat
     assert evidence['selected'] == [expected]
     assert evidence['passed'] == [expected]
 
+
+def test_installed_mode_refuses_a_wheel_without_a_plugin_test(tmp_path):
+    import zipfile
+    from brainscore.validation.workspace import missing_plugin_tests
+    checkout = tmp_path / 'unified'
+    plugin = checkout / 'brainscore' / 'benchmarks' / 'demo'
+    plugin.mkdir(parents=True)
+    for name in ('test.py', 'test_topic.py'):
+        (plugin / name).write_text('')
+    wheels = tmp_path / 'wheels'
+    wheels.mkdir()
+    with zipfile.ZipFile(wheels / 'brainscore-0.1-py3-none-any.whl', 'w') as archive:
+        archive.writestr('brainscore-0.1.dist-info/RECORD',
+                         'brainscore/benchmarks/demo/test.py,sha256=x,0\n')
+    assert missing_plugin_tests(checkout, wheels) == ['brainscore/benchmarks/demo/test_topic.py']
