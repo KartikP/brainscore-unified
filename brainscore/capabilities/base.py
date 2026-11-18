@@ -10,7 +10,7 @@ class Capability:
     input is read; ``participate`` runs that session.
     ``subject.participate(session)`` selects one capability for each session:
     the claimant with the lowest ``order``; two claimants at that order are an
-    error. The built-in session parts have order 10000, so an added capability
+    error. The built-in capabilities have order 10000, so an added capability
     (default 1000) runs a session that a built-in one also claims.
 
     Every method takes the subject (the ``BrainScoreModel``) first. Per-subject

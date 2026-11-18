@@ -1,4 +1,4 @@
-"""The session parts of BrainScoreModel, one per part that answers.
+"""The built-in capabilities of BrainScoreModel, one per part that answers.
 
 Each part of a BrainScoreModel (region map, answer or readout, policy,
 intervention) answers some channels. These capabilities declare those

@@ -1,7 +1,7 @@
-"""The steps the session parts of BrainScoreModel call: ``record`` and ``act``.
+"""The steps the capabilities of BrainScoreModel call: ``record`` and ``act``.
 
 ``record`` records the regions that ``start_recording`` set from a stimulus
-table; ``act`` asks the policy for one closed-loop step. A session part calls
+table; ``act`` asks the policy for one closed-loop step. A capability calls
 them directly, and so does ``BrainScoreModel.process``; nothing here selects a
 part. The extractor for an input is chosen by ``extractor_keys``, except
 that when a table brings two or more input types and every one of them is an
@@ -139,7 +139,7 @@ def one_call_per_extractor(model, stimuli, plan):
 def record(model, stimuli, multi_modality: bool = False, check_only: bool = False):
     """The activity of the regions ``start_recording`` set, for a stimulus table.
 
-    The one step that records from the extractors: the neural session part,
+    The one step that records from the extractors: the neural capability,
     the readout and ``process`` call it. Without ``multi_modality`` one input
     modality is read (the one the recorded regions name, else the first in
     ``MODALITY_PRIORITY``); with it, every detected one, concatenated along

@@ -13,7 +13,7 @@ class Interventions:
     An intervention arrives as a ``StateChange`` on a declared channel
     (``lesion``, ``stimulation`` or ``pharmacological``), sent by a session;
     ``apply_state_change`` and the ``Intervene`` tool build that session.
-    The intervention session part gives this object to the session driver,
+    The intervention capability gives this object to the session driver,
     which calls ``process`` with each change.
     """
 
