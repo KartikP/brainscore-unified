@@ -54,6 +54,7 @@ class _Extractor:
 
     def __init__(self, forbidden, *args, **kwargs):
         self.forbidden, self.identifier = forbidden, kwargs.get('identifier', 'stand-in')
+        self.settings = kwargs
 
     def __call__(self, stimuli, layers, **kwargs):
         if self.forbidden:
@@ -101,6 +102,17 @@ def test_declares_the_log_probabilities_and_keeps_its_readout_outputs(gpt2_small
             'behavior:log_probabilities'} <= set(gpt2_small.out_channels)
     # The likelihood part takes the task's instruction.
     assert {'text', 'instruction'} <= set(gpt2_small.in_channels)
+
+
+def test_the_text_extractor_cuts_contexts_at_the_window_of_gpt2(monkeypatch):
+    """Regression: at the wrapper default (512) Blank2014 contexts are cut short of the 1,024 of GPT-2."""
+    import brainscore.model_helpers.text_wrapper as text_wrapper
+    built = []
+    gpt2_stand_ins(monkeypatch, lambda: _language_model(False), _Tokenizer)
+    monkeypatch.setattr(text_wrapper, 'TextWrapper',
+                        lambda *args, **kwargs: built.append(_Extractor(False, *args, **kwargs)) or built[-1])
+    brainscore.load_model('gpt2-small')
+    assert [extractor.settings.get('max_length') for extractor in built] == [1024]
 
 
 def test_a_lexical_decision_choice_is_answered_by_the_readout(monkeypatch):
