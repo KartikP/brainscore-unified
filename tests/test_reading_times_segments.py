@@ -352,6 +352,21 @@ def test_a_session_of_several_segments_trials_is_refused_before_any_call(memory,
     assert calls == []
 
 
+def test_a_second_segments_trial_on_a_raw_stream_is_refused_when_it_arrives():
+    """A caller-built stream presents no known table: the first trial is answered, the second
+    is refused before its compute."""
+    from brainscore_core.streaming import Session
+    calls = []
+    subject = _subject({'continuation': lambda p, c: {}, 'segment': _recording_segment(calls)})
+    task = TaskContext(response=Segments('segments'))
+    table = _segments_row(['the dog', 'the cat'], [('the', 'dog'), ('the', 'cat')])
+    built = stimulus_session(table, [F6], task, streaming=True)
+    session = Session(built.source, [F6], task, stimuli=built.stimuli)
+    with pytest.raises(ExecutionNotFeasibleError, match='one Segments trial in a session'):
+        subject.participate(session)
+    assert len(calls) == 1
+
+
 def test_an_instruction_cannot_stand_in_for_the_text():
     calls = []
     subject = _subject({'continuation': lambda p, c: {}, 'segment': _recording_segment(calls)})
