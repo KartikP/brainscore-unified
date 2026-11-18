@@ -95,7 +95,10 @@ system text. The score says so in `score.attrs['input_adaptation']`.
 
 Supply the reset callback of a model that keeps state between repetitions.
 Save run outputs outside CogGym's folder. UMI records model calls while
-CogGym keeps its trial selection and scoring.
+CogGym keeps its trial selection and scoring. Brain-Score gives each call the id
+of its trial by a wrap of CogGym's `build_messages` that reads the trial and
+changes nothing; this holds for the pinned commit, and a change of the pin must
+check it again with the real CogGym.
 
 There is no CogGym request-ID resolver in UMI. Access to additional datasets
 does not automatically register them or extend this pinned public subset.

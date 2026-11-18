@@ -119,6 +119,8 @@ def main(checkout):
                 def build_messages(trial, experiment):
                     # CogGym's loop builds a trial's messages before its calls (and their
                     # retries): the trial's own id goes with each of them. Prompts are unchanged.
+                    # This holds for the pinned commit (cli.py:78); on a change of the pin,
+                    # check it again with the real CogGym.
                     provider.trial_id = trial.id
                     return build(trial, experiment)
                 cli.build_messages = build_messages
