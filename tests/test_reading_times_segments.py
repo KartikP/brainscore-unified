@@ -71,7 +71,7 @@ def test_the_values_equal_the_old_helper_to_the_last_bit(tiny, parts):
     from brainscore.model_helpers.causal_lm import _CausalLMParts
     network, tokenizer = tiny
     old = _old_reading_times(network, tokenizer, parts)
-    _, new = _facade_reading_times(_subject(_CausalLMParts(network, tokenizer).likelihood), parts)
+    _, new = _facade_reading_times(_subject(_CausalLMParts(network, tokenizer, sliding_window=True).likelihood), parts)
     assert new.values.dtype == old.values.dtype
     np.testing.assert_array_equal(new.values, old.values)      # NaN at the same places
     for coordinate in ('stimulus', 'context', 'part_number'):
@@ -81,15 +81,15 @@ def test_the_values_equal_the_old_helper_to_the_last_bit(tiny, parts):
 def test_the_chat_parts_likelihood_gives_the_same_values(tiny):
     from brainscore.model_helpers.replies import chat_parts
     network, tokenizer = tiny
-    old = _old_reading_times(network, tokenizer, PASSAGE)
-    _, new = _facade_reading_times(_subject(chat_parts(network, tokenizer)[1]), PASSAGE)
+    old = _old_reading_times(network, tokenizer, PASSAGE[:12])      # within the window of 16
+    _, new = _facade_reading_times(_subject(chat_parts(network, tokenizer)[1]), PASSAGE[:12])
     np.testing.assert_array_equal(new.values, old.values)
 
 
 def test_the_stored_answer_keeps_the_raw_first_value_with_its_reason(tiny):
     from brainscore.model_helpers.causal_lm import _CausalLMParts
     network, tokenizer = tiny
-    subject = _subject(_CausalLMParts(network, tokenizer).likelihood)
+    subject = _subject(_CausalLMParts(network, tokenizer, sliding_window=True).likelihood)
     stimuli = StimulusSet(pd.DataFrame({'sentence': ['the dog ran'], 'segments': [('the', 'dog', 'ran')],
                                         'stimulus_id': ['s0']}))
     stimuli.identifier = 'segments-one'
@@ -139,7 +139,7 @@ def test_an_empty_part_is_refused_before_a_forward_pass(tiny):
     calls = []
     network.register_forward_hook(lambda *args: calls.append(1))
     with pytest.raises(ValueError, match='an empty part cannot be scored'):
-        _facade_reading_times(_subject(_CausalLMParts(network, tokenizer).likelihood), ['the', '', 'dog'])
+        _facade_reading_times(_subject(_CausalLMParts(network, tokenizer, sliding_window=True).likelihood), ['the', '', 'dog'])
     assert calls == []
 
 
@@ -217,7 +217,7 @@ def test_a_float64_model_reduces_and_returns_float64_as_the_old_helper(tiny):
     network, tokenizer = tiny
     network = network.double()
     old = _old_reading_times(network, tokenizer, PASSAGE)
-    _, new = _facade_reading_times(_subject(_CausalLMParts(network, tokenizer).likelihood), PASSAGE)
+    _, new = _facade_reading_times(_subject(_CausalLMParts(network, tokenizer, sliding_window=True).likelihood), PASSAGE)
     assert new.values.dtype == old.values.dtype == np.float64
     np.testing.assert_array_equal(new.values, old.values)
 
@@ -227,7 +227,7 @@ def test_a_first_part_that_fills_the_window_is_scored_as_the_old_helper(tiny):
     network, tokenizer = tiny
     parts = [' '.join(PASSAGE[:16]), 'the', 'dog']        # 16 tokens: the whole window
     old = _old_reading_times(network, tokenizer, parts)
-    _, new = _facade_reading_times(_subject(_CausalLMParts(network, tokenizer).likelihood), parts)
+    _, new = _facade_reading_times(_subject(_CausalLMParts(network, tokenizer, sliding_window=True).likelihood), parts)
     assert np.isfinite(new.values).all()
     np.testing.assert_array_equal(new.values, old.values)
 
@@ -237,8 +237,8 @@ def test_a_schedule_that_cannot_fit_the_window_is_refused_before_a_forward_pass(
     network, tokenizer = tiny
     calls = []
     network.register_forward_hook(lambda *args: calls.append(1))
-    with pytest.raises(ValueError, match='part 3 has 16 new tokens'):
-        _facade_reading_times(_subject(_CausalLMParts(network, tokenizer).likelihood),
+    with pytest.raises(ExecutionNotFeasibleError, match='part 3 has 16 new tokens'):
+        _facade_reading_times(_subject(_CausalLMParts(network, tokenizer, sliding_window=True).likelihood),
                               ['the', 'dog', ' '.join(PASSAGE[:16])])
     assert calls == []
 
@@ -249,7 +249,7 @@ def test_the_chat_likelihood_keeps_its_two_argument_call(tiny):
     from brainscore_core.responses import Choice, Prompt
     network, tokenizer = tiny
     prompt = Prompt((('text', 'the dog'),), response=Choice(['ran', 'sat'], verbatim=True))
-    for likelihood in (chat_parts(network, tokenizer)[1], _CausalLMParts(network, tokenizer).likelihood):
+    for likelihood in (chat_parts(network, tokenizer)[1], _CausalLMParts(network, tokenizer, sliding_window=True).likelihood):
         assert set(likelihood(prompt, ['ran', 'sat'])) == {'ran', 'sat'}
         assert callable(likelihood['segment'])
 
@@ -279,8 +279,7 @@ def test_a_segments_trial_that_shows_more_than_its_text_is_refused_before_any_ca
                               likelihood={'continuation': lambda p, c: {}, 'segment': _recording_segment(calls)})
     session = stimulus_session(_segments_row(['the dog'], [('the', 'dog')]), [F6],
                                TaskContext(response=Segments('segments'), **settings))
-    # An instruction is a second text part: core refuses the row (the text is not the join).
-    with pytest.raises((ValueError, ExecutionNotFeasibleError), match='join of its parts|earlier trials'):
+    with pytest.raises(ExecutionNotFeasibleError, match='an instruction|earlier trials'):
         subject.participate(session)
     assert calls == []
 
@@ -306,9 +305,23 @@ def test_a_rotary_model_with_a_text_longer_than_its_window_is_refused_before_a_f
     network.config.get_text_config().max_position_embeddings = 8
     calls = []
     network.register_forward_hook(lambda *args: calls.append(1))
-    with pytest.raises(ValueError, match='rotary positions'):
+    with pytest.raises(ExecutionNotFeasibleError, match='does not state that its cache can slide'):
         _facade_reading_times(_subject(chat_parts(network, tokenizer)[1]), PASSAGE[:12])
     assert calls == []
+
+
+def test_the_window_behavior_is_the_registration_statement_not_a_configuration_guess(tiny):
+    """GPT-2 with an unused rope_theta in its configuration still has learned positions: stated
+    as sliding, it is scored as the old helper scores it; not stated, its long text is refused."""
+    from brainscore.model_helpers.causal_lm import _CausalLMParts
+    network, tokenizer = tiny
+    network.config.rope_theta = 10000.0
+    old = _old_reading_times(network, tokenizer, PASSAGE)
+    _, new = _facade_reading_times(_subject(_CausalLMParts(network, tokenizer, sliding_window=True).likelihood),
+                                   PASSAGE)
+    np.testing.assert_array_equal(new.values, old.values)
+    with pytest.raises(ExecutionNotFeasibleError, match='does not state that its cache can slide'):
+        _facade_reading_times(_subject(_CausalLMParts(network, tokenizer).likelihood), PASSAGE)
 
 
 def test_each_cached_run_holds_only_its_new_tokens(tiny):
@@ -321,20 +334,26 @@ def test_each_cached_run_holds_only_its_new_tokens(tiny):
         sizes.append((ids.untyped_storage().nbytes(), ids.numel() * ids.element_size()))
 
     network.register_forward_pre_hook(record, with_kwargs=True)
-    _facade_reading_times(_subject(_CausalLMParts(network, tokenizer).likelihood), PASSAGE[:10])
+    _facade_reading_times(_subject(_CausalLMParts(network, tokenizer, sliding_window=True).likelihood), PASSAGE[:10])
     assert len(sizes) == 10 and all(stored == held for stored, held in sizes)
 
 
-def test_rows_of_different_widths_are_refused_before_any_call():
+def test_a_session_of_several_segments_trials_is_refused_before_any_call():
+    """No row is scored before a later row could be refused."""
     calls = []
-
-    def segment(prompt):
-        calls.append(prompt)
-        return [None] * len(prompt.response.segments), {}
-
-    subject = _subject({'continuation': lambda p, c: {}, 'segment': segment})
-    session = stimulus_session(_segments_row(['the', 'the dog'], [('the',), ('the', 'dog')]), [F6],
+    subject = _subject({'continuation': lambda p, c: {}, 'segment': _recording_segment(calls)})
+    session = stimulus_session(_segments_row(['the dog', 'the dog'], [('the', 'dog'), ('the', 'dog')]), [F6],
                                TaskContext(response=Segments('segments')))
-    with pytest.raises(ExecutionNotFeasibleError, match='widths'):
+    with pytest.raises(ExecutionNotFeasibleError, match='one Segments trial in a session'):
+        subject.participate(session)
+    assert calls == []
+
+
+def test_an_instruction_cannot_stand_in_for_the_text():
+    calls = []
+    subject = _subject({'continuation': lambda p, c: {}, 'segment': _recording_segment(calls)})
+    session = stimulus_session(_segments_row(['the dog'], [('the', 'dog')]), [F6],
+                               TaskContext(response=Segments('segments'), instruction='the dog', present=()))
+    with pytest.raises(ExecutionNotFeasibleError, match='an instruction'):
         subject.participate(session)
     assert calls == []
