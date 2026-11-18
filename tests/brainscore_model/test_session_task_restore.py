@@ -176,7 +176,7 @@ def test_a_neutral_session_keeps_the_remembered_readout():
 
 def test_a_reset_inside_a_session_stands(monkeypatch):
     """The scope does not bring back a task that reset() cleared."""
-    from brainscore.capabilities.sessions import NeuralSessions
+    from brainscore.capabilities.built_in import NeuralSessions
     from brainscore_core.streaming_helpers import stimulus_session
     model, _ = _model()
     model.start_task(_task(labels=('bird', 'fish')))

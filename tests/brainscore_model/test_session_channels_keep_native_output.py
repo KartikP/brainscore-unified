@@ -221,8 +221,10 @@ def test_missing_input_is_refused_before_any_extractor_runs():
 def layered(kind, calls, numbering='per_layer', label=None):
     """An extractor that returns one block per requested layer.
 
-    ``numbering='across_layers'`` copies VideoWrapper._package, which numbers
-    ``neuroid_num`` over all requested layers of one call.
+    ``numbering='across_layers'`` numbers ``neuroid_num`` over all requested
+    layers of one call: an extractor that does not declare
+    ``independent_layers``. (VideoWrapper numbered its units this way before
+    85efaeb3; it now numbers them from zero in each layer and declares it.)
     """
     def extract(stimuli, layers):
         calls.append((kind, tuple(layers)))

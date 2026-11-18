@@ -129,9 +129,9 @@ def _r4(log, monkeypatch, tmp_path):
     _subject(log, regions={'IT': 'late'}).participate(stimulus_session(STIMULI, ['neural:IT', 'motor']))
 
 
-@row('R5', r'Ambiguous session handlers')
+@row('R5', r'Ambiguous capabilities.*give one capability a lower order')
 def _r5(log, monkeypatch, tmp_path):
-    from brainscore.capabilities import capability_registry
+    import brainscore.capabilities as capabilities
     from brainscore.capabilities.base import Capability
 
     class _Claims(Capability):
@@ -139,10 +139,12 @@ def _r5(log, monkeypatch, tmp_path):
 
         def supports_session(self, subject, channels):
             return True
+    own = {}  # own registry: a new plugin with a low order cannot win in place of these two
     for name in ('claims-a', 'claims-b'):
         claim = _Claims()
         claim.identifier = name
-        monkeypatch.setitem(capability_registry, name, claim)
+        own[name] = claim
+    monkeypatch.setattr(capabilities, 'capability_registry', own)
     _subject(log, regions={'IT': 'late'}).participate(stimulus_session(STIMULI, ['neural:IT']))
 
 
@@ -347,7 +349,7 @@ def _r18_no_table(log, monkeypatch, tmp_path):
         Session(source, ['behavior:choice', 'behavior:probabilities', 'neural:IT'], CHOICE))
 
 
-# The claim of the policy session part already asks records_while_answering, so a
+# The claim of the policy capability already asks records_while_answering, so a
 # region that cannot be recorded during a policy step is refused as R4 (no part answers the outputs
 # together), never as R18. The row states what happens.
 @row('R18 policy step', r"Session refused \(task type 'none'\): Subject 'logged' cannot answer "
