@@ -147,7 +147,8 @@ def validate_responses(trials: Sequence[Any], results: Sequence[dict]) -> dict:
 
     Each issue has a ``response_state`` (Contract Rule 6.2) and a ``reason``: ``missing``
     when CogGym has no value for the answer (no reply: CogGym's entry of a failed call,
-    reason ``no_answer``; or its parser read none), so CogGym leaves it out of its fit;
+    reason ``no_answer``, which Brain-Score's adapter replaces with core's reason; or its
+    parser read none), so CogGym leaves it out of its fit;
     ``invalid`` when CogGym read a slider value that the check rejects (CogGym keeps it in
     its fit). An answer with no issue is ``valid``. The issues are the detector's
     findings; whether the result is valid is the benchmark's decision.
