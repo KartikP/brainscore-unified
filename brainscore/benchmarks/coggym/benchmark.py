@@ -3,6 +3,8 @@ from collections.abc import Callable
 import math
 from pathlib import Path
 
+import pandas as pd
+
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
 from brainscore_core.contract import Subject
@@ -13,10 +15,16 @@ from brainscore.harnesses.coggym import CogGymRunner
 
 from . import EXPERIMENTS
 
-# What the score does with a call that has no usable written answer (Contract Rule 6.2):
-# CogGym parses the text itself (rule 3.9) and fails a run with an error trial.
-ANSWER_POLICY = ('a missing or unreadable written answer: an error of the run (CogGym fails a run '
-                 'with an error trial); a text CogGym cannot score: counted by CogGym (coverage)')
+# What the score does with a slider answer (Contract Rule 6.2). CogGym parses the text
+# (rule 3.9); the check coggym-slider-v1 gives each slider answer a state.
+ANSWER_POLICY = ("the number is CogGym's own fit; a slider answer that coggym-slider-v1 rejects "
+                 'but CogGym read (a number taken from prose, a clamped value, a duplicate key) is '
+                 'invalid and stays in the fit as CogGym read it; an answer CogGym could not read '
+                 '(also a missing written answer, given to CogGym as empty text) is missing and '
+                 'CogGym leaves it out of its fit; above 10 percent invalid and missing answers '
+                 'the result is marked invalid')
+# The share of invalid and missing slider answers above which the result is marked invalid.
+INVALID_LIMIT = 0.1
 
 
 # Why a score can differ from one made with CogGym's own client (Contract Rule 3.9).
@@ -68,6 +76,13 @@ class CogGymBenchmark(BenchmarkBase):
     model can place the instruction in the user turn where CogGym's client
     sends a separate system text. ``score.attrs['input_adaptation']`` names this
     cause.
+
+    The score is CogGym's own fit. The check ``coggym-slider-v1`` gives each slider
+    answer a state and changes no value: ``valid``; ``invalid`` (CogGym read a value the
+    check rejects; it stays in the fit as CogGym read it); ``missing`` (CogGym read no
+    value and left the item out). The score carries the counts and ``answer_policy``.
+    Above 10 percent invalid and missing answers the result is returned with
+    ``result_validity == 'invalid'``, without an error (Contract Rule 6.2).
     """
 
     # Declare the messages the subject must accept and return before a run starts.
@@ -155,32 +170,23 @@ class CogGymBenchmark(BenchmarkBase):
             # The runner records each request and answer as one session, in its
             # own record repetition.
             result = native.evaluate(subject, context)
-            # The stored answers give the counts of the trial states; the score's
-            # metadata keeps CogGym's own analysis, not the answer assemblies.
-            stored = result.pop('stored_answers')
             validation = result['response_validation']
-            if validation['status'] == 'invalid':
-                raise ValueError(
-                    f'CogGym slider validation rejected {validation["invalid_queries"]} answers; '
-                    'no benchmark score is returned. Inspect response_validation in the saved '
-                    'analysis and run artifacts. Native results are unchanged.'
-                )
             rows = result['experiments']
             if len(rows) != 1 or rows[0]['experiment'] != self.experiment or rows[0]['model'] != model:
                 raise RuntimeError('CogGym must return exactly the requested model and experiment')
             value = rows[0]['r2']
-            if value is None or not math.isfinite(value):
-                raise ValueError(
-                    'CogGym R² is undefined; inspect the saved responses and coverage. '
-                    'An unscorable experiment is not a zero score.'
-                )
+            undefined = value is None or not math.isfinite(value)
+            # One row for each checked slider answer of each repetition, with its state.
+            answers = [pd.DataFrame({'response_state': [issue['response_state'] for issue in report['issues']]
+                                     + ['valid'] * (report['checked_queries'] - len(report['issues']))})
+                       for report in validation['repetitions']]
             # Keep CogGym's R² unchanged. Attributes explain how it was obtained;
             # no human-ceiling normalization is applied.
-            return adapter_score(
-                self, value, metric='pearson_r_squared', context=context,
-                input_adaptation=_PROMPT_NOTE,
+            score = adapter_score(
+                self, float('nan') if undefined else value, metric='pearson_r_squared',
+                context=context, input_adaptation=_PROMPT_NOTE,
                 modality=self.modality,
-                answers=stored, answer_policy=ANSWER_POLICY,
+                answers=answers, answer_policy=ANSWER_POLICY, invalid_limit=INVALID_LIMIT,
                 configuration=result['configuration'],
                 coverage=result['repetitions'],
                 response_validation=validation,
@@ -189,6 +195,14 @@ class CogGymBenchmark(BenchmarkBase):
                 reference_profile=self._reference_profile,
                 repetition_note='Five repeats match the reference README example, not a guarantee of leaderboard replication.',
             )
+            # A result marked invalid is returned even without a fit (rule 6.2); otherwise an
+            # undefined fit is no score.
+            if undefined and score.attrs['result_validity'] != 'invalid':
+                raise ValueError(
+                    'CogGym R² is undefined; inspect the saved responses and coverage. '
+                    'An unscorable experiment is not a zero score.'
+                )
+            return score
 
         return CallableProtocol(
             self.identifier,

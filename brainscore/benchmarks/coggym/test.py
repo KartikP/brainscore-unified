@@ -29,17 +29,23 @@ def scored_reference(reference, monkeypatch):
     return root, stand_in
 
 
-@pytest.mark.parametrize('invalid', [False, True])
-def test_slider_validation_preserves_native_results_and_gates_score(scored_reference, tmp_path, invalid):
-    root, stand_in = scored_reference
-    native = [{
-        'trial_id': f'trial-{i}',
-        'response': '{"answer": <number between 0 and 100>}' if invalid and i == 0 else '{"answer": 42}',
-        'parsed': {'rating': {'value': 0 if invalid and i == 0 else 42}},
-        'scores': {'rating': {'scorable': True}},
-    } for i in range(3)]
-    # Every trial asks for one slider rating; the evaluator returns these native results.
+def _slider_run(stand_in, invalid=(), missing=(), trials=10):
+    """CogGym results for ``trials`` slider trials: answers by index invalid, missing or valid."""
+    native = []
+    for i in range(trials):
+        if i in invalid:      # CogGym takes a number from a placeholder: the check rejects it
+            response, value = '{"answer": <number between 0 and 100>}', 0
+        elif i in missing:    # CogGym reads no number: not scorable, left out of its fit
+            response, value = 'I cannot say.', None
+        else:
+            response, value = '{"answer": 42}', 42
+        native.append({'trial_id': f'trial-{i}', 'response': response,
+                       'parsed': {'rating': {'value': value}},
+                       'scores': {'rating': {'scorable': value is not None}}})
     stand_in.cli(f'''
+TRIALS = [f'trial-{{i}}' for i in range({trials})]
+
+
 def _selected_trials(experiment, selection, use_all):
     slider = SimpleNamespace(tag='rating', type='single-slider', slider_config={{'min': 0, 'max': 100}}, option=[])
     return [SimpleNamespace(id=trial, queries=[slider]) for trial in TRIALS]
@@ -48,33 +54,72 @@ def _selected_trials(experiment, selection, use_all):
 def _run_experiment(*args):
     return {native!r}
 ''')
-    runner = coggym.CogGymRunner(root, model='fixture', repetitions=1)
-    direct = runner.run(
+    return native
+
+
+def _registered(root, tmp_path):
+    return brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root, repetitions=1,
+                                     reset=lambda repetition: None, output_dir=tmp_path / 'registered')
+
+
+def test_slider_check_leaves_native_results_unchanged(scored_reference, tmp_path):
+    root, stand_in = scored_reference
+    native = _slider_run(stand_in, invalid={0}, missing={1})
+    direct = coggym.CogGymRunner(root, model='fixture', repetitions=1).run(
         SimpleNamespace(complete_with_metadata=lambda *args: None),
         output_dir=tmp_path / 'direct', reset=lambda repetition: None,
     )
     assert direct['experiments'][0]['r2'] == 0.375
-    validation = direct['response_validation']
-    assert validation['status'] == ('invalid' if invalid else 'valid')
-    assert validation['checked_queries'] == 3
-    assert validation['invalid_queries'] == int(invalid)
     saved = json.loads((tmp_path / 'direct/run-001.json').read_text())
     assert saved['trials'] == native
-    assert saved['umi']['response_validation'] == validation['repetitions'][0]
-    benchmark = brainscore.load_benchmark(
-        'CogGym.Hu2023Fine.exp1', folder=root, repetitions=1,
-        reset=lambda repetition: None, output_dir=tmp_path / 'registered',
-    )
-    assert benchmark.version == 1
-    if invalid:
-        with pytest.raises(ValueError, match='slider validation rejected 1 answers'):
-            benchmark(make_subject(reply_with_trial))
-        assert json.loads((tmp_path / 'registered/experiment.json').read_text())['status'] == 'failed'
+    assert saved['umi']['response_validation'] == direct['response_validation']['repetitions'][0]
+
+
+def test_one_invalid_answer_of_many_gives_a_score_with_the_counts(scored_reference, tmp_path):
+    root, stand_in = scored_reference
+    _slider_run(stand_in, invalid={0})
+    score = _registered(root, tmp_path)(make_subject(reply_with_trial))
+    assert float(score) == 0.375                          # CogGym's own number
+    assert (score.attrs['n_valid'], score.attrs['n_invalid'], score.attrs['n_missing']) == (9, 1, 0)
+    assert score.attrs['result_validity'] == 'valid'      # 1 of 10 is not above 10 percent
+    assert 'coggym-slider-v1' in score.attrs['answer_policy']
+
+
+def test_a_missing_answer_is_counted_missing(scored_reference, tmp_path):
+    root, stand_in = scored_reference
+    _slider_run(stand_in, missing={3})
+    score = _registered(root, tmp_path)(make_subject(reply_with_trial))
+    assert (score.attrs['n_invalid'], score.attrs['n_missing']) == (0, 1)
+    assert score.attrs['result_validity'] == 'valid'
+
+
+@pytest.mark.parametrize('r2', ['0.375', 'None'])
+def test_a_share_above_the_limit_is_returned_marked_invalid(scored_reference, tmp_path, r2):
+    root, stand_in = scored_reference
+    _slider_run(stand_in, invalid={0}, missing={1}, trials=5)
+    stand_in.analyze(f'''
+def analyze(*args, **kwargs):
+    return [{{'model': 'fixture', 'experiment': 'Hu2023Fine/exp1', 'r2': {r2}}}], [], []
+''')
+    score = _registered(root, tmp_path)(make_subject(reply_with_trial))   # raises nothing
+    assert score.attrs['result_validity'] == 'invalid'
+    assert score.attrs['result_validity_reason']
+    assert (score.attrs['n_invalid'], score.attrs['n_missing']) == (1, 1)
+    if r2 == 'None':      # no fit: the result is still returned, marked invalid
+        assert math.isnan(float(score))
     else:
-        score = benchmark(make_subject(reply_with_trial))
         assert float(score) == 0.375
-        assert score.attrs['response_validation'] == validation
-    assert json.loads((tmp_path / 'registered/coggym/run-001.json').read_text())['trials'] == native
+    assert json.loads((tmp_path / 'registered/experiment.json').read_text())['status'] != 'failed'
+
+
+def test_a_result_for_another_experiment_is_a_fault_of_the_run(scored_reference, tmp_path):
+    root, stand_in = scored_reference
+    stand_in.analyze('''
+def analyze(*args, **kwargs):
+    return [{'model': 'fixture', 'experiment': 'Hu2023Fine/exp2', 'r2': 0.5}], [], []
+''')
+    with pytest.raises(RuntimeError, match='requested model and experiment'):
+        _registered(root, tmp_path)(make_subject(reply_with_trial))
 
 
 def test_all_public_experiments_registered_lazily():
@@ -125,12 +170,9 @@ def test_registered_scoring_preserves_raw_score_and_repetitions(scored_reference
     assert score.attrs['configuration']['repetitions'] == 2
     assert resets == [1, 2]
     assert len(calls) == 6
-    # The counts of the trial states of every call, and the policy.
-    assert (score.attrs['n_trials'], score.attrs['n_valid'], score.attrs['n_invalid'],
-            score.attrs['n_missing']) == (6, 6, 0, 0)
-    assert score.attrs['result_validity'] == 'no limit stated'
-    assert 'stored_answers' not in score.attrs['native_analysis']   # counts only, no assemblies
-    assert score.attrs['answer_policy'].startswith('a missing or unreadable written answer: an error of the run')
+    # The stated policy and its limit; the stand-in's trials ask no slider question.
+    assert score.attrs['result_validity'] == 'valid'
+    assert "CogGym's own fit" in score.attrs['answer_policy']
     # The benchmark's settings reach the reply on the task's Text response.
     assert all(call.response.max_tokens == 1234 for call in calls)
     assert all(call.response.temperature == 1.0 for call in calls)
@@ -297,18 +339,16 @@ class _NoRawAnswer(Subject):
         pass
 
 
-def test_a_text_answer_stored_as_missing_is_an_error_of_the_run(scored_reference, tmp_path):
-    """M9-01: the stored state decides; a missing written answer is an error of the run."""
+def test_a_text_answer_stored_as_missing_does_not_stop_the_run(scored_reference, tmp_path):
+    """Contract Rule 6.2: CogGym receives an empty text for a missing written answer."""
     root, _ = scored_reference
     benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root,
                                           reset=lambda repetition: None, repetitions=2,
                                           output_dir=tmp_path / 'scored')
-    with pytest.raises(RuntimeError, match='incomplete or failed trials'):
-        brainscore.score(_NoRawAnswer(), benchmark, check_mem=False)
-    # CogGym records the provider's error with the trial; the run fails (its own rule).
+    score = brainscore.score(_NoRawAnswer(), benchmark, check_mem=False)
+    assert float(score) == 0.375
     run = json.loads((tmp_path / 'scored' / 'coggym' / 'run-001.json').read_text())
-    errors = [str(trial.get('error')) for trial in run['trials'] if 'error' in trial]
-    assert errors and all('no written answer on behavior:text (state missing' in error for error in errors)
+    assert {trial['response'] for trial in run['trials']} == {''}
 
 
 def test_an_evaluator_that_cannot_import_a_module_is_one_clear_load_error(reference):

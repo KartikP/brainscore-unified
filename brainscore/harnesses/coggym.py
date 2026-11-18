@@ -196,25 +196,23 @@ def _trial_row(messages, media_directory: Path) -> tuple[dict, tuple[str, ...]]:
 
 
 def _written_answer(event) -> str:
-    """The one written answer in a ``behavior:text`` event."""
+    """The one written answer in a ``behavior:text`` event; an empty text when there is none.
+
+    A trial whose stored state is not ``valid`` does not stop the run (Contract Rule 6.2):
+    CogGym receives an empty text, reads no value from it and leaves the item out of its
+    fit; the slider check counts the answer ``missing``. The raw response stays in the
+    recorded session.
+    """
     payload = event.payload
     if not isinstance(payload, str):
-        # The state core stored for the trial decides (Contract Rule 6.2): a missing or
-        # invalid written answer is an error of the run (ANSWER_POLICY of the benchmark).
         try:
             states = [str(state) for state in payload['response_state'].values]
         except (KeyError, TypeError):
             states = []
-        if any(state != 'valid' for state in states):
-            try:
-                reason = str(payload['response_reason'].values[0])
-            except (KeyError, TypeError, IndexError):
-                reason = ''
-            raise TypeError(f'The subject gave no written answer on behavior:text (state '
-                            f'{states[0]}' + (f': {reason}' if reason else '') + ')')
         valid = getattr(payload, 'coords', {}).get('answer_valid')
-        if valid is not None and not bool(np.all(valid.values)):
-            raise TypeError('The subject gave no written answer on behavior:text')
+        if any(state != 'valid' for state in states) or (
+                valid is not None and not bool(np.all(valid.values))):
+            return ''
         values = np.asarray(getattr(payload, 'values', payload), dtype=object).reshape(-1)
         if values.size != 1:
             raise ValueError(f'A CogGym call needs one written answer, not {values.size}')
@@ -250,10 +248,8 @@ class _SubjectAdapter:
     later trial reaches the subject, and the run ends with that error.
     """
 
-    def __init__(self, subject, context, repetition, prompt_trials, stored=None):
+    def __init__(self, subject, context, repetition, prompt_trials):
         self.subject = subject
-        # The stored behavior:text answer of each call, for the counts of the trial states.
-        self.stored = stored if stored is not None else []
         self.context = context
         self.repetition = repetition
         self.call_index = 0
@@ -290,7 +286,6 @@ class _SubjectAdapter:
             raise self.refusal from error
         answers = [event for event in session.emitted if event.channel == 'behavior:text']
         collected = session.collect('behavior:text')
-        self.stored.append(collected)
         if len(answers) != 1:
             raise TypeError(f'CogGym needs one behavior:text answer for each call; got {len(answers)}')
         meta = answers[0].meta if isinstance(answers[0].meta, dict) else {}
@@ -455,16 +450,12 @@ class CogGymRunner:
                 )
             # Translate CogGym's model calls into sessions on the common channels.
             # This is where the external evaluator connects to UMI tools.
-            stored = []
-            result = self._run(
+            return self._run(
                 lambda repetition: _SubjectAdapter(
-                    subject, context, repetition, self._prompt_trials, stored,
+                    subject, context, repetition, self._prompt_trials,
                 ),
                 context.directory / 'coggym', reset, register,
             )
-            # The stored answers stay out of the saved analysis; the benchmark counts them.
-            result['stored_answers'] = stored
-            return result
 
         # The adapter records its own sessions, so no subject method is observed.
         return CallableProtocol(

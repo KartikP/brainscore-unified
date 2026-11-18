@@ -398,19 +398,17 @@ def test_record_keeps_one_session_per_call_and_replay_rebuilds_them(reference, t
     assert compare_outputs(original.directory, replay.directory)['equal']
 
 
-def test_a_call_without_a_usable_written_answer_is_an_error_of_the_run():
-    """The CogGym policy: a missing or unreadable written answer stops the run,
-    as before (CogGym fails a run with an error trial)."""
+def test_a_call_without_a_usable_written_answer_reaches_coggym_as_empty_text():
+    """A missing written answer does not stop the run (Contract Rule 6.2): CogGym reads no
+    value from the empty text and the slider check counts it missing."""
     import numpy as np
-    import pytest
     from brainscore.harnesses.coggym import _written_answer
     from brainscore_core.streaming import StreamEvent
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
     missing = BehavioralAssembly(np.array([None], dtype=object), dims=['presentation'], coords={
         'stimulus_id': ('presentation', ['t0']), 'answer_valid': ('presentation', [False]),
         'response_state': ('presentation', ['missing'])})
-    with pytest.raises(TypeError, match='no written answer'):
-        _written_answer(StreamEvent('behavior:text', missing, None))
+    assert _written_answer(StreamEvent('behavior:text', missing, None)) == ''
 
 
 def test_a_summary_that_cannot_be_saved_keeps_the_completed_trials(reference, tmp_path):
