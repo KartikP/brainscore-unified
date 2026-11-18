@@ -210,6 +210,17 @@ def test_the_token_pool_averages_blocks_of_the_patch_grid():
         study._pool_tokens(np.zeros((1, 12, 1), np.float32), 2)
 
 
+def test_the_answer_path_gets_the_whole_image_settings_a_processor_drops():
+    """A processor that drops a setting it does not declare (SmolVLM's do_image_splitting) and reads its
+    image processor instead still gives one whole image when the model answers."""
+    class Dropping:
+        image_processor = SimpleNamespace(do_image_splitting=True)
+
+        def __call__(self, **_):
+            return 5 if self.image_processor.do_image_splitting else 1     # tiles for one picture
+    assert study._StatedProcessor(Dropping(), {'do_image_splitting': False})(text=['x']) == 1
+
+
 def test_every_identifier_is_registered_with_its_suffix():
     assert set(IDENTIFIERS) <= set(model_registry) and all(name.endswith('_UMI-dev') for name in IDENTIFIERS)
 

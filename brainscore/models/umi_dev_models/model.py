@@ -177,10 +177,15 @@ def _whole_images(paths, image_processor, settings):
 class _StatedProcessor:
     """The model's processor for the answering parts, called with the stated whole-image settings, so
     that a model sees the same picture when it answers as when it is recorded (a parent processor can
-    have its own default, as InternVL's crop_to_patches). Everything else is the processor's own."""
+    have its own default, as InternVL's crop_to_patches). The settings are also set on its image processor,
+    because a processor can drop a setting it does not declare (SmolVLM's do_image_splitting).
+    Everything else is the processor's own."""
 
     def __init__(self, processor, settings):
         self._processor, self._settings = processor, dict(settings)
+        for key, value in self._settings.items():
+            if hasattr(processor.image_processor, key):
+                setattr(processor.image_processor, key, value)
 
     def __getattr__(self, name):
         return getattr(self._processor, name)
