@@ -205,15 +205,24 @@ def _written_answer(answer) -> tuple[str | None, str, str]:
     return values[0], state, reason
 
 
-def _core_states(validation, results, invalid):
-    """The check's report, with every answer of a trial in ``invalid`` (written answers core
-    stored as invalid: trial id to core's reason) counted ``invalid`` for that reason."""
-    if not invalid:
+def _core_states(validation, results, answers):
+    """The check's report with core's states: ``answers`` holds core's stored row of each trial
+    whose written answer core stored as missing or invalid. Each answer of a missing trial
+    (CogGym's entry of a call with no reply) keeps core's reason; each answer of an invalid
+    trial is counted ``invalid`` for core's reason."""
+    if not answers:
         return validation
-    issues = [issue for issue in validation['issues'] if issue['trial_id'] not in invalid]
-    issues += [{'trial_id': result['trial_id'], 'query': tag, 'reason': invalid[result['trial_id']],
+    issues = []
+    for issue in validation['issues']:
+        row = answers.get(issue['trial_id'])
+        if row is None:
+            issues.append(issue)
+        elif row['response_state'] == 'missing':
+            issues.append({**issue, 'reason': row['response_reason']})
+    issues += [{'trial_id': result['trial_id'], 'query': tag, 'reason': row['response_reason'],
                 'response_state': 'invalid'}
-               for result in results if result.get('trial_id') in invalid
+               for result in results
+               if (row := answers.get(result.get('trial_id'))) and row['response_state'] == 'invalid'
                for tag in result.get('parsed') or {}]
     return {**validation, 'issues': issues}
 
@@ -221,8 +230,9 @@ def _core_states(validation, results, invalid):
 class _SubjectAdapter:
     """Translate CogGym's model calls into sessions on the common channels.
 
-    CogGym calls the object that answers its requests a "provider"; this adapter
-    answers through the subject. Each call is one ``run_request``
+    CogGym's model client in the evaluator (its "provider") sends each call here with the
+    id of the trial CogGym built it for; this adapter answers through the subject. Each call
+    is one ``run_request``
     session: one stimulus row (the
     message parts in order), a ``TaskContext`` (the system text as the
     instruction, a ``Text`` response with the call's temperature and length,
@@ -241,8 +251,10 @@ class _SubjectAdapter:
 
     A trial with no written answer (core stores it as ``missing``) reaches CogGym as a
     failed call, CogGym's own record of a call with no reply; the run goes on and the
-    trial's answers are counted ``missing``. An answer core stores as ``invalid`` reaches
-    CogGym as its text, and its answers are counted ``invalid`` with core's reason.
+    trial's answers are counted ``missing`` with core's reason. An answer core stores as
+    ``invalid`` reaches CogGym as its text, and its answers are counted ``invalid`` with
+    core's reason. Core's stored row of each such trial (``answers``, by CogGym's trial id;
+    a retry of the trial replaces it) goes in the repetition's file (``umi.core_answers``).
 
     A trial the subject cannot serve (``ExecutionNotFeasibleError``, for example a
     trial with more pictures than the subject takes) is kept in ``refusal``; no
@@ -256,8 +268,8 @@ class _SubjectAdapter:
         self.call_index = 0
         self.media_directory = context.directory / 'coggym-media'
         self.refusal = None
-        # The trials whose written answer core stored as missing or invalid, with core's reason.
-        self.no_reply, self.invalid = {}, {}
+        # Core's stored row of each trial whose written answer is missing or invalid.
+        self.answers = {}
 
     def complete(self, call):
         """Answer one model call of CogGym (its system text, messages and settings)."""
@@ -270,8 +282,7 @@ class _SubjectAdapter:
         trial_id = call['trial_id']
         if trial_id is None:
             raise ValueError('CogGym made a model call outside a trial')
-        self.no_reply.pop(trial_id, None)
-        self.invalid.pop(trial_id, None)
+        self.answers.pop(trial_id, None)
         row, present = _trial_row(messages, self.media_directory)
         stimuli = StimulusSet(pd.DataFrame([{'stimulus_id': trial_id, **row}]))
         task = TaskContext(instruction=system, present=present, trial_memory='none',
@@ -293,14 +304,15 @@ class _SubjectAdapter:
         if len(answers) != 1:
             raise TypeError(f'CogGym needs one behavior:text answer for each call; got {len(answers)}')
         text, state, reason = _written_answer(collected)
+        if state != 'valid':
+            self.answers[trial_id] = {'stimulus_id': trial_id, 'value': text,
+                                      'response_state': state, 'response_reason': reason}
         if state == 'missing':
             # CogGym's own record of a call with no reply: an entry with the error and no
             # scores, which its fit leaves out for every question type. The message is fixed:
             # CogGym calls again on some words (rate limits).
-            self.no_reply[trial_id] = reason
             raise ValueError('no answer: the subject wrote no answer for this trial')
-        if state == 'invalid':
-            self.invalid[trial_id] = reason     # CogGym parses the raw text; the count says invalid
+        # An invalid answer: CogGym parses the raw text; the count says invalid.
         meta = answers[0].meta if isinstance(answers[0].meta, dict) else {}
         return {'text': text, 'reasoning': meta.get('reasoning'), 'token_usage': meta.get('token_usage')}
 
@@ -506,11 +518,11 @@ class CogGymRunner:
             results = ran['results']
             # Keep reference parsing and scoring intact. The state of each requested answer
             # comes from the check; an answer core stored as invalid keeps core's state.
-            validation = _core_states(ran['validation'], results, {} if adapter is None else adapter.invalid)
+            answers = {} if adapter is None else adapter.answers
+            validation = _core_states(ran['validation'], results, answers)
             validations.append(validation)
-            no_reply = {} if adapter is None else adapter.no_reply
-            failed = [result for result in results
-                      if 'error' in result and result.get('trial_id') not in no_reply]
+            failed = [result for result in results if 'error' in result
+                      and answers.get(result.get('trial_id'), {}).get('response_state') != 'missing']
             coverage = {
                 'expected_trials': len(self._trials),
                 'returned_trials': len(results),
@@ -535,6 +547,8 @@ class CogGymRunner:
                 'umi': {**self.describe(), 'coverage': coverage,
                         'status': 'complete' if complete else 'failed',
                         'response_validation': validation,
+                        # Core's stored row of each answer that is missing or invalid.
+                        'core_answers': list(answers.values()),
                         'summary_status': 'pending'},
             }
             path = directory / f'run-{repetition:03d}.json'
