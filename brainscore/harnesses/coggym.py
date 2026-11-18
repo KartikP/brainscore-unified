@@ -81,11 +81,6 @@ _WORKER = Path(__file__).with_name('_coggym_worker.py')
 _EVALUATOR_SILENCE_S = 900.0
 
 
-def _prompt_key(system, messages):
-    value = json.dumps([system, messages], sort_keys=True, separators=(',', ':'))
-    return hashlib.sha256(value.encode()).hexdigest()
-
-
 def _check_checkout(checkout):
     def git(*arguments):
         # The command environment of CogGym's folder: no GIT_DIR or other setting of this process.
@@ -254,19 +249,15 @@ class _SubjectAdapter:
     later trial reaches the subject, and the run ends with that error.
     """
 
-    def __init__(self, subject, context, repetition, prompt_trials):
+    def __init__(self, subject, context, repetition):
         self.subject = subject
         self.context = context
         self.repetition = repetition
         self.call_index = 0
-        self.prompt_trials = prompt_trials
         self.media_directory = context.directory / 'coggym-media'
         self.refusal = None
         # The trials whose written answer core stored as missing or invalid, with core's reason.
         self.no_reply, self.invalid = {}, {}
-        # How many calls of each prompt this repetition has made: several trials can share one
-        # prompt, and CogGym calls them in trial order, so the k-th call is the k-th such trial.
-        self.prompt_calls = {}
 
     def complete(self, call):
         """Answer one model call of CogGym (its system text, messages and settings)."""
@@ -274,12 +265,13 @@ class _SubjectAdapter:
         temperature, max_tokens = call['temperature'], call['max_tokens']
         if self.refusal is not None:
             raise self.refusal      # an earlier trial was refused: no further trial runs
-        key = _prompt_key(system, messages)
-        trial_ids = self.prompt_trials[key]
-        occurrence = self.prompt_calls.get(key, 0)
-        self.prompt_calls[key] = occurrence + 1
-        # A call beyond the trials of its prompt (a repeated call) keeps the last of them.
-        trial_id = trial_ids[min(occurrence, len(trial_ids) - 1)]
+        # CogGym's own id of the trial (several trials can share one prompt). A retry of the
+        # trial replaces the state of its earlier call: CogGym keeps the last call.
+        trial_id = call['trial_id']
+        if trial_id is None:
+            raise ValueError('CogGym made a model call outside a trial')
+        self.no_reply.pop(trial_id, None)
+        self.invalid.pop(trial_id, None)
         row, present = _trial_row(messages, self.media_directory)
         stimuli = StimulusSet(pd.DataFrame([{'stimulus_id': trial_id, **row}]))
         task = TaskContext(instruction=system, present=present, trial_memory='none',
@@ -398,7 +390,6 @@ class CogGymRunner:
         if not self._trials:
             raise ValueError('The reference trial selection is empty')
         self.canonical_trial_count = len(canonical)
-        self._prompt_trials = {}
         shown = {'text'}
         # Preflight the reference prompts, including media loading, before inference.
         for trial in prepared['trials']:
@@ -419,7 +410,6 @@ class CogGymRunner:
             if not isinstance(system, str) or required - set(self.modalities):
                 raise ValueError(f'The adapter must support these modalities: {sorted(required)}')
             shown |= required
-            self._prompt_trials.setdefault(_prompt_key(system, messages), []).append(trial['id'])
         # The inputs the experiment sends: the system text is the instruction, and
         # every kind of part the selected trials show. A subject that cannot take
         # one runs with it dropped (Contract Rules 5.2, 5.5, 5.6).
@@ -470,7 +460,7 @@ class CogGymRunner:
             # Translate CogGym's model calls into sessions on the common channels.
             # This is where the external evaluator connects to UMI tools.
             def start(repetition):
-                adapter = _SubjectAdapter(subject, context, repetition, self._prompt_trials)
+                adapter = _SubjectAdapter(subject, context, repetition)
                 return adapter.complete, adapter
             return self._run(start, context.directory / 'coggym', reset, register)
 

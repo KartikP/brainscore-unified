@@ -482,3 +482,64 @@ def test_the_direct_runner_reads_no_state_from_the_callers_provider(reference, t
     saved = json.loads((tmp_path / 'direct/run-001.json').read_text())
     assert saved['umi']['coverage']['error_trials'] == 1
     assert saved['umi']['coverage']['no_answer_trials'] == 0
+
+
+class _RateLimitedThenSilent(Subject):
+    """First call: an error with CogGym's retry words; second call (the retry): no answer; then answers."""
+
+    identifier = 'rate-limited-then-silent'
+    in_channels = frozenset({'instruction', 'text'})
+    out_channels = frozenset({'behavior:text'})
+
+    def __init__(self):
+        self.calls = 0
+
+    def participate(self, session):
+        from brainscore_core.streaming import StreamEvent
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError('rate limit')
+        while (event := session.next_input()) is not None:
+            if self.calls > 2 and event.channel == 'text':
+                session.respond(StreamEvent('behavior:text', 'an answer', event.t_ms, dict(event.meta)))
+
+    def reset(self):
+        pass
+
+
+def test_a_retry_between_trials_of_one_prompt_keeps_the_state_with_its_trial(reference, tmp_path):
+    """Two trials show one prompt; CogGym retries the first, and the retry gives no answer. The
+    missing state stays with the first trial, where CogGym records the call with no reply."""
+    root, stand_in = reference
+    stand_in.cli('''
+def build_messages(trial, experiment):
+    return 'system', [{'role': 'user', 'content': 'one shared prompt'}]
+
+
+def _run_experiment(experiment, selected, provider, model, temperature, max_tokens):
+    results = []
+    for trial in selected:
+        system, messages = build_messages(trial, experiment)
+        try:
+            for attempt in range(2):      # as CogGym's call_with_retry: again on a rate limit
+                try:
+                    raw = provider.complete_with_metadata(system, messages, model, temperature, max_tokens)
+                    break
+                except Exception as error:
+                    if 'rate limit' not in str(error) or attempt == 1:
+                        raise
+            results.append({'trial_id': trial.id, 'response': raw['text'],
+                            'scores': {'answer': {'scorable': True}}})
+        except Exception as error:
+            results.append({'trial_id': trial.id, 'error': str(error), 'model': model})
+    return results
+''')
+    runner = coggym.CogGymRunner(root, model='fixture')
+    with pytest.raises(RuntimeError, match='caught subject'):     # the first call's error
+        Experiment(subject=_RateLimitedThenSilent(), protocol=runner.protocol(reset=lambda repetition: None),
+                   tools=[RecordInputsOutputs()], output_dir=tmp_path / 'run').run()
+    saved = json.loads((tmp_path / 'run/coggym/run-001.json').read_text())
+    assert 'error' in saved['trials'][0] and 'response' in saved['trials'][1]
+    assert saved['umi']['coverage']['no_answer_trials'] == 1
+    assert saved['umi']['coverage']['error_trials'] == 0
+    assert saved['umi']['status'] == 'complete'
