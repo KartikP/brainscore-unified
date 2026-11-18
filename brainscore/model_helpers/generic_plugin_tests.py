@@ -10,55 +10,28 @@ writes no extra file. To run it by hand:
 
 (``conftest.py`` in this folder adds the ``--plugin_directory`` option.)
 
-No check runs a forward pass. The session plan and the region check use the
-public parts of ``BrainScoreModel``; a plugin that registers another kind of
-subject skips them.
-"""
-import pytest
+The checks hold for every subject and use only the subject contract: the
+identifier and the declaration. The subject is loaded once per identifier.
 
-from brainscore_core.io_catalog import form_problem, has
+Limit: no declared output is exercised with input; add that when a production
+job for unified exists.
+"""
+from brainscore_core import io_catalog
+from brainscore_core.compatibility import validate_channels
 # the following import is needed to configure pytest
 # noinspection PyUnresolvedReferences
 from brainscore_core.plugin_management.generic_plugin_tests_helper import pytest_generate_tests  # noqa: F401
-from brainscore import BrainScoreModel, load_model
+from brainscore import load_model
 
 
-def test_identifier(identifier: str):
+def test_identifier_and_declaration(identifier: str):
     model = load_model(identifier)
-    assert model.identifier is not None
     assert model.identifier == identifier
-
-
-def test_channels(identifier: str):
-    model = load_model(identifier)
     in_channels, out_channels = set(model.in_channels), set(model.out_channels)
     assert in_channels, 'the model declares no input channel'
     assert out_channels, 'the model declares no output channel'
-    unknown = sorted(c for c in in_channels | out_channels if not has(c) or form_problem(c))
-    assert not unknown, f'channels not in the channel catalog: {unknown}'
+    # Core's public check: catalog names, forms, directions and addresses.
+    validate_channels(in_channels, io_catalog.INPUT, f"'{identifier}' in_channels")
+    validate_channels(out_channels, io_catalog.OUTPUT, f"'{identifier}' out_channels")
     extra = sorted(set(model.required_channels) - in_channels)
     assert not extra, f'required channels that are not input channels: {extra}'
-
-
-def _brainscore_model(identifier: str) -> BrainScoreModel:
-    model = load_model(identifier)
-    if not isinstance(model, BrainScoreModel):
-        pytest.skip('the subject is not a BrainScoreModel: it has no session plan or region_layer_map')
-    return model
-
-
-def test_each_output_has_a_part(identifier: str):
-    """The model's own session plan accepts a request for each declared output, before any input."""
-    model = _brainscore_model(identifier)
-    for channel in sorted(model.out_channels):
-        model.check_session_support({channel})
-
-
-def test_region_layers_exist(identifier: str):
-    """Each region names a layer of the loaded network.
-
-    Assigning the map back runs the model's own region validation against its
-    extractors. An extractor that cannot list its layers is not checked.
-    """
-    model = _brainscore_model(identifier)
-    model.region_layer_map = model.region_layer_map
