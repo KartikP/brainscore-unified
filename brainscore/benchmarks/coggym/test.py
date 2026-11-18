@@ -411,8 +411,9 @@ def _no_row(stand_in):
     stand_in.analyze("def analyze(*args, **kwargs):\n    return [], [], []\n")
 
 
-def _trial_queries(stand_in):
-    """The stand-in's three trials ask one slider question; CogGym reads the JSON answer."""
+def _trial_queries(stand_in, scorable=True):
+    """The stand-in's three trials ask one slider question; CogGym reads the JSON answer.
+    ``scorable=False``: CogGym has no human data for the question, so no answer is scorable."""
     stand_in.cli(f"""
 def _selected_trials(*args, **kwargs):
     return [SimpleNamespace(id=trial, queries=[{_SLIDER}]) for trial in TRIALS]
@@ -429,7 +430,7 @@ def _run_experiment(experiment, selected, provider, *args, **kwargs):
             continue
         value = json.loads(raw['text'])['answer']
         results.append({{'trial_id': trial.id, 'response': raw['text'],
-                         'parsed': {{'rating': {{'value': value}}}}, 'scores': {{'rating': {{'scorable': True}}}}}})
+                         'parsed': {{'rating': {{'value': value}}}}, 'scores': {{'rating': {{'scorable': {scorable}}}}}}})
     return results
 """)
 
@@ -459,8 +460,30 @@ def test_an_absent_row_that_the_counts_do_not_explain_is_a_fault_of_the_run(scor
     root, stand_in = scored_reference
     _trial_queries(stand_in)
     _no_row(stand_in)
-    with pytest.raises(RuntimeError, match='do not explain'):
+    with pytest.raises(RuntimeError, match='scorable'):
         _registered(root, tmp_path)(_Answers(omit=lambda trial: False))
+
+
+def test_valid_answers_with_no_human_data_and_no_row_are_a_result_marked_invalid(scored_reference, tmp_path):
+    """Zero scorable queries: CogGym makes no row, and that is the experiment's result."""
+    root, stand_in = scored_reference
+    _trial_queries(stand_in, scorable=False)
+    _no_row(stand_in)
+    score = _registered(root, tmp_path)(_Answers(omit=lambda trial: False))
+    assert math.isnan(float(score))
+    assert (score.attrs['n_trials'], score.attrs['n_valid']) == (3, 3)
+    assert score.attrs['result_validity'] == 'invalid'
+    assert 'scorable' in score.attrs['result_validity_reason']
+
+
+def test_invalid_sliders_that_coggym_scores_need_a_row(scored_reference, tmp_path):
+    """Every slider fails the strict check, but CogGym read numbers and scores them: no row is
+    then a fault of the analysis, not a result."""
+    root, stand_in = scored_reference
+    _slider_run(stand_in, invalid=range(10))
+    _no_row(stand_in)
+    with pytest.raises(RuntimeError, match='scorable'):
+        _registered(root, tmp_path)(make_subject(reply_with_trial))
 
 
 def test_omitted_answer_events_are_counted_missing(scored_reference, tmp_path):

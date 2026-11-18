@@ -521,6 +521,9 @@ class CogGymRunner:
                 'unscorable_trials': sum(not any(
                     score.get('scorable') for score in result.get('scores', {}).values()
                 ) for result in results if 'error' not in result),
+                # CogGym's own count of the queries its fit can use: no row with none is its result.
+                'scorable_queries': sum(bool(score.get('scorable')) for result in results
+                                        for score in result.get('scores', {}).values()),
             }
             complete = (
                 [result.get('trial_id') for result in results] == list(self.trial_ids)

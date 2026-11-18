@@ -192,13 +192,15 @@ class CogGymBenchmark(BenchmarkBase):
                       for report in validation['repetitions']]
             n_answers = sum(len(part) for part in states)
             n_valid = sum(part.count('valid') for part in states)
+            # CogGym makes a row exactly when its fit has a scorable query (its own count).
+            scorable = sum(part['scorable_queries'] for part in result['repetitions'])
             if rows:
                 value, n_items = rows[0]['r2'], rows[0].get('n_items')
-            elif n_answers and not n_valid:
-                value, n_items = None, 0      # no answer CogGym could fit: it makes no row
+            elif not scorable:
+                value, n_items = None, 0      # no scorable query: no row is CogGym's result
             else:
-                raise RuntimeError(f'CogGym returned no result for the experiment, and the answers do '
-                                   f'not explain it: {n_valid} of {n_answers} answers are valid')
+                raise RuntimeError(f'CogGym returned no result for the experiment, although {scorable} '
+                                   'of its queries are scorable: a fault of its analysis')
             undefined = value is None or not math.isfinite(value)
             # Keep CogGym's R² unchanged. Attributes explain how it was obtained;
             # no human-ceiling normalization is applied.
@@ -219,7 +221,8 @@ class CogGymBenchmark(BenchmarkBase):
             if undefined:
                 # No fit is a result of the answers, marked invalid with its reason (rule 6.2).
                 if not rows:
-                    why = f'CogGym made no fit: none of the {n_answers} answers is valid'
+                    why = (f'CogGym made no fit: none of its queries is scorable '
+                           f'({n_valid} of {n_answers} answers valid)')
                 elif n_items is not None and n_items < 5:
                     why = f'CogGym made no fit: {n_items} scorable items, fewer than its minimum of 5'
                 elif n_items is not None:
