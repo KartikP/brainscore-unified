@@ -1,0 +1,150 @@
+{
+  "analysis": "descriptive comparison, not a registered benchmark score",
+  "primary_stride": 2,
+  "sign": "negative relative curvature means straightening",
+  "model_estimator": "Euclidean raw-feature curvature minus exported-PNG pixel curvature",
+  "macaque_estimator": "archived Delta Curvature: neural minus Delta Curvature: control",
+  "weighting": "equal movies/scales after averaging retained populations per movie/scale",
+  "uncertainty": "population SEM is descriptive; no independence across shared monkeys assumed",
+  "controls": {
+    "pixel_identity_relative_deg": 0.0,
+    "constant_representation": "undefined curvature; must be N/A",
+    "archived_lnln": "provided fitted model, not refitted here"
+  },
+  "comparisons": [
+    {
+      "category": "artificial",
+      "stride": 1,
+      "n_movie_scale_pairs": 20,
+      "n_valid_model_pairs": 20,
+      "n_macaque_trajectories": 118,
+      "macaque_trajectory_median_deg": 44.924347042198804,
+      "macaque_movie_scale_median_deg": 42.083362695400105,
+      "model_movie_scale_median_deg": 20.46813842407682,
+      "pearson_r": -0.009922729974643083,
+      "mean_absolute_difference_deg": 22.67414850121139,
+      "archived_lnln_pearson_r": 0.46901910061490965,
+      "status": "complete"
+    },
+    {
+      "category": "artificial",
+      "stride": 2,
+      "n_movie_scale_pairs": 20,
+      "n_valid_model_pairs": 20,
+      "n_macaque_trajectories": 119,
+      "macaque_trajectory_median_deg": 24.43637993160739,
+      "macaque_movie_scale_median_deg": 32.81881146061949,
+      "model_movie_scale_median_deg": 35.80960993013671,
+      "pearson_r": 0.3869129815161935,
+      "mean_absolute_difference_deg": 11.960059728513569,
+      "archived_lnln_pearson_r": 0.023978197782786308,
+      "status": "complete"
+    },
+    {
+      "category": "natural",
+      "stride": 1,
+      "n_movie_scale_pairs": 20,
+      "n_valid_model_pairs": 20,
+      "n_macaque_trajectories": 131,
+      "macaque_trajectory_median_deg": -6.101742227354199,
+      "macaque_movie_scale_median_deg": -5.377773825864611,
+      "model_movie_scale_median_deg": 2.575682000473577,
+      "pearson_r": 0.7303651785828411,
+      "mean_absolute_difference_deg": 12.212205481291644,
+      "archived_lnln_pearson_r": 0.1688651805121022,
+      "status": "complete"
+    },
+    {
+      "category": "natural",
+      "stride": 2,
+      "n_movie_scale_pairs": 20,
+      "n_valid_model_pairs": 20,
+      "n_macaque_trajectories": 127,
+      "macaque_trajectory_median_deg": -9.93457396449657,
+      "macaque_movie_scale_median_deg": -9.167390103494778,
+      "model_movie_scale_median_deg": 2.484865101321539,
+      "pearson_r": 0.849890184545481,
+      "mean_absolute_difference_deg": 15.554860677310831,
+      "archived_lnln_pearson_r": 0.6319736388373813,
+      "status": "complete"
+    }
+  ],
+  "prepared_id": "910f4ac5a5a8b2ff",
+  "prepared_source_sha256": {
+    "stimulus/stim_matrix.mat": "910f4ac5a5a8b2ffd6ed165a9cd50260663500cd17ed69a547bca1f1ae3290fb",
+    "curvatureEstimations/Acute data - combined_235x.csv": "1802a08643348d8de542717688264fd49462bae31ee55244ec635dfd18fc98ab",
+    "modelResults/aggregated_LNLN_nat_sigG2_sqrt.mat": "4acbe5c2a111a01b6d09472e56e0ae3e5b3ef8d51f12246cbf44e5855f40788e",
+    "summary.m": "0fd170b87da856d64071f028f2283d377f5617bda43e95b1b965797244497bda",
+    "plot_summary.m": "d4d0c4a6cefea18ba901fcf60e301ca24966d3aa7f6d39430613c8035fb93ba2"
+  },
+  "versions": {
+    "brainscore": "0.3.0rc1",
+    "brainscore_core": "2.4.0rc1",
+    "numpy": "1.26.4",
+    "pandas": "2.3.3",
+    "scipy": "1.17.1"
+  },
+  "recording_dtype": "float32",
+  "execution_provenance": {
+    "subject": "clip-vit-b-32",
+    "region": "V1",
+    "checkpoint": "openai/clip-vit-base-patch32",
+    "checkpoint_revision": "3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268",
+    "checkpoint_files_sha256": {
+      "vocab.json": "5047b556ce86ccaf6aa22b3ffccfc52d391ea4accdab9c2f2407da5b742d4363",
+      "config.json": "b575ef3c36f2a057fa19e221650105052d61cc9c1a972ec15019c6261ec98770",
+      "special_tokens_map.json": "f8c0d6c39aee3f8431078ef6646567b0aba7f2246e9c54b8b99d55c22b707cbf",
+      "tokenizer_config.json": "34b7336e4bee12e0a9730eaf5189f582ef3c3eea5027f65730e5717256755aad",
+      "pytorch_model.bin": "a63082132ba4f97a80bea76823f544493bffa8082296d62d71581a4feff1576f",
+      "merges.txt": "f526393189112391ce6f9795d4695f704121ce452c3aad1f5335cc41337eba85",
+      "preprocessor_config.json": "910e70b3956ac9879ebc90b22fb3bc8a75b6a0677814500101a4c072bd7857bd",
+      "tokenizer.json": "b556ac8c99757ffb677208af34bc8c6721572114111a6e0aaf5fa69ff0b8d842"
+    },
+    "unified_base": "24083a5",
+    "uncommitted_source_sha256": {
+      "brainscore/experiments/henaff2021/geometry.py": "40c05285870c63d2cb553441099485e580c6994550592812cb20b5ceca21e153",
+      "brainscore/experiments/henaff2021/experiment.py": "2265594df979b37c69d76fc607cf31f676cfd803c777ebd1ee6c8e8b0656cdc4",
+      "brainscore/experiments/henaff2021/__init__.py": "581a4e08b42f567e66ac39c5cac7b05a12726676c922a5f6380607b4ff142d26",
+      "brainscore/experiments/henaff2021/data.py": "83b374648bc6f4347e0c40e870ef41897f53c58791b782534b9f26299ec1e163",
+      "brainscore/experiments/henaff2021/__main__.py": "4c8f2c96db4580c58a5002cf471d90c71661832b5fa7546f262d3c53b7c87946"
+    },
+    "peers": {
+      "core": "5193fe7d924cb54a6d2f1fbe0af93c16c15cc2fe",
+      "vision": "38196e27a71d62249199d6f1e905b03a168e45b6",
+      "language": "d31994f2427301e2a9533567a0c8a3f114d138bd"
+    },
+    "python": "3.11.15",
+    "packages": {
+      "torch": "2.6.0+cu124",
+      "torchvision": "0.21.0+cu124",
+      "transformers": "5.16.1",
+      "numpy": "1.26.4",
+      "pandas": "2.3.3",
+      "scipy": "1.17.1",
+      "scikit-learn": "1.7.2",
+      "brainscore": "0.3.0rc1",
+      "brainscore_core": "2.4.0rc1",
+      "brainscore_vision": "2.4.0rc1",
+      "brainscore_language": "2.3.0rc1"
+    },
+    "device_setting": "CUDA_VISIBLE_DEVICES=0",
+    "gpu": "NVIDIA A10G",
+    "model_weights_dtype": "float32",
+    "recorded_output_dtype": "float32",
+    "seed": 0,
+    "repetitions": 1,
+    "environment": {
+      "RESULTCACHING_DISABLE": "1",
+      "OMP_NUM_THREADS": "4",
+      "MKL_NUM_THREADS": "4"
+    },
+    "model_mapping": "registered clip_vit_b_32/model.py; V1=vision encoder.layers.1",
+    "status": "run settings and inputs; completion is recorded by experiment.json"
+  },
+  "pixel_diagnostics": {
+    "max_png_vs_archive_float_deg": 2.635933113819508,
+    "max_archive_float_vs_lnln_baseline_deg": 0.017915812286844357,
+    "max_archive_float_vs_inference_csv_baseline_deg": 21.93559150988736,
+    "interpretation": "The archive contains different pixel baselines. Their cause is unresolved. Keep them separate; do not call this an exact acquisition replication."
+  }
+}

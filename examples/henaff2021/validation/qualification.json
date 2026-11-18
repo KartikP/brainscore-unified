@@ -1,0 +1,22 @@
+{
+  "complete": true,
+  "neural_shape": [
+    400,
+    38400
+  ],
+  "neural_dims": [
+    "presentation",
+    "neuroid"
+  ],
+  "unique_presentations": 400,
+  "repeat_run_neural_values_exact": true,
+  "repeat_run_stimulus_ids_exact": true,
+  "focused_tests": "....................................                                     [100%]\n36 passed in 2.52s",
+  "source_and_checkpoint_provenance": "summary.json: execution_provenance",
+  "operational_paths": "omitted from shared receipt",
+  "test_source_sha256": {
+    "tests/test_henaff2021.py": "7797118a8c7fa59d6b5ed96a7b4f4a078997017645069a1fc670473774a2d5a8",
+    "tests/test_task_protocol.py": "6a5301bcc779e695517b127395f1411ce4e7e599662cdb4d7da7e2ed4fef3e50"
+  },
+  "pr_source_comparison": "source-comparison.json; only trailing blank lines differ"
+}

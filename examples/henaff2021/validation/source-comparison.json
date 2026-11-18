@@ -1,0 +1,37 @@
+{
+  "brainscore/experiments/henaff2021/__init__.py": {
+    "qualified_sha256": "581a4e08b42f567e66ac39c5cac7b05a12726676c922a5f6380607b4ff142d26",
+    "pr_sha256": "6f935a985070e2ea59770f88be7308565eedde4426db037d2efc80255899541e",
+    "difference": "trailing newlines only"
+  },
+  "brainscore/experiments/henaff2021/__main__.py": {
+    "qualified_sha256": "4c8f2c96db4580c58a5002cf471d90c71661832b5fa7546f262d3c53b7c87946",
+    "pr_sha256": "4c8f2c96db4580c58a5002cf471d90c71661832b5fa7546f262d3c53b7c87946",
+    "difference": "identical"
+  },
+  "brainscore/experiments/henaff2021/data.py": {
+    "qualified_sha256": "83b374648bc6f4347e0c40e870ef41897f53c58791b782534b9f26299ec1e163",
+    "pr_sha256": "83b374648bc6f4347e0c40e870ef41897f53c58791b782534b9f26299ec1e163",
+    "difference": "identical"
+  },
+  "brainscore/experiments/henaff2021/experiment.py": {
+    "qualified_sha256": "2265594df979b37c69d76fc607cf31f676cfd803c777ebd1ee6c8e8b0656cdc4",
+    "pr_sha256": "c66ef01dd03d7fb9803412ce8fb0ec21e6532745324a8108e58c8076d7bedb5c",
+    "difference": "trailing newlines only"
+  },
+  "brainscore/experiments/henaff2021/geometry.py": {
+    "qualified_sha256": "40c05285870c63d2cb553441099485e580c6994550592812cb20b5ceca21e153",
+    "pr_sha256": "f975494b80f5f252e8bf94534c5d626a58826ebb13e2c286afb0a0a8b3194fed",
+    "difference": "trailing newlines only"
+  },
+  "tests/test_henaff2021.py": {
+    "qualified_sha256": "7797118a8c7fa59d6b5ed96a7b4f4a078997017645069a1fc670473774a2d5a8",
+    "pr_sha256": "7797118a8c7fa59d6b5ed96a7b4f4a078997017645069a1fc670473774a2d5a8",
+    "difference": "identical"
+  },
+  "tests/test_task_protocol.py": {
+    "qualified_sha256": "6a5301bcc779e695517b127395f1411ce4e7e599662cdb4d7da7e2ed4fef3e50",
+    "pr_sha256": "6a5301bcc779e695517b127395f1411ce4e7e599662cdb4d7da7e2ed4fef3e50",
+    "difference": "identical"
+  }
+}
