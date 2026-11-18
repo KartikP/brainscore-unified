@@ -398,17 +398,43 @@ def test_record_keeps_one_session_per_call_and_replay_rebuilds_them(reference, t
     assert compare_outputs(original.directory, replay.directory)['equal']
 
 
-def test_a_call_without_a_usable_written_answer_reaches_coggym_as_empty_text():
-    """A missing written answer does not stop the run (Contract Rule 6.2): CogGym reads no
-    value from the empty text and the slider check counts it missing."""
+class _Silent(Subject):
+    """Reads every input and writes no answer."""
+
+    identifier = 'silent'
+    in_channels = frozenset({'instruction', 'text'})
+    out_channels = frozenset({'behavior:text'})
+
+    def participate(self, session):
+        while session.next_input() is not None:
+            pass
+
+    def reset(self):
+        pass
+
+
+def test_a_call_with_no_written_answer_reaches_coggym_as_a_call_with_no_reply(reference, tmp_path):
+    """Contract Rule 6.2: core stores the trial as missing and the run goes on. CogGym gets
+    its own record of a call with no reply (an error entry with no scores), not a text."""
+    root, _ = reference
+    runner = coggym.CogGymRunner(root, model='fixture')
+    result = Experiment(subject=_Silent(), protocol=runner.protocol(reset=lambda repetition: None),
+                        output_dir=tmp_path / 'run').run()
+    saved = json.loads((result.directory / 'coggym/run-001.json').read_text())
+    assert all('error' in trial and 'response' not in trial for trial in saved['trials'])
+    assert saved['umi']['status'] == 'complete'
+    assert saved['umi']['coverage']['no_answer_trials'] == len(saved['trials'])
+    assert saved['umi']['coverage']['error_trials'] == 0
+
+
+def test_an_answer_core_stores_as_invalid_reaches_coggym_as_its_text():
     import numpy as np
     from brainscore.harnesses.coggym import _written_answer
-    from brainscore_core.streaming import StreamEvent
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
-    missing = BehavioralAssembly(np.array([None], dtype=object), dims=['presentation'], coords={
-        'stimulus_id': ('presentation', ['t0']), 'answer_valid': ('presentation', [False]),
-        'response_state': ('presentation', ['missing'])})
-    assert _written_answer(StreamEvent('behavior:text', missing, None)) == ''
+    invalid = BehavioralAssembly(np.array(['{"answer": 7}'], dtype=object), dims=['presentation'], coords={
+        'stimulus_id': ('presentation', ['t0']), 'response_state': ('presentation', ['invalid']),
+        'response_reason': ('presentation', ['marked invalid by the model side'])})
+    assert _written_answer(invalid) == ('{"answer": 7}', 'invalid', 'marked invalid by the model side')
 
 
 def test_a_summary_that_cannot_be_saved_keeps_the_completed_trials(reference, tmp_path):

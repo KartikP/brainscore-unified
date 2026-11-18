@@ -340,7 +340,7 @@ class _NoRawAnswer(Subject):
 
 
 def test_a_text_answer_stored_as_missing_does_not_stop_the_run(scored_reference, tmp_path):
-    """Contract Rule 6.2: CogGym receives an empty text for a missing written answer."""
+    """Contract Rule 6.2: a missing written answer reaches CogGym as a call with no reply."""
     root, _ = scored_reference
     benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root,
                                           reset=lambda repetition: None, repetitions=2,
@@ -348,7 +348,7 @@ def test_a_text_answer_stored_as_missing_does_not_stop_the_run(scored_reference,
     score = brainscore.score(_NoRawAnswer(), benchmark, check_mem=False)
     assert float(score) == 0.375
     run = json.loads((tmp_path / 'scored' / 'coggym' / 'run-001.json').read_text())
-    assert {trial['response'] for trial in run['trials']} == {''}
+    assert all('error' in trial and 'response' not in trial for trial in run['trials'])
 
 
 def test_an_evaluator_that_cannot_import_a_module_is_one_clear_load_error(reference):

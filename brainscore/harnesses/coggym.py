@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import base64
 from collections import Counter
-import dataclasses
 import hashlib
 import json
 import math
@@ -196,31 +195,32 @@ def _trial_row(messages, media_directory: Path) -> tuple[dict, tuple[str, ...]]:
     return row, tuple(present)
 
 
-def _written_answer(event) -> str:
-    """The one written answer in a ``behavior:text`` event; an empty text when there is none.
-
-    A trial whose stored state is not ``valid`` does not stop the run (Contract Rule 6.2):
-    CogGym receives an empty text, reads no value from it and leaves the item out of its
-    fit; the slider check counts the answer ``missing``. The raw response stays in the
-    recorded session.
-    """
-    payload = event.payload
-    if not isinstance(payload, str):
-        try:
-            states = [str(state) for state in payload['response_state'].values]
-        except (KeyError, TypeError):
-            states = []
-        valid = getattr(payload, 'coords', {}).get('answer_valid')
-        if any(state != 'valid' for state in states) or (
-                valid is not None and not bool(np.all(valid.values))):
-            return ''
-        values = np.asarray(getattr(payload, 'values', payload), dtype=object).reshape(-1)
-        if values.size != 1:
-            raise ValueError(f'A CogGym call needs one written answer, not {values.size}')
-        payload = values[0]
-    if not isinstance(payload, str):
+def _written_answer(answer) -> tuple[str | None, str, str]:
+    """The written answer of one call (the collected ``behavior:text`` table), its state and
+    core's reason (Contract Rule 6.2). A missing answer has no text."""
+    values = np.asarray(answer.values, dtype=object).reshape(-1)
+    if values.size != 1:
+        raise ValueError(f'A CogGym call needs one written answer, not {values.size}')
+    state = str(np.asarray(answer['response_state'].values).reshape(-1)[0])
+    reason = str(np.asarray(answer['response_reason'].values).reshape(-1)[0])
+    if state == 'missing':
+        return None, state, reason
+    if not isinstance(values[0], str):
         raise TypeError('CogGym needs the answer on behavior:text as text (str)')
-    return payload
+    return values[0], state, reason
+
+
+def _core_states(validation, results, invalid):
+    """The check's report, with every answer of a trial in ``invalid`` (written answers core
+    stored as invalid: trial id to core's reason) counted ``invalid`` for that reason."""
+    if not invalid:
+        return validation
+    issues = [issue for issue in validation['issues'] if issue['trial_id'] not in invalid]
+    issues += [{'trial_id': result['trial_id'], 'query': tag, 'reason': invalid[result['trial_id']],
+                'response_state': 'invalid'}
+               for result in results if result.get('trial_id') in invalid
+               for tag in result.get('parsed') or {}]
+    return {**validation, 'issues': issues}
 
 
 class _SubjectAdapter:
@@ -244,6 +244,11 @@ class _SubjectAdapter:
     scores them. They come from the extra data (``meta``) of the answer event
     when the subject gives them; otherwise they are ``None``.
 
+    A trial with no written answer (core stores it as ``missing``) reaches CogGym as a
+    failed call, CogGym's own record of a call with no reply; the run goes on and the
+    trial's answers are counted ``missing``. An answer core stores as ``invalid`` reaches
+    CogGym as its text, and its answers are counted ``invalid`` with core's reason.
+
     A trial the subject cannot serve (``ExecutionNotFeasibleError``, for example a
     trial with more pictures than the subject takes) is kept in ``refusal``; no
     later trial reaches the subject, and the run ends with that error.
@@ -257,6 +262,8 @@ class _SubjectAdapter:
         self.prompt_trials = prompt_trials
         self.media_directory = context.directory / 'coggym-media'
         self.refusal = None
+        # The trials whose written answer core stored as missing or invalid, with core's reason.
+        self.no_reply, self.invalid = {}, {}
         # How many calls of each prompt this repetition has made: several trials can share one
         # prompt, and CogGym calls them in trial order, so the k-th call is the k-th such trial.
         self.prompt_calls = {}
@@ -285,14 +292,22 @@ class _SubjectAdapter:
                 f'CogGym trial {trial_id}: the subject cannot serve it: {error}',
                 channels=error.channels, task_type=error.task_type)
             raise self.refusal from error
-        answers = [event for event in session.emitted if event.channel == 'behavior:text']
+        # Collect first: it stores the missing row of a trial the subject did not answer.
         collected = session.collect('behavior:text')
+        answers = [event for event in session.emitted if event.channel == 'behavior:text']
         if len(answers) != 1:
             raise TypeError(f'CogGym needs one behavior:text answer for each call; got {len(answers)}')
+        text, state, reason = _written_answer(collected)
+        if state == 'missing':
+            # CogGym's own record of a call with no reply: an entry with the error and no
+            # scores, which its fit leaves out for every question type. The message is fixed:
+            # CogGym calls again on some words (rate limits).
+            self.no_reply[trial_id] = reason
+            raise ValueError('no answer: the subject wrote no answer for this trial')
+        if state == 'invalid':
+            self.invalid[trial_id] = reason     # CogGym parses the raw text; the count says invalid
         meta = answers[0].meta if isinstance(answers[0].meta, dict) else {}
-        # The answer event keeps its row; the collected answer is its table.
-        return {'text': _written_answer(dataclasses.replace(answers[0], payload=collected)),
-                'reasoning': meta.get('reasoning'), 'token_usage': meta.get('token_usage')}
+        return {'text': text, 'reasoning': meta.get('reasoning'), 'token_usage': meta.get('token_usage')}
 
 
 class CogGymRunner:
@@ -491,14 +506,18 @@ class CogGymRunner:
             if refusal is not None:
                 raise refusal
             results = ran['results']
-            # Keep reference parsing and scoring intact. Check separately whether
-            # slider ratings really occur in the response, rather than in prose.
-            validation = ran['validation']
+            # Keep reference parsing and scoring intact. The state of each requested answer
+            # comes from the check; an answer core stored as invalid keeps core's state.
+            validation = _core_states(ran['validation'], results, getattr(adapter, 'invalid', {}))
             validations.append(validation)
+            no_reply = getattr(adapter, 'no_reply', {})
+            failed = [result for result in results
+                      if 'error' in result and result.get('trial_id') not in no_reply]
             coverage = {
                 'expected_trials': len(self._trials),
                 'returned_trials': len(results),
-                'error_trials': sum('error' in result for result in results),
+                'error_trials': len(failed),
+                'no_answer_trials': sum('error' in result for result in results) - len(failed),
                 'unscorable_trials': sum(not any(
                     score.get('scorable') for score in result.get('scores', {}).values()
                 ) for result in results if 'error' not in result),
