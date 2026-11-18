@@ -7,3 +7,11 @@ def _load():  # defer heavy imports to load time (keep `import brainscore` light
 
 
 model_registry['clip-vit-b-32'] = _load
+
+
+def _load_zero_shot():
+    from .model import get_model
+    return get_model('clip-vit-b-32-zero-shot')
+
+
+model_registry['clip-vit-b-32-zero-shot'] = _load_zero_shot

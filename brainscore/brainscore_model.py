@@ -74,7 +74,7 @@ def _one_session_at_a_time(model):
 class BrainScoreModel(Subject):
     """The one concrete subject, assembled from parts (extractors, region map,
     answer, reply, likelihood, policy, intervention, capabilities). Evaluated
-    through ``participate``, which selects the one session part that runs the
+    through ``participate``, which selects the one capability that runs the
     session; ``process`` is a convenience outside the contract. A legacy vision
     or language benchmark reaches it through
     :class:`~brainscore_core.legacy_facade.LegacyBenchmarkFacade`, which
@@ -393,7 +393,10 @@ class BrainScoreModel(Subject):
         first = min(c.order for c in claims)
         winners = [c for c in claims if c.order == first]
         if len(winners) > 1:
-            raise ValueError(f'Ambiguous session handlers: {[c.identifier for c in winners]}')
+            raise ValueError(
+                f'Ambiguous capabilities: {[c.identifier for c in winners]} both claim '
+                f'{sorted(channels)} at order {first}. Narrow the claims of one capability '
+                '(supports_session), or give one capability a lower order.')
         return winners[0]
 
     @property
@@ -502,14 +505,14 @@ class BrainScoreModel(Subject):
     def participate(self, session) -> None:
         """Run a session through the one registered capability that claims it.
 
-        The handler sees only the streams this model declares in
+        The capability sees only the streams this model declares in
         ``in_channels``; every other stream the experiment sends is skipped
         before it reaches any part (Contract Rules v3, rule 5.5).
 
         ``BRAINSCORE_REGIONS_PER_PASS`` is read and checked here, once, for every
         kind of session (see ``brainscore._model.channels``). The session's plan
         (``_model/plan.py``) is built once, before any setup or compute, and the
-        session parts read it; a combination that cannot run is refused there.
+        capabilities read it; a combination that cannot run is refused there.
         """
         from brainscore_core.score_metadata import note_session
         from ._model.channels import regions_per_pass
@@ -525,12 +528,12 @@ class BrainScoreModel(Subject):
                 from .capabilities.registry import _setup_once
                 # Every part notes its calls in the session's log, from set-up (a readout fit) on.
                 with parts.session_log() as log:
-                    _setup_once(self, self._session_plan.handler)
+                    _setup_once(self, self._session_plan.capability)
                     # A task the session configures ends with the session (rule 4.5).
                     # Weights are hashed once per session for the activation cache key;
                     # inside score() the run's scope is reused.
                     with self._behavioral.session_scope(), weight_fingerprint_scope():
-                        self._session_plan.handler.participate(self, session)
+                        self._session_plan.capability.participate(self, session)
                         # Once per session: the parts that ran and their facts, to the run
                         # record (no response is changed). A failed session sends nothing.
                         note_session(session, provenance=provenance.session_entry(self, session, log))

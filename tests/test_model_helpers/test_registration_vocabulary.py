@@ -285,10 +285,11 @@ def test_registrations_pass_only_public_slot_names():
         tree = ast.parse(_registration_path(folder).read_text(encoding='utf-8'))
         calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
                  and getattr(node.func, 'id', None) == 'BrainScoreModel']
-        assert len(calls) == 1, folder
-        keywords = {keyword.arg for keyword in calls[0].keywords}
-        assert not keywords & REMOVED, folder
-        assert 'extractor' in keywords, folder
+        assert calls, folder
+        for call in calls:   # a model file can hold several registrations
+            keywords = {keyword.arg for keyword in call.keywords}
+            assert not keywords & REMOVED, folder
+            assert 'extractor' in keywords, folder
 
 
 def test_constructor_wiring(registration):

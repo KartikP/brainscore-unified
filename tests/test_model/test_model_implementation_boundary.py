@@ -78,8 +78,8 @@ def test_selector_instance_pickle_round_trip():
     assert restored == selector
 
 
-def test_built_in_capabilities_are_the_session_parts():
-    """The registry holds one session part per answering part; they come after
+def test_built_in_capabilities_are_one_per_answering_part():
+    """The registry holds one built-in capability per answering part; they come after
     any added capability (default order 1000)."""
     from brainscore.capabilities import Capability, capability_registry
     built_in = {'neural-sessions', 'behavior-sessions', 'motor-sessions', 'intervention-sessions'}
