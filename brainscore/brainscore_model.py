@@ -393,7 +393,10 @@ class BrainScoreModel(Subject):
         first = min(c.order for c in claims)
         winners = [c for c in claims if c.order == first]
         if len(winners) > 1:
-            raise ValueError(f'Ambiguous capabilities: {[c.identifier for c in winners]}')
+            raise ValueError(
+                f'Ambiguous capabilities: {[c.identifier for c in winners]} both claim '
+                f'{sorted(channels)} at order {first}. Narrow the claims of one capability '
+                '(supports_session), or give one capability a lower order.')
         return winners[0]
 
     @property
