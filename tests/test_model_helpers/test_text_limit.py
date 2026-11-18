@@ -77,3 +77,21 @@ def test_a_long_text_keeps_its_newest_tokens():
     network, tokenizer = _Seen(), _tokenizer()
     TextWrapper(network, tokenizer, max_length=2, device='cpu')(['the cat sat'], ['embed'])
     assert network.seen == [tokenizer.convert_tokens_to_ids(['cat', 'sat'])]
+
+
+class _OutOfMemory(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.embed = torch.nn.Embedding(9, 2)
+
+    def forward(self, input_ids=None, attention_mask=None, **_):
+        raise torch.OutOfMemoryError('out of memory')
+
+
+def test_an_out_of_memory_batch_names_the_limit_and_the_remedy():
+    from tests.test_model_helpers.test_wrapper_cache_guard import _tokenizer
+    wrapper = TextWrapper(_OutOfMemory(), _tokenizer(), identifier='big', max_length=48, device='cpu')
+    with pytest.raises(torch.OutOfMemoryError) as error:
+        wrapper(['the cat sat', 'dog'], ['embed'])
+    for fragment in ('big', 'limit 48', '3 tokens', 'smaller max_length'):
+        assert fragment in str(error.value)

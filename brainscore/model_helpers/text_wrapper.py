@@ -394,7 +394,14 @@ class TextWrapper(CachingExtractor):
         self._model.eval()
         with LiveRecording(self._model, self._model, layer_names, as_array, self._reduce,
                            attention_mask) as recording, torch.no_grad():
-            self._model(**tokens)
+            try:
+                self._model(**tokens)
+            except torch.OutOfMemoryError as error:
+                raise torch.OutOfMemoryError(
+                    f'{self._identifier}: a padded batch of {len(texts)} texts, the longest '
+                    f'{tokens["input_ids"].shape[-1]} tokens (limit {self._max_length}), ran out of '
+                    f'accelerator memory. State a smaller max_length (or batch_size) for the '
+                    f'TextWrapper in the registration.') from error
             return recording.take()
 
     def _reduce(self, layer_results, mask, _row=None):
