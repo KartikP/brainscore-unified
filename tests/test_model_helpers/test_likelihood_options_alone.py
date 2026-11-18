@@ -85,6 +85,7 @@ def test_implied_probabilities_keep_the_ratio_of_two_options_for_any_other_optio
 
 class _Characters:
     """One token per character (its code), no start token; a chat template that shows the stimulus text."""
+    model_max_length = 64   # a real tokenizer states its limit
     pad_token_id = eos_token_id = 0
     pad_token = eos_token = '\x00'
 
