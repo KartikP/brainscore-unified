@@ -15,15 +15,20 @@ from brainscore.harnesses.coggym import CogGymRunner
 
 from . import EXPERIMENTS
 
-# What the score does with a slider answer (Contract Rule 6.2). CogGym parses the text
-# (rule 3.9); the check coggym-slider-v1 gives each slider answer a state.
-ANSWER_POLICY = ("the number is CogGym's own fit; a slider answer that coggym-slider-v1 rejects "
-                 'but CogGym read (a number taken from prose, a clamped value, a duplicate key) is '
-                 'invalid and stays in the fit as CogGym read it; an answer CogGym could not read '
-                 '(also a missing written answer, given to CogGym as empty text) is missing and '
-                 'CogGym leaves it out of its fit; above 10 percent invalid and missing answers '
-                 'the result is marked invalid')
-# The share of invalid and missing slider answers above which the result is marked invalid.
+# What the score does with each answer (Contract Rule 6.2). CogGym parses the text (rule
+# 3.9); the check coggym-slider-v1 gives each slider answer a state.
+ANSWER_POLICY = ("the number is CogGym's own fit; a value CogGym parsed enters the fit only when "
+                 'CogGym has human data for it; every requested answer of each repetition has a '
+                 'state; a slider answer that coggym-slider-v1 rejects but CogGym read (a number '
+                 'taken from prose, a clamped value, a duplicate key) is invalid and stays in the '
+                 'fit as CogGym read it; an answer of another type is valid when CogGym parsed a '
+                 'value for it; an answer CogGym could not read is missing and stays out of the '
+                 'fit; a trial with no written answer reaches CogGym as a failed call (its own '
+                 'record of a call with no reply), so its answers are missing and in no fit; a '
+                 'written answer that core stores as invalid reaches CogGym as its text and is '
+                 'counted invalid; above 10 percent invalid and missing answers, or when CogGym '
+                 'makes no fit, the result is marked invalid')
+# The share of invalid and missing answers above which the result is marked invalid.
 INVALID_LIMIT = 0.1
 
 
@@ -77,12 +82,18 @@ class CogGymBenchmark(BenchmarkBase):
     sends a separate system text. ``score.attrs['input_adaptation']`` names this
     cause.
 
-    The score is CogGym's own fit. The check ``coggym-slider-v1`` gives each slider
-    answer a state and changes no value: ``valid``; ``invalid`` (CogGym read a value the
-    check rejects; it stays in the fit as CogGym read it); ``missing`` (CogGym read no
-    value and left the item out). The score carries the counts and ``answer_policy``.
-    Above 10 percent invalid and missing answers the result is returned with
-    ``result_validity == 'invalid'``, without an error (Contract Rule 6.2).
+    The score is CogGym's own fit. Every requested answer of each repetition has a state,
+    and no value changes: a slider answer goes through the check ``coggym-slider-v1``
+    (``invalid`` when CogGym read a value the check rejects; it stays in the fit as CogGym
+    read it); any other answer is ``valid`` when CogGym parsed a value; ``missing`` when
+    CogGym has none (also a trial with no written answer, which reaches CogGym as a failed
+    call). The score carries the counts and ``answer_policy``; ``response_validation``
+    carries the detector's findings counted by reason. Above 10 percent invalid and missing
+    answers, or when CogGym makes no fit (no answer it could fit, fewer than 5 scorable
+    items, ratings with no variance), the result is returned with ``result_validity ==
+    'invalid'``, its reason and NaN for no fit, without an error (Contract Rule 6.2). An
+    error stays for a fault of the run: a result for another model or experiment, no
+    result although answers are valid, a failed call, an incomplete run.
     """
 
     # Declare the messages the subject must accept and return before a run starts.
@@ -172,21 +183,31 @@ class CogGymBenchmark(BenchmarkBase):
             result = native.evaluate(subject, context)
             validation = result['response_validation']
             rows = result['experiments']
-            if len(rows) != 1 or rows[0]['experiment'] != self.experiment or rows[0]['model'] != model:
+            if len(rows) > 1 or any(row['experiment'] != self.experiment or row['model'] != model
+                                    for row in rows):
                 raise RuntimeError('CogGym must return exactly the requested model and experiment')
-            value = rows[0]['r2']
+            # One state for each requested answer of each repetition.
+            states = [[issue['response_state'] for issue in report['issues']]
+                      + ['valid'] * (report['checked_queries'] - len(report['issues']))
+                      for report in validation['repetitions']]
+            n_answers = sum(len(part) for part in states)
+            n_valid = sum(part.count('valid') for part in states)
+            if rows:
+                value, n_items = rows[0]['r2'], rows[0].get('n_items')
+            elif n_answers and not n_valid:
+                value, n_items = None, 0      # no answer CogGym could fit: it makes no row
+            else:
+                raise RuntimeError(f'CogGym returned no result for the experiment, and the answers do '
+                                   f'not explain it: {n_valid} of {n_answers} answers are valid')
             undefined = value is None or not math.isfinite(value)
-            # One row for each checked slider answer of each repetition, with its state.
-            answers = [pd.DataFrame({'response_state': [issue['response_state'] for issue in report['issues']]
-                                     + ['valid'] * (report['checked_queries'] - len(report['issues']))})
-                       for report in validation['repetitions']]
             # Keep CogGym's R² unchanged. Attributes explain how it was obtained;
             # no human-ceiling normalization is applied.
             score = adapter_score(
                 self, float('nan') if undefined else value, metric='pearson_r_squared',
                 context=context, input_adaptation=_PROMPT_NOTE,
                 modality=self.modality,
-                answers=answers, answer_policy=ANSWER_POLICY, invalid_limit=INVALID_LIMIT,
+                answers=[pd.DataFrame({'response_state': part}) for part in states],
+                answer_policy=ANSWER_POLICY, invalid_limit=INVALID_LIMIT,
                 configuration=result['configuration'],
                 coverage=result['repetitions'],
                 response_validation=validation,
@@ -195,13 +216,19 @@ class CogGymBenchmark(BenchmarkBase):
                 reference_profile=self._reference_profile,
                 repetition_note='Five repeats match the reference README example, not a guarantee of leaderboard replication.',
             )
-            # A result marked invalid is returned even without a fit (rule 6.2); otherwise an
-            # undefined fit is no score.
-            if undefined and score.attrs['result_validity'] != 'invalid':
-                raise ValueError(
-                    'CogGym R² is undefined; inspect the saved responses and coverage. '
-                    'An unscorable experiment is not a zero score.'
-                )
+            if undefined:
+                # No fit is a result of the answers, marked invalid with its reason (rule 6.2).
+                if not rows:
+                    why = f'CogGym made no fit: none of the {n_answers} answers is valid'
+                elif n_items is not None and n_items < 5:
+                    why = f'CogGym made no fit: {n_items} scorable items, fewer than its minimum of 5'
+                elif n_items is not None:
+                    why = 'CogGym made no fit: the model or the human ratings have no variance'
+                else:
+                    why = 'CogGym made no fit: fewer than 5 scorable items, or ratings with no variance'
+                shared = score.attrs.get('result_validity_reason')
+                score.attrs['result_validity'] = 'invalid'
+                score.attrs['result_validity_reason'] = f'{shared}; {why}' if shared else why
             return score
 
         return CallableProtocol(
