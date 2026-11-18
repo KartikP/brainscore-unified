@@ -178,3 +178,39 @@ def test_github_read_sends_the_token(monkeypatch):
     assert module.github_file('brain-score/core', 'v2', 'requirements-v2.txt') == 'text'
     assert seen['authorization'] == 'Bearer secret'
     assert seen['url'].endswith('/repos/brain-score/core/contents/requirements-v2.txt?ref=v2')
+
+
+def _serve_trees(module, monkeypatch, trees: dict) -> None:
+    """Serve ``git/trees/<ref>`` from ``trees``: ref -> {name: (type, sha)}."""
+    def github_file(repository, ref, path, api=False):
+        entries = trees.get(path.removeprefix('git/trees/'))
+        if entries is None:
+            return None
+        return json.dumps({'tree': [{'path': name, 'type': kind, 'sha': sha}
+                                    for name, (kind, sha) in entries.items()]})
+    monkeypatch.setattr(module, 'github_file', github_file)
+
+
+def test_squash_merged_source_with_equal_code_passes(pins, monkeypatch):
+    """A squash merge has other history but the named commit's tree: no path differs."""
+    trees = {'named': {'pkg': ('tree', 'P1'), 'README.md': ('blob', 'R1')},
+             'branch': {'pkg': ('tree', 'P1'), 'README.md': ('blob', 'R1')}}
+    _serve_trees(pins, monkeypatch, trees)
+    source = pins.Source('vision', 'brain-score/vision', ref='branch')
+    assert source.changed_since('named') == set()
+
+
+def test_source_with_a_changed_file_names_the_file(pins, monkeypatch):
+    trees = {'named': {'pkg': ('tree', 'P1'), 'README.md': ('blob', 'R1')},
+             'branch': {'pkg': ('tree', 'P2'), 'README.md': ('blob', 'R1')},
+             'P1': {'model.py': ('blob', 'M1'), 'data.py': ('blob', 'D1')},
+             'P2': {'model.py': ('blob', 'M2'), 'data.py': ('blob', 'D1')}}
+    _serve_trees(pins, monkeypatch, trees)
+    source = pins.Source('vision', 'brain-score/vision', ref='branch')
+    changed = source.changed_since('named')
+    assert 'pkg/model.py' in changed and 'pkg/data.py' not in changed
+
+
+def test_unreadable_tree_is_unknown(pins, monkeypatch):
+    _serve_trees(pins, monkeypatch, {'branch': {}})
+    assert pins.Source('vision', 'brain-score/vision', ref='branch').changed_since('named') is None
