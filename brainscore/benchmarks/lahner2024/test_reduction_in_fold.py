@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from sklearn.decomposition import TruncatedSVD
 
-from brainscore.benchmarks.lahner2024 import (
+from brainscore.benchmarks.lahner2024.benchmark_timeresolved import (
     Lahner2024BOLDMoments_timeresolved, ParticipantRunBlocks, RunBlocks)
 from brainscore.benchmarks.lahner2024 import benchmark_timeresolved as module
 from brainscore.benchmarks.lahner2024.benchmark_timeresolved import FEATURE_DIM_CAP

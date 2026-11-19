@@ -106,6 +106,13 @@ def test_another_python_gives_another_folder_with_its_version(lanternfield, tmp_
     assert log.read_text().startswith('-m venv')        # the named Python made the environment
 
 
+def test_an_empty_python_name_makes_the_folder_with_this_python(lanternfield):
+    module, _ = lanternfield
+    usual = module.ready_folder(module.LANTERNFIELD, 'Lanternfield.demo')
+    empty = module.ready_folder(dataclasses.replace(module.LANTERNFIELD, python=''), 'Lanternfield.demo')
+    assert empty == usual
+
+
 def test_a_folder_made_for_another_python_or_library_is_refused_also_when_named(lanternfield, tmp_path):
     module, _ = lanternfield
     log = tmp_path / 'python.log'
