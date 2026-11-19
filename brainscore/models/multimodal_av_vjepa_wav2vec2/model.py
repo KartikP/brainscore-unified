@@ -16,6 +16,8 @@ Reuses the V-JEPA v1 ViT-L backbone vendored under
 ``brainscore.models.vjepa_v1.backbone`` (no second download).
 """
 
+import re
+
 from brainscore import BrainScoreModel
 from brainscore.models._shared import build_audio_wrapper
 
@@ -63,8 +65,13 @@ def _build_video_wrapper(identifier: str, random_init: bool = False):
 
 
 def get_model(identifier: str) -> BrainScoreModel:
-    random_video = identifier.startswith('random-vjepa1')
-    random_audio = 'random-wav2vec2' in identifier
+    # The identifier names the two towers, each optionally with random weights.
+    parts = re.fullmatch(r'(random-)?vjepa1-(random-)?wav2vec2', identifier)
+    if parts is None:
+        raise ValueError(
+            f"{identifier!r} is not a vjepa1+wav2vec2 identifier ([random-]vjepa1-[random-]wav2vec2). "
+            f"Next step: load an identifier that brainscore.list_models() lists.")
+    random_video, random_audio = bool(parts.group(1)), bool(parts.group(2))
 
     video_wrapper, video_model = _build_video_wrapper(
         identifier, random_init=random_video)

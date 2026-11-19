@@ -1,3 +1,5 @@
+import socket
+
 from pathlib import Path
 
 import pytest
@@ -12,3 +14,15 @@ HERE = Path(__file__).parent
 def test_has_identifier(identifier):
     model = load_model(identifier)
     assert model.identifier == identifier
+
+
+@pytest.mark.parametrize('identifier', ['vjepa-wav2vec2', 'clip-wav2vec2', 'random-clip-wav2vec2'])
+def test_a_wrong_identifier_is_refused_before_any_tower(identifier, monkeypatch):
+    from .model import get_model
+
+    def no_network(*args, **kwargs):
+        raise OSError('the network is blocked in this check')
+    monkeypatch.setenv('HF_HUB_OFFLINE', '1')
+    monkeypatch.setattr(socket.socket, 'connect', no_network)
+    with pytest.raises(ValueError, match='list_models'):
+        get_model(identifier)

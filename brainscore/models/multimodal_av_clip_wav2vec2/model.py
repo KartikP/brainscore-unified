@@ -17,6 +17,8 @@ Four signal/null permutations registered:
 - random-clip-random-wav2vec2    null vision   + null audio
 """
 
+import re
+
 from brainscore import BrainScoreModel, LayerSelector
 from brainscore.models._shared import build_audio_wrapper
 
@@ -53,8 +55,13 @@ def _build_vision_wrapper(combo_identifier: str, random_init: bool = False):
 
 
 def get_model(identifier: str) -> BrainScoreModel:
-    random_vision = identifier.startswith('random-clip')
-    random_audio = 'random-wav2vec2' in identifier
+    # The identifier names the two towers, each optionally with random weights.
+    parts = re.fullmatch(r'(random-)?clip-(random-)?wav2vec2', identifier)
+    if parts is None:
+        raise ValueError(
+            f"{identifier!r} is not a clip+wav2vec2 identifier ([random-]clip-[random-]wav2vec2). "
+            f"Next step: load an identifier that brainscore.list_models() lists.")
+    random_vision, random_audio = bool(parts.group(1)), bool(parts.group(2))
 
     vision_wrapper = _build_vision_wrapper(
         identifier, random_init=random_vision)
