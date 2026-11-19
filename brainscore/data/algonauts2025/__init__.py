@@ -211,16 +211,10 @@ def per_scan_stimuli(stimulus_set, n_scans: Dict[str, int], media: Sequence[str]
     for column, paths in columns.items():
         df[column] = paths
     table = StimulusSet(df)
-    # Some stores key on the table name and the file paths only (the temporal
-    # helper of old vision models), so the name identifies the input: the
-    # columns and, per medium, the files in order by path and content (the
-    # input part of the extraction fingerprint). Participants who saw the same
-    # files share one name and one stored entry; new bytes at an old path,
-    # other rows or other columns give another name. No participant in the name.
-    from brainscore_core.extraction_cache import file_inputs, fingerprint
-    signature = fingerprint({'columns': sorted(map(str, df.columns)),
-                             'files': [file_inputs(paths) for paths in columns.values()]})
-    table.identifier = f"algonauts2025-{split}-{'-'.join(media)}-{signature[3:19]}"
+    # The name identifies the input, not the participant: participants who saw
+    # the same files share one name and one stored entry.
+    from brainscore.presentation import input_identifier
+    table.identifier = input_identifier(f"algonauts2025-{split}-{'-'.join(media)}", df, list(columns))
     table.stimulus_paths = dict(zip(df['stimulus_id'], df[MEDIA[media[0]][3]]))
     return table
 

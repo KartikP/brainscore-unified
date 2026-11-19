@@ -4,7 +4,8 @@ The Friends table name signs every file of the table, so the clips-with-sound
 table keeps its own name on purpose: a store that keys on the name alone must
 not mistake it for the clips-only table. Each table gets its own video entry.
 Other clips, another order or another frame sampling give another entry.
-Lahner2024 shows its visual and its two-stream subjects one clip table.
+Lahner2024 shows its visual and its two-stream subjects one clip table, named by
+its files, so a clip replaced between the two gets another name.
 The store is a temporary folder; no other cache is enabled.
 """
 import shutil
@@ -95,3 +96,44 @@ def test_lahner_shows_the_visual_and_the_two_stream_subject_one_clip_table(monke
     brainscore.load_benchmark('Lahner2024-fMRI-naturalistic-multimodal')(both)
     sessions = [(ids, name) for inputs, _, ids, name in visual.seen + both.seen if inputs == ['vision:video']]
     assert len(sessions) == 2 and sessions[0] == sessions[1]
+
+
+def test_a_lahner_clip_replaced_between_the_two_routes_gives_the_fresh_activation(monkeypatch, tmp_path):
+    """A subject that keeps its activations by table name alone answers the clip shown,
+    also when a clip is replaced at the same path between the visual and the two-stream
+    benchmark."""
+    import hashlib
+    import brainscore
+    from brainscore_core.streaming import StreamEvent
+    from brainscore_core.streaming_helpers import drain_session_inputs, session_stimuli
+    from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+    from tests.lahner_synthetic import CLIPS, Recorder, install
+
+    def read(path, channel):
+        digest = hashlib.sha256(channel.encode() + open(path, 'rb').read()).digest()
+        return np.frombuffer(digest[:8], dtype=np.uint8).astype(np.float32)
+
+    class NameOnlyStore(Recorder):
+        def __init__(self):
+            super().__init__({'vision:video', 'audio'}, regions=('IT', 'A1'))
+            self.stored, self.answers = {}, []
+
+        def participate(self, session):
+            session.declare_inputs(self._in)
+            stimuli = session_stimuli(session, drain_session_inputs(session))
+            ids = [str(s) for s in stimuli['stimulus_id']]
+            for channel in session.outputs:
+                fresh = np.stack([read(stimuli.stimulus_paths[s], channel) for s in ids])
+                block = self.stored.setdefault((stimuli.identifier, channel), fresh)
+                self.answers.append((block, fresh))
+                session.respond(StreamEvent(channel, NeuroidAssembly(block, dims=['presentation', 'neuroid'], coords={
+                    'stimulus_id': ('presentation', ids), 'neuroid_id': ('neuroid', np.arange(block.shape[1])),
+                    'layer': ('neuroid', ['layer'] * block.shape[1])}), t_ms=None))
+
+    install(monkeypatch, tmp_path)
+    subject = NameOnlyStore()
+    brainscore.load_benchmark('Lahner2024-fMRI-naturalistic')(subject)
+    (tmp_path / 'videos' / f'{CLIPS[0]}.mp4').write_bytes(b'another clip')
+    brainscore.load_benchmark('Lahner2024-fMRI-naturalistic-multimodal')(subject)
+    assert len(subject.answers) >= 3
+    assert all(np.array_equal(block, fresh) for block, fresh in subject.answers)

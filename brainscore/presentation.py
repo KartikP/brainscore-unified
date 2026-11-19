@@ -25,6 +25,22 @@ def frames_from_clip(sample_times_ms, aggregate='mean'):
             'aggregate': aggregate}
 
 
+def input_identifier(prefix: str, stimuli, file_columns) -> str:
+    """The name of a table a subject is shown: ``prefix`` and a signature of its input.
+
+    The signature holds the columns of ``stimuli`` and, for each of ``file_columns``,
+    the files in row order by path and content (the input part of the extraction
+    fingerprint, ``brainscore_core.extraction_cache``). Some stores key on the table
+    name and the file paths only (the temporal helper of old vision models), so equal
+    files in equal order give one name and one stored entry; new bytes at an old path,
+    other rows or other columns give another name. Every file must be readable.
+    """
+    from brainscore_core.extraction_cache import file_inputs, fingerprint
+    signature = fingerprint({'columns': sorted(map(str, stimuli.columns)),
+                             'files': [file_inputs(list(stimuli[column])) for column in file_columns]})
+    return f'{prefix}-{signature[3:19]}'
+
+
 def response_stimulus_ids(response, requested):
     """The ``stimulus_id`` of each row of a subject's response, checked.
 

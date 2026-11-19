@@ -79,6 +79,8 @@ def test_the_benchmark_reads_prepared_frames_and_names_the_command(tmp_path, mon
     assert list(table['clip_id']) == ['a', 'a', 'b', 'b']
     assert set(table.stimulus_paths.values()) == {
         str(frames / f'{clip}_t{t}.png') for clip in 'ab' for t in (500, 1500)}
+    frame_file(frames, 'a.mp4', 500).write_bytes(b'another png')     # replaced at the same path
+    assert frame_table(stimuli, [500, 1500]).identifier != table.identifier
 
 
 def test_the_benchmark_reads_prepared_sound_and_names_the_command(tmp_path, monkeypatch, stimuli):

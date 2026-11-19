@@ -157,9 +157,9 @@ def test_the_table_shown_has_the_identifier_of_its_set(monkeypatch, tmp_path, on
     assert len(seen) == 1
     (table,) = seen
     if identifier:
-        assert table == identifier
+        assert table.startswith(identifier + '-')
     else:
-        assert table not in ('BOLDMoments-videos', 'BOLDMoments-train-videos')
+        assert not table.startswith(('BOLDMoments-videos-', 'BOLDMoments-train-videos-'))
 
 
 # ── Variants without a reliability mask do not change ─────────────

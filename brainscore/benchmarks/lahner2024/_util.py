@@ -110,10 +110,12 @@ def clip_table(stimuli, identifier: str, ids: Optional[Sequence[str]] = None,
     The file is the video (``video_path``). With ``sound`` it is the sound track
     demuxed from the video (``audio_path``, ``<video stem>.wav`` in the local asset
     ``lahner2024-sound``), and every file must exist. ``ids`` picks and orders the
-    clips; the default is every row of ``stimuli`` in table order.
+    clips; the default is every row of ``stimuli`` in table order. The table is named
+    ``identifier`` and the signature of its files (``input_identifier``).
     """
     import pandas as pd
     from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    from brainscore.presentation import input_identifier
 
     ids = list(stimuli['stimulus_id']) if ids is None else list(ids)
     videos = [stimuli.get_stimulus(stimulus_id) for stimulus_id in ids]
@@ -128,7 +130,7 @@ def clip_table(stimuli, identifier: str, ids: Optional[Sequence[str]] = None,
         _require_files(files, audio_dir, LAHNER_SOUND)
     frame = pd.DataFrame({'stimulus_id': ids, column: files})
     table = StimulusSet(frame)
-    table.identifier = identifier
+    table.identifier = input_identifier(identifier, frame, [column])
     table.stimulus_paths = dict(zip(frame['stimulus_id'], frame[column]))
     return table
 
@@ -137,25 +139,35 @@ def frame_table(stimuli, sample_times_ms: Sequence[float]):
     """One row per (clip, sample time): a prepared still of every clip of ``stimuli``.
 
     Rows carry ``clip_id`` and ``frame_time_ms`` (see ``expand_clip_to_frames``).
-    The frames are the local asset ``lahner2024-frames``; every one must exist.
+    The frames are the local asset ``lahner2024-frames``; every one must exist. The
+    table is named by its frame files (``input_identifier``).
     """
+    import pandas as pd
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
     from brainscore.data import local
     from brainscore.data.lahner2024 import LAHNER_FRAMES, frame_file
+    from brainscore.presentation import input_identifier
     from brainscore.temporal import expand_clip_to_frames
 
     frames_dir = local.path(LAHNER_FRAMES.name)
-    clips = clip_table(stimuli, stimuli.identifier)
+    # The clip paths only: the frames are named by their own files, not the clips'.
+    ids = list(stimuli['stimulus_id'])
+    clips = StimulusSet(pd.DataFrame({'stimulus_id': ids,
+                                      'video_path': [str(stimuli.get_stimulus(i)) for i in ids]}))
+    clips.identifier = stimuli.identifier
     _require_files([str(frame_file(frames_dir, video, time_ms))
                     for video in clips['video_path'] for time_ms in sample_times_ms],
                    frames_dir, LAHNER_FRAMES,
                    options=' --sample-times-ms ' + ' '.join(f'{t:g}' for t in sample_times_ms))
-    return expand_clip_to_frames(
+    frames = expand_clip_to_frames(
         clips,
         sample_times_ms=sample_times_ms,
         frame_extractor=lambda video_path, t_ms: str(frame_file(frames_dir, video_path, t_ms)),
         clip_id_col='stimulus_id',
         video_col='video_path',
     )
+    frames.identifier = input_identifier(f'{stimuli.identifier}-frames', frames, ['image_file_name'])
+    return frames
 
 
 def _require_files(files, folder, asset, options=''):

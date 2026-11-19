@@ -1,7 +1,7 @@
 """Small seeded Lahner2024 data at the loader seam, and subjects that answer by participate.
 
 ``install(monkeypatch, tmp_path)`` puts a synthetic stimulus set, GLM-beta
-assembly, TR assembly, events table, motion sidecar, frame files, audio files and
+assembly, TR assembly, events table, motion sidecar, clip, frame and audio files and
 Destrieux atlas behind the registered loaders, so a benchmark loaded by name runs
 end to end without network or model weights. No private name of a benchmark is
 touched.
@@ -123,8 +123,18 @@ def install(monkeypatch, tmp_path, runs=None, bold=None, events=None, glm=None):
         return load
 
     # A registry refuses a second registration: remove the real entry first.
+    # Each clip is a small file of its own bytes: a table is named by its files.
+    videos = tmp_path / 'videos'
+    videos.mkdir()
+    for clip in GLM_CLIPS:
+        (videos / f'{clip}.mp4').write_bytes(clip.encode())
+
+    def stimuli():
+        stimuli = stimulus_set()
+        stimuli.stimulus_paths = {clip: str(videos / f'{clip}.mp4') for clip in GLM_CLIPS}
+        return stimuli
     monkeypatch.delitem(brainscore.stimulus_set_registry, 'BOLDMoments', raising=False)
-    monkeypatch.setitem(brainscore.stimulus_set_registry, 'BOLDMoments', once('s', stimulus_set))
+    monkeypatch.setitem(brainscore.stimulus_set_registry, 'BOLDMoments', once('s', stimuli))
     for identifier, build in (
             ('Lahner2024-fMRI', lambda: glm_assembly(glm)),
             ('Lahner2024-fMRI-timeresolved', lambda: tr_assembly(runs, bold)),
