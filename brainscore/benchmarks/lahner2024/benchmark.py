@@ -473,8 +473,10 @@ class Lahner2024BOLDMoments(BenchmarkBase):
             return features, clip_ids, attrs
         # The sound, with the visual stream when the subject takes it. The clip table
         # is the one of the one-stream route, so the video activations are read once
-        # for both. A difference from that route, kept so no score moves: the time
-        # bins are averaged with xarray's NaN-skipping mean (the one-stream route and
+        # for both. The name needs no file signature: both routes build it from the
+        # same stimuli, ids and order, so it names the same files, and only a subject
+        # that declares vision:video gets it (an old image model gets frames). A
+        # difference from that route, kept so no score moves: the time bins are averaged with xarray's NaN-skipping mean (the one-stream route and
         # the time-resolved benchmark use numpy's mean; the two differ only when a
         # response holds NaN).
         # The sound tracks are checked before any stream is recorded.
