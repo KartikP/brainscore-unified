@@ -81,7 +81,7 @@ def movie(tmp_path_factory):
 # ── The table from prepared files ─────────────────────────────────
 
 
-def test_each_scan_row_names_its_prepared_file(tmp_path):
+def test_each_medium_lists_its_prepared_files_in_scan_order(tmp_path):
     films = _films(tmp_path)
     _place(tmp_path, 'frames', 'm1', 2)
     _place(tmp_path, 'clips', 'm1', 2)
@@ -93,14 +93,24 @@ def test_each_scan_row_names_its_prepared_file(tmp_path):
                                                for t in (1, 2)]
 
 
-def test_the_table_name_is_the_same_for_every_participant(tmp_path):
-    """Participants with the same rows share one name; the cache key holds the files, so the frame
-    and clip tables stay apart (tests/test_model_helpers/test_clip_tables_share_the_cache.py)."""
-    films = _films(tmp_path)
-    _place(tmp_path, 'frames', 'm1', 2)
-    names = {per_scan_stimuli(films, {'m1': 2}, ['frames'], 'friends', participant, tmp_path).identifier
-             for participant in (1, 2, 3, 5)}
-    assert len(names) == 1
+def test_the_table_name_follows_the_input_files_not_the_participant(tmp_path):
+    """Participants with the same files share one name, so the activations cache is read once.
+    Other columns, other movies in another order, or new bytes at an old path give another name:
+    some stores key on the name and the paths alone."""
+    films = _films(tmp_path, movies=('m1', 'm2'))
+    for movie in ('m1', 'm2'):
+        _place(tmp_path, 'frames', movie, 2)
+        _place(tmp_path, 'clips', movie, 2)
+
+    def name(media=('frames',), participant=1, films=films):
+        return per_scan_stimuli(films, {'m1': 2, 'm2': 2}, list(media), 'friends', participant,
+                                tmp_path).identifier
+    first = name()
+    assert {name(participant=participant) for participant in (1, 2, 3, 5)} == {first}
+    assert name(media=('clips',)) != first
+    assert name(films=films.iloc[::-1]) != first
+    (tmp_path / 'frames' / 'm1' / '0001.jpg').write_bytes(b'other frame')
+    assert name() != first
 
 
 def test_the_table_has_a_video_and_an_audio_column_per_scan(tmp_path):
@@ -114,6 +124,7 @@ def test_the_table_has_a_video_and_an_audio_column_per_scan(tmp_path):
     assert list(table['stimulus_id']) == [f'm1_t{t:04d}' for t in range(3)]
     assert list(table['audio_path']) == [str(tmp_path / 'sound' / 'm1' / f'{t:04d}.wav')
                                          for t in range(3)]
+    assert table.identifier.startswith('algonauts2025-friends-clips-sound-')
     assert table.stimulus_paths == dict(zip(table['stimulus_id'], table['video_path']))
 
 

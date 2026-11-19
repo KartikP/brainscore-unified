@@ -1,10 +1,10 @@
-"""Benchmark variants that show the same clips give the video extractor one cache entry.
+"""Which Friends and Lahner2024 clip tables share a video cache entry.
 
-The Friends video variant shows the clips, the video-with-sound variant shows the
-same clips and their sound. The video extractor reads only the clips, so the two
-tables must reach one stored entry; the audio extractor reads the sound and keeps
-its own entry. Other clips, another order or another frame sampling give another
-entry. Lahner2024 shows its visual and its two-stream subjects one clip table.
+The Friends table name signs every file of the table, so the clips-with-sound
+table keeps its own name on purpose: a store that keys on the name alone must
+not mistake it for the clips-only table. Each table gets its own video entry.
+Other clips, another order or another frame sampling give another entry.
+Lahner2024 shows its visual and its two-stream subjects one clip table.
 The store is a temporary folder; no other cache is enabled.
 """
 import shutil
@@ -50,21 +50,21 @@ def _entries(store):
     return set(store.folder.rglob('*.pkl'))
 
 
-def test_the_friends_video_variants_share_one_video_entry_and_the_sound_keeps_its_own(
-        store, tmp_path, monkeypatch):
+def test_the_friends_clips_with_sound_table_keeps_its_own_name_and_entries(store, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     films = _friends(tmp_path)
     video, audio = video_wrapper(), audio_wrapper()
     store.install(video)
     store.install(audio)
-    video(_table(films, ['clips'], tmp_path), layers=LAYERS)
+    clips, with_sound = _table(films, ['clips'], tmp_path), _table(films, ['clips', 'sound'], tmp_path)
+    assert clips.identifier != with_sound.identifier
+    video(clips, layers=LAYERS)
     first = _entries(store)
-    assert len(first) == 1
-    with_sound = _table(films, ['clips', 'sound'], tmp_path)
     video(with_sound, layers=LAYERS)
-    assert _entries(store) == first
+    second = _entries(store)
+    assert first < second
     audio(with_sound, layers=['frames', 'head'])
-    assert len(_entries(store)) == 2
+    assert second < _entries(store)
 
 
 def test_other_clips_another_order_or_another_sampling_get_another_video_entry(
