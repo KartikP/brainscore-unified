@@ -28,9 +28,10 @@ trial (``response_state``) and writes:
 - ``answer_policy``: what the metric does with an invalid and a missing trial;
 - ``result_validity``: ``'no limit stated'`` when the benchmark passes no
   ``invalid_limit`` (the default; no check was made). With a limit: ``'invalid'``
-  when the share of invalid and missing trials is above it, and
-  ``result_validity_reason`` then gives the share and the limit; ``'valid'``
-  otherwise. Such a result is returned, not raised.
+  when the share of invalid and missing trials is above it or when there is no
+  trial, and ``result_validity_reason`` then gives the share and the limit or says
+  that no trial was answered; ``'valid'`` otherwise. Such a result is returned, not
+  raised.
 
 A metric selects its valid rows with ``answer['response_state'].values == 'valid'``.
 
@@ -103,7 +104,11 @@ def _answer_attrs(answers, answer_policy, invalid_limit) -> dict:
         attrs['counts_by_condition'] = by_condition
     attrs['answer_policy'] = answer_policy
     attrs['result_validity'] = 'no limit stated' if invalid_limit is None else 'valid'
-    if invalid_limit is not None and attrs['n_trials']:
+    if invalid_limit is not None and not attrs['n_trials']:
+        # A check against the limit needs answered trials; with none it did not run.
+        attrs['result_validity'] = 'invalid'
+        attrs['result_validity_reason'] = 'no trial was answered: the answers hold zero trials'
+    elif invalid_limit is not None:
         share = (attrs['n_invalid'] + attrs['n_missing']) / attrs['n_trials']
         if share > invalid_limit:
             attrs['result_validity'] = 'invalid'

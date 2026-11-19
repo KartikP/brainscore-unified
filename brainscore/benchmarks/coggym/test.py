@@ -183,8 +183,10 @@ def test_registered_scoring_preserves_raw_score_and_repetitions(scored_reference
     assert score.attrs['configuration']['repetitions'] == 2
     assert resets == [1, 2]
     assert len(calls) == 6
-    # The stated policy and its limit; the stand-in's trials ask no slider question.
-    assert score.attrs['result_validity'] == 'valid'
+    # The stated policy and its limit. The stand-in's trials ask no slider question, so no
+    # answer was checked against the limit: the result is not valid, the value stays.
+    assert score.attrs['result_validity'] == 'invalid'
+    assert 'no trial' in score.attrs['result_validity_reason']
     assert "CogGym's own fit" in score.attrs['answer_policy']
     # The benchmark's settings reach the reply on the task's Text response.
     assert all(call.response.max_tokens == 1234 for call in calls)
