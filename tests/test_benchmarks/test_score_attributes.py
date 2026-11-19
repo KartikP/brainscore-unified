@@ -63,6 +63,15 @@ def test_the_normalized_flag_cannot_be_set(ceiling, flag):
         benchmark_score(_benchmark(ceiling), raw=0.4, metric='r', normalized=flag)
 
 
+def test_a_benchmark_for_local_use_marks_its_score_and_another_adds_no_mark():
+    local = _benchmark(Score(0.8))
+    local.leaderboard_eligible = False
+    assert benchmark_score(local, raw=0.4, metric='r').attrs['leaderboard_eligible'] is False
+    assert 'leaderboard_eligible' not in benchmark_score(_benchmark(Score(0.8)), raw=0.4, metric='r').attrs
+    with pytest.raises(TypeError, match='leaderboard_eligible'):
+        benchmark_score(local, raw=0.4, metric='r', leaderboard_eligible=True)
+
+
 def test_benchmark_version_cannot_be_set():
     with pytest.raises(TypeError, match="benchmark_version"):
         benchmark_score(_benchmark(Score(0.8)), raw=0.4, metric='r', benchmark_version=9)

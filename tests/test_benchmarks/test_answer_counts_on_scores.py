@@ -56,6 +56,21 @@ def test_above_the_limit_the_result_is_returned_marked_invalid():
         '0.5 of the trials are invalid or missing, above the limit 0.25')
 
 
+def test_with_a_limit_and_no_trial_the_result_is_invalid_and_keeps_the_counts():
+    score = benchmark_score(_benchmark(), raw=0.0, metric='accuracy', answer_policy=POLICY,
+                            answers=_answer([]), invalid_limit=0.1)
+    assert score.attrs['result_validity'] == 'invalid'
+    assert 'no trial' in score.attrs['result_validity_reason']
+    assert score.attrs['n_trials'] == 0 and score.attrs['n_valid'] == 0
+
+
+@pytest.mark.parametrize('limit', [1.1, -0.1, float('nan'), True, '0.1'])
+def test_a_limit_outside_zero_to_one_is_refused(limit):
+    with pytest.raises(ValueError, match='from 0 to 1'):
+        benchmark_score(_benchmark(), raw=0.5, metric='accuracy', answer_policy=POLICY,
+                        answers=_answer(['valid', 'invalid']), invalid_limit=limit)
+
+
 def test_answers_by_condition_give_sums_and_counts_by_condition():
     score = benchmark_score(_benchmark(), raw=0.5, metric='accuracy', answer_policy=POLICY,
                             answers={'intact': _answer(['valid', 'invalid']),

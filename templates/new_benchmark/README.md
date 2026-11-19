@@ -9,13 +9,13 @@ See `EXTENDING.md` (Seam 2) for the contract.
 2. Replace `standin_data.py` with your data package: `load_assembly()` (your measurements +
    stimulus_set) and `BIBTEX`. Then edit `benchmark.py`: the ceiling in `__init__`, the
    metric via `load_metric(...)`, and `__call__(subject)`.
-3. Pick your identifier in `benchmark_registry['<your-id>']`.
+3. Pick your identifier in the line `benchmark_registry['<your-id>'] = _load` of `__init__.py`. Write one literal line for each identifier, in `__init__.py` only, and keep the import of `benchmark.py` inside `_load` (a test checks both for every plugin).
 4. Nothing else to edit: the folder registers by its presence.
 5. Keep `test.py` in the folder, adapt it and run it: `pytest brainscore/benchmarks/<your_name>/test.py`. More test files for the same benchmark go beside it as `test_<topic>.py`.
 
 ## Variants
 
-A variant of a benchmark is one more registry line: `benchmark_registry['<id>-<suffix>'] = partial(YourBenchmark, <arguments>)` (or `lambda: YourBenchmark(<arguments>)`). Put the arguments that make the variant in that line, for example `channels=('text',)` for a variant that sends text. The registry line names the identifier too: a class with variants takes it as an argument, `identifier='<id>-<suffix>'`, as ROAR, induced dyslexia and Algonauts2025 do, and does not build it from a table of suffixes. When an argument changes what the variant requests, the class sets `self.requested_output_channels` in `__init__` from it (an instance attribute), before `super().__init__(...)`. Do not write a subclass or a factory function that only passes arguments. Write a subclass only when it adds behavior. The identifier of a variant stays fixed once registered.
+A variant of a benchmark is one more registry line: `benchmark_registry['<id>-<suffix>'] = partial(_load, <arguments>)` (or `lambda: _load(<arguments>)`). Put the arguments that make the variant in that line, for example `channels=('text',)` for a variant that sends text. The registry line names the identifier too: a class with variants takes it as an argument, `identifier='<id>-<suffix>'`, as ROAR, induced dyslexia and Algonauts2025 do, and does not build it from a table of suffixes. When an argument changes what the variant requests, the class sets `self.requested_output_channels` in `__init__` from it (an instance attribute), before `super().__init__(...)`. Do not write a subclass or another factory function that only passes arguments. Write a subclass only when it adds behavior. The identifier of a variant stays fixed once registered.
 
 From the `templates/` folder, the template benchmark scores the template model
 offline:
