@@ -188,7 +188,10 @@ when they disagree. It also fails when the vision or language commit named in
 `peer-revisions.json` has other code than the vision or language source it reads;
 only the peer's pin files (`requirements-v2.txt`, `.github/workflows/umi-v2.yml`)
 may differ. It compares the content of the two trees, not their history, so a
-squash merge with the same files passes:
+squash merge with the same files passes. Each entry of `peer-revisions.json` must
+be a commit of the peer's `unified-model-interface-v2` branch (read on GitHub),
+so a lock never names a commit that only a deletable branch holds. A site that
+names the release branch instead of a commit follows the lock and passes:
 
 ```bash
 python unified/install/check_pins.py --root /path/to/siblings

@@ -24,7 +24,8 @@ def pins(monkeypatch):
     monkeypatch.delenv('GITHUB_STEP_SUMMARY', raising=False)
     served = {UNIFIED: json.dumps({'core': CORE, 'vision': 'c' * 40, 'language': 'd' * 40})}
     monkeypatch.setattr(module, 'github_file',
-                        lambda repository, ref, path: served.get(ref))
+                        lambda repository, ref, path, api=False: served.get(ref))
+    _serve_lock_branches(module, monkeypatch, set())
     return module
 
 
@@ -214,3 +215,48 @@ def test_source_with_a_changed_file_names_the_file(pins, monkeypatch):
 def test_unreadable_tree_is_unknown(pins, monkeypatch):
     _serve_trees(pins, monkeypatch, {'branch': {}})
     assert pins.Source('vision', 'brain-score/vision', ref='branch').changed_since('named') is None
+
+
+def _serve_lock_branches(module, monkeypatch, off_branch: set) -> None:
+    """Serve the compare endpoint: a commit in ``off_branch`` is not on the release branch."""
+    plain = module.github_file
+
+    def github_file(repository, ref, path, api=False):
+        if api and path.startswith('compare/'):
+            commit = path.removeprefix('compare/').split('...')[0]
+            return json.dumps({'status': 'diverged' if commit in off_branch else 'ahead'})
+        return plain(repository, ref, path, api)
+    monkeypatch.setattr(module, 'github_file', github_file)
+
+
+def test_lock_entry_off_the_release_branch_fails(pins, tmp_path, monkeypatch, capsys):
+    root = _repositories(tmp_path)
+    assert _run(pins, root) == 0
+    _serve_lock_branches(pins, monkeypatch, {CORE})
+    assert _run(pins, root) == 1
+    out = capsys.readouterr().out
+    assert 'core lock entry on the release branch' in out and 'MISMATCH' in out
+
+
+def test_site_may_follow_the_release_branch(pins, tmp_path, monkeypatch):
+    """A caller workflow or a requirement that names the release branch follows the lock."""
+    root = _repositories(tmp_path)
+    _write(root / 'core/.github/workflows/umi-v2.yml', _workflow(pins.DEFAULT_BRANCH))
+    _write(root / 'vision/requirements-v2.txt', 'brainscore-core @ git+https://github.com/'
+           f'brain-score/core.git@{pins.DEFAULT_BRANCH}\n')
+    assert _run(pins, root) == 0
+
+
+def test_core_jenkins_script_is_read(pins, tmp_path, monkeypatch, capsys):
+    root = _repositories(tmp_path)
+    scripts = {'ci/core/run_tests.sh': f'    unified_ref={pins.DEFAULT_BRANCH}\n'
+                                       '    unified_revision=$(git rev-parse HEAD)\n',
+               'ci/vision/run_tests.sh': f'    unified_revision={UNIFIED}\n'}
+    infrastructure = pins.Source('infrastructure', pins.INFRASTRUCTURE, path=tmp_path / 'infra')
+    for path, text in scripts.items():
+        _write(tmp_path / 'infra' / path, text)
+    rows = pins.collect({name: pins.Source(name, pins.REPOSITORIES[name], path=root / name)
+                         for name in pins.REPOSITORIES}, infrastructure)
+    assert pins.judge(rows)
+    core = [row for row in rows if row.site == 'infrastructure ci/core/run_tests.sh']
+    assert [row.value for row in core] == [pins.DEFAULT_BRANCH] and core[0].status == 'ok'

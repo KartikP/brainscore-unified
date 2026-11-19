@@ -10,8 +10,11 @@ unified names.
 The coordinated v2 repositories pin each other in several files. A pin that
 differs between sites makes a change pass in one CI system and fail in another.
 This script reads every site and prints one table. It exits with status 1 when
-a required site disagrees or cannot be read. The infrastructure Jenkins scripts
-and the core layout workflow are reported as warnings only.
+a required site disagrees or cannot be read, or when an entry of the lock
+(``peer-revisions.json``) is not a commit of the peer's release branch. A site
+that names the release branch instead of a commit follows the lock and passes.
+The infrastructure Jenkins scripts (core, vision, language) and the core layout
+workflow are reported as warnings only.
 
 Each repository is a local checkout (a directory; its working tree is read) or
 a Git ref on GitHub (a commit SHA or branch name). Without an argument, the
@@ -62,7 +65,10 @@ USES_UNIFIED = re.compile(
     re.MULTILINE)
 INPUT_UNIFIED = re.compile(r'^\s*unified_revision:\s*(\S+)', re.MULTILINE)
 LAYOUT_UNIFIED = re.compile(r'repository:\s*KartikP/brainscore-unified\s*\n\s*ref:\s*(\S+)')
-JENKINS_UNIFIED = re.compile(r'^\s*unified_revision=(\S+)', re.MULTILINE)
+# A Jenkins script names a unified commit (unified_revision=<sha>) or the release
+# branch it fetches (unified_ref=<branch>); a value computed at run time ($(...)) is not a pin.
+JENKINS_UNIFIED = re.compile(r'^\s*unified_(?:revision|ref)=([^\s$]\S*)', re.MULTILINE)
+NOT_ON_BRANCH = 'not on the release branch: '   # a lock entry that the peer's release branch lacks
 CODE_DIFFERS = 'code differs: '    # the value of a peer source whose code is not the named commit's
 # The files of a peer that only move pins. A peer commit that changes only these
 # has the code of the commit before it, so the peer manifest of unified may name
@@ -187,6 +193,8 @@ class Row:
     value: Optional[str]
     required: bool = True
     status: str = ''
+    # A site that may name the release branch instead of a commit: it then follows the lock.
+    may_follow: bool = True
 
 
 def _active(text: str) -> str:
@@ -229,15 +237,21 @@ def collect(sources: dict[str, Source], infrastructure: Optional[Source]) -> lis
     rows = []
     manifest = sources['unified'].read('install/peer-revisions.json')
     peers = json.loads(manifest) if manifest else {}
-    rows.append(Row('core', 'unified install/peer-revisions.json', peers.get('core')))
+    for name in ('core', 'vision', 'language'):
+        # A lock entry must be a commit of the peer's release branch: a commit that
+        # only a pull request branch holds is lost when that branch is deleted.
+        named = peers.get(name)
+        rows.append(Row(name, 'unified install/peer-revisions.json', named, may_follow=False))
+        rows.append(Row(name, f'{name} lock entry on the release branch',
+                        on_release_branch(REPOSITORIES[name], named) if _valid(named) else named,
+                        may_follow=False))
     for name in ('vision', 'language'):
         # The peer commit the manifest names must have the code that the peer source holds.
         named = peers.get(name)
-        rows.append(Row(name, 'unified install/peer-revisions.json', named))
         changed = sources[name].changed_since(named) if _valid(named) else None
         other = sorted(changed - PEER_PIN_FILES) if changed is not None else None
         code = None if other is None else f'{CODE_DIFFERS}{other[0]}' if other else named
-        rows.append(Row(name, f'{name} source: code of the named commit', code))
+        rows.append(Row(name, f'{name} source: code of the named commit', code, may_follow=False))
     for name in ('vision', 'language'):
         for value in _requirement_refs(sources[name].read('requirements-v2.txt')):
             rows.append(Row('core', f'{name} requirements-v2.txt', value))
@@ -259,12 +273,21 @@ def collect(sources: dict[str, Source], infrastructure: Optional[Source]) -> lis
     for value in _matches(layout, LAYOUT_UNIFIED):
         rows.append(Row('unified', 'core core-layout.yml checkout ref', value, required=False))
     if infrastructure is not None:
-        for name in ('vision', 'language'):
+        for name in ('core', 'vision', 'language'):
             script = infrastructure.read(f'ci/{name}/run_tests.sh')
             for value in _matches(script, JENKINS_UNIFIED):
                 rows.append(Row('unified', f'infrastructure ci/{name}/run_tests.sh', value,
                                 required=False))
     return rows
+
+
+def on_release_branch(repository: str, revision: str) -> Optional[str]:
+    """``revision`` when the release branch of ``repository`` holds it; None when unknown."""
+    text = github_file(repository, revision, f'compare/{revision}...{DEFAULT_BRANCH}', api=True)
+    if text is None:
+        return None
+    on_branch = json.loads(text).get('status') in ('ahead', 'identical')
+    return revision if on_branch else f'{NOT_ON_BRANCH}{revision}'
 
 
 def _valid(value: Optional[str]) -> bool:
@@ -285,7 +308,9 @@ def judge(rows: list[Row]) -> bool:
         for row in group:
             if row.value is None:
                 row.status = 'UNREADABLE'
-            elif row.value.startswith(CODE_DIFFERS):
+            elif row.may_follow and row.value == DEFAULT_BRANCH:
+                row.status = 'ok'
+            elif row.value.startswith((CODE_DIFFERS, NOT_ON_BRANCH)):
                 row.status = 'MISMATCH'
             elif not _valid(row.value):
                 row.status = 'INVALID'
