@@ -7,7 +7,6 @@ module loads them: the assemblies and the movie tables through the registries,
 and the per-scan tables through ``per_scan_stimuli``.
 """
 
-import hashlib
 import shlex
 from collections import Counter
 from pathlib import Path
@@ -212,14 +211,16 @@ def per_scan_stimuli(stimulus_set, n_scans: Dict[str, int], media: Sequence[str]
     for column, paths in columns.items():
         df[column] = paths
     table = StimulusSet(df)
-    # The activations cache keys on the stimuli identifier, not on the columns,
-    # so the identifier carries a signature of the sorted column names: a table
-    # with other columns is other stimuli to the cache. The participant is not
-    # in the name: participants share the rows and files, so they share the
-    # cached activations (the cache key also holds the file contents in order).
-    column_signature = hashlib.md5('|'.join(sorted(map(str, df.columns))).encode()).hexdigest()[:8]
-    table.identifier = (f"algonauts2025-{split}-{'-'.join(media)}"
-                        f'-{column_signature}')
+    # Some stores key on the table name and the file paths only (the temporal
+    # helper of old vision models), so the name identifies the input: the
+    # columns and, per medium, the files in order by path and content (the
+    # input part of the extraction fingerprint). Participants who saw the same
+    # files share one name and one stored entry; new bytes at an old path,
+    # other rows or other columns give another name. No participant in the name.
+    from brainscore_core.extraction_cache import file_inputs, fingerprint
+    signature = fingerprint({'columns': sorted(map(str, df.columns)),
+                             'files': [file_inputs(paths) for paths in columns.values()]})
+    table.identifier = f"algonauts2025-{split}-{'-'.join(media)}-{signature[3:19]}"
     table.stimulus_paths = dict(zip(df['stimulus_id'], df[MEDIA[media[0]][3]]))
     return table
 
