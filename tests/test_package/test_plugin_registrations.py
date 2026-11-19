@@ -98,11 +98,19 @@ class _NetworkBlocked(OSError):
 
 
 def _absent(error) -> bool:
-    """Whether ``error``, or an error it came from, says that data or an environment is absent."""
-    while error is not None:
+    """Whether ``error``, an error it came from or an error it holds (a fetcher that tries
+    several sources raises one error with the list of their errors) says that data or an
+    environment is absent."""
+    pending, seen = [error], set()
+    while pending:
+        error = pending.pop()
+        if not isinstance(error, BaseException) or id(error) in seen:
+            continue
+        seen.add(id(error))
         if isinstance(error, (brainscore.LoadError, FileNotFoundError, _NetworkBlocked)):
             return True
-        error = error.__cause__ or error.__context__
+        held = [item for arg in error.args for item in (arg if isinstance(arg, (list, tuple)) else [arg])]
+        pending += [error.__cause__, error.__context__, *held]
     return False
 
 
@@ -159,8 +167,20 @@ def _absent_data():
     raise FileNotFoundError('the data is not prepared')
 
 
+def _download_from_two_sources():
+    errors = []
+    for _ in range(2):
+        try:
+            socket.socket().connect(('127.0.0.1', 9))
+        except OSError as error:
+            errors.append(RuntimeError(f'could not connect: {error}'))
+            errors[-1].__context__ = error
+    raise Exception(errors)
+
+
 @pytest.mark.parametrize('make, fails', [
     (lambda asset: _absent_data, False),
+    (lambda asset: _download_from_two_sources, False),
     (lambda asset: _broken, True),
     (_session_after, True),
     (_session_caught, True),
