@@ -46,39 +46,58 @@ def test_identifier_and_declaration(identifier: str):
 
 from functools import lru_cache
 
+import numpy as np
+import pytest
+
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice
 from brainscore_core.streaming import Session, StreamEvent, channel_declared
 
 _loaded = lru_cache(maxsize=1)(load_model)
-# Input channels with a plain payload; each check uses the first one the model does not declare.
-_UNDECLARED = (('reward', 1.0), ('text', 'word'), ('audio', [0.0]), ('instruction', 'answer'))
+# Input channels with a valid payload; the input check uses the first one the model does not declare.
+_UNDECLARED = (('reward', 1.0), ('text', 'word'), ('audio', np.zeros(16)),
+               ('instruction', 'answer'), ('vision:image', 'probe.png'), ('vision:video', 'probe.mp4'))
 
 
 def _sessions(model, events):
     """One session for each declared output, with the first plain task that output accepts."""
-    sessions = []
+    sessions, refusals = [], []
     for output in sorted(model.out_channels):
         for task in (TaskContext(response=Choice(['a', 'b'])), TaskContext(task_type='passive'), None):
             try:
                 sessions.append(Session(list(events), outputs=(output,), task=task))
                 break
-            except (TypeError, ValueError):
-                continue
+            except (TypeError, ValueError) as refusal:
+                refusals.append(f'{output}: {refusal}')
+    assert sessions, f'no session could be built for {sorted(model.out_channels)}: {refusals}'
     return sessions
 
 
 def test_an_undeclared_input_never_reaches_the_subject(identifier: str):
     model = _loaded(identifier)
-    channel, payload = next((channel, payload) for channel, payload in _UNDECLARED
-                            if not channel_declared(channel, model.in_channels))
-    for session in _sessions(model, [StreamEvent(channel, payload, None, {})]):
-        delivered, read = [], session.next_input
+    probe = next(((channel, payload) for channel, payload in _UNDECLARED
+                  if not channel_declared(channel, model.in_channels)), None)
+    if probe is None:
+        pytest.skip(f'{identifier} declares every probe input; no undeclared input to send')
+    channel = probe[0]
+    for session in _sessions(model, [StreamEvent(channel, probe[1], None, {})]):
+        # Every read of the session is recorded: the body's reads, and one read
+        # right after the subject's declaration (the session as the body sees it).
+        delivered, read, declare = [], session.next_input, session.declare_inputs
         session.next_input = lambda: delivered.append(read()) or delivered[-1]
+
+        def declare_then_read(channels):
+            declare(channels)
+            session.next_input()
+            return session
+        session.declare_inputs = declare_then_read
+        failure = None
         try:
             model.participate(session)
-        except Exception:   # a refusal of this plain session is not what this check is about
-            pass
+        except Exception as error:   # a refusal of a session with no declared input is allowed
+            failure = error
+        assert delivered, (f'{identifier}: no read of the session was observed (no declaration, '
+                           f'no read); participate ended with {failure!r}')
         assert channel not in {event.channel for event in delivered if event is not None}, (
             f'{identifier} received an input on {channel!r}, which it does not declare')
 
@@ -92,9 +111,9 @@ def test_a_second_session_on_the_busy_subject_is_refused(identifier: str):
         if not outcome:
             try:
                 model.participate(second)
-                outcome.append('ran')
-            except RuntimeError as refusal:
-                outcome.append(refusal)
+                outcome.append('the second session ran to its end')
+            except Exception as error:
+                outcome.append(error)
 
     # The second session starts while the first one runs: at the first one's first
     # declaration or read.
@@ -105,6 +124,7 @@ def test_a_second_session_on_the_busy_subject_is_refused(identifier: str):
         model.participate(first)
     except Exception:       # only the second session's outcome is checked
         pass
-    assert outcome and isinstance(outcome[0], RuntimeError), (
-        f'{identifier} took part in a second session while one ran: {outcome}')
-    assert 'one session at a time' in str(outcome[0])
+    assert outcome, (f'{identifier}: the second session never started: the first one made no '
+                     'declaration and no read')
+    assert isinstance(outcome[0], RuntimeError) and 'one session at a time' in str(outcome[0]), (
+        f'{identifier} took part in a second session while one ran: {outcome[0]!r}')
