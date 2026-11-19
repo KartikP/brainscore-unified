@@ -89,4 +89,3 @@ class YourBenchmark(BenchmarkBase):
         # benchmark_score divides by a measured ceiling (the score is raw otherwise) and
         # writes raw, ceiling, normalized, metric and benchmark_version.
         return benchmark_score(self, raw=raw, metric='linear_predictivity')
-

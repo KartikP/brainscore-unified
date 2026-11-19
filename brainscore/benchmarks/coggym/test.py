@@ -183,7 +183,7 @@ def test_registered_scoring_preserves_raw_score_and_repetitions(scored_reference
     assert score.attrs['configuration']['repetitions'] == 2
     assert resets == [1, 2]
     assert len(calls) == 6
-    # The stated policy and its limit. The stand-in's trials ask no slider question, so no
+    # The stated policy and its limit. The stand-in's fit reports no checked question, so no
     # answer was checked against the limit: the result is not valid, the value stays.
     assert score.attrs['result_validity'] == 'invalid'
     assert 'no trial' in score.attrs['result_validity_reason']
