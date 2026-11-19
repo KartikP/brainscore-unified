@@ -164,7 +164,10 @@ A text part is wrapped with `TextWrapper(model, tokenizer)`. The tokenizer is a 
 tokenizer, or any callable with the same call: it takes a list of texts and `padding`,
 `truncation`, `max_length` and `return_tensors='pt'`, and returns a mapping whose keys are the
 network's forward arguments (`input_ids`, and `attention_mask` to mark padding). The
-wrapper calls the network with that mapping. Here a tiny network with an image part and a
+wrapper calls the network with that mapping. A text longer than the limit keeps its newest
+tokens. The limit is the model's own window: the smaller of the tokenizer's `model_max_length`
+and the `max_position_embeddings` of the network's configuration. A plain callable states
+neither, so state `max_length` on the wrapper. Here a tiny network with an image part and a
 text part, next to the image network above:
 
 ```python
@@ -184,9 +187,10 @@ class TextNet(torch.nn.Module):
 
 
 # Stand-in tokenizer: characters as token ids
-def tokenizer(texts, padding=True, truncation=True, max_length=512, return_tensors='pt', **kwargs):
-    """Characters as token ids, padded with 0 to the longest text."""
-    ids = [[ord(character) % 128 for character in text][:max_length] for text in texts]
+def tokenizer(texts, max_length, padding=True, truncation=True, return_tensors='pt', **kwargs):
+    """Characters as token ids, padded with 0 to the longest text; a longer text keeps its newest
+    max_length characters, as the wrapper asks of a real tokenizer."""
+    ids = [[ord(character) % 128 for character in text][-max_length:] for text in texts]
     width = max(len(row) for row in ids)
     return {'input_ids': torch.tensor([row + [0] * (width - len(row)) for row in ids]),
             'attention_mask': torch.tensor([[1] * len(row) + [0] * (width - len(row)) for row in ids])}
@@ -197,7 +201,8 @@ text_net = TextNet().eval()
 both = BrainScoreModel(
     identifier='my-cnn-and-text',
     extractor={'vision': vision,
-               'text': TextWrapper(model=text_net, tokenizer=tokenizer, layer_aggregation='mean')},
+               'text': TextWrapper(model=text_net, tokenizer=tokenizer, layer_aggregation='mean',
+                                   max_length=512)},   # the limit, stated once
     region_layer_map={'IT': LayerSelector(name='layer4', modality='vision'),
                       'language_system': LayerSelector(name='encoder', modality='text')},
 )

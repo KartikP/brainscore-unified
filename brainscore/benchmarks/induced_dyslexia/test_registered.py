@@ -19,6 +19,7 @@ class Inputs(dict):
 
 class Tokenizer:
     truncation_side = 'left'
+    model_max_length = 512      # a finite limit, as a real tokenizer states
 
     def decode(self, ids, **kwargs):
         return 'real' if int(ids[0]) else 'pseudo'

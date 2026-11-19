@@ -140,7 +140,7 @@ def _parts(human):
     return stimuli, reference
 
 
-def test_the_score_equals_the_old_implementation_to_the_last_digit():
+def test_the_score_equals_the_old_implementation():
     # Case 15 of np.random.default_rng(2025) (uniform(0, 360, 8), uniform(0, 10, 8), normal(0, 3, (2, 3, 2)))
     # in the review of this port. 4.255378301966291 is the value of the old implementation
     # (pull request #63, head 1ae58a1a, experiments/sun2025/analysis.py::analyze) on these answers.
@@ -156,7 +156,8 @@ def test_the_score_equals_the_old_implementation_to_the_last_digit():
                                          'speed_px_per_frame': speeds[4 * g + f - 1]})
                for g in (0, 1) for f in (1, 2, 3, 4)}
     score = brainscore.score(Reporter(answers.__getitem__), _design(human))
-    assert float(score) == 4.255378301966291
+    # The last digit depends on the processor's order of sums (seen on the hosted checks: ...291 and ...292).
+    assert float(score) == pytest.approx(4.255378301966291, rel=1e-12)
 
 
 def test_a_number_outside_the_supported_range_is_an_invalid_answer():

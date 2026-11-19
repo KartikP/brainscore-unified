@@ -72,16 +72,18 @@ def _store_off(tmp_path, monkeypatch):
         monkeypatch.setattr(storage, '_storage_directory', str(tmp_path / 'store'))
 
 
-def _item(part, kind, serves, layers=(), conversion=None, settings=NS, devices=NS, dtypes=NS, batch=NS):
+def _item(part, kind, serves, layers=(), conversion=None, settings=NS, devices=NS, dtypes=NS, batch=NS,
+          max_length=NS):
     """One complete part item of an entry."""
     return {'part': part, 'kind': kind, 'serves': list(serves), 'layers': sorted(layers),
             'conversion': conversion or {}, 'settings': settings, 'parameter_devices': devices,
-            'parameter_dtypes': dtypes, 'batch_size': batch}
+            'parameter_dtypes': dtypes, 'batch_size': batch, 'max_length': max_length}
 
 
-def _text(serves, layers=('proj',), settings=STORE_OFF, batch=2):
+def _text(serves, layers=('proj',), settings=STORE_OFF, batch=2, max_length=64):
+    """A text extractor item; 64 is the stand-in tokenizer's limit (the model's own window)."""
     return _item('extractor', TEXT, serves, layers, settings=settings, devices='cpu', dtypes='torch.float32',
-                 batch=batch)
+                 batch=batch, max_length=max_length)
 
 
 def _text_model(**settings):
@@ -94,6 +96,9 @@ def test_a_neural_score_from_one_extractor_states_it():
     assert score.attrs['provenance'] == ({
         'subject': 'provenance-text', 'activation_store': 'off',
         'parts': [_text(['neural:IT'])]},)
+    # A stated limit is the one on the score.
+    stated = _score(_text_model(batch_size=2, max_length=5), _Neural(_sentences(), {'neural:IT'}))
+    assert stated.attrs['provenance'][0]['parts'][0]['max_length'] == 5
 
 
 def test_with_the_store_on_the_settings_are_the_cache_key_without_inputs(monkeypatch):

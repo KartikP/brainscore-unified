@@ -165,6 +165,8 @@ class _Ids(torch.nn.Module):
 class _Tokens:
     """One token per character (``a``=1, ``b``=2, ...), padded with 0 on ``side``."""
 
+    model_max_length = 64
+
     def __init__(self, side):
         self.side, self.truncation_side = side, 'left'
 

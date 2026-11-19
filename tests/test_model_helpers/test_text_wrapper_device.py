@@ -16,6 +16,7 @@ pytestmark = pytest.mark.unit
 class _Tokenizer:
     pad_token = '<pad>'
     eos_token = '<eos>'
+    model_max_length = 64
 
 
 class _Mapped(torch.nn.Module):
