@@ -1,7 +1,8 @@
 """The explicit activation cache key of the unified wrappers.
 
 The key is built from the kind (``<module>.<Class>``), the class's ``_VERSION``,
-the settings (``CACHE_FIELDS``), the model state, the input device and the
+the settings (every attribute of the wrapper but the label, the model and the
+device), the model state, the input device and the
 inputs. The identifier and the source text are not part of it.
 """
 import inspect

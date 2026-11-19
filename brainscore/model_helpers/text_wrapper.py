@@ -131,7 +131,7 @@ class TextWrapper(CachingExtractor):
         provenance: Optional model provenance (revision, dtype, settings). When
             given, a copy is set as ``attrs['provenance']`` on every returned
             assembly. Like every constructor setting it is part of the
-            activation-cache fingerprint (``CACHE_FIELDS``), so registrations
+            activation-cache fingerprint (every wrapper attribute), so registrations
             with different provenance never share a cache entry. Default
             (None): no attr is added.
     """
@@ -193,14 +193,6 @@ class TextWrapper(CachingExtractor):
         if self._provenance is not None:
             assembly.attrs['provenance'] = deepcopy(self._provenance)
         return assembly
-
-    CACHE_FIELDS = (
-        '_tokenizer',
-        '_layer_aggregation',
-        '_max_length',
-        '_batch_size',
-        '_provenance',
-    )
 
     @store_xarray(identifier_ignore=['texts', 'layers'], combine_fields={'layers': 'layer'})
     def _from_texts_stored(self, layers, texts, extraction_fingerprint):

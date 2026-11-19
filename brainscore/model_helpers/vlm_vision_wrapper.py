@@ -98,12 +98,6 @@ class VLMVisionWrapper(CachingExtractor):
                              f"got {list(stimulus_set.columns)}.")
         return paths
 
-    CACHE_FIELDS = (
-        '_processor',
-        '_layer_aggregation',
-        '_batch_size',
-    )
-
     @store_xarray(identifier_ignore=['paths', 'layers'],
                   combine_fields={'layers': 'layer'})
     def _from_paths_stored(self, layers, paths, extraction_fingerprint):

@@ -313,13 +313,22 @@ def kind(wrapper) -> str:
     return f'{cls.__module__}.{cls.__qualname__}'
 
 
-def cache_config(wrapper, fields):
+# The attributes of a wrapper that are not settings: the label (never in the key, so
+# two registrations share one entry), the model and the input device (in the key
+# by their own parts).
+_NOT_SETTINGS = ('_identifier', '_model', '_device')
+
+
+def cache_config(wrapper):
     """The explicit cache key of a wrapper, without its inputs.
 
     Parts: the kind (``<module>.<Class>``); the ``_VERSION`` in the body of the
-    wrapper's class; the settings ``fields`` (``CACHE_FIELDS``, batch size included; a
-    callable counts by its code); the model (weights hash, structure, dtypes,
-    library versions, precision, hooks); the input device. ``cache_signature``
+    wrapper's class; the settings: EVERY attribute of the wrapper at lookup time
+    but the label, the model and the device (an attribute that the first pass
+    sets, as the audio step, included; a callable counts by its code; one that
+    cannot be described exactly turns the store off); the model (weights hash,
+    structure, dtypes, library versions, precision, hooks with their place and
+    order); the input device. ``cache_signature``
     adds the inputs. No source text is part of it, so an edit that keeps values
     (a comment, a docstring, a move) keeps the key.
 
@@ -332,7 +341,7 @@ def cache_config(wrapper, fields):
     key (``autocast``). Without autocast the key has no such part.
     """
     config = {'kind': kind(wrapper), 'version': _version(type(wrapper)),
-              'settings': {field: getattr(wrapper, field) for field in fields},
+              'settings': {name: value for name, value in vars(wrapper).items() if name not in _NOT_SETTINGS},
               'input_device': str(getattr(wrapper, '_device', None)),
               'model': model_config(wrapper._model)}
     autocast = _autocast(getattr(wrapper, '_device', None))
@@ -402,7 +411,7 @@ class CachingExtractor:
     otherwise ``_from_<inputs>`` computes them; the result names the reading wrapper (``labelled``) and has its units in the requested layer
     order (``in_layer_order``). ``_finish`` sets what every result carries.
 
-    A wrapper sets ``_INPUTS`` (``'texts'`` or ``'paths'``), ``CACHE_FIELDS`` and
+    A wrapper sets ``_INPUTS`` (``'texts'`` or ``'paths'``) and
     its own ``_VERSION``, and defines ``_from_<inputs>(inputs, layers)``, its
     stored method and ``_table_inputs``; it keeps its forward pass and its
     reduce and package functions.
@@ -429,7 +438,7 @@ class CachingExtractor:
         return self._finish(assembly)
 
     def cache_config(self):
-        return cache_config(self, self.CACHE_FIELDS)
+        return cache_config(self)
 
     def _cached(self, inputs, layers, stimuli_identifier=None):
         from brainscore._model import parts

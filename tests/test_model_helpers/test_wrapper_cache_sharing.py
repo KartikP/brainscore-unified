@@ -31,6 +31,11 @@ CASES = {
 }
 
 
+def _on_class(function):
+    """``function`` as a method of the class: a spy on an instance would be an attribute of the key."""
+    return lambda _self, *args, **kwargs: function(*args, **kwargs)
+
+
 def _storage(method):
     return next(cell.cell_contents for cell in method.__func__.__closure__
                 if isinstance(cell.cell_contents, result_caching._Storage))
@@ -148,7 +153,7 @@ def test_a_subclass_without_its_own_version_does_not_use_the_cache(cls, store, t
     store.install(wrapper)
     calls = []
     extract = wrapper._from_texts
-    monkeypatch.setattr(wrapper, '_from_texts', lambda *a, **k: calls.append(1) or extract(*a, **k))
+    monkeypatch.setattr(type(wrapper), '_from_texts', _on_class(lambda *a, **k: calls.append(1) or extract(*a, **k)))
     with pytest.warns(UserWarning, match=rf'{cls.__qualname__} has no _VERSION of its own') as warned:
         first = wrapper(stimuli, layers=['enc'])
         second = wrapper(stimuli, layers=['enc'])
@@ -167,7 +172,7 @@ def test_a_subclass_with_its_own_version_is_cached_under_its_own_key(store, tmp_
     store.install(wrapper)
     calls = []
     extract = wrapper._from_texts
-    monkeypatch.setattr(wrapper, '_from_texts', lambda *a, **k: calls.append(1) or extract(*a, **k))
+    monkeypatch.setattr(type(wrapper), '_from_texts', _on_class(lambda *a, **k: calls.append(1) or extract(*a, **k)))
     with warnings.catch_warnings():
         warnings.simplefilter('error')
         first = wrapper(stimuli, layers=['enc'])
@@ -196,8 +201,10 @@ def test_a_list_of_inputs_with_a_stimuli_identifier_is_cached_as_a_table_is(name
     inputs = LIST_INPUTS[name]()
     computed = wrapper(inputs, layers=layers, stimuli_identifier='share-list')
     assert len(list(store.folder.rglob('*.pkl'))) == 1
+    # A first pass can set an attribute of the key (the audio step): the next call stores under it.
+    wrapper(inputs, layers=layers, stimuli_identifier='share-list')
     compute = f'_from_{wrapper._INPUTS}'
-    monkeypatch.setattr(wrapper, compute, lambda *a, **k: pytest.fail('the stored entry was not read'))
+    monkeypatch.setattr(type(wrapper), compute, _on_class(lambda *a, **k: pytest.fail('the stored entry was not read')))
     xarray.testing.assert_identical(wrapper(inputs, layers=layers, stimuli_identifier='share-list'), computed)
 
 

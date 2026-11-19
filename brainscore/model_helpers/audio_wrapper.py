@@ -196,15 +196,6 @@ class AudioWrapper(CachingExtractor):
                              f"{catalog_columns('audio')}; got {list(stimulus_set.columns)}.")
         return paths
 
-    CACHE_FIELDS = (
-        '_processor',
-        '_layer_aggregation',
-        '_max_duration_sec',
-        '_batch_size',
-        '_audio_loader',
-        '_target_sample_rate',
-    )
-
     @store_xarray(identifier_ignore=['paths', 'layers'],
                   combine_fields={'layers': 'layer'})
     def _from_paths_stored(self, layers, paths, extraction_fingerprint):

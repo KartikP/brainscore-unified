@@ -261,21 +261,6 @@ class VideoWrapper(CachingExtractor):
                          f"{catalog_columns('vision:video')} (or stimulus_paths); "
                          f"got {list(stimulus_set.columns)}.")
 
-    CACHE_FIELDS = (
-        '_preprocessing',
-        '_target_fps',
-        '_num_frames',
-        '_frame_sampler',
-        '_forward_kwargs',
-        '_post_hook_fn',
-        '_t_to_time_ms_fn',
-        '_batch_size',
-        '_context_window_ms',
-        '_context_strategy',
-        '_out_of_bound',
-        '_max_clip_ms',
-    )
-
     @store_xarray(identifier_ignore=['paths', 'layers'],
                   combine_fields={'layers': 'layer'})
     def _from_paths_stored(self, layers, paths, extraction_fingerprint):

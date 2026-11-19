@@ -16,6 +16,11 @@ from brainscore.model_helpers.audio_wrapper import AudioWrapper
 from tests.test_package.test_umi_review_regressions import language_pair, _stimuli
 
 
+def _on_class(function):
+    """``function`` as a method of the class: a spy on an instance would be an attribute of the key."""
+    return lambda _self, *args, **kwargs: function(*args, **kwargs)
+
+
 class Settings:
     def __init__(self, value=1):
         self.value = value
@@ -24,15 +29,20 @@ class Settings:
         return {'value': self.value}
 
 
+_NOT_SETTINGS = {'self', 'model', 'identifier', 'device'}
+
+
+def _settings(cls):
+    """The attributes that hold the constructor arguments of ``cls`` (``_<argument>``)."""
+    return [f'_{name}' for name in inspect.signature(cls).parameters if name not in _NOT_SETTINGS]
+
+
 def _wrapper(cls):
     wrapper = cls.__new__(cls)
     wrapper._model = torch.nn.Linear(2, 2).eval()
     wrapper._identifier = 'cache-fixture'
-    for name in cls.CACHE_FIELDS:
-        setattr(wrapper, name, 1)
-    for name in ('_processor', '_tokenizer'):
-        if name in cls.CACHE_FIELDS:
-            setattr(wrapper, name, Settings())
+    for name in _settings(cls):
+        setattr(wrapper, name, Settings() if name in ('_processor', '_tokenizer') else 1)
     return wrapper
 
 
@@ -83,7 +93,7 @@ def test_same_configuration_hits_changed_configuration_misses(cls, monkeypatch, 
     def extract(inputs, layers):
         calls.append(list(layers))
         return _assembly(inputs, layers, wrapper._batch_size)
-    monkeypatch.setattr(wrapper, f'_from_{inp}', extract)
+    monkeypatch.setattr(type(wrapper), f'_from_{inp}', _on_class(extract))
     expected = method(['a', 'b'], ['L'], 'stimuli')
     np.testing.assert_array_equal(method(['a', 'b'], ['L'], 'stimuli'), expected)
     assert calls == [['L']]
@@ -102,7 +112,7 @@ def test_same_configuration_hits_changed_configuration_misses(cls, monkeypatch, 
     other = _wrapper(cls)
     other._identifier = 'another-registration'
     other._model.load_state_dict(wrapper._model.state_dict())
-    monkeypatch.setattr(other, f'_from_{inp}', lambda *a, **k: pytest.fail('cache missed'))
+    monkeypatch.setattr(type(other), f'_from_{inp}', _on_class(lambda *a, **k: pytest.fail('cache missed')))
     np.testing.assert_array_equal(other._cached(['a', 'b'], ['L'], 'stimuli'), expected)
 
 
@@ -110,11 +120,8 @@ def test_same_configuration_hits_changed_configuration_misses(cls, monkeypatch, 
 def test_every_declared_extraction_setting_participates(cls):
     wrapper = _wrapper(cls)
     original = fingerprint(wrapper.cache_config())
-    # device moves the work, not the result, so it stays out of the cache key.
-    ignored = {'self', 'model', 'identifier', 'device'}
-    # A newly added constructor option cannot silently escape this contract.
-    assert set(inspect.signature(cls).parameters) - ignored == {key[1:] for key in cls.CACHE_FIELDS}
-    for name in cls.CACHE_FIELDS:
+    # Every attribute is a setting of the key; device and the label are not settings.
+    for name in _settings(cls):
         old = getattr(wrapper, name)
         setattr(wrapper, name, Settings(2) if isinstance(old, Settings) else 2)
         assert fingerprint(wrapper.cache_config()) != original, name
@@ -136,7 +143,7 @@ def test_unversioned_entry_is_logged_and_left_untouched(monkeypatch, isolated_ca
     from pathlib import Path
     old_path = Path(storage.storage_path(legacy_key))
     old_bytes = old_path.read_bytes()
-    monkeypatch.setattr(wrapper, '_from_texts', lambda texts, layers: _assembly(texts, layers, 1))
+    monkeypatch.setattr(type(wrapper), '_from_texts', _on_class(lambda texts, layers: _assembly(texts, layers, 1)))
     with caplog.at_level(logging.INFO):
         actual = wrapper._cached(['a'], ['L'], 'stimuli')
     np.testing.assert_array_equal(actual, 1)
@@ -151,7 +158,7 @@ def test_an_entry_under_the_old_key_form_is_kept_and_not_read(monkeypatch, isola
     from brainscore_core.extraction_cache import wrapper_config
     wrapper = _wrapper(TextWrapper)
     storage = isolated_cache(wrapper._from_texts_stored)
-    old_configuration = wrapper_config(wrapper, TextWrapper.CACHE_FIELDS)
+    old_configuration = wrapper_config(wrapper, _settings(TextWrapper))
     old_configuration['implementation'].append(('brainscore.model_helpers._extractors', 'module source'))
     old_signature = fingerprint({'configuration': old_configuration, 'inputs': ['a']})
     old_key = ('brainscore.model_helpers.text_wrapper.TextWrapper._from_texts_stored/identifier=cache-fixture,'
@@ -163,7 +170,7 @@ def test_an_entry_under_the_old_key_form_is_kept_and_not_read(monkeypatch, isola
     def extract(texts, layers):
         calls.append(1)
         return _assembly(texts, layers, 1)
-    monkeypatch.setattr(wrapper, '_from_texts', extract)
+    monkeypatch.setattr(type(wrapper), '_from_texts', _on_class(extract))
     np.testing.assert_array_equal(wrapper._cached(['a'], ['L'], 'stimuli'), 1)
     assert calls == [1]
     assert old_path.read_bytes() == old_bytes
@@ -182,7 +189,7 @@ def test_real_text_cache_preserves_values_and_pereira_context(language_pair, iso
     def counted(*args, **kwargs):
         calls.append(1)
         return extract(*args, **kwargs)
-    monkeypatch.setattr(wrapper, '_from_texts', counted)
+    monkeypatch.setattr(type(wrapper), '_from_texts', _on_class(counted))
     stimuli = _stimuli()
     stimuli['context_id'] = 'passage'
     native.start_recording('language_system')
@@ -298,6 +305,6 @@ def test_pytorch_perturbation_hooks_participate_and_reset_restores_key():
 def test_unsupported_provider_bypasses_storage(monkeypatch):
     wrapper = _wrapper(TextWrapper)
     wrapper.cache_config = lambda: {'opaque': object()}
-    monkeypatch.setattr(wrapper, '_from_texts_stored', lambda **kwargs: pytest.fail('unsafe cache lookup'))
-    monkeypatch.setattr(wrapper, '_from_texts', lambda texts, layers: _assembly(texts, layers, 5))
+    monkeypatch.setattr(type(wrapper), '_from_texts_stored', _on_class(lambda **kwargs: pytest.fail('unsafe cache lookup')))
+    monkeypatch.setattr(type(wrapper), '_from_texts', _on_class(lambda texts, layers: _assembly(texts, layers, 5)))
     np.testing.assert_array_equal(wrapper._cached(['a'], ['L'], 'stimuli'), 5)
