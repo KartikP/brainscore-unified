@@ -20,7 +20,6 @@ Four signal/null permutations registered:
 from brainscore import BrainScoreModel, LayerSelector
 from brainscore.models._shared import build_audio_wrapper
 
-from ._ids import SUPPORTED_IDENTIFIERS
 
 REGION_LAYER_MAP = {
     # Vision tower (CLIP ViT-B/32 vision_model — paths relative to
@@ -54,10 +53,6 @@ def _build_vision_wrapper(combo_identifier: str, random_init: bool = False):
 
 
 def get_model(identifier: str) -> BrainScoreModel:
-    if identifier not in SUPPORTED_IDENTIFIERS:
-        raise AssertionError(
-            f"unknown clip+wav2vec2 identifier {identifier!r}; "
-            f"expected one of {SUPPORTED_IDENTIFIERS}")
     random_vision = identifier.startswith('random-clip')
     random_audio = 'random-wav2vec2' in identifier
 

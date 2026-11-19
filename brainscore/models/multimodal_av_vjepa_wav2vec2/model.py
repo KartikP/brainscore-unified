@@ -62,14 +62,7 @@ def _build_video_wrapper(identifier: str, random_init: bool = False):
     return wrapper, model
 
 
-from ._ids import SUPPORTED_IDENTIFIERS
-
-
 def get_model(identifier: str) -> BrainScoreModel:
-    if identifier not in SUPPORTED_IDENTIFIERS:
-        raise AssertionError(
-            f"unknown multimodal identifier {identifier!r}; "
-            f"expected one of {SUPPORTED_IDENTIFIERS}")
     random_video = identifier.startswith('random-vjepa1')
     random_audio = 'random-wav2vec2' in identifier
 
