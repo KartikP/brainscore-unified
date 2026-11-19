@@ -98,9 +98,9 @@ class _NetworkBlocked(OSError):
 
 
 def _absent(error) -> bool:
-    """Whether ``error``, an error it came from or an error it holds (a fetcher that tries
-    several sources raises one error with the list of their errors) says that data or an
-    environment is absent."""
+    """Whether ``error``, an error it came from or an error it holds (in its arguments or its
+    attributes: a fetcher that tries several sources raises one error with the list of their
+    errors, each holding its connection error) says that data or an environment is absent."""
     pending, seen = [error], set()
     while pending:
         error = pending.pop()
@@ -109,7 +109,10 @@ def _absent(error) -> bool:
         seen.add(id(error))
         if isinstance(error, (brainscore.LoadError, FileNotFoundError, _NetworkBlocked)):
             return True
-        held = [item for arg in error.args for item in (arg if isinstance(arg, (list, tuple)) else [arg])]
+        values = [*error.args, *vars(error).values()]
+        held = [item for value in values
+                for item in (value.values() if isinstance(value, dict)
+                             else value if isinstance(value, (list, tuple)) else [value])]
         pending += [error.__cause__, error.__context__, *held]
     return False
 
@@ -173,8 +176,8 @@ def _download_from_two_sources():
         try:
             socket.socket().connect(('127.0.0.1', 9))
         except OSError as error:
-            errors.append(RuntimeError(f'could not connect: {error}'))
-            errors[-1].__context__ = error
+            errors.append(RuntimeError('could not connect'))
+            errors[-1].kwargs = {'error': error}           # held, not chained
     raise Exception(errors)
 
 
