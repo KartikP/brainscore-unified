@@ -177,18 +177,35 @@ CEILING_RECIPIENTS = ('benchmark_score', 'super().__init__', 'BenchmarkBase.__in
                       'BenchmarkBase')
 
 
+def _ceiling_property_returns(cls):
+    """The calls a ``ceiling`` property (or cached property) of ``cls`` returns itself, not
+    the returns of a function nested in it."""
+    for method in cls.body:
+        if not (isinstance(method, ast.FunctionDef) and method.name == 'ceiling' and any(
+                ast.unparse(decorator).split('.')[-1] in ('property', 'cached_property')
+                for decorator in method.decorator_list)):
+            continue
+        pending = list(method.body)
+        while pending:
+            statement = pending.pop()
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
+                continue
+            if isinstance(statement, ast.Return) and isinstance(statement.value, ast.Call):
+                yield statement.value
+            pending.extend(ast.iter_child_nodes(statement))
+
+
 def _ceiling_scores(tree):
     """The ``Score(`` calls that are the reference ceiling of an accepted recipient.
 
     Accepted expressions: the ``ceiling=`` value itself, a branch of a conditional
     expression that is the value (``not_estimated() if c is None else Score(c)``), or
-    the value a function named ``ceiling`` returns.
+    the value a ``ceiling`` property of a class returns.
     """
     accepted = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == 'ceiling':
-            accepted |= {id(statement.value) for statement in ast.walk(node)
-                         if isinstance(statement, ast.Return) and isinstance(statement.value, ast.Call)}
+        if isinstance(node, ast.ClassDef):
+            accepted |= {id(value) for value in _ceiling_property_returns(node)}
         if isinstance(node, ast.Call) and any(
                 ast.unparse(node.func) in (name, f'self.{name}') or
                 ast.unparse(node.func).endswith(f'.{name}') and '(' not in name
@@ -354,12 +371,25 @@ def test_check_fails_on_a_new_violation():
                                  ('R6 one Session class', 'core:new.py')}
 
 
-def test_a_ceiling_measured_at_first_use_is_a_reference_and_another_score_is_not():
-    lazy = ('class B:\n    @property\n    def ceiling(self):\n        return Score(self.rate)\n')
-    assert not violations([('unified:benchmarks/lazy/benchmark.py', lazy)])
+_PATH = 'unified:benchmarks/lazy/benchmark.py'
+
+
+@pytest.mark.parametrize('decorator', ['property', 'cached_property', 'functools.cached_property'])
+def test_a_ceiling_measured_at_first_use_is_a_reference_and_another_score_is_not(decorator):
+    lazy = f'class B:\n    @{decorator}\n    def ceiling(self):\n        return Score(self.rate)\n'
+    assert not violations([(_PATH, lazy)])
     built = lazy + '    def __call__(self, s):\n        return Score(0.5)\n'
-    assert violations([('unified:benchmarks/lazy/benchmark.py', built)]) == {
-        ('R15 score construction', 'unified:benchmarks/lazy/benchmark.py')}
+    assert violations([(_PATH, built)]) == {('R15 score construction', _PATH)}
+
+
+@pytest.mark.parametrize('source', [
+    'def ceiling():\n    return Score(0.5)\n',                                   # a free function
+    'class B:\n    def ceiling(self):\n        return Score(0.5)\n',             # not a property
+    ('class B:\n    @property\n    def ceiling(self):\n'
+     '        def inner():\n            return Score(0.5)\n        return inner\n'),  # nested
+])
+def test_only_the_return_of_a_ceiling_property_is_a_reference(source):
+    assert violations([(_PATH, source)]) == {('R15 score construction', _PATH)}
 
 
 def test_check_fails_on_a_stale_entry():
