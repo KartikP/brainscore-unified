@@ -49,7 +49,7 @@ def test_same_boards_every_candidate(bench):
 
 def test_a_seeded_null_gives_one_score_each_time():
     """The registered settings: one subject scored twice, and a new subject with
-    the same seed, give the first score; the first score is the measured floor."""
+    the same seed, give the first score."""
     import brainscore
     bench = brainscore.load_benchmark('GridGame-reach-5x5')
     subject = policy_model(random_action_policy(0), 'random')
@@ -58,12 +58,13 @@ def test_a_seeded_null_gives_one_score_each_time():
     assert scores == [scores[0]] * 3
 
 
-def test_the_floor_is_the_mean_rate_of_the_random_policy_over_the_floor_seeds(bench):
-    from brainscore.benchmarks.grid_game.benchmark import FLOOR_SEEDS
-    rates = [bench(policy_model(random_action_policy(seed), f'r{seed}')).attrs['success_rate']
-             for seed in FLOOR_SEEDS]
-    assert len(set(rates)) > 1                                 # one seed is not the floor
-    assert bench(policy_model(random_action_policy(0), 'r')).attrs['random_floor'] == np.mean(rates)
+def test_the_registered_floor_is_the_mean_rate_of_the_random_policy_over_seeds_0_to_29():
+    """The floor of the owner's decision (2026-11-19): the random policy with seeds 0 to 29,
+    each on the 15 registered boards, gives 167 successes in 450 episodes (measured
+    2026-11-19). One seed alone gives from 0.2 to 0.6."""
+    import brainscore
+    score = brainscore.load_benchmark('GridGame-reach-5x5')(policy_model(random_action_policy(0), 'r'))
+    assert score.attrs['random_floor'] == pytest.approx(167 / 450)
 
 
 def test_a_seeded_null_gives_an_episode_the_same_actions_after_any_other_episode():
@@ -133,12 +134,24 @@ def test_a_participate_only_subject_gets_a_score(bench):
     assert 0.0 <= score.attrs['raw'] <= 1.0
 
 
-def test_the_calibration_runs_at_first_use_and_stays_out_of_the_run_record():
+def test_the_calibration_runs_at_first_use_and_stays_out_of_the_run_record(monkeypatch):
     """The oracle and the random floor run when the ceiling is first read, not when the
-    benchmark is built; the provenance of a scored subject names only that subject."""
+    benchmark is built nor for an incompatible subject; the provenance of a scored subject
+    names only that subject."""
     import brainscore
+    from brainscore_core.streaming import Session
+    sessions = []
+    start = Session.__init__
+
+    def counted(self, *args, **kwargs):
+        sessions.append(True)
+        start(self, *args, **kwargs)
+    monkeypatch.setattr(Session, '__init__', counted)
     built = GridGameBenchmark(size=5, n_episodes=2)
-    assert '_calibration' not in vars(built)               # nothing measured at build
+    assert not sessions                                       # nothing measured at build
+    assert np.isnan(float(brainscore.score(brainscore.load_model('chance-baseline'), built)))
+    assert not sessions                                       # N/A before any episode
     score = brainscore.score(policy_model(random_action_policy(3), 'probe'), built)
+    assert sessions
     assert [entry['subject'] for entry in score.attrs['provenance']] == ['probe']
     assert float(score.attrs['ceiling']) == 1.0
