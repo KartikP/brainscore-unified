@@ -28,6 +28,12 @@ class _Declared(Subject):
             session.respond(StreamEvent(next(iter(self.out_channels)), event.payload, None, {}))
 
 
+class _SkipsTheBase(_Declared):
+    """Reads its methods past the Subject base, as a subject that skips both duties."""
+    def __getattribute__(self, name):
+        return object.__getattribute__(self, name)
+
+
 def _declared(identifier='dummy', in_channels=('text',), out_channels=('behavior:choice',),
               required_channels=(), output_inputs=None, traits=()):
     return _Declared(identifier=identifier, in_channels=set(in_channels),
@@ -63,14 +69,12 @@ def test_a_bad_identifier_or_declaration_fails(mocker, declared):
 
 
 def test_a_subject_whose_participate_skips_the_base_fails_both_session_checks(mocker):
-    class Late(_Declared):
-        pass
+    class Skips(_SkipsTheBase):
+        def participate(self, session):
+            while session.next_input() is not None:
+                pass
 
-    def unwrapped(self, session):   # assigned after the class statement: not wrapped
-        while session.next_input() is not None:
-            pass
-    Late.participate = unwrapped
-    mocker.patch.object(generic_plugin_tests, '_loaded', return_value=Late(
+    mocker.patch.object(generic_plugin_tests, '_loaded', return_value=Skips(
         identifier='late', in_channels={'text'}, out_channels={'behavior:choice'},
         required_channels=set(), output_inputs={}, traits=set()))
     with pytest.raises(AssertionError):
@@ -112,14 +116,15 @@ def test_the_session_checks_fail_when_they_observe_nothing(mocker):
         def participate(self, session):
             pass
 
-    class Unwrapped:            # a body that never declares and never reads
-        def participate(self, session):
-            pass
+    class Skips(ReadsNothing, _SkipsTheBase):     # never declares and never reads
+        pass
 
     subject = ReadsNothing(identifier='quiet', in_channels={'text'}, out_channels={'behavior:choice'},
                            required_channels=set(), output_inputs={}, traits=set())
     generic_plugin_tests.test_an_undeclared_input_never_reaches_the_subject(_stand_in(mocker, subject))
-    ReadsNothing.participate = Unwrapped.participate    # assigned late: not wrapped
+    _stand_in(mocker, Skips(identifier='quiet', in_channels={'text'},
+                                out_channels={'behavior:choice'}, required_channels=set(),
+                                output_inputs={}, traits=set()))
     with pytest.raises(AssertionError, match='observed'):
         generic_plugin_tests.test_an_undeclared_input_never_reaches_the_subject('quiet')
     with pytest.raises(AssertionError, match='never started'):
@@ -127,14 +132,12 @@ def test_the_session_checks_fail_when_they_observe_nothing(mocker):
 
 
 def test_the_guard_check_names_what_the_second_session_did(mocker):
-    class Late(_Declared):
-        pass
+    class Skips(_SkipsTheBase):
+        def participate(self, session):     # an empty session fails
+            if session.next_input() is None:
+                raise ValueError('no input')
 
-    def unwrapped(self, session):   # assigned late: not wrapped; an empty session fails
-        if session.next_input() is None:
-            raise ValueError('no input')
-    Late.participate = unwrapped
-    identifier = _stand_in(mocker, Late(identifier='late', in_channels={'text'},
+    identifier = _stand_in(mocker, Skips(identifier='late', in_channels={'text'},
                                         out_channels={'behavior:choice'}, required_channels=set(),
                                         output_inputs={}, traits=set()))
     with pytest.raises(AssertionError, match='no input'):
