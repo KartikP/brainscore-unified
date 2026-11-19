@@ -140,7 +140,6 @@ def get_model(identifier: str) -> BrainScoreModel:
         model=language_model,
         tokenizer=tokenizer,
         identifier=f'{identifier}-text',
-        max_length=128,
     )
 
     # Clips go through the model's own video processor (vision:video); stills
