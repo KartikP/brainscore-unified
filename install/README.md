@@ -181,6 +181,23 @@ never on the only copy of uncommitted work. Git hooks never run.
 To run the same set on GitHub, start the offline workflow manually with the
 `core_revision`, `vision_revision` and `language_revision` inputs (full SHAs).
 
+A pull request of one change that needs partner pull requests in other
+repositories states them in its body, in one line of this exact form:
+
+```text
+Candidate set: core#254 language#463
+```
+
+The key is `Candidate set:`; each entry is `core`, `vision` or `language`, a `#`
+and the pull request number, separated by spaces, each repository at most once.
+The checks of that pull request then test each named peer at the head of its
+pull request (at its merge commit once it is merged) instead of the commit in
+`peer-revisions.json`. An edit of the body runs the checks again. A line that
+starts with the key but has another form fails the run and prints the form;
+delete the line to test with the lock. Unified is not an entry: the unified
+pull request of a change states the set of its peers, and the checks of a core,
+vision or language pull request use the unified release branch.
+
 ## Check that the pins agree
 
 `check_pins.py` reads the core pin and the unified pin at every site and fails

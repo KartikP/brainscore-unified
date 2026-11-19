@@ -6,11 +6,14 @@ name: offline tests
 # (gh workflow run offline-tests.yml --ref unified-model-interface-v2), and on
 # pull requests that carry the
 # run-macos label. Skipped jobs report success, so required checks stay green.
+# A pull request body can name the partner pull requests of one change in one
+# line, "Candidate set: core#<n> vision#<n> language#<n>" (any of the three); the
+# run tests those heads instead of the lock. An edit of the body runs the checks again.
 on:
   push:
     branches: [unified-model-interface-v2]
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened, labeled, edited]
   workflow_dispatch:
     inputs:
       core_revision:
@@ -40,7 +43,7 @@ on:
         required: true
         type: string
       unified_revision:
-        description: Immutable Unified revision supplying the runner and peer pins
+        description: Unified revision supplying the runner and the lock (the release branch or a commit)
         required: true
         type: string
 concurrency:
@@ -111,6 +114,9 @@ jobs:
           OVERRIDE_CORE: ${{ github.event.inputs.core_revision }}
           OVERRIDE_VISION: ${{ github.event.inputs.vision_revision }}
           OVERRIDE_LANGUAGE: ${{ github.event.inputs.language_revision }}
+          PULL_REQUEST_BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ github.token }}
+          UNIFIED_WORKFLOW_REVISION: ${{ inputs.unified_revision && github.job_workflow_sha || '' }}
         run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" resolve
       - uses: actions/checkout@v4
         if: steps.scope.outputs.skip != 'true'
@@ -237,6 +243,9 @@ jobs:
           OVERRIDE_CORE: ${{ github.event.inputs.core_revision }}
           OVERRIDE_VISION: ${{ github.event.inputs.vision_revision }}
           OVERRIDE_LANGUAGE: ${{ github.event.inputs.language_revision }}
+          PULL_REQUEST_BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ github.token }}
+          UNIFIED_WORKFLOW_REVISION: ${{ inputs.unified_revision && github.job_workflow_sha || '' }}
         run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" resolve
       - uses: actions/checkout@v4
         if: steps.scope.outputs.skip != 'true'
@@ -342,6 +351,9 @@ jobs:
           OVERRIDE_CORE: ${{ github.event.inputs.core_revision }}
           OVERRIDE_VISION: ${{ github.event.inputs.vision_revision }}
           OVERRIDE_LANGUAGE: ${{ github.event.inputs.language_revision }}
+          PULL_REQUEST_BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ github.token }}
+          UNIFIED_WORKFLOW_REVISION: ${{ inputs.unified_revision && github.job_workflow_sha || '' }}
         run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" resolve
       - uses: actions/checkout@v4
         if: steps.scope.outputs.skip != 'true'
@@ -431,6 +443,9 @@ jobs:
           OVERRIDE_CORE: ${{ github.event.inputs.core_revision }}
           OVERRIDE_VISION: ${{ github.event.inputs.vision_revision }}
           OVERRIDE_LANGUAGE: ${{ github.event.inputs.language_revision }}
+          PULL_REQUEST_BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ github.token }}
+          UNIFIED_WORKFLOW_REVISION: ${{ inputs.unified_revision && github.job_workflow_sha || '' }}
         run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" resolve
       - uses: actions/checkout@v4
         if: steps.scope.outputs.skip != 'true'

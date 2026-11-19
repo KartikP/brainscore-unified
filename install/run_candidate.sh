@@ -338,10 +338,16 @@ phase_print_env() {
 }
 
 # GitHub Actions only: resolve the candidate (CANDIDATE* and UNIFIED_REPOSITORY
-# from the workflow) and optional OVERRIDE_CORE/VISION/LANGUAGE peers
-# ([owner/repo@]full-sha). Writes the record and the checkout step outputs.
+# from the workflow), optional OVERRIDE_CORE/VISION/LANGUAGE peers
+# ([owner/repo@]full-sha) and the candidate set of PULL_REQUEST_BODY. Writes the
+# record and the checkout step outputs. In a caller's run, UNIFIED_WORKFLOW_REVISION
+# is the unified commit of the workflow; the unified checkout must be the same commit.
 phase_resolve() {
-    local overrides=() name value
+    local overrides=() name value head
+    head=$(git_quiet -C "$WORK/unified" rev-parse HEAD)
+    if [ -n "${UNIFIED_WORKFLOW_REVISION:-}" ] && [ "$UNIFIED_WORKFLOW_REVISION" != "$head" ]; then
+        die "the workflow is unified $UNIFIED_WORKFLOW_REVISION but the unified checkout is $head: the release branch moved between the two; re-run the failed jobs"
+    fi
     for name in core vision language; do
         case "$name" in
             core) value=$OVERRIDE_CORE ;; vision) value=$OVERRIDE_VISION ;; language) value=$OVERRIDE_LANGUAGE ;;
@@ -350,7 +356,7 @@ phase_resolve() {
             overrides+=(--override "$name=$value")
         fi
     done
-    UNIFIED_REVISION=$(git_quiet -C "$WORK/unified" rev-parse HEAD) \
+    UNIFIED_REVISION=$head \
         "$PYTHON" "$WORK/unified/brainscore/validation/revisions.py" \
         --manifest "$WORK/unified/install/peer-revisions.json" --record "$RECORD" \
         ${overrides[@]+"${overrides[@]}"}

@@ -190,3 +190,29 @@ def test_failed_phase_skips_later_phases_except_records(tmp_path):
     assert '==> openpi-client-install skipped after a failure' in output
     assert '==> openpi-client-record\n' in output
     assert '==> openpi-client-test skipped after a failure' in output
+
+
+def test_every_resolve_step_reads_the_candidate_set():
+    workflow = yaml.safe_load(WORKFLOW.read_text())
+    # "on" is read as True by YAML 1.1. An edit of the body must run the checks again.
+    assert 'edited' in workflow[True]['pull_request']['types']
+    for name, job in workflow['jobs'].items():
+        resolve = [step for step in job['steps'] if step.get('run', '').endswith(' resolve')]
+        assert resolve, name
+        assert all('PULL_REQUEST_BODY' in step['env'] for step in resolve), name
+
+
+def test_resolve_refuses_a_unified_checkout_other_than_the_workflow(tmp_path):
+    """A caller's workflow and its unified checkout must be the same commit of the release branch."""
+    work = tmp_path / 'work'
+    unified = work / 'unified'
+    unified.mkdir(parents=True)
+    git = ['git', '-C', str(unified), '-c', 'user.name=t', '-c', 'user.email=t@example.org']
+    subprocess.run([*git, 'init', '-q'], check=True)
+    subprocess.run([*git, 'commit', '-q', '--allow-empty', '-m', 'tip'], check=True)
+    env = {'PATH': os.environ['PATH'], 'HOME': str(tmp_path),
+           'UNIFIED_WORKFLOW_REVISION': '0' * 40}
+    result = subprocess.run([shutil.which('bash'), str(SCRIPT), '--work', str(work), 'resolve'],
+                            capture_output=True, text=True, env=env, timeout=120)
+    assert result.returncode != 0
+    assert 're-run' in result.stderr

@@ -119,3 +119,61 @@ def test_override_cannot_replace_the_candidate_under_test():
     with pytest.raises(ValueError, match='conflicts'):
         candidate_record('core', overrides={
             'core': {'repository': 'brain-score/core', 'revision': 'f' * 40}})
+
+
+PULLS = {
+    ('brain-score/vision', 2694): {'state': 'open', 'merged': False, 'merge_commit_sha': None,
+                                   'head': {'sha': 'f' * 40,
+                                            'repo': {'full_name': 'contributor/vision'}}},
+    ('brain-score/language', 463): {'state': 'closed', 'merged': True,
+                                    'merge_commit_sha': '9' * 40,
+                                    'head': {'sha': '8' * 40,
+                                             'repo': {'full_name': 'brain-score/language'}}},
+}
+
+
+def lookup(repository, number):
+    return PULLS[(repository, number)]
+
+
+def test_candidate_set_in_the_body_replaces_the_named_peers():
+    from brainscore.validation.revisions import candidate_set
+
+    body = 'Shared rule change.\r\n\r\nCandidate set: vision#2694 language#463\r\n'
+    overrides = candidate_set(body, lookup)
+    # An open pull request gives its head; a merged one gives its merge commit.
+    assert overrides['vision'] == {'repository': 'contributor/vision', 'revision': 'f' * 40}
+    assert overrides['language'] == {'repository': 'brain-score/language', 'revision': '9' * 40}
+    record = candidate_record('core', overrides=overrides)
+    assert record['checkouts']['core']['revision'] == HEAD
+    assert record['checkouts']['vision']['revision'] == 'f' * 40
+
+
+@pytest.mark.parametrize('body', [None, '', 'No set here.\nCandidate sets are described below.'])
+def test_body_without_a_set_keeps_the_lock(body):
+    from brainscore.validation.revisions import candidate_set
+
+    assert candidate_set(body, lookup) == {}
+
+
+@pytest.mark.parametrize('line', [
+    'Candidate set: vision 2694',            # no number sign
+    'Candidate set: unified#161',            # unified is never a peer
+    'Candidate set:',                        # empty
+    'candidate set: vision#2694',            # another spelling of the key
+    'Candidate set: vision#2694 vision#2695',  # one peer twice
+])
+def test_malformed_set_line_is_refused_with_the_form(line):
+    from brainscore.validation.revisions import candidate_set
+
+    with pytest.raises(ValueError, match='Candidate set: core#'):
+        candidate_set(f'Text.\n{line}\n', lookup)
+
+
+def test_closed_unmerged_pull_request_is_refused():
+    from brainscore.validation.revisions import candidate_set
+
+    closed = {'state': 'closed', 'merged': False, 'merge_commit_sha': None,
+              'head': {'sha': 'f' * 40, 'repo': {'full_name': 'brain-score/vision'}}}
+    with pytest.raises(ValueError, match='closed'):
+        candidate_set('Candidate set: vision#1', lambda repository, number: closed)

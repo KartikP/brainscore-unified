@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+from urllib.request import Request, urlopen
 
 
 REPOSITORIES = {
@@ -39,6 +40,58 @@ def parse_override(value: str) -> tuple[str, dict]:
     repository, _, revision = target.rpartition('@')
     return name, {'repository': _repository(repository or REPOSITORIES[name]),
                   'revision': _revision(revision)}
+
+
+# One line of a pull request body names the partner pull requests of one change,
+# for example "Candidate set: core#254 language#463". Each listed peer is tested
+# at that pull request's head (its merge commit once it is merged) instead of the lock.
+SET_FORM = 'Candidate set: core#<number> vision#<number> language#<number> (any of the three, once each)'
+SET_LINE = re.compile(r'Candidate set:((?: +(?:core|vision|language)#[1-9][0-9]*)+) *')
+SET_KEY = re.compile(r'candidate\s*set\s*:', re.IGNORECASE)
+
+
+def _github_pull(repository: str, number: int) -> dict:
+    headers = {'Accept': 'application/vnd.github+json', 'User-Agent': 'umi-candidate-set'}
+    token = os.environ.get('GH_TOKEN')
+    if token:
+        headers['Authorization'] = f'Bearer {token}'
+    url = f'https://api.github.com/repos/{repository}/pulls/{number}'
+    with urlopen(Request(url, headers=headers), timeout=30) as response:
+        return json.load(response)
+
+
+def candidate_set(body: str | None, lookup=_github_pull) -> dict:
+    """Read the candidate set line of a pull request body into peer overrides.
+
+    A body without the line gives no override. A line that starts with the key
+    but does not have the form is refused, so a typing error never tests the lock
+    in silence. ``lookup(repository, number)`` returns the GitHub pull request.
+    """
+    lines = [line.strip() for line in (body or '').splitlines()
+             if SET_KEY.match(line.strip().lstrip('*_`'))]
+    if not lines:
+        return {}
+    match = SET_LINE.fullmatch(lines[0]) if len(lines) == 1 else None
+    entries = match.group(1).split() if match else []
+    names = [entry.partition('#')[0] for entry in entries]
+    if not match or len(set(names)) != len(names):
+        raise ValueError(f'Malformed candidate set {lines!r}: write one line of the form '
+                         f'"{SET_FORM}", or delete the line to test with the lock')
+    overrides = {}
+    for entry in entries:
+        name, _, number = entry.partition('#')
+        pull = lookup(REPOSITORIES[name], int(number))
+        if pull.get('merged'):
+            checkout = {'repository': REPOSITORIES[name], 'revision': pull['merge_commit_sha']}
+        elif pull.get('state') == 'open' and (pull['head'].get('repo') or {}).get('full_name'):
+            checkout = {'repository': pull['head']['repo']['full_name'],
+                        'revision': pull['head']['sha']}
+        else:
+            raise ValueError(f'{entry} is closed without a merge or its source is gone: '
+                             'remove it from the candidate set')
+        overrides[name] = {'repository': _repository(checkout['repository']),
+                           'revision': _revision(checkout['revision'])}
+    return overrides
 
 
 def resolve(manifest: dict, *, candidate: str, repository: str, revision: str,
@@ -106,6 +159,10 @@ def main() -> None:
         return
     if args.manifest is None:
         parser.error('--manifest is required when resolving revisions')
+    overrides = dict(parse_override(value) for value in args.override)
+    stated = candidate_set(os.environ.get('PULL_REQUEST_BODY'))
+    if overrides.keys() & stated.keys():
+        raise ValueError('Give a peer either as a workflow input or in the candidate set, not both')
     record = resolve(
         json.loads(args.manifest.read_text()),
         candidate=os.environ['CANDIDATE'],
@@ -113,7 +170,7 @@ def main() -> None:
         revision=os.environ['CANDIDATE_REVISION'],
         unified_repository=os.environ['UNIFIED_REPOSITORY'],
         unified_revision=os.environ['UNIFIED_REVISION'],
-        overrides=dict(parse_override(value) for value in args.override),
+        overrides={**overrides, **stated},
     )
     args.record.parent.mkdir(parents=True, exist_ok=True)
     args.record.write_text(json.dumps(record, indent=2) + '\n')
