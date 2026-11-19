@@ -1,6 +1,6 @@
 """Guard: a store that Brain-Score ships finds a stored result by the content of its input.
 
-Two parts, both found by discovery, with no list of plugins or functions:
+Three parts, all found by discovery, with no list of plugins or functions:
 
 1. Every function in unified ``brainscore/`` and in the shared vision
    ``model_helpers/`` that a store decorator (``store``, ``store_xarray``,
@@ -16,6 +16,10 @@ Two parts, both found by discovery, with no list of plugins or functions:
    other weights) gives the values of a cold run. For the unified wrappers, the
    same table under two names gives one forward pass and one entry. Every case
    first sees the store write an entry and serve it, so it fails with the store off.
+3. For each unified wrapper: a forward hook moved from before a layer to after it, another
+   audio history, each constructor argument (from the signature) and each attribute (after one
+   extraction) gives another key or no store; an argument the guard cannot vary must be kept as
+   an attribute, and every attribute is checked.
 """
 import ast
 import os
