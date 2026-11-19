@@ -100,8 +100,11 @@ def _identity(library: Library, version: str) -> dict:
 
 def python_version(library: Library) -> str:
     """The version (``3.x.y``) of the Python that makes the library's environment; a program
-    that is not found or is not Python 3 is refused (``ValueError``). Nothing is made here."""
-    return _reported_version(library.python or sys.executable, library.name)
+    that is not found or is not Python 3 is refused (``ValueError``). Nothing is made here.
+    This Python (no ``python`` named) answers in this process: a build starts no program."""
+    if library.python is None:
+        return '.'.join(map(str, sys.version_info[:3]))
+    return _reported_version(library.python, library.name)
 
 
 def _reported_version(python, name: str) -> str:
