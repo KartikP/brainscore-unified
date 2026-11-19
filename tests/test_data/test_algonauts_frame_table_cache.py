@@ -5,19 +5,28 @@ old vision models). Others also hash the file bytes (the unified wrappers). The
 table name must serve both: equal files in equal order share one name, so
 participants share one stored entry; new bytes at an old path, or other rows,
 give another name, so a store that keys on the name alone answers the current
-frames. Tiny synthetic frames, stand-in networks, a temporary store.
+frames.
+
+A store reads its folder (``RESULTCACHING_HOME``) when its module is imported, so
+each run with the store on is a child process with its own empty folder; the
+store is switched off with ``RESULTCACHING_DISABLE``. Tiny synthetic frames,
+stand-in networks.
 """
-from collections import OrderedDict
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
-import result_caching
+import torch
 from PIL import Image
 
 from brainscore.data.algonauts2025 import per_scan_stimuli
-from tests.test_model_helpers.test_wrapper_cache_guard import vlm_vision_wrapper
-from tests.test_model_helpers.test_wrapper_cache_sharing import _storage, store  # noqa: F401 (fixture)
+
+_REPOSITORY = Path(__file__).resolve().parents[2]
 
 
 def _films(root, movies=('m1',)):
@@ -34,6 +43,23 @@ def _table(root, participant, n_scans):
     return per_scan_stimuli(_films(root), {'m1': n_scans}, ['frames'], 'friends', participant, root)
 
 
+def _child(step, root, storage='on'):
+    """Run ``step(root)`` of this module in a child process whose store is the empty folder ``root/store``."""
+    root = Path(root)
+    env = {**os.environ, 'RESULTCACHING_HOME': str(root / 'store'),
+           'RESULTCACHING_DISABLE': '0' if storage == 'on' else '1',
+           'PYTHONPATH': os.pathsep.join([str(_REPOSITORY), *sys.path])}
+    subprocess.run([sys.executable, '-c', f'from {__name__} import {step}; {step}({str(root)!r})'],
+                   cwd=_REPOSITORY, env=env, check=True)
+    return json.loads((root / f'{step}.json').read_text())
+
+
+def _entries(root):
+    return sorted(str(path) for path in (Path(root) / 'store').rglob('*') if path.is_file())
+
+
+# -- a store keyed on the name answers the current frames ---------------------
+
 def _name_only_reader():
     """A stand-in store that keys on the table name alone: the mean pixel of each frame."""
     stored = {}
@@ -46,8 +72,9 @@ def _name_only_reader():
     return read
 
 
-def _temporal_reader(monkeypatch, tmp_path):
-    """The temporal helper of old vision models, with a stand-in network and a temporary store."""
+def _temporal_reader():
+    """The temporal helper of old vision models with a stand-in network (child process only)."""
+    from collections import OrderedDict
     from brainscore_vision.model_helpers.activations.temporal.core import TemporalInferencer
     from brainscore_vision.model_helpers.activations.temporal.model import ActivationWrapper
 
@@ -57,49 +84,97 @@ def _temporal_reader(monkeypatch, tmp_path):
 
     model = StandIn('stand-in', lambda video: video.to_numpy()[:, :8, :8], inferencer_cls=TemporalInferencer,
                     fps=1, layer_activation_format={'layer1': 'THWC'}, max_workers=1, batch_size=4)
-    monkeypatch.setattr(_storage(model._extractor._from_paths_stored), '_storage_directory', str(tmp_path / 'store'))
-    temporal = 'brainscore_vision.model_helpers.activations.temporal.'
 
     def read(table, cached):
-        monkeypatch.setattr(result_caching, 'is_enabled', lambda key: cached and key.startswith(temporal))
+        os.environ['RESULTCACHING_DISABLE'] = '0' if cached else '1'
         return model(table, layers=['layer1']).values.copy()
     return read
 
 
-@pytest.fixture(params=['name_only_stand_in', 'vision_temporal_helper'])
-def reader(request, monkeypatch, tmp_path):
-    if request.param == 'name_only_stand_in':
-        return _name_only_reader()
-    return _temporal_reader(monkeypatch, tmp_path)
+def _replaced_frame(read, root):
+    _frame(root, 'm1', 1, 0)
+    read(_table(root, 1, 1), cached=True)
+    _frame(root, 'm1', 1, 255)
+    warm = read(_table(root, 2, 1), cached=True)
+    return bool(np.array_equal(warm, read(_table(root, 2, 1), cached=False)))
 
 
-def test_a_store_keyed_on_the_name_answers_a_frame_replaced_at_the_same_path(reader, tmp_path):
-    _frame(tmp_path, 'm1', 1, 0)
-    reader(_table(tmp_path, 1, 1), cached=True)
-    _frame(tmp_path, 'm1', 1, 255)
-    warm = reader(_table(tmp_path, 2, 1), cached=True)
-    assert np.array_equal(warm, reader(_table(tmp_path, 2, 1), cached=False))
+def _other_rows(read, root):
+    _frame(root, 'm1', 1, 0)
+    _frame(root, 'm1', 2, 255)
+    read(_table(root, 1, 2), cached=True)
+    warm = read(_table(root, 2, 1), cached=True)
+    return bool(np.array_equal(warm, read(_table(root, 2, 1), cached=False)))
 
 
-def test_a_store_keyed_on_the_name_answers_a_participant_with_other_rows(reader, tmp_path):
-    _frame(tmp_path, 'm1', 1, 0)
-    _frame(tmp_path, 'm1', 2, 255)
-    reader(_table(tmp_path, 1, 2), cached=True)
-    warm = reader(_table(tmp_path, 2, 1), cached=True)
-    assert np.array_equal(warm, reader(_table(tmp_path, 2, 1), cached=False))
+def temporal_replaced_frame(root):
+    root = Path(root)
+    (root / 'temporal_replaced_frame.json').write_text(json.dumps(_replaced_frame(_temporal_reader(), root)))
 
 
-def test_participants_with_equal_frames_share_one_stored_entry(store, tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+def temporal_other_rows(root):
+    root = Path(root)
+    (root / 'temporal_other_rows.json').write_text(json.dumps(_other_rows(_temporal_reader(), root)))
+
+
+def test_a_store_keyed_on_the_name_answers_a_frame_replaced_at_the_same_path(tmp_path):
+    assert _replaced_frame(_name_only_reader(), tmp_path / 'stand-in')
+    assert _child('temporal_replaced_frame', tmp_path / 'temporal')
+
+
+def test_a_store_keyed_on_the_name_answers_a_participant_with_other_rows(tmp_path):
+    assert _other_rows(_name_only_reader(), tmp_path / 'stand-in')
+    assert _child('temporal_other_rows', tmp_path / 'temporal')
+
+
+# -- participants with equal frames share one stored entry --------------------
+
+FORWARDS = []
+
+
+class _Network(torch.nn.Module):
+    """A stand-in vision encoder: the mean colour of each image through one layer; counts its forward calls."""
+
+    def __init__(self):
+        super().__init__()
+        self.blocks = torch.nn.ModuleList([torch.nn.Linear(3, 2)])
+
+    def forward(self, pixel_values):
+        FORWARDS.append(len(pixel_values))
+        return self.blocks[0](pixel_values)
+
+
+class _Processor:
+    def __call__(self, images=None, return_tensors='pt'):
+        return {'pixel_values': torch.tensor(np.stack(
+            [np.asarray(image, dtype=np.float32).mean(axis=(0, 1)) for image in images]))}
+
+
+def participants_share_one_entry(root):
+    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
+    root = Path(root)
+    torch.manual_seed(0)
+    wrapper = VLMVisionWrapper(_Network(), _Processor(), identifier='stand-in', device='cpu')
+    seen = {}
+
+    def run(name, participant):
+        FORWARDS.clear()
+        values = wrapper(_table(root, participant, 2), layers=['blocks.0']).values
+        seen[name] = {'entries': len(_entries(root)), 'forwards': len(FORWARDS), 'values': values.tolist()}
+
     for t, value in ((1, 30), (2, 200)):
-        _frame(tmp_path, 'm1', t, value)
-    first, second = _table(tmp_path, 1, 2), _table(tmp_path, 2, 2)
-    assert first.identifier == second.identifier
-    wrapper = vlm_vision_wrapper()
-    store.install(wrapper)
-    wrapper(first, layers=['blocks.0'])
-    entries = sorted(store.folder.rglob('*.pkl'))
-    warm = wrapper(second, layers=['blocks.0'])
-    assert sorted(store.folder.rglob('*.pkl')) == entries
-    store.enabled = False
-    assert np.array_equal(warm.values, wrapper(second, layers=['blocks.0']).values)
+        _frame(root, 'm1', t, value)
+    run('participant 1', 1)
+    run('participant 2', 2)
+    _frame(root, 'm1', 2, 90)
+    run('changed file', 2)
+    (root / 'participants_share_one_entry.json').write_text(json.dumps(seen))
+
+
+def test_participants_with_equal_frames_share_one_stored_entry(tmp_path):
+    seen = _child('participants_share_one_entry', tmp_path)
+    first, second, changed = seen['participant 1'], seen['participant 2'], seen['changed file']
+    assert first['entries'] == 1 and first['forwards'] > 0
+    assert second['entries'] == 1 and second['forwards'] == 0
+    assert second['values'] == first['values']
+    assert changed['entries'] == 2 and changed['forwards'] > 0
