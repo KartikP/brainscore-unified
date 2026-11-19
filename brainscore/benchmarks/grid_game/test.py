@@ -56,7 +56,14 @@ def test_a_seeded_null_gives_one_score_each_time():
     scores = [float(bench(subject)) for _ in range(2)]
     scores.append(float(bench(policy_model(random_action_policy(0), 'random-again'))))
     assert scores == [scores[0]] * 3
-    assert scores[0] * float(bench.ceiling) == bench._random_floor == pytest.approx(8 / 15)
+
+
+def test_the_floor_is_the_mean_rate_of_the_random_policy_over_the_floor_seeds(bench):
+    from brainscore.benchmarks.grid_game.benchmark import FLOOR_SEEDS
+    rates = [bench(policy_model(random_action_policy(seed), f'r{seed}')).attrs['success_rate']
+             for seed in FLOOR_SEEDS]
+    assert len(set(rates)) > 1                                 # one seed is not the floor
+    assert bench(policy_model(random_action_policy(0), 'r')).attrs['random_floor'] == np.mean(rates)
 
 
 def test_a_seeded_null_gives_an_episode_the_same_actions_after_any_other_episode():

@@ -27,6 +27,11 @@ from brainscore.harnesses.grid_game import (
 from brainscore.benchmarks._score import benchmark_score
 
 
+# The random floor is the mean success rate of the random policy over these seeds
+# (ADR-0038): one seed varies from 0.2 to 0.6 on the default boards.
+FLOOR_SEEDS = range(30)
+
+
 def _run(subject, n_episodes, size, max_steps, base_seed):
     """Run ``n_episodes`` seeded episodes; return (success_rate, mean_efficiency)."""
     solves, effs = [], []
@@ -51,7 +56,8 @@ class GridGameBenchmark(BenchmarkBase):
 
     Metric: success rate over ``n_episodes`` (each a fresh seeded board),
     ceiling-normalized by the greedy oracle. ``attrs`` carry the raw rate, the
-    random-action floor, mean path efficiency, and an ``above_floor`` flag.
+    random-action floor (the mean rate of the random policy over ``FLOOR_SEEDS``),
+    mean path efficiency, and an ``above_floor`` flag.
 
     :param size: grid side length. :param n_episodes: episodes to average.
     :param max_steps: per-episode step budget. :param base_seed: episode seeds
@@ -86,7 +92,9 @@ class GridGameBenchmark(BenchmarkBase):
 
         def measure():
             oracle_rate, _ = _run(policy_model(greedy_oracle_policy, 'oracle'), **common)
-            floor, _ = _run(policy_model(random_action_policy(0), 'random'), **common)
+            floor = float(np.mean([
+                _run(policy_model(random_action_policy(seed), f'random-{seed}'), **common)[0]
+                for seed in FLOOR_SEEDS]))
             return Score(max(oracle_rate, 1e-6)), floor
         return contextvars.Context().run(measure)
 
