@@ -40,6 +40,7 @@ its own extra attributes beside these.
 """
 import math
 from collections.abc import Mapping
+from numbers import Real
 from typing import Optional
 
 from brainscore_core.metrics import Score
@@ -84,6 +85,11 @@ def _answer_attrs(answers, answer_policy, invalid_limit) -> dict:
     if not answer_policy or not isinstance(answer_policy, str):
         raise TypeError('a behavior score states its answer_policy: what its metric does '
                         'with an invalid and with a missing trial')
+    if invalid_limit is not None and not (
+            isinstance(invalid_limit, Real) and not isinstance(invalid_limit, bool)
+            and 0 <= invalid_limit <= 1):
+        raise ValueError(f'invalid_limit is a share of the trials: pass a number from 0 to 1 '
+                         f'(or None for no limit), not {invalid_limit!r}')
     by_condition = None
     if isinstance(answers, Mapping):
         by_condition = {str(condition): _state_counts(answer) for condition, answer in answers.items()}
