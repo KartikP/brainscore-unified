@@ -21,7 +21,7 @@ recording and ``reset`` stay in this process; nothing is installed into it.
 What crosses the pipe, as JSON (UTF-8): the commands and their settings; the prepared trial
 ids, system texts and messages (pictures as CogGym's base64 text, videos as paths); each model
 call (system text, messages, model, temperature, length) and its reply (text, reasoning, token
-usage); the trial rows, summary, slider validation and analysis. Strings, integers of any size,
+usage); the trial rows, summary, answer states and analysis. Strings, integers of any size,
 finite floats, None and string-keyed objects in order cross unchanged. A tuple arrives as a
 list and a non-string key as a string, as in the trial file CogGym writes in one process; a
 value JSON cannot hold (bytes, a NumPy scalar, a NaN in a reply) stops the run with a clear
@@ -34,7 +34,7 @@ one run (all its repetitions and its analysis); the pre-flight and each run star
 from __future__ import annotations
 
 import base64
-import dataclasses
+from collections import Counter
 import hashlib
 import json
 import math
@@ -81,11 +81,6 @@ _WORKER = Path(__file__).with_name('_coggym_worker.py')
 _EVALUATOR_SILENCE_S = 900.0
 
 
-def _prompt_key(system, messages):
-    value = json.dumps([system, messages], sort_keys=True, separators=(',', ':'))
-    return hashlib.sha256(value.encode()).hexdigest()
-
-
 def _check_checkout(checkout):
     def git(*arguments):
         # The command environment of CogGym's folder: no GIT_DIR or other setting of this process.
@@ -126,12 +121,12 @@ def _refuse_start(identifier: str, folder: Path, error: ChildFailed) -> None:
             f'lacks the package.') from error
 
 
-def _answer(adapter):
-    """The parent's side of a model call: the adapter's reply, or the failure CogGym records."""
+def _answer(complete):
+    """The parent's side of a model call: the reply of ``complete(call)``, or the failure
+    CogGym records."""
     def answer(call):
         try:
-            reply = adapter.complete_with_metadata(call['system'], call['messages'], call['model'],
-                                                   call['temperature'], call['max_tokens'])
+            reply = complete(call)
         except Exception as error:
             # CogGym stores a failed trial with this type and message, as in one process.
             return {'error': [type(error).__name__, str(error)]}
@@ -195,40 +190,49 @@ def _trial_row(messages, media_directory: Path) -> tuple[dict, tuple[str, ...]]:
     return row, tuple(present)
 
 
-def _written_answer(event) -> str:
-    """The one written answer in a ``behavior:text`` event."""
-    payload = event.payload
-    if not isinstance(payload, str):
-        # The state core stored for the trial decides (Contract Rule 6.2): a missing or
-        # invalid written answer is an error of the run (ANSWER_POLICY of the benchmark).
-        try:
-            states = [str(state) for state in payload['response_state'].values]
-        except (KeyError, TypeError):
-            states = []
-        if any(state != 'valid' for state in states):
-            try:
-                reason = str(payload['response_reason'].values[0])
-            except (KeyError, TypeError, IndexError):
-                reason = ''
-            raise TypeError(f'The subject gave no written answer on behavior:text (state '
-                            f'{states[0]}' + (f': {reason}' if reason else '') + ')')
-        valid = getattr(payload, 'coords', {}).get('answer_valid')
-        if valid is not None and not bool(np.all(valid.values)):
-            raise TypeError('The subject gave no written answer on behavior:text')
-        values = np.asarray(getattr(payload, 'values', payload), dtype=object).reshape(-1)
-        if values.size != 1:
-            raise ValueError(f'A CogGym call needs one written answer, not {values.size}')
-        payload = values[0]
-    if not isinstance(payload, str):
+def _written_answer(answer) -> tuple[str | None, str, str]:
+    """The written answer of one call (the collected ``behavior:text`` table), its state and
+    core's reason (Contract Rule 6.2). A missing answer has no text."""
+    values = np.asarray(answer.values, dtype=object).reshape(-1)
+    if values.size != 1:
+        raise ValueError(f'A CogGym call needs one written answer, not {values.size}')
+    state = str(np.asarray(answer['response_state'].values).reshape(-1)[0])
+    reason = str(np.asarray(answer['response_reason'].values).reshape(-1)[0])
+    if state == 'missing':
+        return None, state, reason
+    if not isinstance(values[0], str):
         raise TypeError('CogGym needs the answer on behavior:text as text (str)')
-    return payload
+    return values[0], state, reason
+
+
+def _core_states(validation, results, answers):
+    """The check's report with core's states: ``answers`` holds core's stored row of each trial
+    whose written answer core stored as missing or invalid. Each answer of a missing trial
+    (CogGym's entry of a call with no reply) keeps core's reason; each answer of an invalid
+    trial is counted ``invalid`` for core's reason."""
+    if not answers:
+        return validation
+    issues = []
+    for issue in validation['issues']:
+        row = answers.get(issue['trial_id'])
+        if row is None:
+            issues.append(issue)
+        elif row['response_state'] == 'missing':
+            issues.append({**issue, 'reason': row['response_reason']})
+    issues += [{'trial_id': result['trial_id'], 'query': tag, 'reason': row['response_reason'],
+                'response_state': 'invalid'}
+               for result in results
+               if (row := answers.get(result.get('trial_id'))) and row['response_state'] == 'invalid'
+               for tag in result.get('parsed') or {}]
+    return {**validation, 'issues': issues}
 
 
 class _SubjectAdapter:
     """Translate CogGym's model calls into sessions on the common channels.
 
-    CogGym calls the object that answers its requests a "provider"; this adapter
-    answers through the subject. Each call is one ``run_request``
+    CogGym's model client in the evaluator (its "provider") sends each call here with the
+    id of the trial CogGym built it for; this adapter answers through the subject. Each call
+    is one ``run_request``
     session: one stimulus row (the
     message parts in order), a ``TaskContext`` (the system text as the
     instruction, a ``Text`` response with the call's temperature and length,
@@ -245,34 +249,40 @@ class _SubjectAdapter:
     scores them. They come from the extra data (``meta``) of the answer event
     when the subject gives them; otherwise they are ``None``.
 
+    A trial with no written answer (core stores it as ``missing``) reaches CogGym as a
+    failed call, CogGym's own record of a call with no reply; the run goes on and the
+    trial's answers are counted ``missing`` with core's reason. An answer core stores as
+    ``invalid`` reaches CogGym as its text, and its answers are counted ``invalid`` with
+    core's reason. The adapter keeps core's stored row of each such trial (``answers``, by
+    CogGym's trial id; a retry of the trial replaces it) for the answer states.
+
     A trial the subject cannot serve (``ExecutionNotFeasibleError``, for example a
     trial with more pictures than the subject takes) is kept in ``refusal``; no
     later trial reaches the subject, and the run ends with that error.
     """
 
-    def __init__(self, subject, context, repetition, prompt_trials, stored=None):
+    def __init__(self, subject, context, repetition):
         self.subject = subject
-        # The stored behavior:text answer of each call, for the counts of the trial states.
-        self.stored = stored if stored is not None else []
         self.context = context
         self.repetition = repetition
         self.call_index = 0
-        self.prompt_trials = prompt_trials
         self.media_directory = context.directory / 'coggym-media'
         self.refusal = None
-        # How many calls of each prompt this repetition has made: several trials can share one
-        # prompt, and CogGym calls them in trial order, so the k-th call is the k-th such trial.
-        self.prompt_calls = {}
+        # Core's stored row of each trial whose written answer is missing or invalid.
+        self.answers = {}
 
-    def complete_with_metadata(self, system, messages, model, temperature, max_tokens):
+    def complete(self, call):
+        """Answer one model call of CogGym (its system text, messages and settings)."""
+        system, messages = call['system'], call['messages']
+        temperature, max_tokens = call['temperature'], call['max_tokens']
         if self.refusal is not None:
             raise self.refusal      # an earlier trial was refused: no further trial runs
-        key = _prompt_key(system, messages)
-        trial_ids = self.prompt_trials[key]
-        occurrence = self.prompt_calls.get(key, 0)
-        self.prompt_calls[key] = occurrence + 1
-        # A call beyond the trials of its prompt (a repeated call) keeps the last of them.
-        trial_id = trial_ids[min(occurrence, len(trial_ids) - 1)]
+        # CogGym's own id of the trial (several trials can share one prompt). A retry of the
+        # trial replaces the state of its earlier call: CogGym keeps the last call.
+        trial_id = call['trial_id']
+        if trial_id is None:
+            raise ValueError('CogGym made a model call outside a trial')
+        self.answers.pop(trial_id, None)
         row, present = _trial_row(messages, self.media_directory)
         stimuli = StimulusSet(pd.DataFrame([{'stimulus_id': trial_id, **row}]))
         task = TaskContext(instruction=system, present=present, trial_memory='none',
@@ -288,15 +298,23 @@ class _SubjectAdapter:
                 f'CogGym trial {trial_id}: the subject cannot serve it: {error}',
                 channels=error.channels, task_type=error.task_type)
             raise self.refusal from error
-        answers = [event for event in session.emitted if event.channel == 'behavior:text']
+        # Collect first: it stores the missing row of a trial the subject did not answer.
         collected = session.collect('behavior:text')
-        self.stored.append(collected)
+        answers = [event for event in session.emitted if event.channel == 'behavior:text']
         if len(answers) != 1:
             raise TypeError(f'CogGym needs one behavior:text answer for each call; got {len(answers)}')
+        text, state, reason = _written_answer(collected)
+        if state != 'valid':
+            self.answers[trial_id] = {'stimulus_id': trial_id, 'value': text,
+                                      'response_state': state, 'response_reason': reason}
+        if state == 'missing':
+            # CogGym's own record of a call with no reply: an entry with the error and no
+            # scores, which its fit leaves out for every question type. The message is fixed:
+            # CogGym calls again on some words (rate limits).
+            raise ValueError('no answer: the subject wrote no answer for this trial')
+        # An invalid answer: CogGym parses the raw text; the count says invalid.
         meta = answers[0].meta if isinstance(answers[0].meta, dict) else {}
-        # The answer event keeps its row; the collected answer is its table.
-        return {'text': _written_answer(dataclasses.replace(answers[0], payload=collected)),
-                'reasoning': meta.get('reasoning'), 'token_usage': meta.get('token_usage')}
+        return {'text': text, 'reasoning': meta.get('reasoning'), 'token_usage': meta.get('token_usage')}
 
 
 class CogGymRunner:
@@ -384,7 +402,6 @@ class CogGymRunner:
         if not self._trials:
             raise ValueError('The reference trial selection is empty')
         self.canonical_trial_count = len(canonical)
-        self._prompt_trials = {}
         shown = {'text'}
         # Preflight the reference prompts, including media loading, before inference.
         for trial in prepared['trials']:
@@ -405,7 +422,6 @@ class CogGymRunner:
             if not isinstance(system, str) or required - set(self.modalities):
                 raise ValueError(f'The adapter must support these modalities: {sorted(required)}')
             shown |= required
-            self._prompt_trials.setdefault(_prompt_key(system, messages), []).append(trial['id'])
         # The inputs the experiment sends: the system text is the instruction, and
         # every kind of part the selected trials show. A subject that cannot take
         # one runs with it dropped (Contract Rules 5.2, 5.5, 5.6).
@@ -455,16 +471,10 @@ class CogGymRunner:
                 )
             # Translate CogGym's model calls into sessions on the common channels.
             # This is where the external evaluator connects to UMI tools.
-            stored = []
-            result = self._run(
-                lambda repetition: _SubjectAdapter(
-                    subject, context, repetition, self._prompt_trials, stored,
-                ),
-                context.directory / 'coggym', reset, register,
-            )
-            # The stored answers stay out of the saved analysis; the benchmark counts them.
-            result['stored_answers'] = stored
-            return result
+            def start(repetition):
+                adapter = _SubjectAdapter(subject, context, repetition)
+                return adapter.complete, adapter
+            return self._run(start, context.directory / 'coggym', reset, register)
 
         # The adapter records its own sessions, so no subject method is observed.
         return CallableProtocol(
@@ -484,29 +494,40 @@ class CogGymRunner:
         """
         if not callable(getattr(adapter, 'complete_with_metadata', None)):
             raise TypeError('The adapter must implement complete_with_metadata')
-        return self._run(lambda repetition: adapter, Path(output_dir), reset, lambda path: None)
 
-    def _repetitions(self, child, adapter_factory, directory, reset, register):
-        """Each repetition: reset (in this process), CogGym's run (in the evaluator), its file."""
+        def complete(call):
+            return adapter.complete_with_metadata(call['system'], call['messages'], call['model'],
+                                                  call['temperature'], call['max_tokens'])
+        # Only Brain-Score's session adapter states answers; any failure of this one is a failure.
+        return self._run(lambda repetition: (complete, None), Path(output_dir), reset, lambda path: None)
+
+    def _repetitions(self, child, start, directory, reset, register):
+        """Each repetition: reset (in this process), CogGym's run (in the evaluator), its file.
+
+        ``start(repetition)`` gives the function that answers CogGym's calls and Brain-Score's
+        session adapter (``None`` for a direct run), the only source of answer states."""
         artifacts, validations = [], []
         for repetition in range(1, self.repetitions + 1):
             reset(repetition)
-            adapter = adapter_factory(repetition)
+            complete, adapter = start(repetition)
             ran = child.ask({'do': 'run', 'model': self.model, 'temperature': self.temperature,
-                             'max_tokens': self.max_tokens}, _answer(adapter))
+                             'max_tokens': self.max_tokens}, _answer(complete))
             # A trial the subject could not serve ends the run with the subject's own reason.
-            refusal = getattr(adapter, 'refusal', None)
-            if refusal is not None:
-                raise refusal
+            if adapter is not None and adapter.refusal is not None:
+                raise adapter.refusal
             results = ran['results']
-            # Keep reference parsing and scoring intact. Check separately whether
-            # slider ratings really occur in the response, rather than in prose.
-            validation = ran['validation']
+            # Keep reference parsing and scoring intact. The state of each requested answer
+            # comes from the check; an answer core stored as invalid keeps core's state.
+            answers = {} if adapter is None else adapter.answers
+            validation = _core_states(ran['validation'], results, answers)
             validations.append(validation)
+            failed = [result for result in results if 'error' in result
+                      and answers.get(result.get('trial_id'), {}).get('response_state') != 'missing']
             coverage = {
                 'expected_trials': len(self._trials),
                 'returned_trials': len(results),
-                'error_trials': sum('error' in result for result in results),
+                'error_trials': len(failed),
+                'no_answer_trials': sum('error' in result for result in results) - len(failed),
                 'unscorable_trials': sum(not any(
                     score.get('scorable') for score in result.get('scores', {}).values()
                 ) for result in results if 'error' not in result),
@@ -547,7 +568,7 @@ class CogGymRunner:
                 raise RuntimeError(f'CogGym returned incomplete or failed trials; inspect {path}')
         return artifacts, validations
 
-    def _run(self, adapter_factory, directory, reset, register):
+    def _run(self, start, directory, reset, register):
         if not callable(reset):
             raise TypeError('Supply a reset(repetition) callback for your adapter')
         _check_checkout(self.checkout)
@@ -556,7 +577,7 @@ class CogGymRunner:
         # repetitions and the analysis, as in one process. It is stopped and reaped on any exit.
         with _evaluator(self.folder, directory / 'evaluator') as child:
             child.ask({'do': 'prepare', 'experiment': self.experiment, 'trial_ids': list(self._trials)})
-            artifacts, validations = self._repetitions(child, adapter_factory, directory, reset, register)
+            artifacts, validations = self._repetitions(child, start, directory, reset, register)
             try:
                 analyzed = child.ask({'do': 'analyze', 'paths': [str(path) for path in artifacts]})
             except ChildFailed as error:
@@ -568,16 +589,23 @@ class CogGymRunner:
                 register(path)
                 raise
         rows, summary, skipped = analyzed['rows'], analyzed['summary'], analyzed['skipped']
+        coverage, scorable = [], 0
+        for path in artifacts:   # one repetition file at a time: a trial file can be large
+            run = json.loads(path.read_text())
+            coverage.append(run['umi']['coverage'])
+            scorable += run['summary']['n_scorable_queries']
         result = {'configuration': self.describe(), 'experiments': rows,
                   'summary': summary, 'skipped': skipped,
-                  'repetitions': [json.loads(path.read_text())['umi']['coverage'] for path in artifacts]}
-        checked = sum(report['checked_queries'] for report in validations)
-        invalid = sum(report['invalid_queries'] for report in validations)
+                  'repetitions': coverage,
+                  # CogGym's own count of the queries its fit can use, over the repetitions.
+                  'n_scorable_queries': scorable}
+        # The detector's findings, counted by reason; the validity of the score is the
+        # benchmark's decision.
         result['response_validation'] = {
             'policy': SLIDER_VALIDATION_POLICY,
-            'status': 'invalid' if invalid else 'valid' if checked else 'not_applicable',
-            'checked_queries': checked,
-            'invalid_queries': invalid,
+            'checked_queries': sum(report['checked_queries'] for report in validations),
+            'reason_counts': dict(Counter(issue['reason'] for report in validations
+                                          for issue in report['issues'])),
             'repetitions': validations,
         }
         path = directory / 'analysis.json'

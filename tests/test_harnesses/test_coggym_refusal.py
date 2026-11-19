@@ -79,7 +79,8 @@ def test_each_call_carries_its_own_trial_when_several_trials_share_a_prompt(
     benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root, reset=lambda repetition: None,
                                           repetitions=2, output_dir=tmp_path / 'run')
     score = brainscore.score(make_subject(reply), benchmark, check_mem=False)
-    assert score.attrs['n_valid'] == score.attrs['n_trials'] == len(shown)
+    assert score.attrs['n_valid'] == score.attrs['n_trials']
+    assert len(shown) == 6                                       # three trials, two repetitions
     first, second = shown[:len(shown) // 2], shown[len(shown) // 2:]
     assert len(set(first)) == len(first) and second == first     # one id per trial, again per repetition
 

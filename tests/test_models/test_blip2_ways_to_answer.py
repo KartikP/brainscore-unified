@@ -312,7 +312,27 @@ def test_the_ewok_choice_runs_by_writing(registered, ewok, tmp_path):
 
 
 def test_a_coggym_experiment_becomes_applicable_and_runs(registered, scored_reference, tmp_path):
-    root, _ = scored_reference
+    root, stand_in = scored_reference
+    # Hu2023Fine/exp1 asks for a written answer: one textbox question for each trial, which
+    # CogGym's parse reads as the reply's text.
+    stand_in.cli('''
+def _selected_trials(experiment, selection, use_all):
+    return [SimpleNamespace(id=trial, queries=[SimpleNamespace(tag='answer', type='textbox',
+                                                               slider_config=None, option=[])])
+            for trial in TRIALS]
+
+
+def _run_experiment(experiment, selected, provider, model, temperature, max_tokens):
+    RUNS.append(model)
+    results = []
+    for trial in selected:
+        raw = provider.complete_with_metadata(*build_messages(trial, experiment), model,
+                                              temperature, max_tokens)
+        results.append({'trial_id': trial.id, 'response': raw['text'],
+                        'parsed': {'answer': {'text': raw['text']}},
+                        'scores': {'answer': {'scorable': True}}})
+    return results
+''')
     benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root, reset=lambda repetition: None,
                                           repetitions=1, max_tokens=7, output_dir=tmp_path / 'run')
     model, calls, replies = registered()

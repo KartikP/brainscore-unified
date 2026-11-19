@@ -1,5 +1,6 @@
 """Reject incomparable settings and unsupported requests before model inference."""
 import json
+import math
 from pathlib import Path
 
 import base64
@@ -238,8 +239,16 @@ def analyze(*args, **kwargs):
         assert float(score) == 0.375
         assert score.attrs['run_directory'] is None
         assert score.attrs['records_retained'] is False
+    elif outcome == 'undefined_score':
+        # No fit is a result marked invalid with its reason, not an error (Contract Rule 6.2).
+        score = benchmark(subject)
+        assert math.isnan(float(score))
+        assert score.attrs['result_validity'] == 'invalid'
+        assert 'CogGym made no fit' in score.attrs['result_validity_reason']
+        assert score.attrs['records_retained'] is False
     else:
-        with pytest.raises(KeyboardInterrupt if outcome == 'interrupted' else ValueError):
+        # A fault of the run still raises.
+        with pytest.raises(KeyboardInterrupt):
             benchmark(subject)
     # The adapter's record folder was made once; no temporary folder of the run remains.
     assert len([path for path in created if path.name.startswith('brainscore-adapter-')]) == 1

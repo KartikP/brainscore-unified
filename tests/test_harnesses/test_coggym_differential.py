@@ -14,7 +14,7 @@ import sys
 import pytest
 
 from brainscore.harnesses import coggym
-from brainscore.harnesses.coggym_validation import validate_slider_responses
+from brainscore.harnesses.coggym_validation import validate_responses
 
 from tests.command_stand_ins import pinned_git  # noqa: F401  (a fixture)
 from tests.coggym_stand_in import ANALYZE_ROW, EXPERIMENT, write_ready_folder
@@ -69,7 +69,7 @@ def _in_process(folder, provider, repetitions, directory):
             provider.reset(repetition)
             results = cli._run_experiment(experiment, trials, provider, 'fixture', 1.0, 512)
             runs.append({'trials': results, 'summary': cli.aggregate_experiment(results),
-                         'validation': validate_slider_responses(trials, results)})
+                         'validation': validate_responses(trials, results)})
             path = directory / f'run-{repetition:03d}.json'
             path.write_text(json.dumps({'model': 'fixture', 'experiment': EXPERIMENT, 'trials': results}))
             paths.append(path)

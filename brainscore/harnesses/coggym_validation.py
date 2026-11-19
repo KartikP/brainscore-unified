@@ -1,4 +1,4 @@
-"""Check slider answers without replacing CogGym's parser or scientific scores."""
+"""Give each CogGym answer a state without replacing CogGym's parser or scientific scores."""
 import json
 import math
 import re
@@ -39,12 +39,7 @@ def _segments(raw, queries):
     if not isinstance(raw, str):
         raise ValueError('Missing response')
     tags = [query.tag for query in queries]
-    if len(set(tags)) != len(tags):
-        raise ValueError('Ambiguous question tags')
-    text = raw.strip()
-    fence = re.fullmatch(r'```(?:json)?\s*\n?(.*?)\s*```', text, flags=re.DOTALL)
-    if fence:
-        text = fence[1]
+    text = _unfenced(raw)
     try:
         documents = _documents(text)
     except ValueError:
@@ -58,7 +53,30 @@ def _segments(raw, queries):
             raise ValueError('Ambiguous answer format') from None
         if parts[1::2] != [str(i) for i in range(1, len(queries) + 1)]:
             raise ValueError('Ambiguous question numbering')
-        return [_segments(part, [query])[0] for part, query in zip(parts[2::2], queries)]
+        return [_numbered_part(part, query) for part, query in zip(parts[2::2], queries)]
+    return _assigned(documents, queries, tags)
+
+
+def _unfenced(text):
+    text = text.strip()
+    fence = re.fullmatch(r'```(?:json)?\s*\n?(.*?)\s*```', text, flags=re.DOTALL)
+    return fence[1] if fence else text
+
+
+def _numbered_part(text, query):
+    """One numbered answer holds a value (a rating or a JSON value), not a second numbered list."""
+    text = _unfenced(text)
+    try:
+        documents = _documents(text)
+    except ValueError:
+        match = re.fullmatch(rf'(?:Answer:\s*)?({_NUMBER})', text, flags=re.IGNORECASE)
+        if not match:
+            raise ValueError('Ambiguous answer format') from None
+        return match[1]
+    return _assigned(documents, [query], [query.tag])[0]
+
+
+def _assigned(documents, queries, tags):
     if len(documents) == len(queries) and len(documents) > 1 and all(
         isinstance(value, dict) for value in documents
     ):
@@ -119,45 +137,81 @@ def _agrees(value, query, parsed):
     )
 
 
-def validate_slider_responses(trials: Sequence[Any], results: Sequence[dict]) -> dict:
-    """Report invalid slider answers; leave native responses and scores untouched.
+def _native_value(parsed, query):
+    """Whether CogGym's parser gave this answer a value (CogGym fits only such answers)."""
+    if not isinstance(parsed, dict):
+        return False
+    if query.type == 'single-slider':
+        return parsed.get('value') is not None
+    if query.type == 'multi-slider':
+        values = parsed.get('values')
+        return isinstance(values, dict) and bool(values) and all(v is not None for v in values.values())
+    if query.type == 'multi-choice':
+        index = parsed.get('selected_index')
+        return type(index) is int and 0 <= index < len(query.option)
+    if query.type == 'multi-select':
+        return len(parsed.get('binary') or []) == len(query.option)
+    if query.type == 'ranking':
+        return len(parsed.get('ranking') or []) >= len(query.option)
+    return bool(str(parsed.get('text') or '').strip())      # textbox
 
-    Require explicit question assignments, finite ratings within the scale, and
-    agreement with the native parser. Do not repair, clamp, or drop answers.
-    Other question types keep their native evaluation behavior.
+
+def validate_responses(trials: Sequence[Any], results: Sequence[dict]) -> dict:
+    """Give every requested answer a state; leave native responses and scores untouched.
+
+    Each question of a trial that is not an instruction is one requested answer, counted
+    once. A slider answer goes through the strict check ``coggym-slider-v1``: explicit
+    question assignments, finite ratings within the scale, agreement with the native
+    parser. It repairs, clamps and drops nothing. Any other answer takes its state from
+    CogGym's own parse.
+
+    Each issue has a ``response_state`` (Contract Rule 6.2) and a ``reason``: ``missing``
+    when CogGym has no value for the answer (no reply: CogGym's entry of a failed call,
+    reason ``no_answer``, which Brain-Score's adapter replaces with core's reason; or its
+    parser read none), so CogGym leaves it out of its fit;
+    ``invalid`` when CogGym read a slider value that the check rejects (CogGym keeps it in
+    its fit). An answer with no issue is ``valid``. The issues are the detector's
+    findings; whether the result is valid is the benchmark's decision.
+
+    A trial with two questions of one tag is refused (``ValueError``): one parsed value
+    would stand for both answers.
     """
     by_id = {result.get('trial_id'): result for result in results}
     checked, issues = 0, []
     for trial in trials:
         queries = [query for query in trial.queries if query.type != 'text-instruction']
-        sliders = [(index, query) for index, query in enumerate(queries)
-                   if query.type in ('single-slider', 'multi-slider')]
-        if not sliders:
-            continue
-        result = by_id.get(trial.id, {})
-        try:
-            segments = _segments(result.get('response'), queries)
-        except ValueError:
-            segments = None
-        for index, query in sliders:
+        tags = [query.tag for query in queries]
+        if len(set(tags)) != len(tags):
+            raise ValueError(f'CogGym trial {trial.id} has two questions with one tag {tags}: '
+                             'one parsed value would stand for both answers')
+        result = by_id.get(trial.id)
+        replied = isinstance(result, dict) and 'error' not in result
+        parsed_answers = result.get('parsed') if replied else None
+        parsed_answers = parsed_answers if isinstance(parsed_answers, dict) else {}
+        segments = None
+        if replied and any(query.type in ('single-slider', 'multi-slider') for query in queries):
+            try:
+                segments = _segments(result.get('response'), queries)
+            except ValueError:
+                pass
+        for index, query in enumerate(queries):
             checked += 1
-            reason = None
-            if segments is None:
+            parsed = parsed_answers.get(query.tag)
+            if not replied:
+                reason = 'no_answer'
+            elif query.type not in ('single-slider', 'multi-slider'):
+                reason = None if _native_value(parsed, query) else 'not_read_by_coggym'
+            elif segments is None:
                 reason = 'ambiguous_or_invalid_format'
             else:
-                parsed_answers = result.get('parsed')
-                parsed = parsed_answers.get(query.tag, {}) if isinstance(parsed_answers, dict) else {}
+                reason = None
                 try:
                     if not isinstance(parsed, dict) or not _agrees(segments[index], query, parsed):
                         reason = 'reference_parse_mismatch'
                 except ValueError:
                     reason = 'invalid_rating'
             if reason:
-                issues.append({'trial_id': trial.id, 'query': query.tag, 'reason': reason})
-    return {
-        'policy': SLIDER_VALIDATION_POLICY,
-        'status': 'invalid' if issues else 'valid' if checked else 'not_applicable',
-        'checked_queries': checked,
-        'invalid_queries': len(issues),
-        'issues': issues,
-    }
+                state = 'invalid' if replied and _native_value(parsed, query) else 'missing'
+                issues.append({'trial_id': trial.id, 'query': query.tag, 'reason': reason,
+                               'response_state': state})
+    return {'policy': SLIDER_VALIDATION_POLICY, 'checked_queries': checked, 'issues': issues}
