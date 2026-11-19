@@ -10,7 +10,8 @@ Two parts, both found by discovery, with no list of plugins or functions:
    scanned folders.
 2. Through ``participate``, for every caching wrapper of ``brainscore.model_helpers``
    (the stand-ins of ``tests/brainscore_model/tiny_wrappers.py``) and for the
-   ordinary and the temporal vision helper: a variant of a table that is already
+   ordinary and the temporal vision helper (an extractor with no store must
+   compute each time): a variant of a table that is already
    stored (new bytes at an old path, other rows, another order, another column,
    other weights) gives the values of a cold run. For the unified wrappers, the
    same table under two names gives one forward pass and one entry. Every case
@@ -197,12 +198,10 @@ SUBJECTS = {**{kind: (lambda folder, kind=kind: _unified(kind, folder)) for kind
             'vision_helper': _vision, 'temporal_helper': _temporal}
 
 
-def _stored(kind, folder):
-    """The subject of ``kind`` if its extractor has a store; else skip (a wrapper that computes each time)."""
+def _built(kind, folder):
+    """The subject of ``kind``, and whether its extractor keeps a store."""
     built = SUBJECTS[kind](folder)
-    if not list(_storages(built[1])):
-        pytest.skip(f'{type(built[1]).__name__} keeps no store')
-    return built
+    return built, bool(list(_storages(built[1])))
 
 
 def _record(model, stimuli, regions):
@@ -261,6 +260,13 @@ def _assert_same(actual, expected):
         xarray.testing.assert_identical(actual[region], expected[region])
 
 
+def _computes_each_time(store, model, stimuli, regions, passes):
+    """An extractor with no store runs the network for every table and writes no entry."""
+    first, before = _record(model, stimuli, regions), passes.count
+    _assert_same(_record(model, stimuli, regions), first)
+    assert passes.count > before and not store.entries(), 'an extractor with no store served a table'
+
+
 def _stored_and_served(store, model, stimuli, regions, passes):
     """Record ``stimuli`` cold into the store, then see the store serve it with no forward pass."""
     first = _record(model, stimuli, regions)
@@ -275,7 +281,9 @@ def _stored_and_served(store, model, stimuli, regions, passes):
 def test_a_changed_table_under_its_old_name_gives_the_cold_values(kind, change, store, tmp_path, monkeypatch):
     pytest.importorskip('cv2')
     monkeypatch.chdir(tmp_path)
-    model, extractor, stimuli, regions, passes, network = _stored(kind, tmp_path)
+    (model, extractor, stimuli, regions, passes, network), stored = _built(kind, tmp_path)
+    if not stored:
+        return _computes_each_time(store, model, stimuli, regions, passes)
     store.install(extractor)
     _stored_and_served(store, model, stimuli, regions, passes)
     changed = CHANGES[change](stimuli, network)
@@ -288,7 +296,9 @@ def test_a_changed_table_under_its_old_name_gives_the_cold_values(kind, change, 
 def test_the_same_table_under_two_names_takes_one_forward_pass(kind, store, tmp_path, monkeypatch):
     pytest.importorskip('cv2')
     monkeypatch.chdir(tmp_path)
-    model, extractor, stimuli, regions, passes, network = _stored(kind, tmp_path)
+    (model, extractor, stimuli, regions, passes, network), stored = _built(kind, tmp_path)
+    if not stored:
+        return _computes_each_time(store, model, stimuli, regions, passes)
     store.install(extractor)
     _stored_and_served(store, model, stimuli, regions, passes)
     entries, before = store.entries(), passes.count
