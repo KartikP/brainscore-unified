@@ -146,11 +146,13 @@ def _counted(network):
     return passes
 
 
-def _unified(kind, folder):
+def _unified(kind, folder, regions_out=None):
     wrapper, stimuli, regions, network = tiny_wrappers.FACTORIES[kind](folder)
     passes = _counted(network)
     model = BrainScoreModel(f'guard-{kind}', extractor={tiny_wrappers.MODALITY[kind]: wrapper},
                             region_layer_map=regions)
+    if regions_out is not None:
+        regions_out.update({region: selector.layer_path for region, selector in regions.items()})
     return model, wrapper, stimuli, sorted(regions), passes, network
 
 
@@ -199,9 +201,22 @@ SUBJECTS = {**{kind: (lambda folder, kind=kind: _unified(kind, folder)) for kind
 
 
 def _built(kind, folder):
-    """The subject of ``kind``, and whether its extractor keeps a store."""
-    built = SUBJECTS[kind](folder)
-    return built, bool(list(_storages(built[1])))
+    """The subject of ``kind``, and whether its extractor keeps a store; a skip when its stand-in needs OpenCV.
+
+    Whether an extractor keeps a store is stated by what it is, not found from its code: a subclass of
+    the shared caching extractor and the two vision helpers store; any other extractor computes each time.
+    """
+    from brainscore.model_helpers._extractors import CachingExtractor
+    try:
+        built = SUBJECTS[kind](folder)
+    except ModuleNotFoundError as error:
+        if error.name != 'cv2':
+            raise
+        pytest.skip('the stand-in writes its clips with OpenCV')
+    stores = isinstance(built[1], CachingExtractor) or kind in ('vision_helper', 'temporal_helper')
+    assert stores == bool(list(_storages(built[1]))), (
+        f'{type(built[1]).__qualname__} {"has lost" if stores else "has gained"} its activation store')
+    return built, stores
 
 
 def _record(model, stimuli, regions):
@@ -268,18 +283,24 @@ def _computes_each_time(store, model, stimuli, regions, passes):
 
 
 def _stored_and_served(store, model, stimuli, regions, passes):
-    """Record ``stimuli`` cold into the store, then see the store serve it with no forward pass."""
+    """Record ``stimuli`` cold into the store, then see the store serve it with no forward pass.
+
+    A wrapper whose first pass sets an attribute of its key (the audio step) computes the
+    table once more under that state; the next call is served.
+    """
     first = _record(model, stimuli, regions)
     assert store.entries(), 'the store wrote no entry: the check would prove nothing'
-    before = passes.count
-    _assert_same(_record(model, stimuli, regions), first)
-    assert passes.count == before, 'the store did not serve a stored table'
+    for _ in range(2):
+        before = passes.count
+        _assert_same(_record(model, stimuli, regions), first)
+        if passes.count == before:
+            return
+    pytest.fail('the store did not serve a stored table')
 
 
 @pytest.mark.parametrize('change', sorted(CHANGES))
 @pytest.mark.parametrize('kind', sorted(SUBJECTS))
 def test_a_changed_table_under_its_old_name_gives_the_cold_values(kind, change, store, tmp_path, monkeypatch):
-    pytest.importorskip('cv2')
     monkeypatch.chdir(tmp_path)
     (model, extractor, stimuli, regions, passes, network), stored = _built(kind, tmp_path)
     if not stored:
@@ -294,7 +315,6 @@ def test_a_changed_table_under_its_old_name_gives_the_cold_values(kind, change, 
 
 @pytest.mark.parametrize('kind', tiny_wrappers.KINDS)
 def test_the_same_table_under_two_names_takes_one_forward_pass(kind, store, tmp_path, monkeypatch):
-    pytest.importorskip('cv2')
     monkeypatch.chdir(tmp_path)
     (model, extractor, stimuli, regions, passes, network), stored = _built(kind, tmp_path)
     if not stored:
@@ -321,9 +341,189 @@ def test_every_caching_wrapper_has_a_stand_in(tmp_path):
         found |= {member for member in vars(module).values() if isinstance(member, type)
                   and issubclass(member, CachingExtractor) and member is not CachingExtractor
                   and member.__module__ == module.__name__}
-    pytest.importorskip('cv2')
-    covered = {type(tiny_wrappers.FACTORIES[kind](tmp_path)[0]) for kind in tiny_wrappers.KINDS}
+    try:
+        covered = {type(tiny_wrappers.FACTORIES[kind](tmp_path)[0]) for kind in tiny_wrappers.KINDS}
+    except ModuleNotFoundError as error:
+        pytest.fail(f'The stand-ins of tests/brainscore_model/tiny_wrappers.py need {error.name}; install it '
+                    f'(opencv-python for cv2): this check must not be skipped.')
     missing = sorted(cls.__qualname__ for cls in found - covered)
     assert not missing, (f'{missing} cache activations and have no stand-in, so the content guard does not run '
                          f'them. Add a factory for each to tests/brainscore_model/tiny_wrappers.py (FACTORIES, '
                          f'MODALITY, KINDS).')
+
+
+# -- 3. everything that decides a stored value is in its key, or the store is off ---
+
+def _zero_after(module, args, *output):
+    """One hook for both places: it zeroes a module's output, and does nothing before the module."""
+    if output:
+        return output[0] * 0
+
+
+def _ready(kind, store, folder, monkeypatch, layers=None):
+    """The unified subject of ``kind`` with its store installed, or a skip when its stand-in needs OpenCV."""
+    monkeypatch.chdir(folder)
+    try:
+        built = _unified(kind, folder, layers)
+    except ModuleNotFoundError as error:
+        if error.name != 'cv2':
+            raise
+        pytest.skip('the stand-in writes its clips with OpenCV')
+    store.install(built[1])
+    return built
+
+
+@pytest.mark.parametrize('kind', [kind for kind in tiny_wrappers.KINDS if kind != 'vlm_video'])
+def test_a_hook_moved_from_before_a_layer_to_after_it_gives_the_cold_values(kind, store, tmp_path, monkeypatch):
+    layers = {}
+    model, wrapper, stimuli, regions, passes, network = _ready(kind, store, tmp_path, monkeypatch, layers)
+    module = network.get_submodule(layers['IT'])
+    before = module.register_forward_pre_hook(_zero_after)
+    _stored_and_served(store, model, stimuli, regions, passes)
+    before.remove()
+    after = module.register_forward_hook(_zero_after)
+    warm = _record(model, stimuli, regions)
+    store.on = False
+    cold = _record(model, stimuli, regions)
+    after.remove()
+    assert not np.any(cold['IT'].values)
+    _assert_same(warm, cold)
+
+
+
+def test_the_time_bins_of_a_reader_do_not_depend_on_what_another_reader_saw(store, tmp_path, monkeypatch):
+    """The audio step is measured on a wrapper's first pass: a writer that first saw a short clip
+    keeps another step than a fresh reader, so the step is a part of the key."""
+    model, writer, stimuli, regions, passes, network = _ready('audio', store, tmp_path, monkeypatch)
+    short = tmp_path / 'short.npy'
+    np.save(short, np.ones(31, dtype=np.float32))
+    writer([str(short)], ['head'])                           # a first pass that sets another step
+    _stored_and_served(store, model, stimuli, regions, passes)
+    warm = _record(_audio_reader(tmp_path), stimuli, regions)
+    store.on = False
+    _assert_same(warm, _record(_audio_reader(tmp_path), stimuli, regions))
+
+
+def _audio_reader(folder):
+    """A fresh audio subject with the weights, settings and hooks of the writer."""
+    reader, _, regions, network = tiny_wrappers.audio(folder)
+    _counted(network)
+    return BrainScoreModel('guard-audio-reader', extractor={'audio': reader}, region_layer_map=regions)
+
+
+def _others(value, owner):
+    """Other values of the type of ``value``, found from the value itself and the class of ``owner``.
+
+    A number grows, a flag turns, a string becomes another member of a tuple of strings in the class
+    (the allowed values of a setting); a function becomes a function of other code with the same result.
+    Anything else gives none: the guard cannot vary it.
+    """
+    if isinstance(value, bool):
+        return [not value]
+    if isinstance(value, int):
+        return [value + 1]
+    if isinstance(value, float):
+        return [value * 2]
+    if isinstance(value, str):
+        return [other for member in vars(type(owner)).values() if isinstance(member, tuple) and value in member
+                for other in member if other != value]
+    if callable(value) and getattr(value, '__code__', None) is not None:
+        return [lambda *args, _value=value, **kwargs: _value(*args, **kwargs)]
+    return []
+
+
+def _arguments(kind, folder):
+    """The constructor arguments the stand-in of ``kind`` gives its wrapper, read from one construction."""
+    import inspect
+    cls = type(tiny_wrappers.FACTORIES[kind](folder)[0])
+    seen = {}
+    original = cls.__init__
+
+    def record(self, *args, **kwargs):
+        bound = inspect.signature(original).bind(self, *args, **kwargs)
+        bound.apply_defaults()
+        seen.update(bound.arguments)
+        original(self, *args, **kwargs)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(cls, '__init__', record)
+        tiny_wrappers.FACTORIES[kind](folder)
+    seen.pop('self')
+    return cls, seen
+
+
+def _changed(kind, folder, name, value, monkeypatch):
+    """The subject of ``kind`` whose wrapper got ``value`` for the constructor argument ``name``."""
+    cls = type(tiny_wrappers.FACTORIES[kind](folder)[0])
+    original = cls.__init__
+
+    def change(self, *args, **kwargs):
+        import inspect
+        bound = inspect.signature(original).bind(self, *args, **kwargs)
+        bound.arguments[name] = value
+        original(*bound.args, **bound.kwargs)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(cls, '__init__', change)
+        return _unified(kind, folder)
+
+
+def _misses(store, model, stimuli, regions, passes):
+    """True when ``model`` computes ``stimuli`` (another key or no store), not served by the store."""
+    before = passes.count
+    _record(model, stimuli, regions)
+    return passes.count > before
+
+
+class _Opaque:
+    """An object with no description: a key cannot hold it."""
+
+
+STORED_KINDS = [kind for kind in tiny_wrappers.KINDS if kind != 'vlm_video']
+
+
+@pytest.mark.parametrize('kind', STORED_KINDS)
+def test_every_constructor_argument_is_in_the_key_or_turns_the_store_off(kind, store, tmp_path, monkeypatch):
+    """Each argument of the wrapper's constructor (from its signature): another value is another key, or
+    no store. The identifier is a label (two names share one entry, the test above). An argument the guard
+    cannot vary must be kept on the wrapper as ``<name>`` or ``_<name>``: every attribute of a wrapper is
+    in its key (the next test), so a new argument is covered when it is kept, and named here when not."""
+    model, wrapper, stimuli, regions, passes, network = _ready(kind, store, tmp_path, monkeypatch)
+    _stored_and_served(store, model, stimuli, regions, passes)
+    cls, arguments = _arguments(kind, tmp_path)
+    escaped = []
+    for name, value in arguments.items():
+        if name == 'identifier':
+            continue
+        others = _others(value, wrapper)
+        if others:
+            changed = _changed(kind, tmp_path, name, others[0], monkeypatch)
+            store.install(changed[1])
+            if not _misses(store, changed[0], stimuli, regions, changed[4]):
+                escaped.append(f'{name}={others[0]!r} was served the entry of {name}={value!r}')
+        elif not ({name, f'_{name}'} & set(vars(wrapper))):
+            escaped.append(f'{name} cannot be varied here and is kept in no attribute of the wrapper')
+    assert not escaped, (f'{cls.__qualname__}: an argument that can change a stored value is not in the key. '
+                         f'Keep it as an attribute of the wrapper (every attribute is in the key): {escaped}')
+
+
+@pytest.mark.parametrize('kind', STORED_KINDS)
+def test_every_attribute_of_a_wrapper_is_in_the_key_or_turns_the_store_off(kind, store, tmp_path, monkeypatch):
+    """Each attribute of the wrapper after one extraction (so an attribute set by the first pass is seen),
+    apart from the identifier label, the model (its weights and hooks) and the input device: another value
+    is another key or no store. An attribute the guard cannot vary gets an object no key can describe,
+    which must turn the store off (the extraction then computes, or fails on the object)."""
+    model, wrapper, stimuli, regions, passes, network = _ready(kind, store, tmp_path, monkeypatch)
+    _stored_and_served(store, model, stimuli, regions, passes)
+    escaped = []
+    for name, value in list(vars(wrapper).items()):
+        if name in ('_identifier', '_model', '_device'):
+            continue
+        other = (_others(value, wrapper) or [_Opaque()])[0]
+        setattr(wrapper, name, other)
+        try:
+            served = not _misses(store, model, stimuli, regions, passes)
+        except Exception:                                   # noqa: BLE001 - it computed, with a value it cannot use
+            served = False
+        if served:
+            escaped.append(f'{name}: {other!r} was served the entry of {value!r}')
+        setattr(wrapper, name, value)
+    assert not escaped, f'{type(wrapper).__qualname__}: an attribute is not in the key: {escaped}'
