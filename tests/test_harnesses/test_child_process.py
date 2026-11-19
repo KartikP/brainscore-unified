@@ -59,13 +59,16 @@ def _run_experiment(experiment, selected, provider, model, temperature, max_toke
     assert prepared['trials'][0]['messages'] == [{'role': 'user', 'content': 'trial-0'}]
     # The call carries CogGym's arguments; the reply's text and a failure's type and message
     # reach the evaluator's trial record.
-    assert calls[0] == {'system': 'system', 'messages': [{'role': 'user', 'content': 'trial-0'}],
-                        'model': 'm', 'temperature': 1.0, 'max_tokens': 7}
+    expected = {'system': 'system', 'messages': [{'role': 'user', 'content': 'trial-0'}],
+                'model': 'm', 'temperature': 1.0, 'max_tokens': 7}
+    assert {key: calls[0][key] for key in expected} == expected
+    # The call names the trial it answers.
+    assert calls[0]['trial_id'] == 'trial-0'
     by_trial = {result['trial_id']: result for result in first['results']}
     assert by_trial['trial-0']['response'] == 'answer to trial-0'
     assert (by_trial['trial-1']['error_type'], by_trial['trial-1']['error']) == (
         'ValueError', 'the subject could not answer')
-    assert first['summary'] == {'n_trials': len(first['results'])}
+    assert first['summary']['n_trials'] == len(first['results'])
     # One process serves both repetitions: the evaluator's module state goes on.
     assert {result['run'] for result in second['results'] if 'run' in result} == {2}
     assert child.process.poll() is not None

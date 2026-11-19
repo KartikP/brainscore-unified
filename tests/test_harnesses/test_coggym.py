@@ -398,19 +398,45 @@ def test_record_keeps_one_session_per_call_and_replay_rebuilds_them(reference, t
     assert compare_outputs(original.directory, replay.directory)['equal']
 
 
-def test_a_call_without_a_usable_written_answer_is_an_error_of_the_run():
-    """The CogGym policy: a missing or unreadable written answer stops the run,
-    as before (CogGym fails a run with an error trial)."""
+class _Silent(Subject):
+    """Reads every input and writes no answer."""
+
+    identifier = 'silent'
+    in_channels = frozenset({'instruction', 'text'})
+    out_channels = frozenset({'behavior:text'})
+
+    def participate(self, session):
+        while session.next_input() is not None:
+            pass
+
+    def reset(self):
+        pass
+
+
+def test_a_call_with_no_written_answer_reaches_coggym_as_a_call_with_no_reply(reference, tmp_path):
+    """Contract Rule 6.2: core stores the trial as missing and the run goes on. CogGym gets
+    its own record of a call with no reply (an error entry with no scores), not a text."""
+    root, _ = reference
+    runner = coggym.CogGymRunner(root, model='fixture')
+    result = Experiment(subject=_Silent(), protocol=runner.protocol(reset=lambda repetition: None),
+                        output_dir=tmp_path / 'run').run()
+    saved = json.loads((result.directory / 'coggym/run-001.json').read_text())
+    assert all('error' in trial and 'response' not in trial for trial in saved['trials'])
+    assert saved['umi']['status'] == 'complete'
+    assert saved['umi']['coverage']['no_answer_trials'] == len(saved['trials'])
+    assert saved['umi']['coverage']['error_trials'] == 0
+    # One form for a saved answer: no second copy of core's rows in CogGym's file.
+    assert 'core_answers' not in saved['umi']
+
+
+def test_an_answer_core_stores_as_invalid_reaches_coggym_as_its_text():
     import numpy as np
-    import pytest
     from brainscore.harnesses.coggym import _written_answer
-    from brainscore_core.streaming import StreamEvent
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
-    missing = BehavioralAssembly(np.array([None], dtype=object), dims=['presentation'], coords={
-        'stimulus_id': ('presentation', ['t0']), 'answer_valid': ('presentation', [False]),
-        'response_state': ('presentation', ['missing'])})
-    with pytest.raises(TypeError, match='no written answer'):
-        _written_answer(StreamEvent('behavior:text', missing, None))
+    invalid = BehavioralAssembly(np.array(['{"answer": 7}'], dtype=object), dims=['presentation'], coords={
+        'stimulus_id': ('presentation', ['t0']), 'response_state': ('presentation', ['invalid']),
+        'response_reason': ('presentation', ['marked invalid by the model side'])})
+    assert _written_answer(invalid) == ('{"answer": 7}', 'invalid', 'marked invalid by the model side')
 
 
 def test_a_summary_that_cannot_be_saved_keeps_the_completed_trials(reference, tmp_path):
@@ -434,3 +460,98 @@ def test_an_answer_value_json_cannot_hold_stops_the_run_with_its_name(reference,
         runner.run(SimpleNamespace(complete_with_metadata=lambda *a: {
             'text': 'answer', 'reasoning': None, 'token_usage': b'not json'}),
             output_dir=tmp_path / 'run', reset=lambda repetition: None)
+
+
+class _ProviderWithStateFields:
+    """A caller's own CogGym provider that happens to have fields of the session adapter's names."""
+
+    no_reply = {'trial-1': 'not a state of this provider'}
+    invalid = {'trial-2': 'not a state of this provider'}
+    refusal = None
+
+    def complete_with_metadata(self, system, messages, *args, **kwargs):
+        if messages[0]['content'] == 'trial-1':
+            raise RuntimeError('the provider failed on this trial')
+        return {'text': 'an answer', 'reasoning': None, 'token_usage': None}
+
+
+def test_the_direct_runner_reads_no_state_from_the_callers_provider(reference, tmp_path):
+    """A real failure of the caller's provider stays a failed run (rule 6.2: only core states answers)."""
+    root, _ = reference
+    runner = coggym.CogGymRunner(root, model='fixture')
+    with pytest.raises(RuntimeError, match='incomplete or failed'):
+        runner.run(_ProviderWithStateFields(), output_dir=tmp_path / 'direct', reset=lambda repetition: None)
+    saved = json.loads((tmp_path / 'direct/run-001.json').read_text())
+    assert saved['umi']['coverage']['error_trials'] == 1
+    assert saved['umi']['coverage']['no_answer_trials'] == 0
+
+
+class _RateLimitedThenSilent(Subject):
+    """First call: an error with CogGym's retry words; second call (the retry): no answer; then answers."""
+
+    identifier = 'rate-limited-then-silent'
+    in_channels = frozenset({'instruction', 'text'})
+    out_channels = frozenset({'behavior:text'})
+
+    def __init__(self):
+        self.calls = 0
+
+    def participate(self, session):
+        from brainscore_core.streaming import StreamEvent
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError('rate limit')
+        while (event := session.next_input()) is not None:
+            if self.calls > 2 and event.channel == 'text':
+                session.respond(StreamEvent('behavior:text', '{"answer": 42}', event.t_ms, dict(event.meta)))
+
+    def reset(self):
+        pass
+
+
+def test_a_retry_between_trials_of_one_prompt_keeps_the_state_with_its_trial(reference, tmp_path):
+    """Two trials show one prompt; CogGym retries the first, and the retry gives no answer. The
+    missing state stays with the first trial, where CogGym records the call with no reply."""
+    root, stand_in = reference
+    stand_in.cli('''
+def _selected_trials(*args, **kwargs):
+    query = SimpleNamespace(tag='rating', type='single-slider', slider_config={'min': 0, 'max': 100}, option=[])
+    return [SimpleNamespace(id=trial, queries=[query]) for trial in TRIALS]
+
+
+def build_messages(trial, experiment, *args, **kwargs):
+    return 'system', [{'role': 'user', 'content': 'one shared prompt'}]
+
+
+def _run_experiment(experiment, selected, provider, model, *args, **kwargs):
+    results = []
+    for trial in selected:
+        system, messages = build_messages(trial, experiment)
+        try:
+            for attempt in range(2):      # as CogGym's call_with_retry: again on a rate limit
+                try:
+                    raw = provider.complete_with_metadata(system, messages, model, *args)
+                    break
+                except Exception as error:
+                    if 'rate limit' not in str(error) or attempt == 1:
+                        raise
+            results.append({'trial_id': trial.id, 'response': raw['text'],
+                            'parsed': {'rating': {'value': 42}}, 'scores': {'rating': {'scorable': True}}})
+        except Exception as error:
+            results.append({'trial_id': trial.id, 'error': str(error), 'model': model})
+    return results
+''')
+    runner = coggym.CogGymRunner(root, model='fixture')
+    with pytest.raises(RuntimeError, match='caught subject'):     # the first call's error
+        Experiment(subject=_RateLimitedThenSilent(), protocol=runner.protocol(reset=lambda repetition: None),
+                   tools=[RecordInputsOutputs()], output_dir=tmp_path / 'run').run()
+    saved = json.loads((tmp_path / 'run/coggym/run-001.json').read_text())
+    assert 'error' in saved['trials'][0] and 'response' in saved['trials'][1]
+    assert saved['umi']['coverage']['no_answer_trials'] == 1
+    assert saved['umi']['coverage']['error_trials'] == 0
+    assert saved['umi']['status'] == 'complete'
+    # The saved trial identity on its own: the missing answer is trial-0's.
+    issues = saved['umi']['response_validation']['issues']
+    assert [issue['trial_id'] for issue in issues] == ['trial-0']
+    # Core's reason on its own: not CogGym's error text of the call.
+    assert issues[0]['response_state'] == 'missing' and issues[0]['reason'] != saved['trials'][0]['error']
