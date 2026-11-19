@@ -114,12 +114,16 @@ def test_a_wrapper_around_a_wrapper_that_fails_after_its_inner_session_leaves_no
     _only_the_good_session(_score(late, RuntimeError))
 
 
-def test_a_good_session_through_a_wrapper_states_the_registration_and_the_model_once():
+@pytest.mark.parametrize('plan', ['all', 'one'])
+def test_a_good_session_through_a_wrapper_states_the_registration_and_the_model_once(monkeypatch, plan):
+    monkeypatch.setenv('BRAINSCORE_REGIONS_PER_PASS', plan)
     score = brainscore.score(ProvenanceSubject(_model(_Answers()), {'dtype': 'bf16'}),
                              _Retry(), check_mem=False)
     assert score.attrs['delivery'] == 'listed'
-    assert score.attrs['regions_per_pass'] == 'all'
-    assert sorted(map(str, _registrations(score))) == sorted(map(str, [{'dtype': 'bf16'}, {'attempt': 'good'}]))
+    assert score.attrs['regions_per_pass'] == plan
+    registrations = _registrations(score)
+    assert len(registrations) == 2
+    assert {'dtype': 'bf16'} in registrations and {'attempt': 'good'} in registrations
     stated = [entry for entry in score.attrs['provenance'] if 'parts' in entry]
     assert [entry['subject'] for entry in stated] == ['notes-model']
     assert stated[0]['parts'] != 'not stated'
