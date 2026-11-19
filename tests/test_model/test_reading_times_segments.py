@@ -375,3 +375,55 @@ def test_an_instruction_cannot_stand_in_for_the_text():
     with pytest.raises(ExecutionNotFeasibleError, match='an instruction'):
         subject.participate(session)
     assert calls == []
+
+
+class _EditedTokens:
+    """A stand-in tokenizer: the real one, then ``edit`` on the list of ids of each text."""
+
+    def __init__(self, tokenizer, edit):
+        self._tokenizer, self._edit = tokenizer, edit
+
+    def __call__(self, text, **kwargs):
+        encoded = self._tokenizer(text, **kwargs)
+        ids = self._edit(encoded['input_ids'][0].tolist())
+        encoded['input_ids'] = torch.tensor([ids])
+        encoded['attention_mask'] = torch.ones(1, len(ids), dtype=torch.long)
+        return encoded
+
+
+def _join_the_dog(ids):          # a merge across the parts: 'the', 'dog' become one id
+    out, i = [], 0
+    while i < len(ids):
+        if ids[i:i + 2] == [2, 3]:
+            out.append(11)
+            i += 2
+        else:
+            out.append(ids[i])
+            i += 1
+    return out
+
+
+_EDITS = {'merge across parts': (_join_the_dog, ['the', 'dog ran', 'home']),
+          'end token after each text': (lambda ids: ids + [1], ['the', 'dog ran', 'home'])}
+
+
+@pytest.mark.parametrize('name', list(_EDITS))
+def test_a_tokenizer_whose_earlier_tokens_move_is_refused_before_a_forward_pass(tiny, name):
+    from brainscore.model_helpers.replies import _segment_log_probabilities
+    network, tokenizer = tiny
+    edit, parts = _EDITS[name]
+    calls = []
+    network.register_forward_hook(lambda *args: calls.append(1))
+    with pytest.raises(ExecutionNotFeasibleError, match=r'part 2\b') as caught:
+        _segment_log_probabilities(network, _EditedTokens(tokenizer, edit), parts)
+    assert 'first tokens' in str(caught.value) and 'add_special_tokens' in str(caught.value)
+    assert calls == []
+
+
+def test_a_stable_tokenizer_keeps_its_values_and_parameters(tiny):
+    from brainscore.model_helpers.replies import _segment_log_probabilities
+    network, tokenizer = tiny
+    parts = ['the dog', 'ran home .', 'the', 'cat']
+    values, parameters = _segment_log_probabilities(network, _EditedTokens(tokenizer, list), parts)
+    reference, reference_parameters = _segment_log_probabilities(network, tokenizer, parts)
+    assert values == reference and parameters == reference_parameters
