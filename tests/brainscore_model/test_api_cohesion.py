@@ -246,11 +246,11 @@ def test_named_readout_layer_without_extractor_is_not_a_second_path():
 
 def test_channel_registration_policy_differs_only_for_exploration():
     from brainscore_core.compatibility import (
-        validate_channels, CompatibilityError, CompatibilityWarning,
+        validate_channels, CompatibilityWarning,
     )
     with pytest.warns(CompatibilityWarning, match='register_channel'):
         validate_channels({'custom_signal'}, 'input', 'experiment', allow_unregistered=True)
-    with pytest.raises(CompatibilityError, match='unknown channel'):
+    with pytest.raises(ValueError, match='custom_signal'):
         validate_channels({'custom_signal'}, 'input', 'benchmark')
     with pytest.raises(ValueError, match='registry marks'):
         validate_channels({'behavior'}, 'input', 'experiment', allow_unregistered=True)

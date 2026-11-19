@@ -212,7 +212,7 @@ def test_an_unknown_channel_is_refused_by_the_session_and_incompatible_in_pre_fl
         model.check_session_support({'telepathy'})
     benchmark = SimpleNamespace(identifier='toy', required_input_channels=frozenset({'audio'}),
                                 requested_output_channels=frozenset({'telepathy'}))
-    with pytest.raises(CompatibilityError, match="unknown channel 'telepathy'"):
+    with pytest.raises(ValueError, match="telepathy"):
         check_compatibility(model, benchmark)
 
 

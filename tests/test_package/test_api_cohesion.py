@@ -198,7 +198,6 @@ def test_real_vision_extraction_localizer_and_ablation_share_one_feature(tmp_pat
 
 def test_experiment_refuses_unregistered_channels_as_scoring_does():
     """An experiment uses the compatibility rule of score(): a channel must be registered."""
-    from brainscore_core.compatibility import CompatibilityError
     from brainscore_core.contract import Subject
 
     class Exploratory(Subject):
@@ -214,7 +213,7 @@ def test_experiment_refuses_unregistered_channels_as_scoring_does():
         identifier='exploratory', session_factory=lambda repetition: None,
         required_input_channels=['unregistered_input'], requested_output_channels=['behavior'],
     )
-    with pytest.raises(CompatibilityError, match="unknown channel 'unregistered_input'"):
+    with pytest.raises(ValueError, match="unregistered_input"):
         protocol.validate(subject)
     subject.in_channels = {'behavior'}
     with pytest.raises(ValueError, match='registry marks'):

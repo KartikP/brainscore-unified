@@ -34,7 +34,7 @@ class Sink:
 
 def run(env, action, validator=None):
     session = environment_session(env, action_validator=validator)
-    session._request_control('test')
+    session.declare_inputs({'control'})
     sink = Sink()
     with session, observed(session, sink):
         while (event := session.next_input()) is not None:
