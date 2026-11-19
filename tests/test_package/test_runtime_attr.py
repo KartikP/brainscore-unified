@@ -5,15 +5,17 @@ Uses stubs (no real model/benchmark) so it runs offline and fast.
 import time
 import pytest
 import brainscore
+from brainscore_core.contract import Subject
 
 
-class _FakeModel:
+class _FakeModel(Subject):
     identifier = 'fake-model'
     region_layer_map = {}
     in_channels = {'text'}
     out_channels = set()
-    required_channels = set()
-    output_inputs = {}
+
+    def participate(self, session):
+        pass
 
 
 class _FakeScore:
@@ -102,13 +104,12 @@ def test_score_identity_must_match_requested_or_resolved_benchmark(monkeypatch, 
         assert score.attrs['benchmark_identifier'] == recorded_name
 
 
-class _LabelSubject:
+class _LabelSubject(Subject):
     """Participate-only subject that answers behavior:choice; the last n_outside rows are invalid."""
     in_channels = {'text'}
     out_channels = {'behavior:choice'}
     required_channels = set()
     region_layer_map = {}
-    output_inputs = {}
     identifier = 'label-subject'
 
     def __init__(self, n_outside):

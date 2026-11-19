@@ -102,11 +102,18 @@ def test_each_scoring_call_gets_a_fresh_weight_scope(module_name, monkeypatch):
             keys.append(cache.fingerprint(tensor))
             assert cache.fingerprint(tensor) == keys[-1]
             return Score(0.5)
-    model = SimpleNamespace(
-        identifier='test-model',
-        in_channels={'text'}, required_channels={'text'}, out_channels={'behavior'}, region_layer_map={},
-        output_inputs={},
-    )
+    from brainscore_core.contract import Subject
+
+    class Model(Subject):
+        identifier = 'test-model'
+        in_channels = required_channels = {'text'}
+        out_channels = {'behavior'}
+        region_layer_map = {}
+
+        def participate(self, session):
+            pass
+
+    model = Model()
     monkeypatch.setattr(module, 'load_model', lambda _: model)
     monkeypatch.setattr(module, 'load_benchmark', lambda _: Benchmark())
     run('model', 'benchmark', check_mem=False)
