@@ -182,6 +182,19 @@ def test_entry_points_differ_only_by_known_steps():
             'differences between score entry points')
 
 
+def _record_arguments(function):
+    """The keyword names of the record_measures call in one entry point."""
+    return [sorted(k.arg for k in node.keywords) for node in ast.walk(function)
+            if isinstance(node, ast.Call) and _call_name(node) == 'record_measures']
+
+
+def test_every_entry_point_opens_the_record_with_the_same_arguments():
+    # An old score run inside a unified score must name the subject of its own score.
+    found = {name: _record_arguments(entry_point(*point)[1]) for name, point in ENTRY_POINTS.items()}
+    assert all(len(calls) == 1 for calls in found.values()), found
+    assert len({str(calls) for calls in found.values()}) == 1, found
+
+
 def test_a_stated_difference_is_not_also_a_violation():
     assert not set(ALLOWED) & set(STATED_EXCEPTIONS)
 
