@@ -16,6 +16,7 @@ from brainscore.tools.rajalingham2018_2afc.sequential import (
     SEQUENTIAL_INSTRUCTION, build_sequential_random_chooser)
 from brainscore import BrainScoreModel
 from brainscore_core.contract import Subject
+from brainscore_core.response_formats import response_record
 from brainscore_core.streaming import StreamEvent
 from brainscore_core.streaming_helpers import drain_session_inputs, session_stimuli
 from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
@@ -108,10 +109,11 @@ def test_random_chooser_deterministic_and_binary():
 
 def _one_hot(stimuli, sides):
     return BehavioralAssembly(
-        np.array([[1.0, 0.0] if side == 'LEFT' else [0.0, 1.0] for side in sides]),
+        np.array([[1.0, 0.0] if side == 'LEFT' else [0.0, 1.0] for side in sides], dtype=np.float32),
         coords={'stimulus_id': ('presentation', stimuli['stimulus_id'].values),
                 'choice': ['LEFT', 'RIGHT']},
-        dims=['presentation', 'choice'])
+        dims=['presentation', 'choice'],
+        attrs={'response': response_record('behavior:choice', 'external')})
 
 
 class _ParticipateOnlyChooser(Subject):
@@ -123,11 +125,11 @@ class _ParticipateOnlyChooser(Subject):
 
     identifier = 'participate-only'
     in_channels = frozenset({'vision:image'})
-    out_channels = frozenset({'behavior'})
+    out_channels = frozenset({'behavior:choice'})
 
     def participate(self, session):
         stimuli = session_stimuli(session, drain_session_inputs(session))
-        session.respond(StreamEvent('behavior', _one_hot(stimuli, ['LEFT'] * len(stimuli)), t_ms=None))
+        session.respond(StreamEvent('behavior:choice', _one_hot(stimuli, ['LEFT'] * len(stimuli)), t_ms=None))
 
 
 def test_participate_only_subject_runs_the_trials():
@@ -143,7 +145,7 @@ def test_answers_are_joined_by_stimulus_id_not_by_position():
     class Reversed(_ParticipateOnlyChooser):
         def participate(self, session):
             stimuli = session_stimuli(session, drain_session_inputs(session)).iloc[::-1]
-            session.respond(StreamEvent('behavior', _one_hot(stimuli, ['RIGHT'] * len(stimuli)), t_ms=None))
+            session.respond(StreamEvent('behavior:choice', _one_hot(stimuli, ['RIGHT'] * len(stimuli)), t_ms=None))
 
     choices = run_trials(Reversed(), _stim(), SEQUENTIAL_INSTRUCTION)
     assert list(choices['image_id']) == ['img1', 'img0']
@@ -167,6 +169,6 @@ def test_a_response_for_other_trials_is_refused():
             stimuli = session_stimuli(session, drain_session_inputs(session))
             answers = _one_hot(stimuli, ['LEFT', 'LEFT']).assign_coords(
                 stimulus_id=('presentation', ['trial_0', 'trial_0']))
-            session.respond(StreamEvent('behavior', answers, t_ms=None))
-    with pytest.raises(ValueError, match='exactly once'):
+            session.respond(StreamEvent('behavior:choice', answers, t_ms=None))
+    with pytest.raises(ValueError, match='trial_0'):
         run_trials(Wrong(), _stim(), SEQUENTIAL_INSTRUCTION)

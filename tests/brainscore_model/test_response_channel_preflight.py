@@ -1,9 +1,11 @@
 """A requested answer the task's response does not give is refused before any compute."""
+import re
+
 import numpy as np
 import pytest
 
 from brainscore.brainscore_model import BrainScoreModel
-from brainscore_core.compatibility import CompatibilityError, ExecutionNotFeasibleError
+from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice
 from brainscore_core.streaming_helpers import stimulus_session
@@ -207,12 +209,14 @@ def test_a_subject_that_cannot_serve_a_session_is_refused_before_compute(policy,
 def test_an_unknown_channel_is_refused_by_the_session_and_incompatible_in_pre_flight():
     from types import SimpleNamespace
     from brainscore_core.compatibility import check_compatibility
+    from tests.unregistered import unregistered_family
+    family = unregistered_family()
     model = _audio_model()
-    with pytest.raises(ExecutionNotFeasibleError, match=r"does not produce \['telepathy'\]"):
-        model.check_session_support({'telepathy'})
+    with pytest.raises(ExecutionNotFeasibleError, match=re.escape(f"does not produce ['{family}']")):
+        model.check_session_support({family})
     benchmark = SimpleNamespace(identifier='toy', required_input_channels=frozenset({'audio'}),
-                                requested_output_channels=frozenset({'telepathy'}))
-    with pytest.raises(CompatibilityError, match="unknown channel 'telepathy'"):
+                                requested_output_channels=frozenset({family}))
+    with pytest.raises(ValueError, match=family):
         check_compatibility(model, benchmark)
 
 

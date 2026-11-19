@@ -220,7 +220,8 @@ def test_an_intervention_refits_only_a_readout_fitted_on_the_current_model(reado
                                     perturbation=change.perturbation, applied_at=0),
                 lambda: lesioned.pop())
     model = BrainScoreModel('restore', extractor={'vision': extractor},
-                            behavioral_readout_layer='layer', intervention=intervention)
+                            behavioral_readout_layer='layer', intervention=intervention,
+                            capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
     task = _task()
     task.readout_fit = readout_fit
     before = behavioral_response(model, _images(), task)

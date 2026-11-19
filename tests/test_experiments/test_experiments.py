@@ -163,13 +163,13 @@ def test_preflight_has_no_output_or_inference(tmp_path, failure):
         provider = TorchInstrumentation({'known': subject.layer})
     elif failure == 'channel':
         tools = []
-        p.required_input_channels = {'unsupported'}
+        from tests.unregistered import unregistered_family
+        p.required_input_channels = {unregistered_family()}
     elif failure == 'missing_method':
         tools = []
         p = CallableProtocol('bad', lambda s, c: None, methods=['absent'])
-    from brainscore_core.compatibility import CompatibilityError
-    # A channel mistake is refused by the compatibility rule score() uses.
-    with pytest.raises(CompatibilityError if failure == 'channel' else ValueError):
+    # A channel mistake is a malformed declaration, refused as score() refuses it.
+    with pytest.raises(ValueError):
         Experiment(subject=subject, protocol=p, tools=tools, instrumentation=provider,
                    output_dir=tmp_path/'run').run()
     assert not (tmp_path/'run').exists()
