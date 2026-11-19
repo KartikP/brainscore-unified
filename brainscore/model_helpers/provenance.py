@@ -71,11 +71,11 @@ class ProvenanceSubject(Subject):
 
     def participate(self, session: Session) -> None:
         from brainscore_core.score_metadata import note_session
-        # The registration's facts are their own provenance entry; the model notes its parts.
-        note_session(session, provenance={'subject': getattr(self._subject, 'identifier', None),
-                                          'registration': self._provenance})
         with session.rewriting_responses(lambda event: _attach(self._provenance, event)):
             self._subject.participate(session)
+        # At success only. The registration's facts are their own provenance entry; the model notes its parts.
+        note_session(session, provenance={'subject': getattr(self._subject, 'identifier', None),
+                                          'registration': self._provenance})
 
     def reset(self) -> None:
         self._subject.reset()

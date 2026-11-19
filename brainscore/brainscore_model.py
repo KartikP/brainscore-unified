@@ -483,7 +483,6 @@ class BrainScoreModel(Subject):
         from ._model import parts
         from ._model.plan import plan_session
         passes = regions_per_pass()
-        note_session(session, passes)   # this model owns the plan, so the run record gets it from here
         with one_session_at_a_time(self):
             session = session.declare_inputs(self.in_channels)
             self._session_plan = plan_session(self, session, passes)
@@ -497,9 +496,11 @@ class BrainScoreModel(Subject):
                     # inside score() the run's scope is reused.
                     with self._behavioral.session_scope(), weight_fingerprint_scope():
                         self._session_plan.capability.participate(self, session)
-                        # Once per session: the parts that ran and their facts, to the run
-                        # record (no response is changed). A failed session sends nothing.
-                        note_session(session, provenance=provenance.session_entry(self, session, log))
+                        # Once per session, at its success: the plan this model owns, the parts
+                        # that ran and their facts, to the run record (no response is changed).
+                        # A refused or failed session sends nothing.
+                        note_session(session, passes,
+                                     provenance=provenance.session_entry(self, session, log))
             finally:
                 self._session_plan = None
 

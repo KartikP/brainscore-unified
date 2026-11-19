@@ -123,3 +123,75 @@ def test_direct_response_task_sessions_are_recorded(kind, expected):
             session.collect(channel)
 
     assert _methods(measures) == expected
+
+
+# A session enters the score record only when it succeeded: a refused or failed session
+# leaves no delivery, no plan and no provenance entry in the open record.
+
+def _stamped(measures, subject):
+    from brainscore_core.metrics import Score
+    from brainscore_core.score_metadata import stamp_score_metadata
+    return stamp_score_metadata(Score(0.0), subject, [], 'test', measures).attrs
+
+
+def _open_record_is_empty(measures, subject):
+    return _stamped(measures, subject).get('delivery') is None and not measures.provenance
+
+
+def _failing_model():
+    def fail(stimulus_row, instruction, label_set):
+        raise RuntimeError('the model fails inside the session')
+    model = _generation_model()
+    return BrainScoreModel(identifier='test-failing', model=None, region_layer_map={},
+                           extractor={'vision': lambda *a, **kw: None}, answer=fail)
+
+
+def _generation_session(streaming=False, outputs=('behavior',)):
+    task = TaskContext(fitting_stimuli=_stimuli(), **_GENERATION_TASK)
+    return stimulus_session(_stimuli(), list(outputs), task, streaming=streaming)
+
+
+def test_a_good_session_is_in_the_record():
+    with record_measures() as measures:
+        model = _generation_model()
+        model.participate(_generation_session())
+    assert _stamped(measures, model)['delivery'] == 'listed'
+    assert len(measures.provenance) == 1
+
+
+def test_a_failed_session_is_not_in_the_record():
+    model = _failing_model()
+    with record_measures() as measures:
+        with pytest.raises(RuntimeError):
+            model.participate(_generation_session())
+    assert _open_record_is_empty(measures, model)
+
+
+def test_a_session_the_plan_refuses_is_not_in_the_record():
+    # The model has no readout, so a request for probabilities cannot run.
+    model = _generation_model()
+    with record_measures() as measures:
+        with pytest.raises(Exception):
+            model.participate(
+                _generation_session(outputs=('behavior:probabilities',)))
+    assert _open_record_is_empty(measures, model)
+
+
+def test_a_session_refused_on_a_busy_subject_is_not_in_the_record():
+    refused = []
+    holder = {}
+
+    def answer(stimulus_row, instruction, label_set):
+        if not refused:   # the first answer starts a second, streamed session
+            with pytest.raises(Exception) as error:
+                holder['model'].participate(_generation_session(streaming=True))
+            refused.append(error.value)
+        return 'cat'
+
+    model = holder['model'] = BrainScoreModel(
+        identifier='test-busy', model=None, region_layer_map={},
+        extractor={'vision': lambda *a, **kw: None}, answer=answer)
+    with record_measures() as measures:
+        model.participate(_generation_session())
+    assert refused
+    assert _stamped(measures, model)['delivery'] == 'listed'
