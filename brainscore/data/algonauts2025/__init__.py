@@ -214,9 +214,11 @@ def per_scan_stimuli(stimulus_set, n_scans: Dict[str, int], media: Sequence[str]
     table = StimulusSet(df)
     # The activations cache keys on the stimuli identifier, not on the columns,
     # so the identifier carries a signature of the sorted column names: a table
-    # with other columns is other stimuli to the cache.
+    # with other columns is other stimuli to the cache. The participant is not
+    # in the name: participants share the rows and files, so they share the
+    # cached activations (the cache key also holds the file contents in order).
     column_signature = hashlib.md5('|'.join(sorted(map(str, df.columns))).encode()).hexdigest()[:8]
-    table.identifier = (f"algonauts2025-{split}-sub{participant:02d}-{'-'.join(media)}"
+    table.identifier = (f"algonauts2025-{split}-{'-'.join(media)}"
                         f'-{column_signature}')
     table.stimulus_paths = dict(zip(df['stimulus_id'], df[MEDIA[media[0]][3]]))
     return table
