@@ -53,9 +53,6 @@ def get_model(identifier: str) -> BrainScoreModel:
         model=gpt2,
         tokenizer=tokenizer,
         identifier=f'{identifier}-text',
-        # The model's own window (``n_positions`` in the hub settings of ``gpt2``), as the
-        # language plugin ``gpt2`` cuts its contexts; the wrapper default (512) cuts longer ones.
-        max_length=1024,
     )
 
     return BrainScoreModel(

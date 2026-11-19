@@ -435,6 +435,6 @@ def test_qwen_keeps_its_wrappers_dtype_and_generation(build):
         'identifier': 'qwen2.5-vl-3b-vision', 'layer_aggregation': 'mean', 'batch_size': 4})
     assert _effective(TextWrapper, text.kwargs) == _effective(TextWrapper, {
         'model': qwen.model.language_model, 'tokenizer': processor.tokenizer,
-        'identifier': 'qwen2.5-vl-3b-text', 'layer_aggregation': 'last', 'max_length': 512})
+        'identifier': 'qwen2.5-vl-3b-text', 'layer_aggregation': 'last'})
     assert model._behavioral_readout_layer == 'blocks.28'
     assert model._answer is not None
