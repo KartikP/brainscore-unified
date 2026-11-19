@@ -1,4 +1,4 @@
-"""The pin check must fail when required pin sites disagree."""
+"""The pin check must fail when the lock or a Jenkins script names a commit it must not."""
 
 import importlib.util
 import json
@@ -11,7 +11,6 @@ import pytest
 
 SCRIPT = Path(__file__).resolve().parents[2] / 'install' / 'check_pins.py'
 CORE = 'a' * 40
-UNIFIED = 'b' * 40
 
 
 @pytest.fixture
@@ -22,9 +21,7 @@ def pins(monkeypatch):
     monkeypatch.setitem(sys.modules, 'check_pins', module)
     spec.loader.exec_module(module)
     monkeypatch.delenv('GITHUB_STEP_SUMMARY', raising=False)
-    served = {UNIFIED: json.dumps({'core': CORE, 'vision': 'c' * 40, 'language': 'd' * 40})}
-    monkeypatch.setattr(module, 'github_file',
-                        lambda repository, ref, path, api=False: served.get(ref))
+    monkeypatch.setattr(module, 'github_file', lambda repository, ref, path, api=False: None)
     _serve_lock_branches(module, monkeypatch, set())
     return module
 
@@ -32,12 +29,6 @@ def pins(monkeypatch):
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
-
-
-def _workflow(unified: str, field: str = None) -> str:
-    return ('jobs:\n  coordinated:\n'
-            f'    uses: KartikP/brainscore-unified/.github/workflows/offline-tests.yml@{unified}\n'
-            f'    with:\n      unified_revision: {field or unified}\n')
 
 
 def _commit(checkout: Path, message: str) -> str:
@@ -51,105 +42,83 @@ def _commit(checkout: Path, message: str) -> str:
                           text=True).stdout.strip()
 
 
-def _repositories(root: Path, *, vision_core: str = CORE, language_unified: str = UNIFIED,
-                  layout_unified: str = UNIFIED) -> Path:
-    for name, core in (('vision', vision_core), ('language', CORE)):
-        _write(root / name / 'requirements-v2.txt',
-               f'brainscore-core @ git+https://github.com/brain-score/core.git@{core}\n')
-    for name, unified in (('core', UNIFIED), ('vision', UNIFIED), ('language', language_unified)):
-        _write(root / name / '.github/workflows/umi-v2.yml', _workflow(unified))
-    peers = {name: _commit(root / name, 'code and pins') for name in ('vision', 'language')}
-    _write(root / 'unified/install/peer-revisions.json', json.dumps({'core': CORE, **peers}))
-    _write(root / 'core/.github/workflows/core-layout.yml',
-           f'      - uses: actions/checkout@v4\n        with:\n'
-           f'          repository: KartikP/brainscore-unified\n          ref: {layout_unified}\n')
+def _repositories(root: Path, *, core: str = CORE) -> Path:
+    for name in ('core', 'vision', 'language'):
+        _write(root / name / 'README.md', name)
+    peers = {name: _commit(root / name, 'code') for name in ('vision', 'language')}
+    _write(root / 'unified/install/peer-revisions.json', json.dumps({'core': core, **peers}))
     return root
 
 
-def _run(module, root: Path) -> int:
+def _infrastructure(root: Path, scripts: dict) -> Path:
+    for name, line in scripts.items():
+        _write(root / 'infra' / f'ci/{name}/run_tests.sh', f'    {line}\n')
+    return root / 'infra'
+
+
+FOLLOWS = {name: 'unified_ref=unified-model-interface-v2' for name in ('core', 'vision', 'language')}
+
+
+def _run(module, root: Path, infrastructure: Path = None) -> int:
     arguments = []
     for name in ('core', 'vision', 'language', 'unified'):
         arguments += [f'--{name}', str(root / name)]
-    return module.main([*arguments, '--infrastructure', 'skip'])
+    infrastructure = infrastructure or _infrastructure(root, FOLLOWS)
+    return module.main([*arguments, '--infrastructure', str(infrastructure)])
 
 
-def test_agreeing_pins_pass(pins, tmp_path, capsys):
+def test_lock_on_the_release_branches_passes(pins, tmp_path, capsys):
     assert _run(pins, _repositories(tmp_path)) == 0
     assert 'PASS' in capsys.readouterr().out
 
 
-def test_core_pin_disagreement_fails_with_a_table(pins, tmp_path, capsys):
-    assert _run(pins, _repositories(tmp_path, vision_core='e' * 40)) == 1
+def test_lock_entry_off_the_release_branch_fails(pins, tmp_path, monkeypatch, capsys):
+    root = _repositories(tmp_path)
+    _serve_lock_branches(pins, monkeypatch, {CORE})
+    assert _run(pins, root) == 1
     out = capsys.readouterr().out
-    assert 'vision requirements-v2.txt' in out and 'MISMATCH' in out
+    assert 'core lock entry on the release branch' in out and 'MISMATCH' in out
 
 
-def test_caller_unified_disagreement_fails(pins, tmp_path, capsys):
-    assert _run(pins, _repositories(tmp_path, language_unified='f' * 40)) == 1
-    out = capsys.readouterr().out
-    assert 'language umi-v2.yml uses' in out
-    # The manifest of an unknown unified commit cannot be read.
-    assert 'UNREADABLE' in out
+@pytest.mark.parametrize('core', [CORE[:7], 'unified-model-interface-v2', CORE + '-other'])
+def test_lock_entry_must_be_a_full_commit(pins, tmp_path, core):
+    assert _run(pins, _repositories(tmp_path, core=core)) == 1
 
 
-def test_warning_sites_do_not_fail(pins, tmp_path, capsys):
-    assert _run(pins, _repositories(tmp_path, layout_unified='9' * 40)) == 0
-    assert 'warning: mismatch' in capsys.readouterr().out
+def test_jenkins_script_that_pins_a_commit_fails(pins, tmp_path, capsys):
+    root = _repositories(tmp_path)
+    scripts = {**FOLLOWS, 'vision': 'unified_revision=' + 'b' * 40}
+    assert _run(pins, root, _infrastructure(root, scripts)) == 1
+    assert 'infrastructure ci/vision/run_tests.sh' in capsys.readouterr().out
+
+
+def test_unreadable_jenkins_script_is_a_warning(pins, tmp_path, capsys):
+    root = _repositories(tmp_path)
+    assert _run(pins, root, _infrastructure(root, {'core': FOLLOWS['core']})) == 0
+    assert 'warning: unreadable' in capsys.readouterr().out
+
+
+def test_peer_pin_files_are_not_pin_sites(pins, tmp_path):
+    """The caller workflows and requirements follow the release branches; a value there is not read."""
+    root = _repositories(tmp_path)
+    _write(root / 'vision/requirements-v2.txt', 'brainscore-core @ git+https://github.com/'
+           'brain-score/core.git@' + 'e' * 40 + '\n')
+    _write(root / 'core/.github/workflows/umi-v2.yml', 'uses: x/y@' + 'f' * 40 + '\n')
+    assert _run(pins, root) == 0
 
 
 def test_peer_manifest_must_name_the_code_of_the_peer_source(pins, tmp_path, capsys):
-    """A later commit that moves only pins keeps the named commit's code; a code change does not."""
+    """A later commit that moves only pin files keeps the named commit's code; a code change does not."""
     root = _repositories(tmp_path)
-    _write(root / 'vision/.github/workflows/umi-v2.yml', _workflow(UNIFIED) + '# pin moved\n')
-    _commit(root / 'vision', 'move the unified pin')
+    _write(root / 'vision/requirements-v2.txt', 'brainscore-core @ git+https://github.com/'
+           'brain-score/core.git@unified-model-interface-v2\n')
+    _commit(root / 'vision', 'move the core requirement')
     assert _run(pins, root) == 0
     _write(root / 'vision/brainscore_vision/model.py', 'changed = True\n')
     _commit(root / 'vision', 'change code')
     assert _run(pins, root) == 1
     out = capsys.readouterr().out
     assert 'vision source' in out and 'MISMATCH' in out
-
-
-def test_abbreviated_sha_is_invalid(pins):
-    rows = [pins.Row('core', 'one', CORE), pins.Row('core', 'two', CORE[:7])]
-    assert not pins.judge(rows)
-    assert [row.status for row in rows] == ['ok', 'INVALID']
-
-
-def test_decorated_ref_does_not_match_its_prefix(pins, tmp_path, capsys):
-    root = _repositories(tmp_path, vision_core=CORE + '-other')
-    assert _run(pins, root) == 1
-    assert 'INVALID' in capsys.readouterr().out
-
-
-def test_comment_cannot_hide_an_active_requirement(pins, tmp_path, capsys):
-    root = _repositories(tmp_path)
-    _write(root / 'vision/requirements-v2.txt',
-           f'# brainscore-core @ git+https://github.com/brain-score/core.git@{CORE}\n'
-           'brainscore-core @ git+https://github.com/brain-score/core.git@main\n')
-    assert _run(pins, root) == 1
-    out = capsys.readouterr().out
-    assert 'INVALID' in out and 'main' in out
-
-
-def test_commented_workflow_pin_is_ignored(pins, tmp_path):
-    root = _repositories(tmp_path)
-    _write(root / 'vision/.github/workflows/umi-v2.yml',
-           '# uses: KartikP/brainscore-unified/.github/workflows/offline-tests.yml@' + 'c' * 40
-           + '\n' + _workflow(UNIFIED))
-    assert _run(pins, root) == 0
-
-
-def test_missing_required_site_fails(pins, tmp_path):
-    root = _repositories(tmp_path)
-    (root / 'vision/requirements-v2.txt').unlink()
-    assert _run(pins, root) == 1
-
-
-def test_mismatch_inside_one_workflow_fails(pins, tmp_path):
-    root = _repositories(tmp_path)
-    _write(root / 'core/.github/workflows/umi-v2.yml', _workflow(UNIFIED, field='c' * 40))
-    assert _run(pins, root) == 1
 
 
 def test_github_read_sends_the_token(monkeypatch):
@@ -229,34 +198,13 @@ def _serve_lock_branches(module, monkeypatch, off_branch: set) -> None:
     monkeypatch.setattr(module, 'github_file', github_file)
 
 
-def test_lock_entry_off_the_release_branch_fails(pins, tmp_path, monkeypatch, capsys):
-    root = _repositories(tmp_path)
-    assert _run(pins, root) == 0
-    _serve_lock_branches(pins, monkeypatch, {CORE})
-    assert _run(pins, root) == 1
-    out = capsys.readouterr().out
-    assert 'core lock entry on the release branch' in out and 'MISMATCH' in out
+def _serve_lock_branches(module, monkeypatch, off_branch: set) -> None:
+    """Serve the compare endpoint: a commit in ``off_branch`` is not on the release branch."""
+    plain = module.github_file
 
-
-def test_site_may_follow_the_release_branch(pins, tmp_path, monkeypatch):
-    """A caller workflow or a requirement that names the release branch follows the lock."""
-    root = _repositories(tmp_path)
-    _write(root / 'core/.github/workflows/umi-v2.yml', _workflow(pins.DEFAULT_BRANCH))
-    _write(root / 'vision/requirements-v2.txt', 'brainscore-core @ git+https://github.com/'
-           f'brain-score/core.git@{pins.DEFAULT_BRANCH}\n')
-    assert _run(pins, root) == 0
-
-
-def test_core_jenkins_script_is_read(pins, tmp_path, monkeypatch, capsys):
-    root = _repositories(tmp_path)
-    scripts = {'ci/core/run_tests.sh': f'    unified_ref={pins.DEFAULT_BRANCH}\n'
-                                       '    unified_revision=$(git rev-parse HEAD)\n',
-               'ci/vision/run_tests.sh': f'    unified_revision={UNIFIED}\n'}
-    infrastructure = pins.Source('infrastructure', pins.INFRASTRUCTURE, path=tmp_path / 'infra')
-    for path, text in scripts.items():
-        _write(tmp_path / 'infra' / path, text)
-    rows = pins.collect({name: pins.Source(name, pins.REPOSITORIES[name], path=root / name)
-                         for name in pins.REPOSITORIES}, infrastructure)
-    assert pins.judge(rows)
-    core = [row for row in rows if row.site == 'infrastructure ci/core/run_tests.sh']
-    assert [row.value for row in core] == [pins.DEFAULT_BRANCH] and core[0].status == 'ok'
+    def github_file(repository, ref, path, api=False):
+        if api and path.startswith('compare/'):
+            commit = path.removeprefix('compare/').split('...')[0]
+            return json.dumps({'status': 'diverged' if commit in off_branch else 'ahead'})
+        return plain(repository, ref, path, api)
+    monkeypatch.setattr(module, 'github_file', github_file)

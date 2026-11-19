@@ -1,20 +1,20 @@
-"""Check that every UMI pin site names the same core and unified commits.
+"""Check the lock of the UMI peers and the scripts that read it.
 
-It also checks the vision and language entries of unified's
-``install/peer-revisions.json``: the named commit must have the code of the
-vision and language sources it reads. Only the pin files of a peer
-(``requirements-v2.txt``, ``.github/workflows/umi-v2.yml``) may differ,
-because a peer commit that moves its unified pin comes after the commit that
-unified names.
+Unified's ``install/peer-revisions.json`` is the one lock: it names the core,
+vision and language commits that every UMI check installs. Core, vision and
+language follow the unified release branch, and the infrastructure Jenkins
+scripts read the lock at the unified release tip. This script fails (status 1)
+when:
 
-The coordinated v2 repositories pin each other in several files. A pin that
-differs between sites makes a change pass in one CI system and fail in another.
-This script reads every site and prints one table. It exits with status 1 when
-a required site disagrees or cannot be read, or when an entry of the lock
-(``peer-revisions.json``) is not a commit of the peer's release branch. A site
-that names the release branch instead of a commit follows the lock and passes.
-The infrastructure Jenkins scripts (core, vision, language) and the core layout
-workflow are reported as warnings only.
+- a lock entry is not a full commit SHA, or is not a commit of the peer's
+  ``unified-model-interface-v2`` branch (read on GitHub), so the lock never names
+  a commit that only a deletable branch holds;
+- the vision or language commit of the lock has other code than the vision or
+  language source it reads (only the peer files ``requirements-v2.txt`` and
+  ``.github/workflows/umi-v2.yml`` may differ);
+- an infrastructure script (``ci/core``, ``ci/vision``, ``ci/language``) names a
+  unified commit instead of the release branch. A script that cannot be read
+  (no token) is a warning.
 
 Each repository is a local checkout (a directory; its working tree is read) or
 a Git ref on GitHub (a commit SHA or branch name). Without an argument, the
@@ -22,7 +22,7 @@ script uses the sibling directory under --root when it exists and the
 unified-model-interface-v2 branch on GitHub otherwise.
 
     python install/check_pins.py --root /path/to/siblings
-    python install/check_pins.py --core 9e421f6... --vision my-branch --language ../language
+    python install/check_pins.py --vision my-branch --language ../language
 
 Only the standard library is used. GitHub reads use GH_TOKEN or GITHUB_TOKEN,
 or `gh auth token` when neither is set.
@@ -31,7 +31,6 @@ or `gh auth token` when neither is set.
 from __future__ import annotations
 
 import argparse
-from collections import Counter
 from dataclasses import dataclass
 import json
 import os
@@ -53,26 +52,15 @@ REPOSITORIES = {
 }
 INFRASTRUCTURE = 'brain-score/infrastructure'
 DEFAULT_BRANCH = 'unified-model-interface-v2'
-CALLERS = ('core', 'vision', 'language')
 FULL_SHA = re.compile('[0-9a-f]{40}')
-# Each pattern captures the complete ref token of an active (uncommented) line.
-# judge() then requires a full 40-character SHA, so a partial or decorated ref
-# such as "deadbeef-other" is reported as INVALID instead of matching a prefix.
-REQUIREMENT_LINE = re.compile(r'^\s*brainscore-core\b.*$', re.MULTILINE)
-REQUIREMENT_REF = re.compile(r'\.git@([^\s;]+)')
-USES_UNIFIED = re.compile(
-    r'^\s*(?:-\s*)?uses:\s*KartikP/brainscore-unified/\.github/workflows/offline-tests\.yml@(\S+)',
-    re.MULTILINE)
-INPUT_UNIFIED = re.compile(r'^\s*unified_revision:\s*(\S+)', re.MULTILINE)
-LAYOUT_UNIFIED = re.compile(r'repository:\s*KartikP/brainscore-unified\s*\n\s*ref:\s*(\S+)')
 # A Jenkins script names a unified commit (unified_revision=<sha>) or the release
 # branch it fetches (unified_ref=<branch>); a value computed at run time ($(...)) is not a pin.
 JENKINS_UNIFIED = re.compile(r'^\s*unified_(?:revision|ref)=([^\s$]\S*)', re.MULTILINE)
 NOT_ON_BRANCH = 'not on the release branch: '   # a lock entry that the peer's release branch lacks
+PINS_A_COMMIT = 'names a commit, not the release branch: '   # a Jenkins script with a fixed unified commit
 CODE_DIFFERS = 'code differs: '    # the value of a peer source whose code is not the named commit's
 # The files of a peer that only move pins. A peer commit that changes only these
-# has the code of the commit before it, so the peer manifest of unified may name
-# that earlier commit (each peer pins unified, and unified names each peer).
+# has the code of the commit before it, so the lock may name that earlier commit.
 PEER_PIN_FILES = frozenset({'requirements-v2.txt', '.github/workflows/umi-v2.yml'})
 
 
@@ -164,15 +152,6 @@ class Source:
             return set(result.stdout.split()) if result.returncode == 0 else None
         return _tree_difference(self.repository, revision, self.ref)
 
-    def read_at(self, revision: str, path: str) -> Optional[str]:
-        """Read a file at another commit of this repository."""
-        if self.path is not None:
-            result = subprocess.run(['git', '-C', str(self.path), 'show', f'{revision}:{path}'],
-                                    capture_output=True, text=True)
-            if result.returncode == 0:
-                return result.stdout
-        return github_file(self.repository, revision, path)
-
 
 def source(name: str, value: Optional[str], root: Path, default_path: Optional[Path] = None) -> Source:
     repository = REPOSITORIES.get(name, INFRASTRUCTURE)
@@ -193,91 +172,34 @@ class Row:
     value: Optional[str]
     required: bool = True
     status: str = ''
-    # A site that may name the release branch instead of a commit: it then follows the lock.
-    may_follow: bool = True
-
-
-def _active(text: str) -> str:
-    """Drop comment lines and trailing comments, so a comment cannot set a pin."""
-    lines = []
-    for line in text.splitlines():
-        if line.lstrip().startswith('#'):
-            continue
-        lines.append(re.sub(r'\s+#.*$', '', line))
-    return '\n'.join(lines)
-
-
-def _clean(value: str) -> str:
-    return value.strip().strip('\'"')
-
-
-def _matches(text: Optional[str], pattern: re.Pattern) -> list[Optional[str]]:
-    """Return every distinct active ref; [None] when the file or entry is absent."""
-    values = sorted({_clean(v) for v in pattern.findall(_active(text))}) if text is not None else []
-    return values or [None]
-
-
-def _requirement_refs(text: Optional[str]) -> list[Optional[str]]:
-    """Return the ref of every active brainscore-core requirement.
-
-    An active requirement without a ``.git@<ref>`` part is returned whole, so it
-    is reported as INVALID rather than hidden behind another entry.
-    """
-    if text is None:
-        return [None]
-    values = set()
-    for line in REQUIREMENT_LINE.findall(_active(text)):
-        match = REQUIREMENT_REF.search(line)
-        values.add(_clean(match.group(1)) if match else line.strip())
-    return sorted(values) or [None]
 
 
 def collect(sources: dict[str, Source], infrastructure: Optional[Source]) -> list[Row]:
-    """Read every pin site. A missing file or pattern gives a row with value None."""
+    """Read the lock and the scripts that read it. A missing file or entry gives a row with value None."""
     rows = []
     manifest = sources['unified'].read('install/peer-revisions.json')
     peers = json.loads(manifest) if manifest else {}
     for name in ('core', 'vision', 'language'):
-        # A lock entry must be a commit of the peer's release branch: a commit that
-        # only a pull request branch holds is lost when that branch is deleted.
         named = peers.get(name)
-        rows.append(Row(name, 'unified install/peer-revisions.json', named, may_follow=False))
+        rows.append(Row(name, 'unified install/peer-revisions.json', named))
         rows.append(Row(name, f'{name} lock entry on the release branch',
-                        on_release_branch(REPOSITORIES[name], named) if _valid(named) else named,
-                        may_follow=False))
+                        on_release_branch(REPOSITORIES[name], named) if _valid(named) else named))
     for name in ('vision', 'language'):
-        # The peer commit the manifest names must have the code that the peer source holds.
+        # The peer commit the lock names must have the code that the peer source holds.
         named = peers.get(name)
         changed = sources[name].changed_since(named) if _valid(named) else None
         other = sorted(changed - PEER_PIN_FILES) if changed is not None else None
         code = None if other is None else f'{CODE_DIFFERS}{other[0]}' if other else named
-        rows.append(Row(name, f'{name} source: code of the named commit', code, may_follow=False))
-    for name in ('vision', 'language'):
-        for value in _requirement_refs(sources[name].read('requirements-v2.txt')):
-            rows.append(Row('core', f'{name} requirements-v2.txt', value))
-    caller_pins = set()
-    for name in CALLERS:
-        workflow = sources[name].read('.github/workflows/umi-v2.yml')
-        for pattern, field in ((USES_UNIFIED, 'uses'), (INPUT_UNIFIED, 'unified_revision')):
-            for value in _matches(workflow, pattern):
-                rows.append(Row('unified', f'{name} umi-v2.yml {field}', value))
-                if value and FULL_SHA.fullmatch(value):
-                    caller_pins.add(value)
-    for revision in sorted(caller_pins):
-        # The peer manifest of the pinned unified commit decides the core that
-        # GitHub Actions installs for core, vision and language PRs.
-        text = sources['unified'].read_at(revision, 'install/peer-revisions.json')
-        rows.append(Row('core', f'unified@{revision[:12]} peer-revisions.json (caller CI)',
-                        json.loads(text).get('core') if text else None))
-    layout = sources['core'].read('.github/workflows/core-layout.yml')
-    for value in _matches(layout, LAYOUT_UNIFIED):
-        rows.append(Row('unified', 'core core-layout.yml checkout ref', value, required=False))
+        rows.append(Row(name, f'{name} source: code of the named commit', code))
     if infrastructure is not None:
         for name in ('core', 'vision', 'language'):
             script = infrastructure.read(f'ci/{name}/run_tests.sh')
-            for value in _matches(script, JENKINS_UNIFIED):
-                rows.append(Row('unified', f'infrastructure ci/{name}/run_tests.sh', value,
-                                required=False))
+            values = sorted(set(JENKINS_UNIFIED.findall(script))) if script else []
+            for value in values or [None]:
+                follows = value == DEFAULT_BRANCH
+                rows.append(Row('unified', f'infrastructure ci/{name}/run_tests.sh',
+                                value if value is None or follows else f'{PINS_A_COMMIT}{value}',
+                                required=script is not None))
     return rows
 
 
@@ -295,40 +217,32 @@ def _valid(value: Optional[str]) -> bool:
 
 
 def judge(rows: list[Row]) -> bool:
-    """Mark each row; return True when every required site agrees.
+    """Mark each row; return True when every required row is ok.
 
-    Every pin must be a full 40-character SHA, and pins agree only when they
-    are identical.
+    A lock entry must be a full 40-character SHA on the peer's release branch;
+    an infrastructure script must name the release branch.
     """
     ok = True
-    for pin in ('core', 'unified', 'vision', 'language'):
-        group = [row for row in rows if row.pin == pin]
-        votes = Counter(row.value for row in group if row.required and _valid(row.value))
-        expected = votes.most_common(1)[0][0] if votes else None
-        for row in group:
-            if row.value is None:
-                row.status = 'UNREADABLE'
-            elif row.may_follow and row.value == DEFAULT_BRANCH:
-                row.status = 'ok'
-            elif row.value.startswith((CODE_DIFFERS, NOT_ON_BRANCH)):
-                row.status = 'MISMATCH'
-            elif not _valid(row.value):
-                row.status = 'INVALID'
-            elif expected is None or row.value == expected:
-                row.status = 'ok'
+    for row in rows:
+        if row.value is None:
+            row.status = 'UNREADABLE'
+        elif row.value.startswith((CODE_DIFFERS, NOT_ON_BRANCH, PINS_A_COMMIT)):
+            row.status = 'MISMATCH'
+        elif _valid(row.value) or (row.pin == 'unified' and row.value == DEFAULT_BRANCH):
+            row.status = 'ok'
+        else:
+            row.status = 'INVALID'
+        if row.status != 'ok':
+            if row.required:
+                ok = False
             else:
-                row.status = 'MISMATCH'
-            if row.status != 'ok':
-                if row.required:
-                    ok = False
-                else:
-                    row.status = f'warning: {row.status.lower()}'
+                row.status = f'warning: {row.status.lower()}'
     return ok
 
 
 def table(rows: list[Row]) -> str:
     header = ('pin', 'site', 'value', 'status')
-    body = [(row.pin, row.site, row.value[:12] if _valid(row.value) else str(row.value or "-")[:40],
+    body = [(row.pin, row.site, row.value[:12] if _valid(row.value) else str(row.value or "-")[:96],
              row.status) for row in rows]
     widths = [max(len(line[i]) for line in [header, *body]) for i in range(4)]
     lines = ['  '.join(cell.ljust(width) for cell, width in zip(line, widths)) for line in [header, *body]]
@@ -337,7 +251,7 @@ def table(rows: list[Row]) -> str:
 
 
 def markdown(rows: list[Row], sources: list[Source]) -> str:
-    lines = ['### UMI pin agreement', '', '| pin | site | value | status |', '|---|---|---|---|']
+    lines = ['### UMI lock check', '', '| pin | site | value | status |', '|---|---|---|---|']
     lines += [f'| {row.pin} | {row.site} | `{row.value or "-"}` | {row.status} |' for row in rows]
     lines += ['', 'Sources: ' + ', '.join(f'{s.name}={s.label}' for s in sources), '']
     return '\n'.join(lines)
@@ -349,8 +263,8 @@ def main(argv: Optional[list[str]] = None) -> int:
                         help='Directory holding sibling checkouts (default: parent of this checkout)')
     for name in REPOSITORIES:
         parser.add_argument(f'--{name}', metavar='PATH|REF', help=f'{name} checkout or Git ref')
-    parser.add_argument('--infrastructure', default='main', metavar='REF',
-                        help='brain-score/infrastructure ref for the Jenkins warnings, or "skip"')
+    parser.add_argument('--infrastructure', default='main', metavar='PATH|REF',
+                        help='brain-score/infrastructure checkout or ref for the Jenkins scripts, or "skip"')
     args = parser.parse_args(argv)
     this_checkout = Path(__file__).resolve().parents[1]
     root = args.root or this_checkout.parent
@@ -359,7 +273,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                for name in REPOSITORIES}
     infrastructure = None
     if args.infrastructure != 'skip':
-        infrastructure = Source('infrastructure', INFRASTRUCTURE, ref=args.infrastructure)
+        infrastructure = source('infrastructure', args.infrastructure, root)
     rows = collect(sources, infrastructure)
     ok = judge(rows)
     used = [*sources.values(), *([infrastructure] if infrastructure else [])]
@@ -369,8 +283,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     if summary:
         with open(summary, 'a') as handle:
             handle.write(markdown(rows, used))
-    print('\nPASS: required pin sites agree' if ok else
-          '\nFAIL: required pin sites disagree or cannot be read; update them together')
+    print('\nPASS: the lock and the scripts that read it are sound' if ok else
+          '\nFAIL: move the lock to commits of the peer release branches (install/peer-revisions.json), '
+          'or make the infrastructure script fetch the unified release branch')
     return 0 if ok else 1
 
 

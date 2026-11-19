@@ -31,7 +31,7 @@
 #
 # Phases (in the order "all" runs them):
 #   prepare          Fetch or snapshot the four checkouts; record revisions.
-#   pins             Report pin agreement (install/check_pins.py).
+#   pins             Check the lock of the peers (install/check_pins.py).
 #   offline          verify build contents example torch ffmpeg install
 #                    installed-checks packages
 #   tutorials        verify build example torch install notebooks

@@ -181,19 +181,23 @@ never on the only copy of uncommitted work. Git hooks never run.
 To run the same set on GitHub, start the offline workflow manually with the
 `core_revision`, `vision_revision` and `language_revision` inputs (full SHAs).
 
-## Check that the pins agree
+## Check the lock
 
-`check_pins.py` reads the core pin and the unified pin at every site and fails
-when they disagree. It also fails when the vision or language commit named in
-`peer-revisions.json` has other code than the vision or language source it reads;
-only the peer's pin files (`requirements-v2.txt`, `.github/workflows/umi-v2.yml`)
-may differ. It compares the content of the two trees, not their history, so a
-squash merge with the same files passes. Each entry of `peer-revisions.json` must
-be a commit of the peer's `unified-model-interface-v2` branch (read on GitHub),
-so a lock never names a commit that only a deletable branch holds. A site that
-names the release branch instead of a commit follows the lock and passes:
+`install/peer-revisions.json` is the one lock of the peers: every UMI check
+installs the core, vision and language commits it names. Core, vision and
+language run their `UMI v2` checks with the unified release branch, and the
+infrastructure Jenkins scripts read the lock at the unified release tip, so only
+a unified pull request moves the peers that any check tests. `check_pins.py`
+fails when a lock entry is not a full commit of the peer's
+`unified-model-interface-v2` branch (read on GitHub, so the lock never names a
+commit that only a deletable branch holds), when the vision or language commit
+of the lock has other code than the vision or language source it reads (only
+`requirements-v2.txt` and `.github/workflows/umi-v2.yml` may differ; the two
+trees are compared, not their history, so a squash merge with the same files
+passes), or when an infrastructure script names a unified commit instead of the
+release branch. A script that cannot be read (no token) is a warning:
 
 ```bash
 python unified/install/check_pins.py --root /path/to/siblings
-python unified/install/check_pins.py --core <sha> --vision my-branch --language ../language
+python unified/install/check_pins.py --vision my-branch --language ../language
 ```

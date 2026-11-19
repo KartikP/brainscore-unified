@@ -1,7 +1,9 @@
 name: pin agreement
-# Compare this unified revision's peer pins with the core, vision and language
-# pins (default: their unified-model-interface-v2 tips). The infrastructure
-# Jenkins pins are warnings; they need UMI_PIN_READ_TOKEN to be read.
+# Check this unified revision's lock (install/peer-revisions.json): each entry
+# is a commit of the peer's release branch with the code of the peer source
+# (default: their unified-model-interface-v2 tips), and the infrastructure
+# Jenkins scripts fetch the unified release branch. A script that cannot be read
+# (it needs UMI_PIN_READ_TOKEN) is a warning.
 on:
   push:
     branches: [unified-model-interface-v2]
@@ -35,7 +37,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Check every pin site
+      - name: Check the lock and the scripts that read it
         env:
           GH_TOKEN: ${{ secrets.UMI_PIN_READ_TOKEN || github.token }}
           CORE_REF: ${{ github.event.inputs.core || 'unified-model-interface-v2' }}
