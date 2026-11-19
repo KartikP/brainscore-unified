@@ -313,9 +313,12 @@ def test_a_malformed_channel_after_an_unknown_one_raises(subject_in, subject_out
 
 
 def test_an_unknown_channel_is_refused_as_a_malformed_declaration():
-    with pytest.raises(ValueError, match='aardvark'):
-        brainscore.score(_Recorder({'aardvark', 'vision:image'}, {'neural:IT'}),
-                         _DeclaredBenchmark(), check_mem=False)
+    from tests.unregistered import unregistered_family
+    family = unregistered_family()
+    subject, benchmark = _Recorder({family, 'vision:image'}, {'neural:IT'}), _DeclaredBenchmark()
+    with pytest.raises(ValueError, match=family):
+        brainscore.score(subject, benchmark, check_mem=False)
+    assert subject.calls == [] and benchmark.runs == 0
 
 
 # ── The score records how its sessions ran ──────────────────────────────────

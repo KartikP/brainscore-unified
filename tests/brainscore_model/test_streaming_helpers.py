@@ -14,6 +14,7 @@ from brainscore_core.streaming_helpers import (
     behavioral_response,
     neural_response,
     run_environment,
+    stimulus_session,
 )
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     BehavioralAssembly,
@@ -292,7 +293,10 @@ def test_behavioral_response_matches_the_configured_readout_exactly():
     legacy = _behavior_model(features)
     legacy_context = _behavior_context(fitting)
     legacy.start_task(legacy_context)
-    expected = legacy._behavioral.respond(scoring, ['behavior:choice'])[0]['behavior:choice']
+    bare = legacy._behavioral.respond(scoring, ['behavior'])[0]['behavior']
+    session = stimulus_session(scoring, ['behavior:choice'], legacy_context)
+    legacy.participate(session)
+    expected = session.collect('behavior:choice')
 
     helper_subject = _behavior_model(
         features, model_cls=_ParticipateTrackingBrainScoreModel
@@ -303,9 +307,10 @@ def test_behavioral_response_matches_the_configured_readout_exactly():
     assert helper_subject.participate_called is True
     assert helper_subject.participate_outputs == ("behavior:choice",)
     assert isinstance(scored, BehavioralAssembly)
-    # The addressed format adds its per-trial check coordinates; the answers are the same.
-    assert list(scored['stimulus_id'].values) == list(expected['stimulus_id'].values)
-    np.testing.assert_array_equal(scored.values, expected.values)
+    xr.testing.assert_identical(scored, expected)
+    # The addressed format must not change the answers of the old bare request.
+    assert list(scored['stimulus_id'].values) == list(bare['stimulus_id'].values)
+    np.testing.assert_array_equal(scored.values, bare.values)
 
 
 def _generation_model(calls, model_cls=BrainScoreModel):
@@ -338,7 +343,10 @@ def test_behavioral_response_matches_the_configured_answer_exactly():
     legacy = _generation_model(legacy_calls)
     legacy_context = _generation_context()
     legacy.start_task(legacy_context)
-    expected = legacy._behavioral.respond(scoring, ['behavior:choice'])[0]['behavior:choice']
+    bare = legacy._behavioral.respond(scoring, ['behavior'])[0]['behavior']
+    session = stimulus_session(scoring, ['behavior:choice'], legacy_context)
+    legacy.participate(session)
+    expected = session.collect('behavior:choice')
 
     helper_calls = []
     helper_subject = _generation_model(
@@ -350,10 +358,11 @@ def test_behavioral_response_matches_the_configured_answer_exactly():
     assert helper_subject.participate_called is True
     assert helper_subject.participate_outputs == ("behavior:choice",)
     assert isinstance(scored, BehavioralAssembly)
-    # The addressed format adds its per-trial check coordinates; the answers are the same.
-    assert list(scored['stimulus_id'].values) == list(expected['stimulus_id'].values)
-    np.testing.assert_array_equal(scored.values, expected.values)
-    assert helper_calls == legacy_calls
+    xr.testing.assert_identical(scored, expected)
+    # The addressed format must not change the answers of the old bare request.
+    assert list(scored['stimulus_id'].values) == list(bare['stimulus_id'].values)
+    np.testing.assert_array_equal(scored.values, bare.values)
+    assert helper_calls == legacy_calls[-len(helper_calls):]   # the bare run and the format run asked the same
 
 
 class _SyntheticEnvironment:

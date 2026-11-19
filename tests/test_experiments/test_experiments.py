@@ -163,7 +163,8 @@ def test_preflight_has_no_output_or_inference(tmp_path, failure):
         provider = TorchInstrumentation({'known': subject.layer})
     elif failure == 'channel':
         tools = []
-        p.required_input_channels = {'unsupported'}
+        from tests.unregistered import unregistered_family
+        p.required_input_channels = {unregistered_family()}
     elif failure == 'missing_method':
         tools = []
         p = CallableProtocol('bad', lambda s, c: None, methods=['absent'])
