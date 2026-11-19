@@ -4,7 +4,7 @@ The Friends video variant shows the clips, the video-with-sound variant shows th
 same clips and their sound. The video extractor reads only the clips, so the two
 tables must reach one stored entry; the audio extractor reads the sound and keeps
 its own entry. Other clips, another order or another frame sampling give another
-entry.
+entry. Lahner2024 shows its visual and its two-stream subjects one clip table.
 The store is a temporary folder; no other cache is enabled.
 """
 import shutil
@@ -84,3 +84,14 @@ def test_other_clips_another_order_or_another_sampling_get_another_video_entry(
         assert not _entries(store) <= seen
         seen = _entries(store)
 
+
+def test_lahner_shows_the_visual_and_the_two_stream_subject_one_clip_table(monkeypatch, tmp_path):
+    import brainscore
+    from tests.lahner_synthetic import Recorder, install
+    install(monkeypatch, tmp_path)
+    visual = Recorder({'vision:video'})
+    brainscore.load_benchmark('Lahner2024-fMRI-naturalistic')(visual)
+    both = Recorder({'vision:video', 'audio'}, regions=('IT', 'A1'))
+    brainscore.load_benchmark('Lahner2024-fMRI-naturalistic-multimodal')(both)
+    sessions = [(ids, name) for inputs, _, ids, name in visual.seen + both.seen if inputs == ['vision:video']]
+    assert len(sessions) == 2 and sessions[0] == sessions[1]

@@ -471,18 +471,19 @@ class Lahner2024BOLDMoments(BenchmarkBase):
             if self._audio:
                 attrs['scored_inputs'] = scored
             return features, clip_ids, attrs
-        # The sound, with the visual stream when the subject takes it. Differences
-        # from the one-stream route above, kept so no score moves: the clip table is
-        # named '-multimodal-video', and the time bins are averaged with xarray's
-        # NaN-skipping mean (the one-stream route and the time-resolved benchmark use
-        # numpy's mean; the two differ only when a response holds NaN).
+        # The sound, with the visual stream when the subject takes it. The clip table
+        # is the one of the one-stream route, so the video activations are read once
+        # for both. A difference from that route, kept so no score moves: the time
+        # bins are averaged with xarray's NaN-skipping mean (the one-stream route and
+        # the time-resolved benchmark use numpy's mean; the two differ only when a
+        # response holds NaN).
         # The sound tracks are checked before any stream is recorded.
         sound = clip_table(stimuli, f'{stimuli.identifier}-multimodal-audio', sound=True)
         streams = []
         for stream, _, regions in plan:
             if stream == 'video':
                 responses = record_visual(
-                    subject, lambda: clip_table(stimuli, f'{stimuli.identifier}-multimodal-video'),
+                    subject, lambda: clip_table(stimuli, f'{stimuli.identifier}-videos'),
                     self._frames, regions)
             else:
                 responses = record_clips(subject, sound, regions)
