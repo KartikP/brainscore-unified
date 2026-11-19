@@ -72,6 +72,7 @@ class ProvenanceSubject(Subject):
     def participate(self, session: Session) -> None:
         from brainscore_core.score_metadata import note_session
         # The registration's facts are their own provenance entry; the model notes its parts.
+        # Noted at entry (the store state then); the base passes it on only if the session succeeds.
         note_session(session, provenance={'subject': getattr(self._subject, 'identifier', None),
                                           'registration': self._provenance})
         with session.rewriting_responses(lambda event: _attach(self._provenance, event)):
@@ -81,8 +82,9 @@ class ProvenanceSubject(Subject):
         self._subject.reset()
 
 
-# The provenance note of one session of a BrainScoreModel (rule 6.3). The model sends it
-# once, at the end of the session, with core's note_session; no response is changed.
+# The provenance note of one session of a BrainScoreModel (rule 6.3). The model notes it
+# once, at the end of its body, with core's note_session; the Subject base passes it to the
+# score only when the session succeeds. No response is changed.
 
 NOT_STATED = 'not stated'
 
