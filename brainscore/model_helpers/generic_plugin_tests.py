@@ -11,11 +11,16 @@ writes no extra file. To run it by hand:
 (``conftest.py`` in this folder adds the ``--plugin_directory`` option.)
 
 The checks hold for every subject and use only the subject contract: the
-identifier and the declaration. The subject is loaded once per identifier.
+identifier and the declaration. The subject is loaded once per identifier. A
+first check reads the plugin's ``__init__.py``: the identifier is the key of one
+literal top-level registration line, and the file imports no ``model.py`` at
+module level (the factory imports it when the model is loaded).
 
 Limit: no declared output is exercised with input; add that when a production
 job for unified exists.
 """
+import ast
+from pathlib import Path
 from types import SimpleNamespace
 
 from brainscore_core.compatibility import check_compatibility
@@ -23,6 +28,23 @@ from brainscore_core.compatibility import check_compatibility
 # noinspection PyUnresolvedReferences
 from brainscore_core.plugin_management.generic_plugin_tests_helper import pytest_generate_tests  # noqa: F401
 from brainscore import load_model
+
+
+def test_the_init_states_the_identifier_once_and_loads_nothing(identifier: str, request):
+    init = Path(request.config.option.plugin_directory) / '__init__.py'
+    statements = ast.parse(init.read_text()).body
+    keys = [target.slice.value for statement in statements if isinstance(statement, ast.Assign)
+            for target in statement.targets
+            if isinstance(target, ast.Subscript) and isinstance(target.value, ast.Name)
+            and target.value.id == 'model_registry' and isinstance(target.slice, ast.Constant)]
+    assert keys.count(identifier) == 1, (
+        f"write one top-level line model_registry['{identifier}'] = <factory> in {init}")
+    eager = [statement.lineno for statement in statements
+             if isinstance(statement, ast.ImportFrom) and statement.level == 1
+             and (statement.module == 'model'
+                  or (statement.module is None and any(a.name == 'model' for a in statement.names)))]
+    assert not eager, (f'{init} imports model.py at module level (line {eager}); '
+                       'import it inside the factory')
 
 
 def test_identifier_and_declaration(identifier: str):

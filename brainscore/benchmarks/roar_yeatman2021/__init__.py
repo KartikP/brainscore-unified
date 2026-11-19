@@ -14,10 +14,15 @@ presentation differs.
 from functools import partial
 
 from brainscore import benchmark_registry
-from .benchmark import Yeatman2021LexicalDecision
+
+
+def _load(**configuration):
+    from .benchmark import Yeatman2021LexicalDecision
+    return Yeatman2021LexicalDecision(**configuration)
+
 
 # Leaderboard variants — each pinned to one input format
 benchmark_registry['Yeatman2021-lexical_decision-image'] = partial(
-    Yeatman2021LexicalDecision, channels=('vision:image',), identifier='Yeatman2021-lexical_decision-image')
+    _load, channels=('vision:image',), identifier='Yeatman2021-lexical_decision-image')
 benchmark_registry['Yeatman2021-lexical_decision-text'] = partial(
-    Yeatman2021LexicalDecision, channels=('text',), identifier='Yeatman2021-lexical_decision-text')
+    _load, channels=('text',), identifier='Yeatman2021-lexical_decision-text')

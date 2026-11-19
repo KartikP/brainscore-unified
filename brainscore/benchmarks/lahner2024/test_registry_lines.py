@@ -6,7 +6,9 @@ import pytest
 
 import brainscore
 import brainscore.benchmarks  # noqa: F401  (registers the unified benchmarks)
-from brainscore.benchmarks.lahner2024 import Lahner2024BOLDMoments, Lahner2024BOLDMoments_timeresolved
+from brainscore.benchmarks.lahner2024.benchmark import Lahner2024BOLDMoments
+from brainscore.benchmarks.lahner2024.benchmark_timeresolved import (
+    Lahner2024BOLDMoments_timeresolved)
 
 LAHNER = sorted(key for key in brainscore.benchmark_registry if key.startswith('Lahner2024-'))
 

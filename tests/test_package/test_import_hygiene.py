@@ -21,12 +21,14 @@ def test_import_brainscore_does_not_load_heavy_deps():
         # registries still populate without importing the plugins' model.py
         # (the identifier lists are pinned in test_benchmark_variants.py)
         "assert 'qwen2.5-vl-3b-bf16' in brainscore.model_registry\n"
-        "assert 'brainscore.models.qwen25_vl_3b.model' not in sys.modules\n"
         "assert 'qwen2.5-0.5b-instruct' in brainscore.model_registry\n"
-        "assert 'brainscore.models.qwen25_05b_instruct.model' not in sys.modules\n"
+        # no plugin __init__ imports a plugin's model.py or benchmark.py (any plugin)
+        "eager = sorted(m for m in sys.modules if m.startswith(('brainscore.models.', "
+        "'brainscore.benchmarks.')) and m.rsplit('.', 1)[1] in ('model', 'benchmark'))\n"
+        "assert not eager, f'import brainscore imported {eager}; import model.py or "
+        "benchmark.py inside the factory'\n"
         "assert 'brainscore.harnesses.coggym' not in sys.modules\n"
         "assert 'brainscore.data.ewok.data_packaging.prepare' not in sys.modules\n"
-        "assert 'brainscore.benchmarks.ewok.benchmark' not in sys.modules\n"
         "print('OK')\n"
     )
     r = subprocess.run([sys.executable, '-c', code],

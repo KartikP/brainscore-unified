@@ -344,14 +344,14 @@ class TestIdentityLahnerTimeResolved:
     penalty 1, voxel batches of 2000, through the two fold rules."""
 
     def test_run_blocks(self):
-        from brainscore.benchmarks.lahner2024 import RunBlocks
+        from brainscore.benchmarks.lahner2024.benchmark_timeresolved import RunBlocks
         X, Y, run_idx, participants = _tr_data()
         new = RunBlocks(4).per_voxel_r(_rows_of(X, run_idx), Y, run_idx, participants)
         _same(new, old.tr_cross_validated_ridge(X, Y, run_idx, n_held_out=4))
         assert new.dtype == np.float32
 
     def test_run_blocks_within_participant(self):
-        from brainscore.benchmarks.lahner2024 import ParticipantRunBlocks
+        from brainscore.benchmarks.lahner2024.benchmark_timeresolved import ParticipantRunBlocks
         X, Y, run_idx, participants = _tr_data()
         new = ParticipantRunBlocks(2).per_voxel_r(_rows_of(X, run_idx), Y, run_idx, participants)
         _same(new, old.tr_cross_validated_ridge_within_participant(

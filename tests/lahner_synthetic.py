@@ -225,8 +225,9 @@ _AUDIOVISUAL = ('vision:image', 'vision:video', 'audio')
 
 
 def _time_resolved_configurations():
-    from brainscore.benchmarks.lahner2024 import (
-        ParticipantRunBlocks, RunBlocks, build_auditory_mask)
+    from brainscore.benchmarks.lahner2024.benchmark_timeresolved import (
+        ParticipantRunBlocks, RunBlocks)
+    from brainscore.benchmarks.lahner2024 import build_auditory_mask
     from brainscore.data.lahner2024 import MOTION_COLUMNS as HOSTED_MOTION_COLUMNS
     return {
         _TR: {},
@@ -250,5 +251,6 @@ TIME_RESOLVED_TWO_TOWERS = list(TIME_RESOLVED_CONFIGURATIONS)[4:]
 
 def build_time_resolved(name):
     """The time-resolved class built with the arguments of one former registry line."""
-    from brainscore.benchmarks.lahner2024 import Lahner2024BOLDMoments_timeresolved
+    from brainscore.benchmarks.lahner2024.benchmark_timeresolved import (
+        Lahner2024BOLDMoments_timeresolved)
     return Lahner2024BOLDMoments_timeresolved(**TIME_RESOLVED_CONFIGURATIONS[name], identifier=name)

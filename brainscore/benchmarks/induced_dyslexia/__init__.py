@@ -12,9 +12,14 @@ Two pinned variants by presentation, mirroring the ROAR reading test it reuses:
 from functools import partial
 
 from brainscore import benchmark_registry
-from .benchmark import InducedDyslexia
+
+
+def _load(**configuration):
+    from .benchmark import InducedDyslexia
+    return InducedDyslexia(**configuration)
+
 
 benchmark_registry['Yeatman2021-induced_dyslexia-image'] = partial(
-    InducedDyslexia, channels=('vision:image',), identifier='Yeatman2021-induced_dyslexia-image')
+    _load, channels=('vision:image',), identifier='Yeatman2021-induced_dyslexia-image')
 benchmark_registry['Yeatman2021-induced_dyslexia-text'] = partial(
-    InducedDyslexia, channels=('text',), identifier='Yeatman2021-induced_dyslexia-text')
+    _load, channels=('text',), identifier='Yeatman2021-induced_dyslexia-text')

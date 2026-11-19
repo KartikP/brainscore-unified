@@ -2,13 +2,23 @@ from functools import partial
 
 from brainscore import benchmark_registry
 from .auditory_roi import build_auditory_mask
-from .benchmark import Lahner2024BOLDMoments, VISUAL_ROI_CEILING
-# The time-resolved class is not registered (see the end of this file); it stays importable.
-from .benchmark_timeresolved import (  # noqa: F401
-    Lahner2024BOLDMoments_timeresolved,
-    ParticipantRunBlocks,
-    RunBlocks,
-)
+
+
+def _load(**configuration):
+    from .benchmark import Lahner2024BOLDMoments
+    return Lahner2024BOLDMoments(**configuration)
+
+
+# Noise ceiling for the visual-ROI voxel set. For a predictivity correlation the ceiling
+# is sqrt(reliability): the highest r a perfect model could reach given measurement
+# noise. Under the protocol of the data set the constant is the median of
+# sqrt(reliability on the scored videos, the 93 test-set videos) over the voxels of the
+# mask (reliability of at least 0.3 on the 933 training-set videos) that have a
+# positive ceiling. Measured on the hosted data: the mask has 3958 voxels, every one
+# with a positive ceiling, and this is their median. It is what ``benchmark.ceiling``
+# reports for both ``-visualROI`` variants; the score divides each voxel by its own
+# ceiling and does not read this value.
+VISUAL_ROI_CEILING = 0.8515666971964203
 
 # One registry line per variant: the class, the full identifier (the registry key) and the parts
 # that make the variant. The registered class fits GLM betas (one estimate per clip).
@@ -30,20 +40,20 @@ from .benchmark_timeresolved import (  # noqa: F401
 _AUDIOVISUAL = ('vision:image', 'vision:video', 'audio')
 
 benchmark_registry['Lahner2024-fMRI-naturalistic'] = partial(
-    Lahner2024BOLDMoments, identifier='Lahner2024-fMRI-naturalistic')
+    _load, identifier='Lahner2024-fMRI-naturalistic')
 benchmark_registry['Lahner2024-fMRI-naturalistic-visualROI'] = partial(
-    Lahner2024BOLDMoments, reliability_threshold=0.3, identifier='Lahner2024-fMRI-naturalistic-visualROI',
+    _load, reliability_threshold=0.3, identifier='Lahner2024-fMRI-naturalistic-visualROI',
     ceiling=VISUAL_ROI_CEILING)
 benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal'] = partial(
-    Lahner2024BOLDMoments, channels=_AUDIOVISUAL, identifier='Lahner2024-fMRI-naturalistic-multimodal')
+    _load, channels=_AUDIOVISUAL, identifier='Lahner2024-fMRI-naturalistic-multimodal')
 benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal-visualROI'] = partial(
-    Lahner2024BOLDMoments, channels=_AUDIOVISUAL, reliability_threshold=0.3,
+    _load, channels=_AUDIOVISUAL, reliability_threshold=0.3,
     identifier='Lahner2024-fMRI-naturalistic-multimodal-visualROI', ceiling=VISUAL_ROI_CEILING)
 benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal-auditoryROI'] = partial(
-    Lahner2024BOLDMoments, channels=_AUDIOVISUAL, voxel_mask_fn=build_auditory_mask,
+    _load, channels=_AUDIOVISUAL, voxel_mask_fn=build_auditory_mask,
     identifier='Lahner2024-fMRI-naturalistic-multimodal-auditoryROI')
 
-# The TR time-series class (`Lahner2024BOLDMoments_timeresolved`) is not registered.
+# The TR time-series class (`benchmark_timeresolved.Lahner2024BOLDMoments_timeresolved`) is not registered.
 # It does not separate a trained model from the same model with random weights: of
 # the seven variants that were registered, none scored more than 0.016 above its
 # random-weight floor and two variants scored below the floor (measured 2026-11-16 on

@@ -12,7 +12,8 @@ from sklearn.linear_model import Ridge
 
 import brainscore
 import brainscore.benchmarks.lahner2024.benchmark as lahner
-from brainscore.benchmarks.lahner2024 import VISUAL_ROI_CEILING, Lahner2024BOLDMoments
+from brainscore.benchmarks.lahner2024 import VISUAL_ROI_CEILING
+from brainscore.benchmarks.lahner2024.benchmark import Lahner2024BOLDMoments
 from brainscore.benchmarks.lahner2024.benchmark import (
     _split_half_reliability, boldmoments_test_set, reliability_on_test_set)
 from tests.lahner_synthetic import (
