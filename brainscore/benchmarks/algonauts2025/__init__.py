@@ -21,9 +21,14 @@ def _load(**configuration):
 # Only the split with measured fMRI is registered. The held-out splits
 # (Friends S7, OOD) have no target data; build them directly for prediction
 # export: brainscore.tools.algonauts2025_predictions.generate_predictions(...).
-for sub in (1, 2, 3, 5):
-    benchmark_registry[f'Algonauts2025-friends-sub{sub:02d}'] = partial(
-        _load, participant=sub, split='friends', identifier=f'Algonauts2025-friends-sub{sub:02d}')
+benchmark_registry['Algonauts2025-friends-sub01'] = partial(
+    _load, participant=1, split='friends', identifier='Algonauts2025-friends-sub01')
+benchmark_registry['Algonauts2025-friends-sub02'] = partial(
+    _load, participant=2, split='friends', identifier='Algonauts2025-friends-sub02')
+benchmark_registry['Algonauts2025-friends-sub03'] = partial(
+    _load, participant=3, split='friends', identifier='Algonauts2025-friends-sub03')
+benchmark_registry['Algonauts2025-friends-sub05'] = partial(
+    _load, participant=5, split='friends', identifier='Algonauts2025-friends-sub05')
 
 # The same benchmark with the movie shown as one 1.49 s clip per scan instead of one
 # frame (channel vision:video). No sound or speech. All released fMRI of participant 1;
