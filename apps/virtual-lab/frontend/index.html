@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#dedcd5" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#161617" media="(prefers-color-scheme: dark)">
+  <title>UMI Lab</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/main.js"></script>
+</head>
+<body data-view="build">
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="UMI virtual lab home"><span class="brand-name">brain-score</span><span class="brand-divider">/</span><strong>UMI Lab</strong></a>
+    <nav class="view-switch" aria-label="Page"><button type="button" id="view-build" aria-pressed="true">Rig</button><button type="button" id="view-review" aria-pressed="false">Review</button></nav>
+    <div class="top-meta"><span class="local-dot"></span> Local workspace <span class="version">v0.1</span></div>
+  </header>
+  <main>
+    <div class="workspace">
+      <section class="panel rig" aria-label="Experiment rig">
+        <div class="rig-head"><div><p class="task-label">Experiment</p><h1 id="task-title">New protocol</h1></div><div class="rig-head-actions"><span class="status-pill" id="run-status"><i></i> Preparing</span><button type="button" class="quiet" id="reset-experiment" title="Clear this setup and start again. The participant stays loaded.">New experiment</button></div></div>
+        <p class="rig-mode" id="rig-mode" hidden></p>
+        <div class="rig-diagram">
+          <nav class="rig-column" id="protocol-nav" aria-label="What the participant receives">
+            <p class="rig-caption">In</p>
+            <button type="button" class="rig-node" data-protocol-nav="1"><b>Stimuli</b><small data-step-summary></small></button>
+            <button type="button" class="rig-node" data-protocol-nav="2"><b>Task</b><small data-step-summary></small></button>
+          </nav>
+          <span class="rig-wire" aria-hidden="true"></span>
+          <div class="rig-subject bench" id="bench" aria-label="Participant on the bench; drop tools here">
+            <button type="button" class="rig-node rig-node-subject" data-protocol-nav="0"><b>Participant</b><small data-step-summary></small><em>Change</em></button>
+            <div class="lab-scene"><canvas id="lab-canvas" width="800" height="360" role="img" aria-label="Pixel art laboratory showing a model participant at an experiment station"></canvas><div class="scene-caption"><span class="scene-coordinate">UMI / Lab 01</span><span id="scene-state">AWAITING SUBJECT</span></div></div>
+            <div class="subject-card"><span class="tiny-label" id="subject-status">Loading</span>
+            <div class="subject-identity"><canvas id="subject-avatar" width="44" height="44" class="subject-avatar" aria-label="Deterministic pixel avatar for the current participant"></canvas><div><h2 id="subject-title">Preparing the lab</h2><p id="subject-id">Loading Python profile...</p></div></div>
+            <p class="subject-description" id="subject-description">The participant loads once and stays in the experiment worker.</p>
+            <p class="model-notice" id="subject-notice" hidden></p>
+            <div class="rig-sites" id="rig-sites" role="group" aria-label="Recording sites"></div>
+            <details class="channel-details"><summary>Declared channels</summary><div class="channel-row" id="channels"></div></details></div>
+            <div class="attached-row"><span class="attached-label">Attached tools</span><div id="attached-tools"></div><span class="drop-hint" id="drop-hint">Drop a tool here</span></div>
+          </div>
+          <span class="rig-wire" aria-hidden="true"></span>
+          <div class="rig-column">
+            <p class="rig-caption">Out</p>
+            <button type="button" class="rig-node" data-protocol-nav="3"><b>Recordings</b><small data-step-summary></small></button>
+            <button type="button" class="rig-node" data-protocol-nav="5"><b>Review and export</b><small data-step-summary></small></button>
+          </div>
+          <div class="rig-session">
+            <button type="button" class="rig-node" data-protocol-nav="4"><b>Session</b><small data-step-summary></small></button>
+            <div class="condition-strip" id="conditions" aria-label="Experiment conditions"></div>
+          </div>
+        </div>
+        <div class="rig-run"><p id="run-help">Start with a baseline, or attach an ablation tool to compare conditions.</p><div class="run-controls"><button class="secondary" id="stop" hidden>Stop after trial</button><button class="primary" id="run" disabled>Run experiment</button></div></div>
+          <div class="lab-progress" id="lab-progress" hidden>
+            <p id="lab-activity" role="status" aria-live="polite"></p>
+            <progress id="experiment-progress" aria-label="Overall experiment progress"></progress>
+            <p id="lab-progress-detail" class="subtle"></p>
+          </div>
+        <p id="error" class="error" role="alert" hidden></p>
+      </section>
+      <aside class="lab-side">
+        <section class="panel experiment-editor" aria-label="Inspector">
+          <div class="editor-heading"><div class="section-label"><h2 id="editor-title">Protocol</h2></div><div class="mode-tabs" role="group" aria-label="Experiment workflow">
+            <button type="button" data-mode="protocol" aria-pressed="true">Protocol</button>
+            <details id="workflow-more" class="workflow-more">
+              <summary id="workflow-more-label">More</summary>
+              <div class="workflow-options" role="group" aria-label="More workflows">
+                <button type="button" data-mode="benchmark" aria-pressed="false">Benchmark</button>
+                <button type="button" data-mode="stimuli" aria-pressed="false">Quick session</button>
+                <button type="button" data-mode="session" aria-pressed="false">Event JSON</button>
+                <button type="button" data-mode="calibration" aria-pressed="false">Calibration</button>
+              </div>
+            </details>
+          </div><button class="primary" id="run-editor" disabled>Run experiment</button></div>
+          <div id="legacy-model-host"><div class="model-loader" id="model-loader"><label for="model-search">Find a model</label><div class="model-search-row"><input type="search" id="model-search" placeholder="Type qwen, gpt, resnet..." autocomplete="off" aria-controls="model-id" disabled><button type="button" id="model-search-clear" class="secondary" aria-label="Clear model search" hidden>Clear</button></div><p class="subtle model-search-status" id="model-search-status" role="status" aria-live="polite">Reading model names...</p><label for="model-id">Registered model</label><select id="model-id" disabled><option value="">Loading model catalog...</option></select><div class="loader-buttons"><button id="load-model" class="primary" disabled>Load participant</button><button id="load-calibration" class="secondary">Calibration circuit</button></div><p class="subtle" id="catalog-count">Reading the model and benchmark registries...</p><label class="check-label"><input type="checkbox" id="allow-model-downloads" checked disabled aria-describedby="model-download-help"> Allow model downloads</label><p class="subtle" id="model-download-help">Download missing weights without a disk-space check. Turn off to restore the download guard.</p><div class="model-download-progress" id="model-download-progress" hidden><strong id="model-download-state" role="status" aria-live="polite">Preparing model</strong><progress id="model-download-bar" aria-label="Current model file download progress"></progress><p class="subtle" id="model-download-detail"></p><p class="subtle">Progress measures the current file. Other files and model initialization may follow.</p></div></div></div>
+          <div id="protocol-editor">
+            <p class="protocol-position" id="protocol-step-position">1 / 6 · Participant</p>
+            <section data-protocol-step="0"><h3>Participant</h3><p class="editor-note">Its declarations determine which inputs, responses and recording sites are available. Loading a model does not run the protocol.</p><label for="protocol-name">Protocol name</label><input id="protocol-name" value="my-protocol"><div id="protocol-model-host"></div></section>
+            <section data-protocol-step="1" hidden><h3>Stimuli</h3><p class="editor-note">One row is one trial. Keep stimulus factors, such as noise or word length, as columns in the table. Fitting examples are supplied separately, with the task.</p><div id="protocol-stimuli-host"></div></section>
+            <section data-protocol-step="2" hidden><h3>Task and response</h3><p class="editor-note">The task says what the participant does with each stimulus. What to record is a separate part of the rig.</p><label for="protocol-task">What should the participant do?</label><select id="protocol-task"><option value="passive">Plain viewing (no answer)</option><option value="choice">Choose a label</option><option value="rating">Give a rating</option><option value="text">Give a written answer</option><option value="legacy">Legacy labeled behavior</option></select><div id="protocol-answer-settings" hidden><label for="protocol-instruction">Instruction</label><textarea id="protocol-instruction" rows="3" placeholder="e.g. Does this image show an animal or a vehicle?"></textarea><div id="protocol-choice-settings"><label for="protocol-labels">Response labels, comma-separated</label><input id="protocol-labels" value="yes,no"><div id="protocol-modern-choice"><label class="check-label"><input type="checkbox" id="protocol-probabilities"> Also collect implied choice probabilities</label><label class="check-label"><input type="checkbox" id="protocol-confidence"> Ask for reported confidence in the same reply</label><div class="editor-grid" id="protocol-confidence-settings" hidden><label>Confidence minimum<input type="number" id="protocol-confidence-low" value="1"></label><label>Confidence maximum<input type="number" id="protocol-confidence-high" value="5"></label></div></div></div><div class="editor-grid" id="protocol-rating-settings" hidden><label>Scale minimum<input type="number" id="protocol-scale-low" value="1" step="any"></label><label>Scale maximum<input type="number" id="protocol-scale-high" value="7" step="any"></label><label>Scale step (blank = continuous)<input type="number" id="protocol-scale-step" value="1" step="any"></label></div><label for="protocol-path">How should the answer be obtained?</label><select id="protocol-path"><option value="auto">Auto (generation, then likelihood, then readout)</option><option value="generation">Generation: a reported answer</option><option value="likelihood">Likelihood: an implied choice</option><option value="readout">Fitted readout: information in a layer</option></select><details><summary>Fitting stimuli and readout policy</summary><p class="subtle">For a readout, supply a separate CSV with input columns and a label column. Media paths refer to files uploaded to this workspace. Test labels are not needed to collect responses.</p><div class="stimulus-actions"><label class="file-button">Import fitting CSV<input type="file" id="protocol-fitting-csv" accept=".csv,text/csv"></label><label class="file-button">Upload fitting media<input type="file" id="protocol-fitting-media" accept="image/png,image/jpeg,image/webp,image/bmp,image/gif,audio/*,video/*" multiple></label></div><p class="subtle" id="protocol-fitting-status" role="status"></p><label for="protocol-fitting">Fitting table (CSV)</label><textarea id="protocol-fitting" rows="4" spellcheck="false" placeholder="stimulus_id,sentence,label"></textarea><label for="protocol-fit-policy">When an intervention is active</label><select id="protocol-fit-policy"><option value="current">Fit on the current network</option><option value="intact">Fit on the intact network, then test the changed network</option></select></details><label for="protocol-present">Trial part order (for multimodal stimuli)</label><input id="protocol-present" placeholder="e.g. text,image or image:word_1,image:word_2"><p class="subtle">The instruction comes first, then these stimulus parts, then the response directive. Specify the order when a trial has multiple parts.</p></div></section>
+            <section data-protocol-step="3" hidden><h3>Recordings</h3><p class="editor-note">Record answers, neural activity, or both. These measurements come from one presentation of each stimulus.</p><fieldset class="recording-group"><legend>Behavior</legend><label class="check-label"><input type="checkbox" id="protocol-record-behavior"> Record the task's answers</label><p class="subtle" id="protocol-record-behavior-hint"></p></fieldset><fieldset class="recording-group"><legend>Neural activity</legend><div id="protocol-regions"></div><p class="subtle">Choose declared regions. For generated answers, the recording captures the prompt pass.</p></fieldset><label class="check-label"><input type="checkbox" id="protocol-record-replay"> Also save inputs and lifecycle events for replay</label><p class="subtle">Neural and behavioral recorders already save their measurements. The replay log is additional.</p></section>
+            <section data-protocol-step="4" hidden><h3>Session: conditions and repetitions</h3><p class="editor-note">Conditions name states of the participant, such as intact or lesioned. Stimulus factors belong in the stimulus table. Each repetition starts and ends with a reset.</p><div id="protocol-conditions"></div><button type="button" id="protocol-add-condition" class="secondary">Add condition</button><label for="protocol-repetitions">Independent repetitions per condition</label><input type="number" id="protocol-repetitions" value="1" min="1" max="100"><label for="protocol-trial-memory">Memory across trials</label><select id="protocol-trial-memory"><option value="none">None: each trial starts fresh</option><option value="history">History: the subject keeps what it took in and answered on earlier trials (the participant must be able to remember)</option></select></section>
+            <section data-protocol-step="5" hidden><h3>Check and export</h3><div id="protocol-review"></div><div id="protocol-review-actions"><div class="protocol-review-buttons"><button type="button" id="validate-protocol" class="secondary">Validate setup</button><button type="button" id="protocol-python" class="secondary">Export Python</button><button type="button" id="protocol-save" class="secondary">Save config JSON</button></div><div id="protocol-validation" role="status" aria-live="polite"></div><p class="subtle">Python shows an editable UMI experiment. JSON saves its configuration for replay. After a run, All artifacts includes the Python script, uploaded inputs and recordings.</p></div></section>
+            <div class="protocol-footer"><button type="button" id="protocol-back" class="secondary">Back</button><p class="subtle" id="protocol-step-help" role="status"></p><button type="button" id="protocol-next" class="primary">Continue</button></div>
+          </div>
+          <div id="benchmark-editor" hidden>
+            <label for="benchmark-id">Existing benchmark identifier</label><input id="benchmark-id" list="benchmark-options" placeholder="e.g. Pereira2018.243sentences-ridge-unified" autocomplete="off"><datalist id="benchmark-options"></datalist>
+            <p class="editor-note">Runs the registered benchmark through brainscore.score, including compatibility and memory checks. Its stimuli, scoring, and protocol stay unchanged. Missing assets or credentials are reported by the loader.</p>
+          </div>
+          <div id="legacy-stimuli-host"><div id="stimuli-editor">
+            <div class="editor-grid" id="stimulus-source-grid"><div><label for="stimulus-format">Stimulus source</label><select id="stimulus-format"><option value="lines">Text, one stimulus per line</option><option value="media">Images, audio or video</option><option value="csv">CSV table</option><option value="registered">Registered stimulus set</option></select></div><div id="legacy-output-field"><label for="output-channel">Requested output</label><select id="output-channel"></select></div></div>
+            <div id="media-editor" class="media-upload" hidden><div><strong>Images, audio or video</strong><p>Choose files to use as stimuli. The loaded participant must support their modality.</p></div><label class="file-button">Choose files<input type="file" id="media-files" accept="image/png,image/jpeg,image/webp,image/bmp,image/gif,audio/*,video/*" multiple></label></div>
+            <div class="stimulus-actions" id="stimulus-actions"><button type="button" id="choose-media" class="secondary">Upload images, audio or video</button><label class="file-button" id="csv-import">Import CSV<input type="file" id="csv-file" accept=".csv,text/csv"></label></div>
+            <div id="video-audio-tools" hidden><label class="check-label"><input type="checkbox" id="extract-video-audio" checked> Extract the soundtrack for participants with audio input</label><p class="subtle">Keeps the original video and adds its first soundtrack as 16 kHz mono WAV in the same stimulus row.</p><button type="button" id="extract-existing-audio" class="secondary">Extract audio from current video rows</button></div>
+            <p id="upload-status" class="subtle" role="status" aria-live="polite" hidden></p>
+            <div id="stimulus-text-editor"><label for="stimulus-text" id="stimulus-text-label">Stimuli</label><textarea id="stimulus-text" rows="4" spellcheck="false">The quick brown fox jumps over the fence.
+A scientist measures the model's response.</textarea></div>
+            <div id="registered-stimulus-editor" hidden><label for="stimulus-set-id">Registered stimulus set</label><input id="stimulus-set-id" list="stimulus-options" placeholder="Enter a stimulus set identifier"><datalist id="stimulus-options"></datalist></div>
+            <div id="behavior-settings" hidden><div class="editor-grid"><div><label for="labels">Response labels, comma-separated</label><input id="labels" value="yes,no"></div><div><label for="behavior-path">Behavioral path</label><select id="behavior-path"><option value="auto">Auto</option><option value="generation">Generation</option><option value="readout">Fitted readout</option></select></div></div><details><summary>Fitting stimuli for a behavioral readout</summary><p class="subtle">CSV with sentence or uploaded media columns, plus label. Required for models that answer through a fitted readout.</p><textarea id="fitting-text" rows="3" placeholder="sentence,label" spellcheck="false"></textarea></details></div>
+            <div id="instruction-settings" hidden><label for="instruction">Task instruction</label><textarea id="instruction" rows="2">Answer the question or follow the instruction in each stimulus. Reply only yes or no.</textarea></div>
+          </div></div>
+          <div id="session-editor" hidden><div class="editor-grid"><div><label for="session-input">Declared request channel</label><select id="session-input"></select></div><div><label for="session-output">Requested output</label><select id="session-output"></select></div></div><label for="session-events">Input events, as a JSON array</label><textarea id="session-events" rows="7" spellcheck="false"></textarea><p id="channel-schema" class="editor-note"></p></div>
+          <div id="calibration-editor" hidden><p class="editor-note">The engineered comparison circuit verifies recording, selective ablation, a random control, and exact restoration. Load it with the Calibration circuit button.</p></div>
+          <details id="intervention-editor"><summary>Intervention settings</summary><p class="subtle">Uses the participant's declared lesion or stimulation channel. Baseline, intervention, and restored conditions run independently. Addresses refer to module outputs; append :input for a module's input.</p><label class="check-label"><input type="checkbox" id="custom-intervention"> Enable intervention</label><div class="editor-grid"><div><label for="intervention-target">Target address</label><input id="intervention-target" placeholder="model.layers.14.mlp.down_proj:input"></div><div><label for="intervention-indices">Unit indices (blank = whole target)</label><input id="intervention-indices" placeholder="0,1,2,3"></div><div><label for="intervention-operation">Operation</label><select id="intervention-operation"><option value="zero">Ablate / zero</option><option value="scale">Scale activity</option><option value="drive">Drive / add activity</option></select></div><div><label for="intervention-value">Scale factor / additive amount</label><input type="number" id="intervention-value" value="0" step="0.1"></div></div></details>
+          <p class="editor-note" id="workflow-help">Load a registered model, then choose its declared output channel. Inputs and outputs are saved as experiment artifacts.</p>
+        </section>
+        <section class="panel toolbox" id="legacy-toolbox">
+          <div class="section-label"><h2>Tools</h2><span class="tiny-label">Drag or click</span></div>
+          <p class="shelf-hint">Add recording or an intervention.</p>
+          <button class="tool-card" draggable="true" data-tool="behavior" aria-pressed="true"><span class="tool-icon behavior-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="1"/><path d="M9 8h6M9 12h6M9 16h4"/></svg></span><span><strong>Behavior log</strong><small>Keep inputs &amp; responses</small></span><span class="tool-add">+</span></button>
+          <button class="tool-card" draggable="true" data-tool="activity" aria-pressed="false"><span class="tool-icon activity-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2 12h5l3-7 4 14 3-7h5"/></svg></span><span><strong>Activation probe</strong><small>Save activity at the target</small></span><span class="tool-add">+</span></button>
+          <button class="tool-card" draggable="true" data-tool="ablation" aria-pressed="false"><span class="tool-icon ablation-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m6 18 12-12"/></svg></span><span><strong>Ablation tool</strong><small>Zero units, then restore</small></span><span class="tool-add">+</span></button>
+          <div class="target-settings" id="calibration-settings">
+            <label for="target">Recording / intervention target</label><select id="target"><option value="population">population</option></select>
+            <div class="dose-heading"><label for="fraction">Units to ablate</label><output id="dose-value" for="fraction">25%</output></div>
+            <input id="fraction" type="range" min="25" max="100" step="25" value="25">
+            <p id="selection-hint" class="subtle">First 2 of 8 units; size-matched random control.</p>
+          </div>
+        </section>
+        <div class="workspace-notes"><p><span id="profile-note">Calibration workspace. Experiments execute in Python; this room displays their state.</span></p></div>
+      </aside>
+    </div>
+        <section class="panel results">
+          <div class="results-heading"><div><p class="task-label">Experiment review</p><h1 id="review-title">No run yet</h1></div><div class="review-actions"><span class="tiny-label" id="result-time">No run yet</span><button type="button" class="secondary" id="edit-experiment" title="Go back to the rig with the same setup">Edit experiment</button><button type="button" class="secondary" id="rerun-experiment" title="Run the same setup again">Run again</button><button type="button" class="primary" id="new-experiment" title="Clear the setup and start again. The participant stays loaded.">New experiment</button></div></div>
+          <div class="review-tabs" role="tablist" aria-label="Experiment review">
+            <button type="button" id="results-tab" role="tab" aria-selected="true" aria-controls="result-content">Results</button>
+            <button type="button" id="replay-tab" role="tab" aria-selected="false" aria-controls="replay-content" tabindex="-1" disabled>Replay</button>
+          </div>
+          <div id="result-content" role="tabpanel" aria-labelledby="results-tab"><div class="empty-result"><div><strong>No results yet</strong><p>Run an experiment to view responses and download recorded data.</p></div></div></div>
+          <div id="replay-content" role="tabpanel" aria-labelledby="replay-tab" hidden></div>
+          <div id="downloads" class="downloads" hidden><a id="download-python" download="experiment.py">Python script <span>↓</span></a><a id="download-plan" download="experiment-plan.json">Run config (JSON) <span>↓</span></a><a id="download-report" download="summary.json">Summary <span>↓</span></a><a id="download-artifacts" download="lab-artifacts.zip">All artifacts <span>↓</span></a></div><p class="subtle" id="export-help">The Python script recreates the experiment. JSON stores its configuration. All artifacts bundles code, inputs and recorded outputs.</p>
+        </section>
+    <footer><span>Brain-Score / Unified Model Interface v2</span><span>Local execution</span></footer>
+  </main>
+  <datalist id="protocol-targets"></datalist>
+</body>
+</html>

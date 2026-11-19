@@ -1,0 +1,8 @@
+frontend/node_modules/
+frontend/dist/
+.lab-runs/
+.lab-cache/
+.runtime/
+.lab-runtime.json
+*performance-result.json
+backend/*.egg-info/
