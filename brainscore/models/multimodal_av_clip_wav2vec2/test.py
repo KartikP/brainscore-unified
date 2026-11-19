@@ -1,19 +1,8 @@
+"""The load of each registered identifier is checked by the generic plugin suite
+(``brainscore/model_helpers/generic_plugin_tests.py``)."""
 import socket
 
-from pathlib import Path
-
 import pytest
-
-from brainscore import load_model
-from brainscore_core.plugin_management.parse_plugin_changes import get_plugin_ids
-
-HERE = Path(__file__).parent
-
-
-@pytest.mark.parametrize('identifier', get_plugin_ids('models', [HERE.name], str(HERE.parents[1])))
-def test_has_identifier(identifier):
-    model = load_model(identifier)
-    assert model.identifier == identifier
 
 
 @pytest.mark.parametrize('identifier', ['clip-wav2vec', 'vjepa1-wav2vec2', 'random-vjepa1-wav2vec2'])
