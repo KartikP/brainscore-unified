@@ -476,8 +476,9 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         # for both. The name needs no file signature: both routes build it from the
         # same stimuli, ids and order, so it names the same files, and only a subject
         # that declares vision:video gets it (an old image model gets frames). A
-        # difference from that route, kept so no score moves: the time bins are averaged with xarray's NaN-skipping mean (the one-stream route and
-        # the time-resolved benchmark use numpy's mean; the two differ only when a
+        # difference from that route, kept so no score moves: the time bins are
+        # averaged with xarray's NaN-skipping mean (the one-stream route and the
+        # time-resolved benchmark use numpy's mean; the two differ only when a
         # response holds NaN).
         # The sound tracks are checked before any stream is recorded.
         sound = clip_table(stimuli, f'{stimuli.identifier}-multimodal-audio', sound=True)
