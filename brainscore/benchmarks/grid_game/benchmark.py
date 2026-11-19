@@ -95,12 +95,12 @@ class GridGameBenchmark(BenchmarkBase):
             floor = float(np.mean([
                 _run(policy_model(random_action_policy(seed), f'random-{seed}'), **common)[0]
                 for seed in FLOOR_SEEDS]))
-            return Score(max(oracle_rate, 1e-6)), floor
+            return oracle_rate, floor
         return contextvars.Context().run(measure)
 
-    @property
+    @cached_property
     def ceiling(self) -> Score:
-        return self._calibration[0]
+        return Score(max(self._calibration[0], 1e-6))
 
     @property
     def _random_floor(self) -> float:

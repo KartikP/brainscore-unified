@@ -50,8 +50,9 @@ R15 score construction. Signal: a call of ``Score(`` in unified
     ``benchmarks`` or ``harnesses`` that is not part of a ``ceiling=``
     argument. A metric returns its raw value as a ``Score`` by the core
     ``Metric`` contract, and a ceiling handed to the base class or to
-    ``benchmark_score`` is a reference, not a score; neither is score
-    construction. Cannot detect: a score built by a legacy helper
+    ``benchmark_score``, or returned by a benchmark's ``ceiling`` property
+    (a ceiling measured at first use), is a reference, not a score; neither
+    is score construction. Cannot detect: a score built by a legacy helper
     (``explained_variance``, ``ceiling_normalize`` in the ``-unified``
     MajajHong and Pereira pair) or by ``Score.__new__``.
 R17 score metadata stamp. Signal: ``stamp_score_metadata`` is defined or
@@ -179,11 +180,15 @@ CEILING_RECIPIENTS = ('benchmark_score', 'super().__init__', 'BenchmarkBase.__in
 def _ceiling_scores(tree):
     """The ``Score(`` calls that are the reference ceiling of an accepted recipient.
 
-    Accepted expressions: the ``ceiling=`` value itself, or a branch of a conditional
-    expression that is the value (``not_estimated() if c is None else Score(c)``).
+    Accepted expressions: the ``ceiling=`` value itself, a branch of a conditional
+    expression that is the value (``not_estimated() if c is None else Score(c)``), or
+    the value a function named ``ceiling`` returns.
     """
     accepted = set()
     for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == 'ceiling':
+            accepted |= {id(statement.value) for statement in ast.walk(node)
+                         if isinstance(statement, ast.Return) and isinstance(statement.value, ast.Call)}
         if isinstance(node, ast.Call) and any(
                 ast.unparse(node.func) in (name, f'self.{name}') or
                 ast.unparse(node.func).endswith(f'.{name}') and '(' not in name
@@ -347,6 +352,14 @@ def test_check_fails_on_a_new_violation():
     assert violations(files) == {('R14 encoding regression', 'unified:tools/new_tool.py'),
                                  ('R15 score construction', 'unified:benchmarks/new/benchmark.py'),
                                  ('R6 one Session class', 'core:new.py')}
+
+
+def test_a_ceiling_measured_at_first_use_is_a_reference_and_another_score_is_not():
+    lazy = ('class B:\n    @property\n    def ceiling(self):\n        return Score(self.rate)\n')
+    assert not violations([('unified:benchmarks/lazy/benchmark.py', lazy)])
+    built = lazy + '    def __call__(self, s):\n        return Score(0.5)\n'
+    assert violations([('unified:benchmarks/lazy/benchmark.py', built)]) == {
+        ('R15 score construction', 'unified:benchmarks/lazy/benchmark.py')}
 
 
 def test_check_fails_on_a_stale_entry():
