@@ -55,6 +55,8 @@ StreamEvent(channel='text', payload='elephant', t_ms=0)
 
 A **session** is one run of an experiment with one subject. There is one session class, `Session`. You build it from a **source** of inputs, the outputs you request and the task. A source is a list or generator of events, or an environment. A session has two methods: `next_input()` returns the next input event or `None` when there are no more, and `respond(event)` accepts a response. `collect()` returns the responses afterwards. A subject gets only the channels it declares: the `Subject` base class narrows the session to `in_channels` before the `participate` body runs, and it refuses a second session on the same subject while one runs. A hand-written subject does neither itself.
 
+The base wraps the `participate` that the class defines or inherits (from a parent or a mixin); it must be a plain method, `def participate(self, session)`, that runs the whole session before it returns (no `yield`, no `async def`). Limit: a `participate` assigned to a class or an instance after the class statement runs without both duties, unless it delegates to the original method. A subject written for an earlier version that imports `one_session_at_a_time` from `brainscore_core.streaming_helpers` fails at the import: delete the import and its `with` block; the base does that work now.
+
 ```python
 from brainscore_core.streaming import Session
 
