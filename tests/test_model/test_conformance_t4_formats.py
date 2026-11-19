@@ -247,7 +247,7 @@ def test_a_missing_choice_is_a_missing_row_and_counts_as_wrong():
 
 
 @pytest.mark.parametrize('subject, reason', [
-    (pseudo.reply_model(replies={'s0': '9'}), '9.0 is outside 1 to 7'),
+    (pseudo.reply_model(replies={'s0': '9'}), '9 is outside 1 to 7'),
     (pseudo.CellSubject(cells={('behavior:rating', 's0'): 9.0}), '9.0 is outside 1 to 7'),
     (pseudo.CellSubject(cells={('behavior:rating', 's0'): 3.5}), '3.5 is not on the scale step 1'),
 ], ids=['reply off the scale', 'cell off the scale', 'cell off the step'])
