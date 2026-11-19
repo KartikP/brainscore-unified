@@ -207,10 +207,10 @@ class AudioWrapper(CachingExtractor):
 
     @store_xarray(identifier_ignore=['paths', 'layers'],
                   combine_fields={'layers': 'layer'})
-    def _from_paths_stored(self, layers, stimuli_identifier, paths, extraction_fingerprint):
-        return self._from_paths(paths, layers, stimuli_identifier)
+    def _from_paths_stored(self, layers, paths, extraction_fingerprint):
+        return self._from_paths(paths, layers)
 
-    def _from_paths(self, paths, layers, stimuli_identifier=None):
+    def _from_paths(self, paths, layers):
         if not layers:
             raise ValueError("AudioWrapper requires at least one layer")
         logger.info(f"Running {len(paths)} audio clips through "

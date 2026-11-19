@@ -203,10 +203,10 @@ class TextWrapper(CachingExtractor):
     )
 
     @store_xarray(identifier_ignore=['texts', 'layers'], combine_fields={'layers': 'layer'})
-    def _from_texts_stored(self, layers, stimuli_identifier, texts, extraction_fingerprint):
-        return self._from_texts(texts, layers, stimuli_identifier)
+    def _from_texts_stored(self, layers, texts, extraction_fingerprint):
+        return self._from_texts(texts, layers)
 
-    def _from_texts(self, texts, layers, stimuli_identifier=None):
+    def _from_texts(self, texts, layers):
         if not layers:
             raise ValueError("No layers passed to retrieve activations from")
 

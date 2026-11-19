@@ -80,7 +80,7 @@ def test_same_configuration_hits_changed_configuration_misses(cls, monkeypatch, 
     method = wrapper._cached
     isolated_cache(getattr(wrapper, f'_from_{inp}_stored'))
     calls = []
-    def extract(inputs, layers, stimuli_identifier=None):
+    def extract(inputs, layers):
         calls.append(list(layers))
         return _assembly(inputs, layers, wrapper._batch_size)
     monkeypatch.setattr(wrapper, f'_from_{inp}', extract)
@@ -129,20 +129,20 @@ def test_unversioned_entry_is_logged_and_left_untouched(monkeypatch, isolated_ca
     method = wrapper._from_texts_stored
     storage = isolated_cache(method)
     function = next(cell.cell_contents for cell in method.__func__.__closure__ if inspect.isfunction(cell.cell_contents))
-    args = storage.getcallargs(function, wrapper, ['L'], 'stimuli', ['a'], 'placeholder')
+    args = storage.getcallargs(function, wrapper, ['L'], ['a'], 'placeholder')
     args.pop('extraction_fingerprint')
     legacy_key = result_caching._XarrayStorage.get_function_identifier(storage, function, args)
     storage.save(_assembly(['a'], ['L'], 99), legacy_key)
     from pathlib import Path
     old_path = Path(storage.storage_path(legacy_key))
     old_bytes = old_path.read_bytes()
-    monkeypatch.setattr(wrapper, '_from_texts', lambda texts, layers, identifier: _assembly(texts, layers, 1))
+    monkeypatch.setattr(wrapper, '_from_texts', lambda texts, layers: _assembly(texts, layers, 1))
     with caplog.at_level(logging.INFO):
         actual = wrapper._cached(['a'], ['L'], 'stimuli')
     np.testing.assert_array_equal(actual, 1)
     assert 'Skipping unversioned activation cache' in caplog.text
     assert old_path.read_bytes() == old_bytes
-    assert len(list(old_path.parent.glob('*.pkl'))) == 2
+    assert len(list(old_path.parent.rglob('*.pkl'))) == 2
 
 
 def test_an_entry_under_the_old_key_form_is_kept_and_not_read(monkeypatch, isolated_cache):
@@ -160,7 +160,7 @@ def test_an_entry_under_the_old_key_form_is_kept_and_not_read(monkeypatch, isola
     old_path = Path(storage.storage_path(old_key))
     old_bytes = old_path.read_bytes()
     calls = []
-    def extract(texts, layers, identifier):
+    def extract(texts, layers):
         calls.append(1)
         return _assembly(texts, layers, 1)
     monkeypatch.setattr(wrapper, '_from_texts', extract)
@@ -168,7 +168,7 @@ def test_an_entry_under_the_old_key_form_is_kept_and_not_read(monkeypatch, isola
     assert calls == [1]
     assert old_path.read_bytes() == old_bytes
     (new_path,) = [path for path in old_path.parent.glob('*.pkl') if path != old_path]
-    assert new_path.name.startswith('stimuli_identifier=stimuli,extraction_fingerprint=v2-')
+    assert new_path.name.startswith('extraction_fingerprint=v2-')
     np.testing.assert_array_equal(wrapper._cached(['a'], ['L'], 'stimuli'), 1)
     assert calls == [1]
 
@@ -299,5 +299,5 @@ def test_unsupported_provider_bypasses_storage(monkeypatch):
     wrapper = _wrapper(TextWrapper)
     wrapper.cache_config = lambda: {'opaque': object()}
     monkeypatch.setattr(wrapper, '_from_texts_stored', lambda **kwargs: pytest.fail('unsafe cache lookup'))
-    monkeypatch.setattr(wrapper, '_from_texts', lambda texts, layers, identifier: _assembly(texts, layers, 5))
+    monkeypatch.setattr(wrapper, '_from_texts', lambda texts, layers: _assembly(texts, layers, 5))
     np.testing.assert_array_equal(wrapper._cached(['a'], ['L'], 'stimuli'), 5)

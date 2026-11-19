@@ -368,6 +368,11 @@ def cache_signature(wrapper, stored: str, inputs, stimuli_identifier, *, setting
     the fingerprint reads for the stimuli (the texts, or the files behind paths).
     With ``settings``, a pair: the fingerprint and the fingerprint of the
     configuration alone (the key without the inputs), from the same traversal.
+
+    The fingerprint is the whole key: a stored result is found by the content
+    of the ordered inputs and the settings, never by the table name. The name
+    is only the switch: a table with no name (``None`` or ``False``) is not
+    stored.
     """
     if not stimuli_identifier:
         return (None, None) if settings else None
@@ -392,15 +397,15 @@ class CachingExtractor:
     layer names), before the store and before any compute. It takes a ``StimulusSet`` (its inputs come from
     ``_table_inputs`` and its columns go onto the result with ``_columns``) or a
     list of inputs. Both pass through ``_cached``: with a stimuli identifier and
-    the cache on, the wrapper's ``@store_xarray`` method (``_STORED``) gives the
-    layers, otherwise ``_from_<inputs>`` computes them; the result names the
-    reading wrapper (``labelled``) and has its units in the requested layer
+    the cache on, the wrapper's ``@store_xarray`` method (``_STORED``), keyed by
+    the fingerprint of the inputs and the settings alone, gives the layers,
+    otherwise ``_from_<inputs>`` computes them; the result names the reading wrapper (``labelled``) and has its units in the requested layer
     order (``in_layer_order``). ``_finish`` sets what every result carries.
 
     A wrapper sets ``_INPUTS`` (``'texts'`` or ``'paths'``), ``CACHE_FIELDS`` and
-    its own ``_VERSION``, and defines ``_from_<inputs>(inputs, layers,
-    stimuli_identifier)``, its stored method and ``_table_inputs``; it keeps
-    its forward pass and its reduce and package functions.
+    its own ``_VERSION``, and defines ``_from_<inputs>(inputs, layers)``, its
+    stored method and ``_table_inputs``; it keeps its forward pass and its
+    reduce and package functions.
     """
 
     _INPUTS = 'paths'
@@ -435,9 +440,8 @@ class CachingExtractor:
         else:
             signature = self._signature_and_facts(log, stored, inputs, stimuli_identifier)
         if signature is None:
-            return in_layer_order(getattr(self, f'_from_{self._INPUTS}')(inputs, layers, stimuli_identifier), layers)
-        result = getattr(self, stored)(stimuli_identifier=stimuli_identifier, layers=layers,
-                                       extraction_fingerprint=signature, **{self._INPUTS: inputs})
+            return in_layer_order(getattr(self, f'_from_{self._INPUTS}')(inputs, layers), layers)
+        result = getattr(self, stored)(layers=layers, extraction_fingerprint=signature, **{self._INPUTS: inputs})
         return in_layer_order(labelled(c_order(result), self._identifier), layers)
 
     def _signature_and_facts(self, log, stored, inputs, stimuli_identifier):
