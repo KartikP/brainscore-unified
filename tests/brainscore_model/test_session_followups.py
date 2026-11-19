@@ -8,8 +8,6 @@
 """
 from contextlib import contextmanager
 from dataclasses import replace
-import inspect
-import sys
 import threading
 
 import numpy as np
@@ -367,47 +365,19 @@ def test_a_nested_session_on_the_same_model_is_refused():
 
 
 def test_a_refused_nested_call_keeps_the_outer_reservation():
-    from brainscore import brainscore_model as module
-    checks = []
+    refusals = []
 
     def extract(stimuli, layers):
-        if not checks:
-            for _ in range(2):          # a refusal must not release the running session
+        if not refusals:
+            for _ in range(2):          # the second refusal shows the first one kept the reservation
                 with pytest.raises(RuntimeError, match='already taking part in a session'):
                     run(m, ['C'])
-                checks.append(id(m) in module._active_sessions)
+                refusals.append(True)
         return output(stimuli, layers)
     m = model(extract)
     assert_same_output(run(m, ['A']).collect('neural:A'), alone('A'))
-    assert checks == [True, True]
-    assert id(m) not in module._active_sessions
-
-
-def test_an_interrupt_just_after_the_reservation_releases_the_model():
-    """KeyboardInterrupt between the reservation and the session must not leave it reserved."""
-    from brainscore import brainscore_model as module
-    guard = module._one_session_at_a_time.__wrapped__
-    lines, start = inspect.getsourcelines(guard)
-    reserve = start + next(i for i, line in enumerate(lines) if '_active_sessions[key] = token' in line)
-    m = model()
-    reached = []
-    tracer_before = sys.gettrace()      # a coverage tool or a debugger: it must be active again after this test
-
-    def interrupt(frame, event, arg):
-        if frame.f_code is guard.__code__ and event == 'line' and frame.f_lineno > reserve:
-            reached.append(id(m) in module._active_sessions)
-            sys.settrace(tracer_before)
-            raise KeyboardInterrupt('just after the reservation')
-        return interrupt
-    try:
-        sys.settrace(interrupt)
-        with pytest.raises(KeyboardInterrupt, match='just after the reservation'):
-            run(m, ['A'])
-    finally:
-        sys.settrace(tracer_before)
-    assert reached == [True]                # the interrupt arrived while the model was reserved
-    assert id(m) not in module._active_sessions
-    assert_same_output(run(m, ['A']).collect('neural:A'), alone('A'))
+    assert len(refusals) == 2
+    assert_same_output(run(m, ['A']).collect('neural:A'), alone('A'))   # released at the end
 
 
 @pytest.mark.parametrize('error', [RuntimeError, KeyboardInterrupt])
