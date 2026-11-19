@@ -247,7 +247,6 @@ class EchoAgent(Subject):
         return self._identifier
 
     def participate(self, session: Session) -> None:
-        session.declare_inputs(self.in_channels)
         heard = None
         while (event := session.next_input()) is not None:
             if event.channel == 'text':

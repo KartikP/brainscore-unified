@@ -19,6 +19,7 @@ from brainscore_core.compatibility import CompatibilityError, check_compatibilit
 from brainscore_core.contract import TaskContext
 from brainscore_core.events import Perturbation, Selection, StateChange
 from brainscore_core.responses import Choice, Scale, Text
+from brainscore_core.streaming import Session
 from brainscore_core.streaming_helpers import apply_state_change, stimulus_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
@@ -385,7 +386,7 @@ def test_an_invalid_regions_per_pass_stops_every_session_kind(kind, monkeypatch)
         subject = (BrainScoreModel('p', policy=lambda row: replies.append(row) or {'motor': 0.0},
                                    policy_in_channels={'proprioception'}, policy_out_channels={'motor'})
                    if kind == 'policy' else _weight_subject()[1])
-        session = SimpleNamespace(outputs=['motor' if kind == 'policy' else 'perturbation'])
+        session = Session([], outputs=['motor' if kind == 'policy' else 'perturbation'])
     else:
         channels = ['neural:IT'] if kind == 'neural under a task' else ['behavior:text']
         session = stimulus_session(stimuli, channels, TaskContext(response=Text()))
