@@ -5,8 +5,6 @@
 make a short movie with ffmpeg's ``testsrc`` and ``sine`` and skip when ffmpeg
 is absent. No real data, no model.
 """
-import hashlib
-import inspect
 import shutil
 import subprocess
 import wave
@@ -83,36 +81,26 @@ def movie(tmp_path_factory):
 # ── The table from prepared files ─────────────────────────────────
 
 
-def test_the_table_identifier_carries_a_signature_of_the_sorted_columns(tmp_path):
-    """The activations cache keys on the identifier, not on the columns: a table
-    with other columns must miss the cache, and column order alone must not."""
-    assert "'|'.join(sorted(map(str, df.columns)))" in inspect.getsource(per_scan_stimuli)
+def test_each_scan_row_names_its_prepared_file(tmp_path):
     films = _films(tmp_path)
     _place(tmp_path, 'frames', 'm1', 2)
     _place(tmp_path, 'clips', 'm1', 2)
     frames = per_scan_stimuli(films, {'m1': 2}, ['frames'], 'friends', 1, tmp_path)
-    frame_signature = hashlib.md5(
-        b'clip_id|frame_id|image_file_name|stimulus_id|t_within_run').hexdigest()[:8]
-    assert frames.identifier == f'algonauts2025-friends-frames-{frame_signature}'
     clips = per_scan_stimuli(films, {'m1': 2}, ['clips'], 'friends', 1, tmp_path)
-    clip_signature = hashlib.md5(b'clip_id|frame_id|stimulus_id|t_within_run|video_path').hexdigest()[:8]
-    assert clips.identifier == f'algonauts2025-friends-clips-{clip_signature}'
     assert list(clips['video_path']) == [str(tmp_path / 'clips' / 'm1' / f'{t:04d}.mp4')
                                          for t in range(2)]
     assert list(frames['image_file_name']) == [str(tmp_path / 'frames' / 'm1' / f'{t:04d}.jpg')
                                                for t in (1, 2)]
 
 
-def test_the_table_name_is_the_same_for_every_participant_and_keeps_the_columns(tmp_path):
-    """Participants with the same rows share one name, so the activations cache is read once; a
-    table with other columns gets another name."""
+def test_the_table_name_is_the_same_for_every_participant(tmp_path):
+    """Participants with the same rows share one name; the cache key holds the files, so the frame
+    and clip tables stay apart (tests/test_model_helpers/test_clip_tables_share_the_cache.py)."""
     films = _films(tmp_path)
     _place(tmp_path, 'frames', 'm1', 2)
-    _place(tmp_path, 'clips', 'm1', 2)
     names = {per_scan_stimuli(films, {'m1': 2}, ['frames'], 'friends', participant, tmp_path).identifier
              for participant in (1, 2, 3, 5)}
     assert len(names) == 1
-    assert names != {per_scan_stimuli(films, {'m1': 2}, ['clips'], 'friends', 1, tmp_path).identifier}
 
 
 def test_the_table_has_a_video_and_an_audio_column_per_scan(tmp_path):
@@ -126,7 +114,6 @@ def test_the_table_has_a_video_and_an_audio_column_per_scan(tmp_path):
     assert list(table['stimulus_id']) == [f'm1_t{t:04d}' for t in range(3)]
     assert list(table['audio_path']) == [str(tmp_path / 'sound' / 'm1' / f'{t:04d}.wav')
                                          for t in range(3)]
-    assert table.identifier.startswith('algonauts2025-friends-clips-sound-')
     assert table.stimulus_paths == dict(zip(table['stimulus_id'], table['video_path']))
 
 
