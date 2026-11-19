@@ -10,8 +10,9 @@ if TYPE_CHECKING:
 
 
 def load_prepared(root: str | Path | None = None) -> tuple[list[dict], dict]:
+    from brainscore.data import local
     from . import EWOK_ROOT
-    root = Path(root).expanduser() if root else EWOK_ROOT.resolved()
+    root = Path(root).expanduser() if root else local.path(EWOK_ROOT.name)
     try:
         manifest = json.loads((root / 'manifest.json').read_text())
         raw = (root / 'items.json').read_bytes()

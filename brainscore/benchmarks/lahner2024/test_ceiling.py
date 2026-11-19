@@ -11,7 +11,8 @@ import numpy as np
 import pytest
 
 import brainscore
-from brainscore.benchmarks.lahner2024 import VISUAL_ROI_CEILING, Lahner2024BOLDMoments
+from brainscore.benchmarks.lahner2024 import VISUAL_ROI_CEILING
+from brainscore.benchmarks.lahner2024.benchmark import Lahner2024BOLDMoments
 from tests.lahner_synthetic import N_VOXELS, Recorder, install
 
 

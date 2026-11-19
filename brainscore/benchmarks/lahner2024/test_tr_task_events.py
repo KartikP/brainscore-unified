@@ -7,7 +7,7 @@ import pytest
 
 import brainscore
 import brainscore.benchmarks.lahner2024  # noqa: F401  (registers the benchmarks)
-from brainscore.benchmarks.lahner2024 import (
+from brainscore.benchmarks.lahner2024.benchmark_timeresolved import (
     Lahner2024BOLDMoments_timeresolved, ParticipantRunBlocks, RunBlocks)
 from brainscore.benchmarks.lahner2024.benchmark_timeresolved import (
     FEATURE_DIM_CAP, RUN_KEY, TR_SEC, TRAINING_SVD)

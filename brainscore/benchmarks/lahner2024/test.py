@@ -20,8 +20,9 @@ from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidA
 
 from brainscore.benchmarks.lahner2024 import _util, benchmark as glm_module
 from brainscore.benchmarks.lahner2024 import benchmark_timeresolved as tr_module
-from brainscore.benchmarks.lahner2024 import (
-    Lahner2024BOLDMoments, Lahner2024BOLDMoments_timeresolved, RunBlocks)
+from brainscore.benchmarks.lahner2024.benchmark import Lahner2024BOLDMoments
+from brainscore.benchmarks.lahner2024.benchmark_timeresolved import (
+    Lahner2024BOLDMoments_timeresolved, RunBlocks)
 from tests.lahner_synthetic import CLIPS, GLM_CLIPS, SAMPLE_TIMES, Recorder, install, unit_values
 
 AUDIOVISUAL = ('vision:image', 'vision:video', 'audio')

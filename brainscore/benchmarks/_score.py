@@ -12,7 +12,10 @@ keys on every unified score:
   ceiling, ``False`` when the score is the raw value (Communication Rule 2.4:
   the two never share a column). It follows from the ceiling;
 - ``metric``: what was measured;
-- ``benchmark_version``: the benchmark's version.
+- ``benchmark_version``: the benchmark's version;
+- ``leaderboard_eligible``: written when the benchmark declares it (a benchmark for
+  local use only declares ``leaderboard_eligible = False``); storage refuses such a
+  score.
 
 A behavior score also carries what its metric did with each trial (Contract Rule
 6.2). The benchmark passes its stored answers (``answers=``) and its policy in one
@@ -25,9 +28,10 @@ trial (``response_state``) and writes:
 - ``answer_policy``: what the metric does with an invalid and a missing trial;
 - ``result_validity``: ``'no limit stated'`` when the benchmark passes no
   ``invalid_limit`` (the default; no check was made). With a limit: ``'invalid'``
-  when the share of invalid and missing trials is above it, and
-  ``result_validity_reason`` then gives the share and the limit; ``'valid'``
-  otherwise. Such a result is returned, not raised.
+  when the share of invalid and missing trials is above it or when there is no
+  trial, and ``result_validity_reason`` then gives the share and the limit or says
+  that no trial was answered; ``'valid'`` otherwise. Such a result is returned, not
+  raised.
 
 A metric selects its valid rows with ``answer['response_state'].values == 'valid'``.
 
@@ -37,13 +41,14 @@ its own extra attributes beside these.
 """
 import math
 from collections.abc import Mapping
+from numbers import Real
 from typing import Optional
 
 from brainscore_core.metrics import Score
 
 
 # The attributes benchmark_score writes; a caller cannot set them.
-_DERIVED = ('raw', 'ceiling', 'normalized', 'metric', 'benchmark_version',
+_DERIVED = ('raw', 'ceiling', 'normalized', 'metric', 'benchmark_version', 'leaderboard_eligible',
             'n_trials', 'n_valid', 'n_invalid', 'n_missing', 'counts_by_condition',
             'answer_policy', 'result_validity', 'result_validity_reason')
 _STATES = ('valid', 'invalid', 'missing')
@@ -81,6 +86,11 @@ def _answer_attrs(answers, answer_policy, invalid_limit) -> dict:
     if not answer_policy or not isinstance(answer_policy, str):
         raise TypeError('a behavior score states its answer_policy: what its metric does '
                         'with an invalid and with a missing trial')
+    if invalid_limit is not None and not (
+            isinstance(invalid_limit, Real) and not isinstance(invalid_limit, bool)
+            and 0 <= invalid_limit <= 1):
+        raise ValueError(f'invalid_limit is a share of the trials: pass a number from 0 to 1 '
+                         f'(or None for no limit), not {invalid_limit!r}')
     by_condition = None
     if isinstance(answers, Mapping):
         by_condition = {str(condition): _state_counts(answer) for condition, answer in answers.items()}
@@ -94,7 +104,11 @@ def _answer_attrs(answers, answer_policy, invalid_limit) -> dict:
         attrs['counts_by_condition'] = by_condition
     attrs['answer_policy'] = answer_policy
     attrs['result_validity'] = 'no limit stated' if invalid_limit is None else 'valid'
-    if invalid_limit is not None and attrs['n_trials']:
+    if invalid_limit is not None and not attrs['n_trials']:
+        # A check against the limit needs answered trials; with none it did not run.
+        attrs['result_validity'] = 'invalid'
+        attrs['result_validity_reason'] = 'no trial was answered: the answers hold zero trials'
+    elif invalid_limit is not None:
         share = (attrs['n_invalid'] + attrs['n_missing']) / attrs['n_trials']
         if share > invalid_limit:
             attrs['result_validity'] = 'invalid'
@@ -144,6 +158,9 @@ def benchmark_score(benchmark, *, raw: float, metric: str, ceiling: Optional[Sco
     score.attrs['normalized'] = normalized
     score.attrs['metric'] = metric
     score.attrs['benchmark_version'] = benchmark.version
+    eligible = getattr(benchmark, 'leaderboard_eligible', None)
+    if eligible is not None:
+        score.attrs['leaderboard_eligible'] = eligible
     if answers is not None:
         score.attrs.update(_answer_attrs(answers, answer_policy, invalid_limit))
     elif answer_policy is not None or invalid_limit is not None:

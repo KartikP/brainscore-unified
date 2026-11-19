@@ -68,6 +68,7 @@ def test_a_full_run_scores_against_the_participants_with_the_floor(build):
     assert float(exact.attrs['floor']) == pytest.approx(floor)
     assert exact.attrs['n_trials'] == 8 and exact.attrs['n_valid'] == 8
     assert exact.attrs['normalized'] is False and exact.attrs['higher_is_better'] is False
+    assert exact.attrs['leaderboard_eligible'] is False      # storage refuses the score
     # A selection of scenes is named as a subset and has its own identity.
     assert exact.attrs['full_study'] is False and exact.attrs['subset']
     assert exact.attrs['benchmark_identifier'].startswith('Sun2025-motion-vector-error-subset-')
