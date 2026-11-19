@@ -168,6 +168,29 @@ def test_a_failed_conversation_names_none_of_its_participants():
     assert participants == ['partner', 'scored-silent']
 
 
+class _NoTurns(BenchmarkBase):
+    """One conversation of the scored subject alone, with no turn."""
+
+    def __init__(self):
+        self.required_input_channels = frozenset({'text'})
+        self.requested_output_channels = frozenset({'behavior:text'})
+        super().__init__(identifier='notes-no-turns', version=1, parent='behavior', ceiling=not_estimated())
+
+    def __call__(self, subject):
+        multi_agent_rollout([subject], DialogueMediator(), n_turns=0)
+        return benchmark_score(self, raw=1.0, metric='count')
+
+
+def test_a_conversation_with_no_turn_states_how_its_sessions_ran(monkeypatch):
+    """A conversation that succeeds states its delivery and the store state of its
+    sessions also when no turn was answered (as on the release branch)."""
+    monkeypatch.setenv('RESULTCACHING_DISABLE', '1')
+    score = brainscore.score(EchoAgent('seat'), _NoTurns(), check_mem=False)
+    assert score.attrs['delivery'] == 'stream'
+    seat = [entry for entry in score.attrs['provenance'] if entry['subject'] == 'seat']
+    assert seat and all(entry['activation_store'] == 'off' for entry in seat)
+
+
 class _Inner(BenchmarkBase):
     """Scores the subject it was given; its sessions name that subject."""
 

@@ -168,6 +168,12 @@ def multi_agent_rollout(subjects: Union[Sequence, Dict[str, Any]],
 def _converse(subjects, mediator, n_turns, outputs, action_channel):
     seats = [_Seat(action_channel) for _ in subjects]
     sessions = [environment_session(seat, outputs, action_channel=action_channel) for seat in seats]
+    from brainscore_core.score_metadata import note_session
+    for subject, session in zip(subjects, sessions):
+        # Each session states its delivery and store state at its start, also when no turn
+        # runs; the note is in the conversation's record, so it reaches the score only when
+        # the conversation succeeds. A Subject names its own session when it succeeds.
+        note_session(session, subject=subject.identifier)
     threads = [threading.Thread(target=contextvars.copy_context().run,
                                 args=(_take_part, subject, session, seat),
                                 name=f'participate-{subject.identifier}', daemon=True)
