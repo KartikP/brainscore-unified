@@ -10,11 +10,14 @@ only) from its own folder. It answers the parent's commands on the two pipes of
   text and messages of each selected trial (CogGym's ``build_messages``);
 - ``{"do": "run", "model", "temperature", "max_tokens"}``: CogGym's
   ``_run_experiment`` for one repetition. Each model call goes to the parent as
-  ``{"call": {"system", "messages", "model", "temperature", "max_tokens"}}``; the reply is
+  ``{"call": {"trial_id", "system", "messages", "model", "temperature", "max_tokens"}}``, where
+  ``trial_id`` is the id of the trial CogGym last built messages for (its own trial object, so
+  a retry carries the same id); the reply is
   ``{"reply": {"text", "reasoning", "token_usage"}}`` or ``{"error": [type name, message]}``,
   which this side raises as an exception of that type name and message, so CogGym stores
-  the same failure text as in the parent's process. It returns the results, the slider
-  validation and CogGym's summary (or the summary's error);
+  the same failure text as in the parent's process (also for a trial with no written
+  answer: CogGym's own record of a call with no reply). It returns the results, the
+  state of each requested answer and CogGym's summary (or the summary's error);
 - ``{"do": "analyze", "paths"}``: CogGym's ``analyze`` of the saved run files.
 
 One process serves every repetition and the analysis of a run, so CogGym's module state
@@ -61,10 +64,11 @@ class _Provider:
 
     def __init__(self, pipe):
         self.pipe = pipe
+        self.trial_id = None        # the trial CogGym's loop last built messages for
 
     def complete_with_metadata(self, system, messages, model, temperature, max_tokens):
-        self.pipe.send({'call': {'system': system, 'messages': messages, 'model': model,
-                                 'temperature': temperature, 'max_tokens': max_tokens}})
+        self.pipe.send({'call': {'trial_id': self.trial_id, 'system': system, 'messages': messages,
+                                 'model': model, 'temperature': temperature, 'max_tokens': max_tokens}})
         answer = self.pipe.receive()
         if 'reply' in answer:
             return answer['reply']
@@ -105,13 +109,28 @@ def main(checkout):
                 for trial in trials:
                     system, messages = cli.build_messages(trial, experiment)
                     prompts.append({'id': trial.id, 'system': system, 'messages': messages})
+                # A trial whose answers cannot be told apart is refused before any call.
+                validation.validate_responses(trials, [])
                 done = {'canonical': [trial.id for trial in canonical], 'trials': prompts}
             elif command['do'] == 'run':
                 # The trials of this process's prepare: the same objects in every repetition.
-                results = cli._run_experiment(experiment, trials, _Provider(pipe), command['model'],
-                                              command['temperature'], command['max_tokens'])
+                provider, build = _Provider(pipe), cli.build_messages
+
+                def build_messages(trial, experiment):
+                    # CogGym's loop builds a trial's messages before its calls (and their
+                    # retries): the trial's own id goes with each of them. Prompts are unchanged.
+                    # This holds for the pinned commit (cli.py:78); on a change of the pin,
+                    # check it again with the real CogGym.
+                    provider.trial_id = trial.id
+                    return build(trial, experiment)
+                cli.build_messages = build_messages
+                try:
+                    results = cli._run_experiment(experiment, trials, provider, command['model'],
+                                                  command['temperature'], command['max_tokens'])
+                finally:
+                    cli.build_messages = build
                 done = {'results': results,
-                        'validation': validation.validate_slider_responses(trials, results)}
+                        'validation': validation.validate_responses(trials, results)}
                 try:
                     done['summary'] = cli.aggregate_experiment(results)
                 except Exception as error:
