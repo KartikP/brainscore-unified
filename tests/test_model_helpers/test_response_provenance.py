@@ -4,6 +4,7 @@ import pytest
 
 from brainscore import BrainScoreModel
 from brainscore_core import TaskContext
+from brainscore_core.contract import Subject
 from brainscore_core.responses import Text
 from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.streaming_helpers import stimulus_session
@@ -63,7 +64,9 @@ def test_event_metadata_shares_values_without_mutating_source():
     assembly = NeuroidAssembly([[1., np.nan]], dims=['presentation', 'neuroid'], attrs={'original': True})
     event = StreamEvent('neural:IT', assembly, None, {'driver': 'fixture'})
 
-    class Responder:
+    class Responder(Subject):
+        identifier, in_channels, out_channels = 'responder', {'text'}, {'neural:IT'}
+
         def participate(self, session):
             session.respond(event)
 
@@ -78,7 +81,9 @@ def test_event_metadata_shares_values_without_mutating_source():
 
 
 def test_failure_and_reset_are_not_swallowed():
-    class FailingSubject:
+    class FailingSubject(Subject):
+        identifier, in_channels, out_channels = 'failing', {'text'}, {'neural:IT'}
+
         def participate(self, session):
             raise RuntimeError('original failure')
         def reset(self):

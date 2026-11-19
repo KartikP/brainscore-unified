@@ -12,7 +12,6 @@ from ._model import dispatch
 from brainscore_core import io_catalog
 from brainscore_core.io_catalog import MODALITY_TO_INPUT_CHANNEL, canonical_modality
 from brainscore_core.events import InputEvent, OutputEvent, StateChange
-from brainscore_core.streaming_helpers import one_session_at_a_time
 from ._model.intervention import Interventions
 from ._model.recording import RecordingRequest
 from .selection import UnitSelector, _promote_to_selector, _with_modality
@@ -469,8 +468,8 @@ class BrainScoreModel(Subject):
         """Run a session through the one registered capability that claims it.
 
         The capability sees only the streams this model declares in
-        ``in_channels``; every other stream the experiment sends is skipped
-        before it reaches any part (Contract Rules v3, rule 5.5).
+        ``in_channels``: the ``Subject`` base narrows the session before this
+        body runs, and refuses a second session while one runs (rule 5.5).
 
         ``BRAINSCORE_REGIONS_PER_PASS`` is read and checked here, once, for every
         kind of session (see ``brainscore._model.channels``). The session's plan
@@ -484,24 +483,22 @@ class BrainScoreModel(Subject):
         from ._model.plan import plan_session
         passes = regions_per_pass()
         note_session(session, passes)   # this model owns the plan, so the run record gets it from here
-        with one_session_at_a_time(self):
-            session = session.declare_inputs(self.in_channels)
-            self._session_plan = plan_session(self, session, passes)
-            try:
-                from .capabilities.registry import _setup_once
-                # Every part notes its calls in the session's log, from set-up (a readout fit) on.
-                with parts.session_log() as log:
-                    _setup_once(self, self._session_plan.capability)
-                    # A task the session configures ends with the session (rule 4.5).
-                    # Weights are hashed once per session for the activation cache key;
-                    # inside score() the run's scope is reused.
-                    with self._behavioral.session_scope(), weight_fingerprint_scope():
-                        self._session_plan.capability.participate(self, session)
-                        # Once per session: the parts that ran and their facts, to the run
-                        # record (no response is changed). A failed session sends nothing.
-                        note_session(session, provenance=provenance.session_entry(self, session, log))
-            finally:
-                self._session_plan = None
+        self._session_plan = plan_session(self, session, passes)
+        try:
+            from .capabilities.registry import _setup_once
+            # Every part notes its calls in the session's log, from set-up (a readout fit) on.
+            with parts.session_log() as log:
+                _setup_once(self, self._session_plan.capability)
+                # A task the session configures ends with the session (rule 4.5).
+                # Weights are hashed once per session for the activation cache key;
+                # inside score() the run's scope is reused.
+                with self._behavioral.session_scope(), weight_fingerprint_scope():
+                    self._session_plan.capability.participate(self, session)
+                    # Once per session: the parts that ran and their facts, to the run
+                    # record (no response is changed). A failed session sends nothing.
+                    note_session(session, provenance=provenance.session_entry(self, session, log))
+        finally:
+            self._session_plan = None
 
     def detect_modalities(self, stimuli) -> Set[str]:
         """Declared input modalities whose columns appear in ``stimuli``."""
