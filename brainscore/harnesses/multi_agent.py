@@ -157,11 +157,22 @@ def multi_agent_rollout(subjects: Union[Sequence, Dict[str, Any]],
             raise ValueError(f'Subject {subject.identifier!r} does not declare {missing} in out_channels. '
                              f"A policy answers there with policy_out_channels=('{action_channel}',).")
 
+    # The conversation is one result: each subject names its own session when its
+    # participation succeeds (the Subject base), and the score gets the sessions of a
+    # conversation only when the whole conversation succeeds.
+    from brainscore_core.score_metadata import record_measures
+    with record_measures():
+        return _converse(subjects, mediator, n_turns, outputs, action_channel)
+
+
+def _converse(subjects, mediator, n_turns, outputs, action_channel):
     seats = [_Seat(action_channel) for _ in subjects]
     sessions = [environment_session(seat, outputs, action_channel=action_channel) for seat in seats]
     from brainscore_core.score_metadata import note_session
     for subject, session in zip(subjects, sessions):
-        # Several subjects take part: each session names its subject for the score's provenance.
+        # Each session states its delivery and store state at its start, also when no turn
+        # runs; the note is in the conversation's record, so it reaches the score only when
+        # the conversation succeeds. A Subject names its own session when it succeeds.
         note_session(session, subject=subject.identifier)
     threads = [threading.Thread(target=contextvars.copy_context().run,
                                 args=(_take_part, subject, session, seat),

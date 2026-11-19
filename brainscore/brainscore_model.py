@@ -472,9 +472,13 @@ class BrainScoreModel(Subject):
         body runs, and refuses a second session while one runs (rule 5.5).
 
         ``BRAINSCORE_REGIONS_PER_PASS`` is read and checked here, once, for every
-        kind of session (see ``brainscore._model.channels``). The session's plan
+        kind of session (see ``brainscore._model.channels``), before the plan that
+        needs it and before any input is read: the setting belongs to this model,
+        so the base, which runs first, does not read it. The session's plan
         (``_model/plan.py``) is built once, before any setup or compute, and the
         capabilities read it; a combination that cannot run is refused there.
+        The base keeps what the session notes until this body returns, so the
+        plan and the parts reach the score only from a session that succeeded.
         """
         from brainscore_core.score_metadata import note_session
         from ._model.channels import regions_per_pass
@@ -482,7 +486,6 @@ class BrainScoreModel(Subject):
         from ._model import parts
         from ._model.plan import plan_session
         passes = regions_per_pass()
-        note_session(session, passes)   # this model owns the plan, so the run record gets it from here
         self._session_plan = plan_session(self, session, passes)
         try:
             from .capabilities.registry import _setup_once
@@ -494,9 +497,9 @@ class BrainScoreModel(Subject):
                 # inside score() the run's scope is reused.
                 with self._behavioral.session_scope(), weight_fingerprint_scope():
                     self._session_plan.capability.participate(self, session)
-                    # Once per session: the parts that ran and their facts, to the run
-                    # record (no response is changed). A failed session sends nothing.
-                    note_session(session, provenance=provenance.session_entry(self, session, log))
+                    # Once per session: the plan and the parts that ran, with their facts
+                    # (no response is changed). This model owns the plan, so it names it.
+                    note_session(session, passes, provenance=provenance.session_entry(self, session, log))
         finally:
             self._session_plan = None
 
