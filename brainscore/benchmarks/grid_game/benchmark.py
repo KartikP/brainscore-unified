@@ -13,6 +13,9 @@ dataset to download. The subject must have a ``policy`` part (it emits
 the ``motor`` channel); a feature/behavioral model with no ``policy`` part is
 correctly incompatible.
 """
+import contextvars
+from functools import cached_property
+
 import numpy as np
 
 from brainscore_core.benchmarks import BenchmarkBase
@@ -69,16 +72,31 @@ class GridGameBenchmark(BenchmarkBase):
         self.required_input_channels = frozenset({'observation', 'instruction', 'reward'})
         self.requested_output_channels = frozenset({'motor'})
 
-        common = dict(n_episodes=n_episodes, size=size,
-                      max_steps=max_steps, base_seed=base_seed)
-        oracle_rate, _ = _run(policy_model(greedy_oracle_policy, 'oracle'), **common)
-        self._random_floor, _ = _run(
-            policy_model(random_action_policy(0), 'random'), **common)
-
         super().__init__(
             identifier=f'GridGame-reach-{size}x{size}',
-            version=1, parent='closed_loop',
-            ceiling=Score(max(oracle_rate, 1e-6)), bibtex='')
+            version=1, parent='closed_loop', ceiling=None, bibtex='')
+
+    @cached_property
+    def _calibration(self):
+        """The oracle rate and the random floor, measured at first use, not when the
+        benchmark is built: a subject that is N/A waits for no episode. The episodes run
+        in an empty context, so they are not noted in the run record of a scored subject."""
+        common = dict(n_episodes=self.n_episodes, size=self.size,
+                      max_steps=self.max_steps, base_seed=self.base_seed)
+
+        def measure():
+            oracle_rate, _ = _run(policy_model(greedy_oracle_policy, 'oracle'), **common)
+            floor, _ = _run(policy_model(random_action_policy(0), 'random'), **common)
+            return Score(max(oracle_rate, 1e-6)), floor
+        return contextvars.Context().run(measure)
+
+    @property
+    def ceiling(self) -> Score:
+        return self._calibration[0]
+
+    @property
+    def _random_floor(self) -> float:
+        return self._calibration[1]
 
     def __call__(self, subject) -> Score:
         rate, eff = _run(subject, n_episodes=self.n_episodes, size=self.size,

@@ -124,3 +124,14 @@ def test_declares_the_rows_it_sends_and_the_action_it_needs(bench):
 def test_a_participate_only_subject_gets_a_score(bench):
     score = bench(_Mover())
     assert 0.0 <= score.attrs['raw'] <= 1.0
+
+
+def test_the_calibration_runs_at_first_use_and_stays_out_of_the_run_record():
+    """The oracle and the random floor run when the ceiling is first read, not when the
+    benchmark is built; the provenance of a scored subject names only that subject."""
+    import brainscore
+    built = GridGameBenchmark(size=5, n_episodes=2)
+    assert '_calibration' not in vars(built)               # nothing measured at build
+    score = brainscore.score(policy_model(random_action_policy(3), 'probe'), built)
+    assert [entry['subject'] for entry in score.attrs['provenance']] == ['probe']
+    assert float(score.attrs['ceiling']) == 1.0
