@@ -149,56 +149,52 @@ def test_the_line_check_compares_what_a_folder_adds_with_its_lines(stand_in, uns
             del sys.modules[name]
 
 
-class _SessionStarted(Exception):
-    pass
-
-
-class _NetworkBlocked(OSError):
-    pass
-
-
-def _absent(error) -> bool:
-    """Whether ``error``, an error it came from or an error it holds (in its arguments or its
-    attributes: a fetcher that tries several sources raises one error with the list of their
-    errors, each holding its connection error) says that data or an environment is absent."""
-    pending, seen = [error], set()
-    while pending:
-        error = pending.pop()
-        if not isinstance(error, BaseException) or id(error) in seen:
-            continue
-        seen.add(id(error))
-        if isinstance(error, (brainscore.LoadError, FileNotFoundError, _NetworkBlocked)):
-            return True
-        values = [*error.args, *vars(error).values()]
-        held = [item for value in values
-                for item in (value.values() if isinstance(value, dict)
-                             else value if isinstance(value, (list, tuple)) else [value])]
-        pending += [error.__cause__, error.__context__, *held]
-    return False
+class _Refused(Exception):
+    """What the build check raises in place of a session, a download, a child process or an
+    install."""
 
 
 def _check_build_starts_no_session(identifier, factory, monkeypatch):
-    started = []
+    attempts, absent = [], []
 
-    def no_network(*args, **kwargs):
-        raise _NetworkBlocked('the network is blocked in this check')
+    def refuse(what):
+        def stand_in(*args, **kwargs):
+            attempts.append(what)
+            raise _Refused(f'{what} is refused in this check')
+        return stand_in
 
-    def refuse(*args, **kwargs):
-        started.append(True)
-        raise _SessionStarted()
+    def absent_here(what):
+        def stand_in(*args, **kwargs):
+            absent.append(_Refused(f'{what} is absent here'))
+            raise absent[-1]
+        return stand_in
+
+    def local_path(name, _path=local.path):
+        try:
+            return _path(name)
+        except local.LocalDataMissing as error:
+            absent.append(error)
+            raise
     monkeypatch.setenv('BS_INSTALL_DEPENDENCIES', 'no')
-    monkeypatch.setattr(socket.socket, 'connect', no_network)
-    monkeypatch.setattr(Session, '__init__', refuse)
+    monkeypatch.setattr(Session, '__init__', refuse('a session'))
+    monkeypatch.setattr(socket.socket, 'connect', refuse('a network connection'))
+    monkeypatch.setattr(subprocess.Popen, '__init__', refuse('a child process'))
+    monkeypatch.setattr(os, 'system', refuse('a child process'))
+    monkeypatch.setattr(local, 'path', local_path)
+    monkeypatch.setattr(BotoFetcher, 'download_boto', absent_here('a data file of the store'))
+    monkeypatch.setattr(import_plugin, 'installation_preference',
+                        absent_here('a package or environment to install'))
     try:
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
             factory()
     except Exception as error:  # noqa: BLE001  judged below, with its cause
-        if not started and not _absent(error):
+        if not attempts and not any(error is each for each in absent):
             pytest.fail(f'building {identifier} failed: {type(error).__name__}: {error}. A build '
-                        'may stop only because its data or environment is absent')
-    assert not started, (f'building {identifier} started a session; run the work in __call__ '
-                         'or compute it at first use')
+                        'may stop only for an absent asset that a Brain-Score loader names '
+                        '(brainscore.data.local.path, the data store, the install switch)')
+    assert not attempts, (f'building {identifier} tried {sorted(set(attempts))}; run the work in '
+                          '__call__ or compute it at first use')
 
 
 @pytest.mark.parametrize('identifier', sorted(brainscore.benchmark_registry))
@@ -206,9 +202,20 @@ def test_building_a_benchmark_starts_no_session(identifier, monkeypatch):
     _check_build_starts_no_session(identifier, brainscore.benchmark_registry[identifier], monkeypatch)
 
 
+def _needs_absent_data(asset):
+    return lambda: local.path(asset)
+
+
+def _needs_absent_environment(asset):
+    def build():
+        if import_plugin.installation_preference() == 'no':
+            raise brainscore.LoadError('the environment is absent and installs are refused')
+    return build
+
+
 def _session_after(asset):
     def build():
-        asset.read_text()
+        local.path(asset)
         Session(None, None, None)
     return build
 
@@ -222,43 +229,62 @@ def _session_caught(asset):
     return build
 
 
-def _broken():
-    raise NameError("name 'Benchmark' is not defined")
-
-
-def _absent_data():
-    raise FileNotFoundError('the data is not prepared')
-
-
-def _download_from_two_sources():
-    errors = []
-    for _ in range(2):
+def _download_refused(asset):
+    def build():
         try:
             socket.socket().connect(('127.0.0.1', 9))
         except OSError as error:
-            errors.append(RuntimeError('could not connect'))
-            errors[-1].kwargs = {'error': error}           # held, not chained
-    raise Exception(errors)
+            raise FileNotFoundError('the data is not here') from error
+    return build
+
+
+def _download_caught(asset):
+    def build():
+        with contextlib.suppress(Exception):
+            socket.socket().connect(('127.0.0.1', 9))
+    return build
+
+
+def _child_process_caught(asset):
+    def build():
+        with contextlib.suppress(Exception):
+            subprocess.run([sys.executable, '-c', 'pass'], check=True)
+    return build
+
+
+def _broken_after_a_missing_file(asset):
+    def build():
+        try:
+            open(Path(local.data_home()) / 'not-there')
+        except OSError:
+            raise NameError("name 'Benchmark' is not defined")
+    return build
+
+
+def _packaging_fault(asset):
+    def build():
+        raise brainscore.LoadError('this installation lacks the pinned packages (a packaging fault)')
+    return build
 
 
 @pytest.mark.parametrize('make, fails', [
-    (lambda asset: _absent_data, False),
-    (lambda asset: _download_from_two_sources, False),
-    (lambda asset: _broken, True),
+    (_needs_absent_data, False),
+    (_needs_absent_environment, False),
     (_session_after, True),
     (_session_caught, True),
+    (_download_refused, True),
+    (_download_caught, True),
+    (_child_process_caught, True),
+    (_broken_after_a_missing_file, True),
+    (_packaging_fault, True),
 ])
-def test_the_build_check_passes_only_a_build_that_stops_for_absent_data(make, fails, tmp_path, monkeypatch):
-    asset = tmp_path / 'data.txt'
-    asset.write_text('supplied')
+def test_the_build_check_passes_only_a_build_that_stops_for_a_named_absent_asset(
+        make, fails, tmp_path, monkeypatch):
+    monkeypatch.setenv(local.HOME_VARIABLE, str(tmp_path))
+    monkeypatch.setitem(local.REGISTRY, 'stand-in', local.LocalAsset(
+        name='stand-in', kind='stimuli', why_local='a stand-in', source='nowhere', obtain='nothing'))
+    if make is _session_after or make is _session_caught:
+        (tmp_path / 'stand-in').write_text('supplied')
     outcome = pytest.raises(BaseException) if fails else contextlib.nullcontext()
     with outcome:
-        _check_build_starts_no_session('Synthetic', make(asset), monkeypatch)
-
-
-def test_the_build_check_forbids_installs(monkeypatch):
-    seen = []
-    from brainscore_core.plugin_management.import_plugin import installation_preference
-    monkeypatch.delenv('BS_INSTALL_DEPENDENCIES', raising=False)
-    _check_build_starts_no_session('Synthetic', lambda: seen.append(installation_preference()), monkeypatch)
-    assert seen == ['no']
+        _check_build_starts_no_session('Synthetic', make('stand-in'), monkeypatch)
