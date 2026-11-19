@@ -18,19 +18,28 @@ def test_import_brainscore_does_not_load_heavy_deps():
         f"heavy = {HEAVY!r}\n"
         "loaded = [m for m in heavy if m in sys.modules]\n"
         "assert not loaded, f'import brainscore eagerly loaded {loaded}'\n"
-        # registries still populate without importing the plugins' model.py
-        # (the identifier lists are pinned in test_benchmark_variants.py)
-        "assert 'qwen2.5-vl-3b-bf16' in brainscore.model_registry\n"
-        "assert 'qwen2.5-0.5b-instruct' in brainscore.model_registry\n"
+        # the registries populate without importing the plugins' model.py
+        "assert brainscore.model_registry and brainscore.benchmark_registry\n"
         # no plugin __init__ imports a plugin's model.py or benchmark.py (any plugin)
         "eager = sorted(m for m in sys.modules if m.startswith(('brainscore.models.', "
         "'brainscore.benchmarks.')) and m.rsplit('.', 1)[1] in ('model', 'benchmark'))\n"
         "assert not eager, f'import brainscore imported {eager}; import model.py or "
         "benchmark.py inside the factory'\n"
-        "assert 'brainscore.harnesses.coggym' not in sys.modules\n"
-        "assert 'brainscore.data.ewok.data_packaging.prepare' not in sys.modules\n"
         "print('OK')\n"
     )
+    _run_fresh(code)
+
+
+def test_import_brainscore_loads_neither_the_coggym_harness_nor_the_ewok_preparation():
+    """Named regressions: these two modules once loaded at import."""
+    _run_fresh(
+        "import sys, brainscore\n"
+        "assert 'brainscore.harnesses.coggym' not in sys.modules\n"
+        "assert 'brainscore.data.ewok.data_packaging.prepare' not in sys.modules\n"
+        "print('OK')\n")
+
+
+def _run_fresh(code: str) -> None:
     r = subprocess.run([sys.executable, '-c', code],
                        capture_output=True, text=True)
     assert r.returncode == 0, f"stdout={r.stdout!r}\nstderr={r.stderr!r}"

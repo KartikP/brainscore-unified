@@ -3,10 +3,13 @@
 The checks read every model and benchmark plugin folder and the live registries; they
 name no plugin. A new plugin is checked when its folder exists.
 
-- Every identifier in ``model_registry`` and ``benchmark_registry`` is the literal key of a
-  top-level registration line in the ``__init__.py`` of a plugin folder. Core's plugin
-  runner reads these lines to find the identifiers of a changed plugin; a key made in a
-  loop or a function is hidden from it.
+- Every identifier that a shipped plugin folder registers is read from the ``__init__.py``
+  of that folder by core's plugin runner (``get_plugin_ids``, the one reader): one
+  ``<registry>['<identifier>'] = <factory>`` line for each identifier. A key made in a loop or
+  in a function, or stated in another folder, is hidden from the runner. The folder of an
+  identifier is the folder of its factory's source; an identifier whose factory is in a
+  shared module of the package is checked against every folder; a plugin of another
+  package is not checked here.
 - Building a registered benchmark starts no session: a benchmark runs nothing before
   ``score()`` can return N/A (Contract Rules 5.6). The network is blocked and installs are
   forbidden (``BS_INSTALL_DEPENDENCIES=no``). A build may stop only because its data or its
@@ -15,8 +18,8 @@ name no plugin. A new plugin is checked when its folder exists.
   absent data would load, work without a ``Session`` and work in a child process; the
   plugin's own ``test.py`` covers that where the data is.
 """
-import ast
 import contextlib
+import inspect
 import socket
 import warnings
 from pathlib import Path
@@ -24,6 +27,7 @@ from pathlib import Path
 import pytest
 
 import brainscore
+from brainscore_core.plugin_management.parse_plugin_changes import get_plugin_ids
 from brainscore_core.streaming import Session
 
 pytestmark = pytest.mark.unit
@@ -31,29 +35,58 @@ pytestmark = pytest.mark.unit
 PACKAGE = Path(brainscore.__file__).parent
 
 
-def _stated_keys(kind: str, registry: str) -> set:
-    """The literal keys of the top-level ``<registry>[...] = ...`` lines of every plugin of ``kind``."""
-    keys = set()
-    for init in sorted((PACKAGE / kind).glob('*/__init__.py')):
-        if init.parent.name.startswith('_'):
-            continue
-        for statement in ast.parse(init.read_text()).body:
-            if not isinstance(statement, ast.Assign):
-                continue
-            for target in statement.targets:
-                if (isinstance(target, ast.Subscript) and isinstance(target.value, ast.Name)
-                        and target.value.id == registry and isinstance(target.slice, ast.Constant)):
-                    keys.add(target.slice.value)
-    return keys
+def _unstated(registry, kind: str, root: Path) -> list:
+    """The ``(folder, identifier)`` pairs of ``registry`` that the plugin runner cannot read in
+    the plugin folder of ``root/kind`` that owns them (folder ``None``: a shared module)."""
+    folders = sorted(init.parent.name for init in (root / kind).glob('*/__init__.py')
+                     if not init.parent.name.startswith('_'))
+    stated = {}
+    for folder in folders:
+        try:
+            stated[folder] = get_plugin_ids(kind, [folder], str(root))
+        except Exception:  # noqa: BLE001  the runner cannot read this folder at all
+            stated[folder] = []
+    everywhere = {identifier for identifiers in stated.values() for identifier in identifiers}
+    unstated = []
+    for identifier, factory in registry.items():
+        source = Path(inspect.getsourcefile(getattr(factory, 'func', factory)) or '').resolve()
+        if root.resolve() not in source.parents:
+            continue                                    # a plugin of another package
+        part = source.relative_to(root.resolve()).parts
+        folder = part[1] if len(part) > 2 and part[0] == kind and part[1] in stated else None
+        if identifier not in (stated[folder] if folder else everywhere):
+            unstated.append((folder, identifier))
+    return sorted(unstated, key=str)
 
 
 @pytest.mark.parametrize('kind, registry', [('models', 'model_registry'),
                                             ('benchmarks', 'benchmark_registry')])
-def test_every_registered_identifier_is_stated_on_a_literal_line(kind, registry):
-    hidden = sorted(set(getattr(brainscore, registry)) - _stated_keys(kind, registry))
-    assert not hidden, (
-        f'{hidden} are registered but not on a literal line of a plugin __init__.py; write '
-        f"one line for each identifier: {registry}['<identifier>'] = <factory>")
+def test_every_identifier_is_stated_on_a_line_of_its_own_folder(kind, registry):
+    unstated = _unstated(getattr(brainscore, registry), kind, PACKAGE)
+    assert not unstated, (
+        f'{unstated} (folder, identifier) are registered but core\'s plugin runner cannot read '
+        f"them in the folder's __init__.py; write one line for each identifier: "
+        f"{registry}['<identifier>'] = <factory>")
+
+
+@pytest.mark.parametrize('lines, unstated', [
+    ("benchmark_registry['a'] = _factory\n", []),
+    ("benchmark_registry[\n    'a'] = _factory\n", [('one', 'a')]),          # unreadable line
+    ("for key in ('a',):\n    benchmark_registry[key] = _factory\n", [('one', 'a')]),
+])
+def test_the_line_check_reads_the_lines_as_the_plugin_runner(lines, unstated, tmp_path):
+    folder = tmp_path / 'benchmarks' / 'one'
+    folder.mkdir(parents=True)
+    init = folder / '__init__.py'
+    init.write_text('def _factory():\n    pass\n' + lines)
+    space = {}
+    exec(compile(init.read_text().replace('benchmark_registry[', 'registry[') , str(init), 'exec'),
+         {'registry': space})
+    (tmp_path / 'benchmarks' / 'two').mkdir()
+    (tmp_path / 'benchmarks' / 'two' / '__init__.py').write_text("benchmark_registry['b'] = f\n")
+    space['b'] = space['a']                             # stated in another folder only
+    space['external'] = lambda: None                    # a plugin of another package
+    assert _unstated(space, 'benchmarks', tmp_path) == sorted(unstated + [('one', 'b')], key=str)
 
 
 class _SessionStarted(Exception):

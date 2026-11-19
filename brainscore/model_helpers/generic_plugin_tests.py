@@ -12,8 +12,8 @@ writes no extra file. To run it by hand:
 
 The checks hold for every subject and use only the subject contract: the
 identifier and the declaration. The subject is loaded once per identifier. A
-first check reads the plugin's ``__init__.py``: the identifier is the key of one
-literal top-level registration line, and the file imports no ``model.py`` at
+first check reads the plugin's ``__init__.py``: core's plugin runner reads the
+identifier on one registration line, and the file imports no ``model.py`` at
 module level (the factory imports it when the model is loaded).
 
 Limit: no declared output is exercised with input; add that when a production
@@ -27,18 +27,17 @@ from brainscore_core.compatibility import check_compatibility
 # the following import is needed to configure pytest
 # noinspection PyUnresolvedReferences
 from brainscore_core.plugin_management.generic_plugin_tests_helper import pytest_generate_tests  # noqa: F401
+from brainscore_core.plugin_management.parse_plugin_changes import get_plugin_ids
 from brainscore import load_model
 
 
 def test_the_init_states_the_identifier_once_and_loads_nothing(identifier: str, request):
-    init = Path(request.config.option.plugin_directory) / '__init__.py'
-    statements = ast.parse(init.read_text()).body
-    keys = [target.slice.value for statement in statements if isinstance(statement, ast.Assign)
-            for target in statement.targets
-            if isinstance(target, ast.Subscript) and isinstance(target.value, ast.Name)
-            and target.value.id == 'model_registry' and isinstance(target.slice, ast.Constant)]
+    folder = Path(request.config.option.plugin_directory).resolve()
+    init = folder / '__init__.py'
+    keys = get_plugin_ids('models', [folder.name], str(folder.parents[1]))  # the runner's reader
     assert keys.count(identifier) == 1, (
-        f"write one top-level line model_registry['{identifier}'] = <factory> in {init}")
+        f"write one line model_registry['{identifier}'] = <factory> in {init}")
+    statements = ast.parse(init.read_text()).body
     eager = [statement.lineno for statement in statements
              if isinstance(statement, ast.ImportFrom) and statement.level == 1
              and (statement.module == 'model'
