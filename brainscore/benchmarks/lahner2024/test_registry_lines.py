@@ -34,3 +34,11 @@ def test_a_registry_key_is_the_identifier_its_line_passes(key):
 def test_a_lahner_class_needs_an_identifier(benchmark_class):
     with pytest.raises(TypeError, match='identifier'):
         benchmark_class()
+
+
+def test_a_registered_factory_passes_positional_arguments_to_the_class(monkeypatch):
+    from brainscore.benchmarks.lahner2024 import benchmark as module
+    received = []
+    monkeypatch.setattr(module, 'Lahner2024BOLDMoments', lambda *a, **k: received.append((a, k)))
+    brainscore.benchmark_registry['Lahner2024-fMRI-naturalistic'](('vision:video',))
+    assert received[0][0] == (('vision:video',),)

@@ -14,9 +14,9 @@ from functools import partial
 from brainscore import benchmark_registry
 
 
-def _load(**configuration):
+def _load(*arguments, **configuration):
     from .benchmark import InducedDyslexia
-    return InducedDyslexia(**configuration)
+    return InducedDyslexia(*arguments, **configuration)
 
 
 benchmark_registry['Yeatman2021-induced_dyslexia-image'] = partial(

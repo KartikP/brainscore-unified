@@ -12,9 +12,9 @@ from functools import partial
 from brainscore import benchmark_registry
 
 
-def _load(**configuration):
+def _load(*arguments, **configuration):
     from .benchmark import Algonauts2025
-    return Algonauts2025(**configuration)
+    return Algonauts2025(*arguments, **configuration)
 
 
 # One benchmark per participant: Algonauts trains and scores per participant.

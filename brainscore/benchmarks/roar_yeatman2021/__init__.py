@@ -16,9 +16,9 @@ from functools import partial
 from brainscore import benchmark_registry
 
 
-def _load(**configuration):
+def _load(*arguments, **configuration):
     from .benchmark import Yeatman2021LexicalDecision
-    return Yeatman2021LexicalDecision(**configuration)
+    return Yeatman2021LexicalDecision(*arguments, **configuration)
 
 
 # Leaderboard variants — each pinned to one input format

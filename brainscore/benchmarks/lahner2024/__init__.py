@@ -4,9 +4,9 @@ from brainscore import benchmark_registry
 from .auditory_roi import build_auditory_mask
 
 
-def _load(**configuration):
+def _load(*arguments, **configuration):
     from .benchmark import Lahner2024BOLDMoments
-    return Lahner2024BOLDMoments(**configuration)
+    return Lahner2024BOLDMoments(*arguments, **configuration)
 
 
 # Noise ceiling for the visual-ROI voxel set. For a predictivity correlation the ceiling
