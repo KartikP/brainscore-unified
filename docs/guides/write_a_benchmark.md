@@ -87,6 +87,61 @@ gives 1.25: a ceiled score can exceed 1.
 
 `benchmark_score` writes the attributes every unified score carries: `raw` (the metric value before normalization), `ceiling` (a `Score`), `normalized` (whether the score is `raw` divided by a measured ceiling), `metric` and `benchmark_version`. Keyword arguments after these are your own attributes. The score is `raw / ceiling` when the ceiling is measured. With no ceiling, pass `ceiling=not_estimated()` (from `brainscore.benchmarks`) to the benchmark: the score is then the raw value and `normalized` is `False`. Never use `Score(1.0)` to mean "no ceiling". Pass `value=` only when you normalize each target on its own (for example the median of per-voxel `r / ceiling`). `score()` adds `benchmark_identifier`, `model_identifier`, `compatibility` and `trial_memory`.
 
+**A benchmark builds no `Score` itself, except its ceiling.** The only `Score(...)` call a benchmark file may hold is the one inside `ceiling=` (or the return of a `ceiling` property). Build the score with `benchmark_score`. Do not write a helper that returns `Score(raw)`: `tests/test_package/test_responsibility_owners.py` fails on it (rule R15) and prints this remedy.
+
+## A behavior benchmark
+
+A behavior benchmark keeps its task as `self.task`, gives the task's `fitting_stimuli` a `label` column (a readout reads its labels from that column), runs one session that requests `behavior:choice`, and passes the answers and the answer policy to `benchmark_score`. This one has two participants, so its ceiling is their agreement. It uses a made-up model that always answers "real":
+
+```python
+import numpy as np
+import pandas as pd
+from brainscore import BrainScoreModel
+from brainscore_core import Score, TaskContext
+from brainscore_core.benchmarks import BenchmarkBase
+from brainscore_core.responses import Choice
+from brainscore_core.streaming_helpers import stimulus_session
+from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+from brainscore.benchmarks import benchmark_score
+
+LABELS = ['real', 'pseudo']
+
+
+def words(items, labels):
+    return StimulusSet(pd.DataFrame({'stimulus_id': items, 'sentence': items, 'label': labels}))
+
+
+class MyWordBenchmark(BenchmarkBase):
+    requested_output_channels = frozenset({'behavior:choice'})
+
+    def __init__(self, participants):             # participants: {name: [label for each test word]}
+        self.stimulus_set = words(['river', 'snarp', 'cloud', 'glorb'], ['real', 'pseudo', 'real', 'pseudo'])
+        self.task = TaskContext(instruction='Is this a real word?', response=Choice(LABELS),
+                                fitting_stimuli=words(['house', 'blick', 'table', 'florp'],
+                                                      ['real', 'pseudo', 'real', 'pseudo']))
+        self._human = np.array(participants['p1'])
+        first, second = (np.array(labels) for labels in participants.values())
+        super().__init__(identifier='MyLab2026.word-choice', version=1, parent='behavioral', bibtex='',
+                         ceiling=Score(float(np.mean(first == second))))   # the one Score(...) a benchmark builds
+
+    def __call__(self, subject):
+        session = stimulus_session(self.stimulus_set, ['behavior:choice'], self.task)
+        subject.participate(session)
+        answers = session.collect('behavior:choice')       # presentation x choice
+        chosen = np.array(LABELS)[answers.values.argmax(axis=1)]
+        raw = float(np.mean(chosen == self._human))        # agreement with participant p1
+        return benchmark_score(self, raw=raw, metric='agreement', answers=answers,
+                               answer_policy='invalid: wrong, counted; missing: wrong, counted')
+
+
+benchmark = MyWordBenchmark({'p1': ['real', 'pseudo', 'real', 'pseudo'],
+                             'p2': ['real', 'pseudo', 'real', 'real']})
+score = benchmark(BrainScoreModel(identifier='always-real', in_channels={'text'},
+                                  reply=lambda prompt: 'real'))
+print(float(score.attrs['raw']), float(score.attrs['ceiling']), score.attrs['n_valid'])
+# 0.5 0.75 4
+```
+
 ## The parts
 
 | Part | What to provide |
