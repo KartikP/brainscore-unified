@@ -55,28 +55,23 @@ class _StudySubject(ProvenanceSubject):
         outputs, task = set(session.outputs or ()), session.task
         answering = (task is not None and task.task_type != 'passive') or any(
             o.startswith('behavior') or o == 'motor' for o in outputs)
-        source = session.source
-        try:
-            shown = self._shown(session) if outputs & set(self.READOUT) else None
-            if shown is not None and 'vision:image' not in shown:
-                from brainscore_core.compatibility import ExecutionNotFeasibleError
-                raise ExecutionNotFeasibleError(
-                    f"'{self.identifier}' answers {sorted(outputs & set(self.READOUT))} from a readout of its vision "
-                    f"part, fitted on pictures; these trials show {sorted(shown)}, no picture. Give pictures.")
-            if 'neural:language_system' in outputs and answering:
-                from brainscore_core.compatibility import ExecutionNotFeasibleError
-                raise ExecutionNotFeasibleError(
-                    f"'{self.identifier}' records neural:language_system in a passive session only (the study's "
-                    f"rule: one session for regions, one for an answer). Ask for it in its own passive session.")
-            super().participate(session)
-        finally:
-            session.source = source     # the caller's session keeps its own source
+        shown = self._shown(session) if outputs & set(self.READOUT) else None
+        if shown is not None and 'vision:image' not in shown:
+            from brainscore_core.compatibility import ExecutionNotFeasibleError
+            raise ExecutionNotFeasibleError(
+                f"'{self.identifier}' answers {sorted(outputs & set(self.READOUT))} from a readout of its vision "
+                f"part, fitted on pictures; these trials show {sorted(shown)}, no picture. Give pictures.")
+        if 'neural:language_system' in outputs and answering:
+            from brainscore_core.compatibility import ExecutionNotFeasibleError
+            raise ExecutionNotFeasibleError(
+                f"'{self.identifier}' records neural:language_system in a passive session only (the study's "
+                f"rule: one session for regions, one for an answer). Ask for it in its own passive session.")
+        super().participate(session)
 
     def _shown(self, session):
         """The inputs this session delivers to the model, as its task presents them: the table's, or the
-        events of a listed source with no table (read here and given back for this call, ahead of the
-        caller's source, which still takes the responses). None for a stream with no table: its inputs are
-        known only when they arrive."""
+        events of a listed source with no table (read here and given back as the same list). None for a
+        stream with no table: its inputs are known only when they arrive."""
         from brainscore_core.responses import PART_CHANNELS
         from brainscore_core.streaming import FixedSource
         from brainscore_core.streaming_helpers import task_input_channels
@@ -84,15 +79,8 @@ class _StudySubject(ProvenanceSubject):
         if session.stimuli is not None:
             shown = task_input_channels(session.stimuli, task)
         elif session.source.listed:
-            class GivenBack(FixedSource):
-                respond = property(lambda self: source.respond)
-                close = property(lambda self: source.close)
-                observe_actions = property(lambda self: source.observe_actions)
-                complete = property(lambda self: source.complete)
-                history_limit = property(lambda self: source.history_limit)
-            source = session.source
-            events = list(iter(source.next_input, None))
-            session.source = GivenBack(events)
+            events = list(iter(session.source.next_input, None))
+            session.source = FixedSource(events)
             shown = {event.channel for event in events}
             if getattr(task, 'present', None) is not None:
                 shown &= {PART_CHANNELS.get(entry.split(':', 1)[0]) for entry in task.present}

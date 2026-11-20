@@ -412,18 +412,13 @@ def test_the_readout_answers_a_picture_with_other_inputs_or_without_a_table(stan
     files.identifier = 'umi-dev-picture-events'
     events = list(iter(stimulus_session(files, [output], task()).source.next_input, None))
     session = Session(events, [output], task())
-    source = session.source
     subject.participate(session)
     assert len(session.collect(output)) == 2
-    assert session.source is source            # the caller's session keeps its source
     sentences = StimulusSet({'stimulus_id': ['t0'], 'sentence': ['the cat']})
     sentences.identifier = 'umi-dev-text-events'
     text = list(iter(stimulus_session(sentences, [output], task()).source.next_input, None))
-    refused = Session(text, [output], task())
-    source = refused.source
     with pytest.raises(ExecutionNotFeasibleError, match='no picture'):
-        subject.participate(refused)
-    assert refused.source is source
+        subject.participate(Session(text, [output], task()))
 
 
 def test_a_pinned_revision_reaches_every_load(monkeypatch):
