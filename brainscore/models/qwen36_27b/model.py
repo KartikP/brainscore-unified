@@ -67,11 +67,11 @@ def _make_answer(model, processor, max_new_tokens: int = 16):
     import torch
     from PIL import Image
     from brainscore.model_helpers.api_behavioral import (
-        _answer_text, _row_parts)
+        answer_text, row_parts)
 
     def answer(stimulus_row, instruction, label_set):
-        prompt = _answer_text(instruction, label_set)
-        image_column, text_column = _row_parts(stimulus_row, 'Qwen3.6-27B answer')
+        prompt = answer_text(instruction, label_set)
+        image_column, text_column = row_parts(stimulus_row, 'Qwen3.6-27B answer')
         content, images = [], None
         if image_column:
             images = [Image.open(stimulus_row[image_column]).convert('RGB')]

@@ -143,7 +143,7 @@ def test_a_text_session_is_unchanged(language):
 def test_a_wrong_statement_fails_at_the_first_pass():
     """A picture-tower region stated as reached from text passes pre-flight; a text reply never runs that tower."""
     torch = pytest.importorskip('torch')
-    from brainscore.model_helpers._extractors import LiveRecording
+    from brainscore.model_helpers.extractors import LiveRecording
 
     class Net(torch.nn.Module):
         def __init__(self):

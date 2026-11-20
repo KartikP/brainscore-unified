@@ -60,7 +60,7 @@ def test_vlm_vision_wrapper_package_uses_shared_builder():
 def test_stimulus_columns_replace_the_position_index():
     """A plain presentation index holds positions; ``stimulus_id`` replaces it,
     so no ``presentation_`` coordinate is left behind."""
-    from brainscore.model_helpers._extractors import attach_stimulus_set, layer_assembly
+    from brainscore.model_helpers.extractors import attach_stimulus_set, layer_assembly
     from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
     assembly = layer_assembly('text-model', 'encoder.layers.1', np.zeros((2, 3), np.float32))

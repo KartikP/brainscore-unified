@@ -17,7 +17,7 @@ import numpy as np
 
 from brainscore_core.responses import Prompt, part_columns
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
-from brainscore.model_helpers._extractors import LiveRecording, as_float32, value
+from brainscore.model_helpers.extractors import LiveRecording, as_float32, value
 
 
 def fused_chat_extractor(model, processor, *, root, identifier: str,

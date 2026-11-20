@@ -131,7 +131,7 @@ def _facts(obj, settings) -> dict:
     callable, a readout classifier) states none of these. The device the inputs are sent
     to is not a fact of the part and is not recorded.
     """
-    from brainscore.model_helpers._extractors import CachingExtractor
+    from brainscore.model_helpers.extractors import CachingExtractor
     facts = {'settings': NOT_STATED, 'parameter_devices': NOT_STATED, 'parameter_dtypes': NOT_STATED,
              'batch_size': NOT_STATED, 'max_length': NOT_STATED}
     network = getattr(obj, '_model', None) if isinstance(obj, CachingExtractor) else obj
