@@ -79,7 +79,7 @@ def test_two_sessions_of_one_region_each_take_one_pass(tmp_path, store, kind):
     assert len(passes) == len(stimuli)           # batch size 1: one pass per stimulus, for both regions
 
 
-@pytest.mark.parametrize('kind', ['text', 'vlm_vision'])
+@pytest.mark.parametrize('kind', ['text', 'vlm_vision', 'video'])
 def test_each_region_equals_a_pass_for_that_region_alone(tmp_path, store, monkeypatch, kind):
     model, stimuli, _ = _model(kind, tmp_path, store)
     shared = {region: _payload(model, stimuli, region) for region in ('V1', 'IT')}
@@ -89,8 +89,11 @@ def test_each_region_equals_a_pass_for_that_region_alone(tmp_path, store, monkey
         stimuli.identifier = f'{stimuli.identifier}-alone-{region}'
         alone = _payload(model, stimuli, region)
         assert_same_output(shared[region], alone)
-        # A reduction downstream (a row sum, as a metric or a mean over time bins takes) gives the same bits.
+        # A reduction downstream gives the same bits: a row sum, and a mean over time bins (as the
+        # naturalistic benchmarks take before the regression).
         assert np.array_equal(shared[region].values.sum(axis=-1), alone.values.sum(axis=-1))
+        if 'time_bin' in alone.dims:
+            assert np.array_equal(shared[region].mean('time_bin').values, alone.mean('time_bin').values)
         assert len(passes) == len(stimuli)
 
 
