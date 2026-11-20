@@ -350,3 +350,25 @@ For a discovery or analysis pipeline that produces no `Score`, run an
 [experiment](docs/guides/experiments.md): it records the requested regions and answers
 and saves them for analysis. [Lesson 10](notebooks/lessons/10_run_an_experiment.ipynb)
 runs one end to end.
+
+## Before a pull request
+
+Run the check for each plugin kind you changed, from the root of the checkout, with `RESULTCACHING_DISABLE=1`.
+
+```bash
+# A model: its own test, then the generic suite (it runs once for each identifier the folder registers)
+pytest brainscore/models/<name>/test.py
+pytest brainscore/model_helpers/generic_plugin_tests.py --plugin_directory brainscore/models/<name>
+
+# A benchmark: the test.py files in its folder (add -m "not slow" to skip the tests that need real data)
+pytest brainscore/benchmarks/<name>
+
+# A data plugin or a metric: its test in tests/test_<part>/
+pytest tests/test_data/test_<name>.py
+pytest tests/test_metrics/test_<name>.py
+
+# Every plugin: the checks that read all plugins (registration lines, one owner for each rule, data packaging)
+pytest tests/test_package/test_plugin_registrations.py tests/test_package/test_responsibility_owners.py tests/test_data/test_data_packaging.py
+```
+
+A failure of `test_responsibility_owners` names the rule and what to do (for R15: build a ceiling inside `ceiling=` and return the score with `benchmark_score`).
