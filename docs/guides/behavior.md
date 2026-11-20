@@ -41,6 +41,8 @@ task = TaskContext(
 | `Text()` | a written answer, kept as written | `behavior:text` |
 | `Text(max_tokens=512, temperature=1.0)` | a written answer under the task's generation settings | `behavior:text` |
 
+A readout reads the labels of `fitting_stimuli` from their `label` column.
+
 These six channels are the behavior formats; core refuses any other `behavior` address. A benchmark asks for a format by the outputs it requests (`requested_output_channels`, and the outputs of its session); the task's response says which formats it allows. A requested format that the response does not name is refused.
 
 Each response defines its directive ("Answer with exactly one of: real, pseudo.") and its parse once, in core. They are the model side's tools: a model part that generates text phrases its answer line with `directive` (the API and Qwen `answer` parts do; BLIP-2 OPT has no chat template and keeps its own wording, "Question: ... Answer:": its `answer` part names the options in that question, and its `reply` part puts the instruction and the directive there), and `BrainScoreModel` reads every reply, from a `reply` or an `answer` part, with `parse`. The benchmark gives the specification only: the instruction, the stimulus text and the options. A task accepts only `Choice`, `Scale` and `Text` themselves, not a subclass, so a benchmark cannot change the directive by subclassing. To add no sentence at all, use `Choice(..., verbatim=True)`.
