@@ -179,3 +179,88 @@ def test_two_parts_that_derive_a_format_are_both_named():
     assert ("'behavior:choice' is derived by 2 wired parts; state one: "
             "capability_config={'behavior-sessions': {'behavior:choice': ('likelihood', 'softmax_argmax')}} or "
             "capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}.") in str(raised.value)
+
+
+# --- the method 'similarity' (ADR-0081 decision 2, rule 4.11) -------------------------
+
+def test_an_answer_part_can_state_the_method_similarity():
+    """The answer part states similarity in place of generation; its choice records it."""
+    model = _model('answer', owners={'behavior:choice': 'similarity'})
+    assert 'behavior:choice' in model.out_channels
+    choice = _run(model, ['behavior:choice'], CHOICE).collect('behavior:choice')
+    assert choice.attrs['response']['method'] == 'similarity'
+
+
+@pytest.mark.parametrize('parts, owners, remedy', [
+    (('behavioral_readout_layer',), {'behavior:choice': 'similarity'}, 'no answer= part is wired'),
+    (('answer', 'reply'), {'behavior:rating': 'similarity'}, 'does not give'),
+], ids=['no answer part', 'a format the answer part does not give'])
+def test_a_similarity_statement_needs_an_answer_part_that_gives_the_format(parts, owners, remedy):
+    with pytest.raises(ValueError, match=remedy):
+        _model(*parts, owners=owners)
+
+
+# --- the method of a choice is the declared method of the part that answered ---------
+
+def _similarity_choice(parts, task, stimuli=None):
+    """A choice of a model whose answer part states ``similarity``; the record and the parts called."""
+    from brainscore_core.streaming_helpers import stimulus_session
+    from tests.brainscore_model.test_behavior_paths import STIMULI
+    calls = []
+    model = _model(*parts, owners={'behavior:choice': 'similarity'}, calls=calls)
+    session = stimulus_session(STIMULI if stimuli is None else stimuli, ['behavior:choice'], task)
+    model.participate(session)
+    return session.collect('behavior:choice').attrs['response']['method'], calls
+
+
+@pytest.mark.parametrize('parts', [('answer',), ('answer', 'behavioral_readout_layer'), ('answer', 'reply')],
+                         ids=['answer', 'answer and readout', 'answer and reply'])
+@pytest.mark.parametrize('labels', ['shared', 'per row'])
+def test_the_answer_part_that_states_similarity_answers_and_records_it(parts, labels):
+    """Shared labels and labels from a column (``Choice('options')``): the answer part answers
+    and the record names its declared method, also when a reply part is wired."""
+    from tests.brainscore_model.test_answer_ownership import OPTIONS
+    task, stimuli = ((CHOICE, None) if labels == 'shared'
+                     else (TaskContext(response=Choice('options')), OPTIONS))
+    method, calls = _similarity_choice(parts, task, stimuli)
+    assert method == 'similarity'
+    assert 'answer' in calls and 'reply' not in calls
+
+
+@pytest.mark.parametrize('settings', [{'verbatim': True}], ids=['verbatim'])
+def test_the_reply_does_not_stand_in_for_a_similarity_owner(settings):
+    """A setting the stated owner cannot serve is refused before any compute."""
+    calls = []
+    model = _model('answer', 'reply', owners={'behavior:choice': 'similarity'}, calls=calls)
+    with pytest.raises(ExecutionNotFeasibleError, match='verbatim') as refused:
+        _run(model, ['behavior:choice'], TaskContext(response=Choice(['cat', 'dog'], **settings)))
+    assert 'Remove the named settings' in str(refused.value)      # the refusal states a remedy
+    assert calls == []
+
+
+# --- a part states the inputs that its answer needs (rule 4.11) -------------------------
+
+def _picture_choice_model(**stated):
+    from tests.brainscore_model.test_behavior_paths import _features
+    return BrainScoreModel('pictures', extractor={'vision': _features, 'text': _features},
+                           answer=lambda stimulus_row, instruction, label_set: label_set[0], **stated)
+
+
+def test_the_inputs_an_answer_needs_are_stated_and_checked_at_pre_flight():
+    from types import SimpleNamespace
+    from brainscore_core.compatibility import CompatibilityError, check_compatibility
+    model = _picture_choice_model(output_inputs={'behavior:choice': {'vision:image'}})
+    assert model.output_inputs['behavior:choice'] == {'vision:image'}
+
+    def benchmark(inputs):
+        return SimpleNamespace(identifier='choice', required_input_channels=inputs,
+                               requested_output_channels={'behavior:choice'})
+    check_compatibility(model, benchmark({'vision:image', 'instruction'}))
+    with pytest.raises(CompatibilityError, match='vision:image'):
+        check_compatibility(model, benchmark({'text'}))
+    assert 'behavior:choice' not in _picture_choice_model().output_inputs   # any input will do
+
+
+def test_a_region_states_its_inputs_in_the_region_layer_map_not_in_output_inputs():
+    with pytest.raises(ValueError, match='region_layer_map'):
+        _picture_choice_model(output_inputs={'neural:IT': {'vision:image'}})

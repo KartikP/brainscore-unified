@@ -219,6 +219,10 @@ QWEN_READOUT_STATEMENT = {**REGISTERED_STATEMENTS[QWEN], 'behavior:probabilities
 # scan holds that registration, and only it, to this statement.
 BLIP2_REGISTRATION = 'models/blip2_opt_2_7b/model.py'
 BLIP2_STATEMENT = {'behavior:rating': 'readout'}
+# clip-vit-b-32-zero-shot wires an answer part and a readout, and states that its answer
+# part chooses by similarity (rule 4.11).
+ZERO_SHOT_REGISTRATION = 'models/clip_vit_b_32/model.py'
+ZERO_SHOT_STATEMENT = {'behavior:choice': 'similarity'}
 API = ('answer', 'reply')
 READOUT = ('behavioral_readout_layer',)
 
@@ -344,6 +348,52 @@ def test_every_registration_answers_each_format_with_the_part_of_its_part_set():
             # BLIP-2 wires the Qwen part set but keeps ratings with the readout; the Qwen
             # registrations keep their own references.
             references = [BLIP2_STATEMENT]
+        if where == ZERO_SHOT_REGISTRATION and tuple(wired) == BLIP2:
+            references = [ZERO_SHOT_STATEMENT]
         found = _answering_parts(model)
         assert any(found == _answering_parts(_model(*wired, owners=reference)) for reference in references), (where, found)
 
+
+
+# --- every registration: the method an answer records is the declared one (rule 4.11) ---
+
+# The methods a part of a BrainScoreModel states (rule 4.11, Response Format Standard 4.3).
+DECLARED_METHODS = {'generation', 'likelihood', 'readout', 'similarity'}
+# The method each part declares when no statement names another; 'extract' is the readout.
+PART_METHODS = {'answer': 'generation', 'reply': 'generation', 'likelihood': 'likelihood',
+                'extract': 'readout'}
+METHOD_FORMS = {
+    'shared labels': ('behavior:choice', CHOICE, STIMULI),
+    'labels per row': ('behavior:choice', TaskContext(response=Choice('options'), fitting_stimuli=FITTING),
+                       OPTIONS),
+    'probabilities': ('behavior:probabilities', CHOICE, STIMULI),
+    'rating': ('behavior:rating', TaskContext(instruction='How much?', response=Scale(1, 7)), STIMULI),
+    'text': ('behavior:text', FREE_TEXT, STIMULI),
+}
+
+
+def test_every_registration_records_the_declared_method_of_the_part_that_answered():
+    """For every ``BrainScoreModel(...)`` call the scan reads (no list of plugins): each stated
+    method is in the vocabulary, and through ``participate`` each answer records the declared
+    method of the part that was called (shared labels and labels from a column alike).
+    Limit: a registration whose statement is not a literal (the Qwen family looks it up in a
+    table) is not read by the scan; its record is checked through its registry loader
+    (``tests/test_models/test_qwen_probability_statements.py``)."""
+    registrations, _, _ = _registrations()
+    for where, wired, stated in registrations:
+        declared = {value if isinstance(value, str) else value[0] for value in stated.values()}
+        assert declared <= DECLARED_METHODS, (where, declared - DECLARED_METHODS)
+        for form, (channel, task, stimuli) in METHOD_FORMS.items():
+            calls = []
+            model = _model(*wired, owners=stated, calls=calls)
+            if channel not in model.out_channels:
+                continue
+            session = stimulus_session(stimuli, [channel], task)
+            try:
+                model.participate(session)
+            except ExecutionNotFeasibleError:
+                continue
+            called = next(part for part in PART_METHODS if part in calls)
+            expected = ('similarity' if called == 'answer' and 'similarity' in declared
+                        else PART_METHODS[called])
+            assert session.collect(channel).attrs['response']['method'] == expected, (where, form, called)
