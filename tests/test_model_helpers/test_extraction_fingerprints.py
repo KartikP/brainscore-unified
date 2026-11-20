@@ -70,7 +70,8 @@ def _assembly(inputs, layers, value):
     return NeuroidAssembly(np.full((len(inputs), len(layers)), value, dtype=float),
         dims=['presentation', 'neuroid'], coords={
             'stimulus_path': ('presentation', inputs),
-            'layer': ('neuroid', layers), 'neuroid_id': ('neuroid', layers)})
+            'layer': ('neuroid', layers), 'neuroid_id': ('neuroid', layers),
+            'neuroid_num': ('neuroid', [0] * len(layers))})   # as every wrapper writes: each layer from zero
 
 
 @pytest.mark.parametrize('cls', [TextWrapper, VLMVisionWrapper, VideoWrapper, AudioWrapper])

@@ -103,9 +103,7 @@ def test_an_entry_of_one_region_is_read_and_completed_in_one_pass(tmp_path, stor
     monkeypatch.delenv(VARIABLE)
     model, stimuli, passes = _model(kind, tmp_path, store)
     read = _payload(model, stimuli, 'V1')
-    # The store merges the new layers into the entry and orders its neuroids by name, as it does
-    # today when a second region is added to an entry: compare each neuroid.
-    xarray.testing.assert_identical(read.sortby('neuroid_id'), alone.sortby('neuroid_id'))
+    assert_same_output(read, alone)
     _payload(model, stimuli, 'V4')
     _payload(model, stimuli, 'IT')
     assert len(passes) == len(stimuli)           # the entry's layer is read; the missing ones in one pass
@@ -139,3 +137,19 @@ def test_an_extractor_without_a_layer_store_keeps_its_own_call(tmp_path, monkeyp
     model = BrainScoreModel('tiny-vlm-video', extractor={'video': wrapper}, region_layer_map=regions)
     _payload(model, stimuli, 'V1')
     assert calls == [list(regions['V1'].layer_paths)]
+
+
+def test_a_layer_added_to_an_entry_reads_as_a_new_pass(tmp_path, store):
+    """Write layer A, then ask A and B (the store merges B into the entry), then read B alone:
+    the units and values equal a new pass for B alone (each layer has more than ten units, so an
+    order by name puts unit 10 before unit 2)."""
+    wrapper, stimuli, _, network = tiny_wrappers.vlm_vision(tmp_path)
+    store(wrapper, network, [])
+    wrapper(stimuli, layers=['0'])
+    wrapper(stimuli, layers=['0', '1'])
+    read = wrapper(stimuli, layers=['1'])
+    stimuli.identifier = f'{stimuli.identifier}-new'
+    new = wrapper(stimuli, layers=['1'])
+    assert read.sizes['neuroid'] > 10
+    assert list(read['neuroid_num'].values) == list(new['neuroid_num'].values)
+    assert_same_output(read, new)
