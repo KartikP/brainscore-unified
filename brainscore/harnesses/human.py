@@ -75,9 +75,13 @@ class HumanSubject(Subject):
         return {f"neural:{region}" for region in self._region_layer_map}
 
     def participate(self, session) -> None:
-        """Run ``session`` through the typed methods below."""
+        """Run ``session`` through the typed methods below. The recording region and the task
+        it sets hold for this call only: the next session starts from none."""
         from brainscore_core.streaming_helpers import drive_typed_session
-        drive_typed_session(self, session)
+        try:
+            drive_typed_session(self, session)
+        finally:
+            self.reset()
 
     def start_recording(self, recording_target, time_bins=None, recording_type=None) -> None:
         self._recording_region = recording_target
