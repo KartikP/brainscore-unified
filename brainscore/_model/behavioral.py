@@ -416,7 +416,9 @@ class BehavioralReadout:
         from brainscore_core.compatibility import ExecutionNotFeasibleError
         formats = _formats_by_part(self.owner)
         givers = sorted(p for p, given in formats.items() if output in given)
-        owner = self.owners.get(output) or (givers[0] if len(givers) == 1 else None)
+        stated = self.owners.get(output)
+        owner = ('generation' if stated == 'similarity' else stated) or (
+            givers[0] if len(givers) == 1 else None)
         if owner is None and len(givers) > 1:
             raise ExecutionNotFeasibleError(
                 f"Subject '{self.owner.identifier}': the parts {givers} give {output!r} and no "
@@ -720,10 +722,13 @@ class BehavioralReadout:
                                                      parsed_by='model'), raw=replies)
             else:
                 parsed = [prompt.response.parse(str(reply)) for prompt, reply in zip(prompts, replies)]
+                # The answer part's stated method: generation, or similarity (rule 4.11).
+                method = ('similarity' if by_answer and self.owners.get('behavior:choice') == 'similarity'
+                          else 'generation')
                 outputs['behavior:choice'] = answers.one_hot(
                     [label for label, _ in parsed], [label is not None for label, _ in parsed],
                     stimuli, row_labels, axis,
-                    response_record('behavior:choice', 'generation', parsed_by='model',
+                    response_record('behavior:choice', method, parsed_by='model',
                                     parameters=(VERBATIM_IN_TEMPLATE if response.verbatim
                                                 and owner._reply is not None else None)),
                     raw=replies, errors=[error for _, error in parsed])
@@ -1039,16 +1044,20 @@ def statement_hint(subject, missing) -> str:
     return ''.join(lines)
 
 
+# The methods a part states (the record's ``method``) and the argument that wires each.
+# ``similarity``: an answer chosen by the similarity of an input to each option (rule
+# 4.11); the ``answer=`` part states it in place of ``generation``, and reads no instruction.
 _ARGUMENTS = {'generation': 'answer= or reply=', 'likelihood': 'likelihood=',
-              'readout': 'behavioral_readout_layer= (with an extractor)'}
+              'readout': 'behavioral_readout_layer= (with an extractor)',
+              'similarity': 'answer='}
 
 
 def answer_owners(subject, stated) -> Dict[str, str]:
     """Check the owner statements at construction; return the owner part of each format (rule 4.11).
 
     ``stated`` is ``capability_config['behavior-sessions']``: format ->
-    a part (``'generation'``, ``'likelihood'``, ``'readout'``) for a format the
-    part gives natively, or ``(part, conversion)`` for a format it derives
+    a part (``'generation'``, ``'likelihood'``, ``'readout'``, or ``'similarity'`` for an
+    ``answer=`` part that chooses by similarity) for a format the part gives natively, or ``(part, conversion)`` for a format it derives
     (``_PART_FORMATS``). A format with exactly one native part is owned by that
     part without a statement; a format with two or more native parts needs a
     statement. A wrong statement fails with a message that says what to write.
@@ -1061,6 +1070,9 @@ def answer_owners(subject, stated) -> Dict[str, str]:
     followers = {f for formats in _PART_FORMATS.values() for f, how in formats.items()
                  if how == 'link'}
     formats = sorted({f for kinds in _PART_FORMATS.values() for f in kinds} - followers)
+    stated_parts = dict(parts)
+    if subject._answer is not None:
+        stated_parts['similarity'] = dict(_PART_FORMATS['answer'])
     owners: Dict[str, str] = {}
     for key, value in (stated or {}).items():
         if key == 'behavior':
@@ -1081,18 +1093,18 @@ def answer_owners(subject, stated) -> Dict[str, str]:
         part, conversion = (value, None) if isinstance(value, str) else value
         if part not in _ARGUMENTS:
             raise ValueError(f"{prefix}names the part {part!r} for {key!r}; parts are "
-                             f"'generation', 'likelihood', 'readout'.")
+                             + ', '.join(map(repr, _ARGUMENTS)) + '.')
         if conversion is not None and conversion not in ('argmax', 'softmax', 'softmax_argmax'):
             raise ValueError(f"{prefix}names the conversion {conversion!r} for {key!r}; "
                              f"conversions are 'argmax', 'softmax', 'softmax_argmax'.")
-        if part not in parts:
+        if part not in stated_parts:
             raise ValueError(f"{prefix}names {part!r} for {key!r}, but no {_ARGUMENTS[part]} "
                              f"part is wired.")
-        if key not in parts[part]:
-            givers = sorted(p for p, given in parts.items() if key in given)
+        if key not in stated_parts[part]:
+            givers = sorted(p for p, given in stated_parts.items() if key in given)
             raise ValueError(f"{prefix}names {part!r} for {key!r}, but {part!r} does not give "
                              f"{key!r}. Parts of this subject that give it: {givers}.")
-        given = parts[part][key]
+        given = stated_parts[part][key]
         if conversion is None and given is not None:
             raise ValueError(f"{prefix}{part!r} gives {key!r} only by a conversion. "
                              f"Write {key!r}: ({part!r}, {given!r}).")

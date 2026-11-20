@@ -173,8 +173,9 @@ class BrainScoreModel(Subject):
             ``subject.capability_config``. Under ``'behavior-sessions'``: the
             owner of answer formats, for example ``{'behavior:rating':
             'generation', 'behavior:probabilities': ('likelihood', 'softmax')}``. A part (``'generation'``, which is
-            ``answer``/``reply``; ``'likelihood'``; ``'readout'``) owns a
-            format it gives natively; ``(part, conversion)`` owns a format the
+            ``answer``/``reply``; ``'likelihood'``; ``'readout'``; ``'similarity'``,
+            an ``answer`` that chooses by the similarity of an input to each
+            option and reads no instruction) owns a format it gives natively; ``(part, conversion)`` owns a format the
             part derives: the readout gives ``behavior:choice`` by
             ``'argmax'``, the likelihood gives ``behavior:probabilities`` by
             ``'softmax'`` and ``behavior:choice`` by ``'softmax_argmax'``. A

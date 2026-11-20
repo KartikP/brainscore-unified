@@ -87,7 +87,9 @@ class BehaviorSessions(Capability):
                 or subject._reply is not None or subject._likelihood is not None)
 
     def declared_input_channels(self, subject):
-        replies = (subject._answer, subject._reply, subject._likelihood)
+        # An answer chosen by similarity reads no instruction, so it does not declare one.
+        similarity = 'similarity' in subject._behavioral.owners.values()
+        replies = (None if similarity else subject._answer, subject._reply, subject._likelihood)
         return {'instruction'} if any(part is not None for part in replies) else set()
 
     def declared_output_channels(self, subject):

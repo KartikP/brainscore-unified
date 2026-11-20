@@ -179,3 +179,22 @@ def test_two_parts_that_derive_a_format_are_both_named():
     assert ("'behavior:choice' is derived by 2 wired parts; state one: "
             "capability_config={'behavior-sessions': {'behavior:choice': ('likelihood', 'softmax_argmax')}} or "
             "capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}.") in str(raised.value)
+
+
+# --- the method 'similarity' (ADR-0081 decision 2, rule 4.11) -------------------------
+
+def test_an_answer_part_can_state_the_method_similarity():
+    """The answer part states similarity in place of generation; its choice records it."""
+    model = _model('answer', owners={'behavior:choice': 'similarity'})
+    assert 'behavior:choice' in model.out_channels
+    choice = _run(model, ['behavior:choice'], CHOICE).collect('behavior:choice')
+    assert choice.attrs['response']['method'] == 'similarity'
+
+
+@pytest.mark.parametrize('parts, owners', [
+    (('behavioral_readout_layer',), {'behavior:choice': 'similarity'}),
+    (('answer', 'reply'), {'behavior:rating': 'similarity'}),
+], ids=['no answer part', 'a format the answer part does not give'])
+def test_a_similarity_statement_needs_an_answer_part_that_gives_the_format(parts, owners):
+    with pytest.raises(ValueError, match='similarity'):
+        _model(*parts, owners=owners)
