@@ -468,9 +468,12 @@ class _SharedCall:
 
 def _layers_of(output, layers):
     """The neuroids of ``layers`` in ``output``, or None when ``output`` cannot
-    show them in that order. A new assembly with its own attributes."""
+    show them in that order. A new assembly with its own attributes, its values
+    in C order: the selection changes the memory layout, and a reduction rounds
+    by the layout, so only C order gives the bits of a call for ``layers`` alone."""
     from copy import deepcopy
     import numpy as np
+    from brainscore.model_helpers.extractors import c_order
     try:
         labels = output['layer']
     except (KeyError, TypeError):
@@ -490,7 +493,7 @@ def _layers_of(output, layers):
         part = part.assign_coords(neuroid=pd.MultiIndex.from_arrays(
             [index.get_level_values(level) for level in range(index.nlevels)], names=index.names))
     part.attrs = deepcopy(dict(output.attrs))
-    return part
+    return c_order(part)
 
 
 def _concat_modalities_along_neuroid(sub_assemblies, xr):

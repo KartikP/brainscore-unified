@@ -87,7 +87,10 @@ def test_each_region_equals_a_pass_for_that_region_alone(tmp_path, store, monkey
     for region in ('V1', 'IT'):
         model, stimuli, passes = _model(kind, tmp_path, store)  # the same files
         stimuli.identifier = f'{stimuli.identifier}-alone-{region}'
-        assert_same_output(shared[region], _payload(model, stimuli, region))
+        alone = _payload(model, stimuli, region)
+        assert_same_output(shared[region], alone)
+        # A reduction downstream (a row sum, as a metric or a mean over time bins takes) gives the same bits.
+        assert np.array_equal(shared[region].values.sum(axis=-1), alone.values.sum(axis=-1))
         assert len(passes) == len(stimuli)
 
 
