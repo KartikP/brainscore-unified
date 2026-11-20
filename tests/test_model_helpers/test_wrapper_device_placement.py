@@ -79,7 +79,7 @@ def test_a_placed_model_is_not_moved_and_inputs_follow_its_parameters(make):
 @pytest.mark.parametrize('make', WRAPPERS)
 def test_a_model_on_one_device_is_moved_as_before(make):
     """The two lines this rule replaced: ``select_device(device)``, then ``model.to`` it."""
-    from brainscore.model_helpers._device import select_device
+    from brainscore.model_helpers.device import select_device
     model = _StandIn(offloaded=False)
     wrapper = make(model, device='cpu')
     assert model.moved_to == [select_device('cpu')]
@@ -103,7 +103,7 @@ def _fingerprint(wrapper):
 
 def _base_place_model(model, device=None):
     """The two lines every changed wrapper ran before the rule (base ``3688d83f``)."""
-    from brainscore.model_helpers._device import select_device
+    from brainscore.model_helpers.device import select_device
     target = select_device(device)
     return model.to(target), target
 
@@ -112,7 +112,7 @@ def _base_place_model(model, device=None):
 @pytest.mark.parametrize('make', WRAPPERS)
 def test_a_model_on_one_device_keeps_its_base_cache_key(make, device, monkeypatch):
     tip = make(_Plain(), device=device)
-    monkeypatch.setattr('brainscore.model_helpers._device.place_model', _base_place_model)
+    monkeypatch.setattr('brainscore.model_helpers.device.place_model', _base_place_model)
     base = make(_Plain(), device=device)
     assert _fingerprint(tip) is not None and _fingerprint(tip) == _fingerprint(base)
     assert str(tip._device) == str(base._device)
@@ -218,7 +218,7 @@ class _Spread(torch.nn.Module):
 
 
 def test_the_input_device_is_the_device_of_the_input_module():
-    from brainscore.model_helpers._device import input_device
+    from brainscore.model_helpers.device import input_device
     assert str(input_device(_Spread(['cuda:0', 'cuda:1'], entry=_Spread(['cuda:1'])))) == 'cuda:1'
 
 
@@ -237,11 +237,11 @@ def test_a_stated_device_is_used_for_the_inputs_of_a_placed_model(make):
 
 def test_the_reply_path_sends_inputs_where_the_wrapper_does():
     """One rule for where inputs go: the reply path and a wrapper agree on one placed model."""
-    from brainscore.model_helpers.causal_lm import _CausalLMParts
+    from brainscore.model_helpers.causal_lm import CausalLMParts
     from tests.test_model_helpers.test_wrapper_cache_guard import _TextNet, _tokenizer
     from brainscore.model_helpers.text_wrapper import TextWrapper
     network = _OffloadedFirst(_TextNet())
-    parts = _CausalLMParts(network, _tokenizer())
+    parts = CausalLMParts(network, _tokenizer())
     assert parts.device == TextWrapper(network, _tokenizer(), identifier='stand-in')._device == torch.device('cpu')
 
 

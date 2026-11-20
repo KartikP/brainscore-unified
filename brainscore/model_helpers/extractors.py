@@ -91,7 +91,7 @@ def _tensor(output):
     return output.detach()
 
 
-def _hook(module, layer: str, keep: Callable):
+def hook(module, layer: str, keep: Callable):
     """Hook ``module``; ``keep(value)`` gets its output, or its first input when ``layer``
     ends in ``':input'`` (the tensor an ``':input'`` intervention changes)."""
     if split_site(layer)[1] == 'input':
@@ -155,7 +155,7 @@ class LiveRecording:
             self._handles.append(self._model.register_forward_pre_hook(self._before, with_kwargs=True))
             self._handles.append(self._model.register_forward_hook(self._after))
             for layer, module in self._modules.items():
-                self._handles.append(_hook(module, layer, lambda value, layer=layer: self._keep(layer, value)))
+                self._handles.append(hook(module, layer, lambda value, layer=layer: self._keep(layer, value)))
         except BaseException:
             self.__exit__()
             raise

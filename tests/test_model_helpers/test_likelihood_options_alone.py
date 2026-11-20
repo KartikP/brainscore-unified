@@ -126,7 +126,7 @@ CONTROL_TEXTS, CONTROL_OPTIONS = ['dogs', 'a cat'], ('a', 'long')
 
 @pytest.fixture
 def cpu(monkeypatch):
-    monkeypatch.setattr('brainscore.model_helpers._device.select_device', lambda device=None: 'cpu')
+    monkeypatch.setattr('brainscore.model_helpers.device.select_device', lambda device=None: 'cpu')
 
 
 def _control_stimuli():

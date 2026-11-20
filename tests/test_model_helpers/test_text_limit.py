@@ -50,7 +50,7 @@ def test_no_tokenizer_needs_no_limit():
 
 def test_the_limit_alone_changes_the_cache_key(monkeypatch):
     """One network, one tokenizer, one input: only the limit differs, and the real key differs."""
-    from brainscore.model_helpers._extractors import cache_signature
+    from brainscore.model_helpers.extractors import cache_signature
     from tests.test_model_helpers.test_wrapper_cache_guard import _TextNet, _eighths, _tokenizer
     monkeypatch.delenv('RESULTCACHING_DISABLE', raising=False)     # the key is made only with the store on
     network, tokenizer = _eighths(_TextNet(), 1), _tokenizer()

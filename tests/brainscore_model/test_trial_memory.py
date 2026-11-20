@@ -236,3 +236,16 @@ def test_the_experiment_plan_records_traits_and_trial_memory(tmp_path):
     with pytest.raises(CompatibilityError, match='memory:trial_history'):
         Experiment(subject=_model(None), protocol=protocol, tools=[RecordBehavior()],
                    output_dir=tmp_path / 'run2').validate()
+
+
+@pytest.mark.parametrize('deliver', [list, iter], ids=['listed', 'streamed'])
+def test_each_begin_starts_a_new_episode_in_one_session(deliver):
+    """A second ``begin`` in one session empties the history, as the first one did."""
+    from brainscore_core.streaming import StreamEvent, end_event
+    rows = _rows() + [StreamEvent('text', '3', 0.0, {'stimulus_index': 3, 'stimulus_id': 's3',
+                                                    'column': 'sentence'})]
+    events = [begin_event(0.0), *rows[:2], end_event('terminal'),
+              begin_event(0.0), *rows[2:], end_event('terminal')]
+    session = Session(deliver(events), ['behavior:text'], _task('history'))
+    _model('trial_history').participate(session)
+    assert list(session.collect('behavior:text').values) == ['0', '1', '0', '1']

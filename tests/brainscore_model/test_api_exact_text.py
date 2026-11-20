@@ -86,10 +86,10 @@ def test_an_invalid_reply_is_stored_exactly(transport, provider):
 
 @pytest.mark.parametrize('provider', PROVIDERS)
 def test_the_answer_cache_gives_the_exact_text_and_no_old_stripped_entry(transport, provider, tmp_path):
-    from brainscore.model_helpers.api_behavioral import _answer_text
+    from brainscore.model_helpers.api_behavioral import answer_text
     payload = hashlib.sha256(b'florp').hexdigest()[:16]
     # An entry of the old form: the key without the form part, the text stripped.
-    old_key = hashlib.sha256(json.dumps([provider, 'm', _answer_text(CHOICE.instruction, ['real', 'pseudo']),
+    old_key = hashlib.sha256(json.dumps([provider, 'm', answer_text(CHOICE.instruction, ['real', 'pseudo']),
                                          ['real', 'pseudo'], 'w1', payload, None, 16])
                              .encode('utf-8')).hexdigest()
     (tmp_path / f'{old_key}.json').write_text(json.dumps({'response': 'pseudo'}))

@@ -321,7 +321,7 @@ def call_extractor(extractor, stimuli, layers):
     reductions round by the layout; ``c_order`` makes the store-on result equal
     the store-off result bit for bit, and leaves a C-ordered result as it is.
     """
-    from brainscore.model_helpers._extractors import c_order
+    from brainscore.model_helpers.extractors import c_order
     from . import parts
     parts.note('extractor', extractor, layers)    # it runs: listed for the outputs being served
     return c_order(extractor(stimuli, layers=layers))
@@ -449,7 +449,7 @@ class _SharedCall:
         self.shared = True
 
     def __call__(self, stimuli, layers):
-        from brainscore.model_helpers._extractors import LayerDtypesDiffer
+        from brainscore.model_helpers.extractors import LayerDtypesDiffer
         from . import parts
         if self.shared and set(layers) <= set(self.layers):
             if self.output is None:

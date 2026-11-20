@@ -11,7 +11,7 @@ from tests.command_stand_ins import pinned_git  # noqa: F401  (a fixture: git re
 
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore.model_helpers.api_behavioral import (
-    api_answer, _find_column, _answer_text, _row_parts, _CACHE_FORM,
+    api_answer, _find_column, answer_text, row_parts, _CACHE_FORM,
 )
 
 
@@ -24,9 +24,9 @@ class TestPureHelpers:
                        ['real', 'pseudo']) == text
 
     def test_prompt_is_the_instruction_then_core_choice_directive(self):
-        assert _answer_text('Is this a real word?', ['real', 'pseudo']) == (
+        assert answer_text('Is this a real word?', ['real', 'pseudo']) == (
             'Is this a real word?\n\nAnswer with exactly one of: real, pseudo.')
-        assert _answer_text(None, ['real', 'pseudo']) == 'Answer with exactly one of: real, pseudo.'
+        assert answer_text(None, ['real', 'pseudo']) == 'Answer with exactly one of: real, pseudo.'
 
     def test_find_column_reads_the_catalog_columns_in_order(self):
         row = pd.Series({'image_file_name': '/x.png', 'sentence': 'hi'})
@@ -43,11 +43,11 @@ class TestPureHelpers:
         assert _find_column(row, 'image') is None  # NaN is not a usable path
 
     def test_row_parts_names_the_accepted_columns_when_the_row_has_neither(self):
-        assert _row_parts(pd.Series({'image_path': '/x.png', 'text': 'hi'}), 'part') == ('image_path', 'text')
+        assert row_parts(pd.Series({'image_path': '/x.png', 'text': 'hi'}), 'part') == ('image_path', 'text')
         with pytest.raises(ValueError, match=r"part: the stimulus row has no image column and no text "
                                              r"column; accepted columns, in order: image \['image_file_name', "
                                              r"'image_path', 'filename', 'image', 'vision'\], text \['sentence', 'text'\]"):
-            _row_parts(pd.Series({'notes': 'x'}), 'part')
+            row_parts(pd.Series({'notes': 'x'}), 'part')
 
 
 def _turn(messages):

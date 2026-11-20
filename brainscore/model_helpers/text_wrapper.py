@@ -24,7 +24,7 @@ from tqdm.auto import tqdm
 
 from brainscore_core.assembly_builder import concat_neuroid_assemblies
 from brainscore_core.extraction_cache import store_xarray
-from brainscore.model_helpers._extractors import (
+from brainscore.model_helpers.extractors import (
     CachingExtractor, LiveRecording, as_array, attention_mask, checked_aggregation,
     layer_assembly, one_dtype, run_batches,
 )
@@ -137,7 +137,7 @@ class TextWrapper(CachingExtractor):
     """
 
     # The version of what this class extracts: a part of the activation cache key
-    # (``_extractors.cache_config``), read from this class body only. Raise it by
+    # (``extractors.cache_config``), read from this class body only. Raise it by
     # hand when a change can move the extracted values, also through code it calls.
     _VERSION = 1
 
@@ -170,7 +170,7 @@ class TextWrapper(CachingExtractor):
         self._max_length = max_length if max_length is not None else _model_window(
             model, tokenizer, identifier or model.__class__.__name__)
         self._batch_size = batch_size
-        from brainscore.model_helpers._device import place_model
+        from brainscore.model_helpers.device import place_model
         self._model, self._device = place_model(self._model, device)
 
         self._identifier = identifier or model.__class__.__name__

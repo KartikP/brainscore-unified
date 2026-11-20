@@ -198,7 +198,7 @@ def build(monkeypatch):
         with monkeypatch.context() as patch, warnings.catch_warnings(record=True) as caught:
             # No weight cache check and no device choice: both are outside the wiring.
             patch.setattr('brainscore.models._downloads.hf_preflight', lambda *args, **kwargs: {})
-            patch.setattr('brainscore.model_helpers._device.select_device', lambda: 'fake-device')
+            patch.setattr('brainscore.model_helpers.device.select_device', lambda: 'fake-device')
             for name, stub in modules.items():
                 patch.setitem(sys.modules, name, stub)
             warnings.simplefilter('always')

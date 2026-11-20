@@ -41,7 +41,7 @@ REGION_MODALITY_MAP = {
 def get_model(identifier: str) -> BrainScoreModel:
     assert identifier == 'blip2-wav2vec2'
     from brainscore.models.blip2_opt_2_7b.model import load_blip2, picture_extractor
-    from brainscore.model_helpers._device import select_device
+    from brainscore.model_helpers.device import select_device
 
     blip_model, blip_processor = load_blip2(identifier)
     # The activations carry the reduced backbone's name; the cache key is the combo's.

@@ -465,7 +465,7 @@ def tiny_lm(monkeypatch):
         net = Qwen2ForCausalLM(Qwen2Config(vocab_size=len(WORDS), hidden_size=16, intermediate_size=24,
                                            num_hidden_layers=2, num_attention_heads=2,
                                            num_key_value_heads=1, max_position_embeddings=64)).eval()
-    monkeypatch.setattr('brainscore.model_helpers._device.select_device', lambda device=None: 'cpu')
+    monkeypatch.setattr('brainscore.model_helpers.device.select_device', lambda device=None: 'cpu')
     return net, tok
 
 
