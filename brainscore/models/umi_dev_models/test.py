@@ -421,6 +421,15 @@ def test_the_readout_answers_a_picture_with_other_inputs_or_without_a_table(stan
         subject.participate(Session(text, [output], task()))
 
 
+def test_every_registration_states_a_commit_of_its_hub_files():
+    """A study registration loads one fixed set of Hub files: its revision is a full commit."""
+    import re
+    moving = {identifier: config['revision'] for identifier, config in study.MODEL_CONFIGS.items()
+              if not re.fullmatch(r'[0-9a-f]{40}', config['revision'])}
+    assert not moving, (f'{moving}: state the commit of the Hub files in model_configs.json, for example '
+                        "the 'sha' of https://huggingface.co/api/models/<hf_id> on the day of the load test.")
+
+
 def test_a_pinned_revision_reaches_every_load(monkeypatch):
     """The revision a model states reaches the download check, its processor and its weights."""
     import brainscore.models._downloads as downloads
