@@ -161,10 +161,12 @@ def _shared_layers(model, stimuli, regions: List[str]) -> List[Tuple[object, Lis
     whose input is not named, when several inputs could serve it, shares nothing.
 
     When the stimuli have an identifier and the store is on, the call of such
-    an extractor also records the layers of every other region of the
-    ``region_layer_map`` that it records from these stimuli. The store keeps
-    each layer apart, so a later session that asks one of those regions on the
-    same stimuli reads it from the store, with no new pass.
+    an extractor that keeps a layer store (it states its key, ``cache_config``)
+    also records the layers of every other region of the ``region_layer_map``
+    that it records from these stimuli. The store keeps each layer apart, so a
+    later session that asks one of those regions on the same stimuli reads it
+    from the store, with no new pass. An extractor without a store would run
+    the extra layers for nothing, so its call keeps the session's layers.
     """
     import result_caching
     stored = bool(getattr(stimuli, 'identifier', None)) and result_caching.is_enabled('')
@@ -175,7 +177,8 @@ def _shared_layers(model, stimuli, regions: List[str]) -> List[Tuple[object, Lis
         extractor = None if modality is None else extractor_for(
             model, modality, stimuli, region_selector(model, region).layer_paths)
         if (extractor is None or not _declares_independent_layers(extractor)
-                or (region in others and id(extractor) not in groups)):
+                or (region in others and (id(extractor) not in groups
+                                          or not callable(getattr(extractor, 'cache_config', None))))):
             continue
         _, layers, count = groups.get(id(extractor), (extractor, [], 0))
         new = [path for path in region_selector(model, region).layer_paths if path not in layers]

@@ -123,3 +123,19 @@ def test_a_stored_region_is_read_in_cached_only_mode(tmp_path, store, monkeypatc
     assert passes == []
     with pytest.raises(result_caching.NotCachedError):
         _payload(model, stimuli, 'V4')            # a requested layer that is not stored still fails
+
+
+def test_an_extractor_without_a_layer_store_keeps_its_own_call(tmp_path, monkeypatch):
+    """An extractor that states ``independent_layers`` but always runs the network gains nothing from
+    a wider pass: it records only the layers the session asks."""
+    monkeypatch.delenv('RESULTCACHING_DISABLE', raising=False)
+    monkeypatch.delenv(VARIABLE, raising=False)
+    wrapper, stimuli, regions, _ = tiny_wrappers.vlm_video(tmp_path)
+    calls = []
+    call = type(wrapper).__call__
+    monkeypatch.setattr(type(wrapper), '__call__',
+                        lambda self, stimuli, layers, **kwargs: calls.append(list(layers)) or call(
+                            self, stimuli, layers, **kwargs))
+    model = BrainScoreModel('tiny-vlm-video', extractor={'video': wrapper}, region_layer_map=regions)
+    _payload(model, stimuli, 'V1')
+    assert calls == [list(regions['V1'].layer_paths)]
