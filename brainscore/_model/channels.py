@@ -151,8 +151,8 @@ def _plan(model, stimuli, regions: List[str]) -> List[str]:
     return sorted(regions, key=lambda r: (source_rank(r), regions.index(r)))
 
 
-def _shared_layers(model, stimuli, regions: List[str]) -> List[Tuple[object, List[str]]]:
-    """``(extractor, layers)`` for each extractor that records two or more of ``regions``
+def _shared_layers(model, stimuli, regions: List[str]) -> List[Tuple[object, List[str], bool]]:
+    """``(extractor, layers, alone)`` for each extractor that records two or more of ``regions``
     and declares ``independent_layers``.
 
     The extractor of a region is the one dispatch selects for the input the
@@ -171,7 +171,7 @@ def _shared_layers(model, stimuli, regions: List[str]) -> List[Tuple[object, Lis
     import result_caching
     stored = bool(getattr(stimuli, 'identifier', None)) and result_caching.is_enabled('')
     others = [region for region in model._region_layer_map_dict if region not in regions] if stored else []
-    groups: Dict[int, Tuple[object, List[str], int]] = {}
+    groups: Dict[int, Tuple[object, List[str], int, int]] = {}
     for region in list(regions) + others:
         modality = region_modality(model, region)
         extractor = None if modality is None else extractor_for(
@@ -180,11 +180,13 @@ def _shared_layers(model, stimuli, regions: List[str]) -> List[Tuple[object, Lis
                 or (region in others and (id(extractor) not in groups
                                           or not callable(getattr(extractor, 'cache_config', None))))):
             continue
-        _, layers, count = groups.get(id(extractor), (extractor, [], 0))
+        _, layers, count, asked = groups.get(id(extractor), (extractor, [], 0, 0))
         new = [path for path in region_selector(model, region).layer_paths if path not in layers]
         layers.extend(new)
-        groups[id(extractor)] = (extractor, layers, count + (region in regions or bool(new)))
-    return [(extractor, layers) for extractor, layers, count in groups.values() if count > 1]
+        groups[id(extractor)] = (extractor, layers, count + (region in regions or bool(new)),
+                                 asked + (region in regions))
+    return [(extractor, layers, asked == 1)
+            for extractor, layers, count, asked in groups.values() if count > 1]
 
 
 def _declares_independent_layers(extractor) -> bool:

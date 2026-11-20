@@ -123,13 +123,14 @@ def normalize_extractors(owner, extractor):
 @contextmanager
 def one_call_per_extractor(model, stimuli, plan):
     """Inside, the first request to an extractor in ``plan``
-    (``[(extractor, layers), ...]``) on ``stimuli`` runs all its listed layers
+    (``[(extractor, layers, alone), ...]``) on ``stimuli`` runs all its listed layers
     once, and each request of those layers gets its part of that output
-    (``_SharedCall``). The caller lists only extractors that declare
+    (``_SharedCall``). ``alone``: the session asked that extractor for one
+    region only; the call is shared because the plan added other layers. The caller lists only extractors that declare
     ``independent_layers``. Every other request runs as before."""
     previous = model._shared_calls
-    model._shared_calls = (stimuli, {id(extractor): _SharedCall(extractor, layers)
-                                     for extractor, layers in plan})
+    model._shared_calls = (stimuli, {id(extractor): _SharedCall(extractor, layers, alone)
+                                     for extractor, layers, alone in plan})
     try:
         yield
     finally:
@@ -445,8 +446,9 @@ class _SharedCall:
     layers is read, and a request for a layer that is not stored still fails.
     """
 
-    def __init__(self, extractor, layers) -> None:
+    def __init__(self, extractor, layers, alone: bool = False) -> None:
         self.extractor = extractor
+        self.alone = alone      # release would call the extractor for one region: its part is in C order
         self.layers = list(layers)
         self.output = None
         self.shared = True
@@ -466,18 +468,16 @@ class _SharedCall:
             part = _layers_of(self.output, list(layers))
             if part is not None:
                 parts.note('extractor', self.extractor, layers)
-                return part
+                from brainscore.model_helpers.extractors import c_order
+                return c_order(part) if self.alone else part
         return call_extractor(self.extractor, stimuli, layers)
 
 
 def _layers_of(output, layers):
     """The neuroids of ``layers`` in ``output``, or None when ``output`` cannot
-    show them in that order. A new assembly with its own attributes, its values
-    in C order: the selection changes the memory layout, and a reduction rounds
-    by the layout, so only C order gives the bits of a call for ``layers`` alone."""
+    show them in that order. A new assembly with its own attributes."""
     from copy import deepcopy
     import numpy as np
-    from brainscore.model_helpers.extractors import c_order
     try:
         labels = output['layer']
     except (KeyError, TypeError):
@@ -497,7 +497,7 @@ def _layers_of(output, layers):
         part = part.assign_coords(neuroid=pd.MultiIndex.from_arrays(
             [index.get_level_values(level) for level in range(index.nlevels)], names=index.names))
     part.attrs = deepcopy(dict(output.attrs))
-    return c_order(part)
+    return part
 
 
 def _concat_modalities_along_neuroid(sub_assemblies, xr):

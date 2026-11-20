@@ -156,3 +156,29 @@ def test_a_layer_added_to_an_entry_reads_as_a_new_pass(tmp_path, store):
     assert read.sizes['neuroid'] > 10
     assert list(read['neuroid_num'].values) == list(new['neuroid_num'].values)
     assert_same_output(read, new)
+
+
+def test_three_regions_asked_together_keep_the_layout_of_one_joint_call(tmp_path, store):
+    """Release code already shared a session of several regions: each region is the plain selection
+    of its neuroids from one joint call (values, strides and the mean over eight time bins)."""
+    from brainscore.model_helpers.video_wrapper import VideoWrapper
+    wrapper, stimuli, regions, network = tiny_wrappers.video(tmp_path)
+    wrapper = VideoWrapper(network, tiny_wrappers._frames_to_tensor, identifier='tiny-video-8',
+                           num_frames=8, batch_size=1, device='cpu')
+    store(wrapper, network, [])
+    model = BrainScoreModel('tiny-video-8', extractor={'video': wrapper}, region_layer_map=regions)
+    names = ['V1', 'V4', 'IT']
+    session = stimulus_session(stimuli, [f'neural:{name}' for name in names])
+    model.participate(session)
+    payloads = {e.channel: e.payload for e in session.emitted}
+    layers = [regions[name].layer_paths[0] for name in names]
+    stimuli.identifier = 'tiny-clips-reference'          # a new store entry for the reference call
+    joint = wrapper(stimuli, layers=layers)
+    labels = np.asarray(joint['layer'].values)
+    for name, layer in zip(names, layers):
+        expected = joint.isel(neuroid=np.flatnonzero(labels == layer))
+        actual = payloads[f'neural:{name}']
+        assert 'time_bin' in actual.dims and actual.sizes['time_bin'] == 8
+        np.testing.assert_array_equal(actual.values, expected.values)
+        assert actual.values.strides == expected.values.strides
+        assert np.array_equal(actual.mean('time_bin').values, expected.mean('time_bin').values)
