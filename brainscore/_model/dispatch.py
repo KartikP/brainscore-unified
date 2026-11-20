@@ -440,6 +440,9 @@ class _SharedCall:
     omits one, is called as before). When the listed layers have different
     dtypes, one assembly cannot keep each layer's dtype: the extractor refuses
     the shared call (``LayerDtypesDiffer``) and every request is called alone.
+    So too when the store reads only stored results (``RESULTCACHING_CACHEDONLY``)
+    and a listed layer is not stored (``NotCachedError``): a request for stored
+    layers is read, and a request for a layer that is not stored still fails.
     """
 
     def __init__(self, extractor, layers) -> None:
@@ -449,6 +452,7 @@ class _SharedCall:
         self.shared = True
 
     def __call__(self, stimuli, layers):
+        from result_caching import NotCachedError
         from brainscore.model_helpers.extractors import LayerDtypesDiffer
         from . import parts
         if self.shared and set(layers) <= set(self.layers):
@@ -456,7 +460,7 @@ class _SharedCall:
                 try:
                     with parts.unnoted():     # each request of the shared pass notes its own layers
                         self.output = call_extractor(self.extractor, stimuli, self.layers)
-                except LayerDtypesDiffer:
+                except (LayerDtypesDiffer, NotCachedError):
                     self.shared = False
                     return call_extractor(self.extractor, stimuli, layers)
             part = _layers_of(self.output, list(layers))

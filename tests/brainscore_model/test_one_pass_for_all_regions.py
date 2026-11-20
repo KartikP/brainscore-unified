@@ -109,3 +109,17 @@ def test_an_entry_of_one_region_is_read_and_completed_in_one_pass(tmp_path, stor
     _payload(model, stimuli, 'V4')
     _payload(model, stimuli, 'IT')
     assert len(passes) == len(stimuli)           # the entry's layer is read; the missing ones in one pass
+
+
+@pytest.mark.parametrize('kind', ['text', 'vlm_vision'])
+def test_a_stored_region_is_read_in_cached_only_mode(tmp_path, store, monkeypatch, kind):
+    monkeypatch.setenv(VARIABLE, 'one')          # stores the layer of V1 alone
+    model, stimuli, _ = _model(kind, tmp_path, store)
+    alone = _payload(model, stimuli, 'V1')
+    monkeypatch.delenv(VARIABLE)
+    monkeypatch.setenv('RESULTCACHING_CACHEDONLY', '1')
+    model, stimuli, passes = _model(kind, tmp_path, store)
+    assert_same_output(_payload(model, stimuli, 'V1'), alone)
+    assert passes == []
+    with pytest.raises(result_caching.NotCachedError):
+        _payload(model, stimuli, 'V4')            # a requested layer that is not stored still fails
