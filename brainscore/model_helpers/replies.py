@@ -203,10 +203,20 @@ def segment_log_probabilities(model, tokenizer, segments: Sequence[str], sliding
     from brainscore_language.model_helpers.huggingface import slice_kv_cache
     window = model.config.get_text_config().max_position_embeddings
     device = next(model.parameters()).device
-    steps, count = [], 0
+    steps, count, earlier = [], 0, None
     for i in range(len(segments)):
         encoded = tokenizer(prepare_context(segments[:i + 1]), return_tensors='pt')
         total = encoded['input_ids'].shape[-1]
+        # The new tokens are those after the count of the earlier text: right only when the
+        # ids of the earlier text are the first ids of the longer text.
+        if earlier is not None and not torch.equal(encoded['input_ids'][..., :count], earlier):
+            raise ExecutionNotFeasibleError(
+                f'the tokens of parts 1 to {i} are not the first tokens of parts 1 to {i + 1}, so the '
+                f'new tokens of part {i + 1} cannot be found by count (the tokenizer joins pieces '
+                'across parts or adds a special token after each text); use a tokenizer whose '
+                'earlier tokens stay (for example add_special_tokens=False with a start token '
+                'only) or score the text as one part')
+        earlier = encoded['input_ids'].clone()
         if not steps and total > window:
             raise ExecutionNotFeasibleError(f'part 1 has {total} tokens, more than the window of {window}')
         if steps and total - count >= window:
