@@ -195,11 +195,17 @@ class TestGameActionFn:
         assert image is not None and image[0] == 'image/png'   # frame -> PNG
         assert 'reach the goal' in user_text                   # mission in prompt
 
-    def test_unparseable_falls_back_to_legal_random(self):
+    def test_an_unreadable_reply_gives_no_move_and_is_invalid(self):
+        """ADR-0081 decision 6, Contract Rules 6.2: the raw reply is reported, the move is
+        invalid, and no random move takes its place. The meta keys are the catalog's."""
+        from brainscore_core.io_catalog import RESPONSE_META_KEYS
         from brainscore.model_helpers.api_behavioral import api_policy
-        act = api_policy(self._mock('no idea'), 'mock', fallback_seed=0)
-        resp = act(self._env_step(n_actions=3))['motor']
-        assert 0 <= int(resp.payload) < 3                       # random but legal
+        resp = api_policy(self._mock('no idea'), 'mock')(self._env_step(n_actions=3))['motor']
+        assert resp.payload is None
+        assert resp.meta['valid'] is False and resp.meta['parse_error']
+        assert resp.meta['answer'] == 'no idea'
+        assert resp.meta['provenance']['model'] == 'mock'
+        assert set(resp.meta) <= set(RESPONSE_META_KEYS)
 
     def test_action_cache(self, tmp_path):
         from brainscore.model_helpers.api_behavioral import api_policy
@@ -256,16 +262,36 @@ class TestGameActionFn:
         act(self._env_step(n_actions=3))
         assert len(act.trace) == 1
         rec = act.trace[0]
-        assert rec['action'] == 1 and rec['fallback'] is False
+        assert rec['action'] == 1 and rec['valid'] is True
         assert 'The goal is below me' in rec['response']  # reasoning preserved
         assert rec['step'] == 0
 
-    def test_trace_flags_fallback_moves(self):
+    def test_an_unreadable_reply_in_a_grid_episode_is_no_random_move(self):
+        """Through participate: the policy's move after an unreadable reply reaches the
+        environment as no move, marked invalid with the raw reply. The grid game states no
+        policy for an invalid move, so its action check refuses it and the episode stops."""
+        from brainscore import BrainScoreModel
+        from brainscore.harnesses.grid_game import GridGameEnv, GridGameEnvironment
         from brainscore.model_helpers.api_behavioral import api_policy
-        act = api_policy(self._mock('no idea'), 'mock', fallback_seed=0)
+        from brainscore_core.streaming_helpers import environment_session
+        model = BrainScoreModel(identifier='unreadable-api', policy=api_policy(
+            self._mock('no idea'), 'mock', obs_mode='ascii'),
+            policy_in_channels=('observation', 'instruction'))
+        session = environment_session(GridGameEnvironment(GridGameEnv(size=3, seed=0)),
+                                      require_specs=True)
+        with pytest.raises(Exception):
+            model.participate(session)
+        proposal = session.source.action_events[-1]
+        assert proposal.payload is None
+        assert proposal.meta['valid'] is False and proposal.meta['answer'] == 'no idea'
+        assert proposal.meta['parse_error'] and proposal.meta['provenance']['provider']
+        assert proposal.meta['action_status'] == 'rejected'
+
+    def test_trace_flags_an_unreadable_reply(self):
+        from brainscore.model_helpers.api_behavioral import api_policy
+        act = api_policy(self._mock('no idea'), 'mock')
         act(self._env_step(n_actions=3))
-        assert act.trace[0]['fallback'] is True          # unparseable -> random
-        assert 0 <= act.trace[0]['action'] < 3
+        assert act.trace[0]['valid'] is False and act.trace[0]['action'] is None
 
     def test_history_window_zero_omits_history(self):
         from brainscore.model_helpers.api_behavioral import api_policy
