@@ -502,7 +502,7 @@ def test_a_missing_package_and_a_missing_class_are_named_before_any_download(mon
                 model_registry[identifier]()
         else:
             study._refuse(identifier, config)       # a model that uses none of the packages loads without them
-    with pytest.raises(LoadError, match='NoSuchVLM'):
+    with pytest.raises(LoadError, match='NoSuchVLM.*Next step'):
         study._refuse('m', dict(study.MODEL_CONFIGS['qwen3-vl-2b_UMI-dev'], model_class='NoSuchVLM'))
 
 

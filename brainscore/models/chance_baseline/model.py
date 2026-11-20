@@ -65,7 +65,10 @@ class ChanceBaseline(Subject):
             return self._answer_probabilities(session)
         if list(session.outputs or ()) != ['behavior:choice']:
             from brainscore_core.streaming_helpers import drive_typed_session
-            return drive_typed_session(self, session)
+            try:        # the task the session sets holds for this call only
+                return drive_typed_session(self, session)
+            finally:
+                self.reset()
         # One answer for the whole table: the choice derived from uniform rows, one row
         # for each trial (a stimulus shown twice is answered twice).
         from brainscore_core.response_formats import argmax, response_record
@@ -143,7 +146,10 @@ class ChanceBaseline(Subject):
 
     def process(self, input_event) -> Any:
         if isinstance(input_event, (StateChange, Mapping)):
-            raise NotImplementedError
+            from brainscore_core.compatibility import ExecutionNotFeasibleError
+            raise ExecutionNotFeasibleError(
+                "chance-baseline answers stimuli only, not a state change or a closed-loop step. Ask "
+                "for 'behavior', 'behavior:choice' or 'behavior:probabilities' with a stimulus table.")
         stimuli = input_event
         label_set = self._label_set()
         n_stimuli = len(stimuli)
