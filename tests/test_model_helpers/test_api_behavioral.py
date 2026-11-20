@@ -186,6 +186,17 @@ class TestGameActionFn:
         assert resp.channel == 'motor' and resp.meta['valid']
         assert int(resp.payload) == 2
 
+    @pytest.mark.parametrize('reply, move', [
+        ('Action: -1', None),        # a sign is part of the number: not move 1
+        ('Action: 7', None),         # a stated number outside the range is no move
+        ('move 2', 2),               # exactly the name of one legal action
+        ('Move 2.', 2),
+    ])
+    def test_a_reply_is_read_as_stated(self, reply, move):
+        from brainscore.model_helpers.api_behavioral import api_policy
+        resp = api_policy(self._mock(reply), 'mock')(self._env_step(n_actions=3))['motor']
+        assert resp.payload == move and resp.meta['valid'] is (move is not None)
+
     def test_frame_sent_as_image(self):
         from brainscore.model_helpers.api_behavioral import api_policy
         calls = []

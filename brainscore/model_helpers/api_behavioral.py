@@ -453,16 +453,22 @@ def _encode_frame(frame, resize: int = 384) -> Tuple[str, str]:
     return 'image/png', base64.standard_b64encode(buf.getvalue()).decode('utf-8')
 
 
-def _parse_action_index(response: str, n_actions: int) -> Optional[int]:
-    """Parse an action index from the response. Prefers a trailing
-    ``Action: <n>`` line; falls back to the last in-range integer; else None
-    (the reply cannot be read: the caller marks the move invalid)."""
+def _parse_action_index(response: str, n_actions: int, legal=None) -> Optional[int]:
+    """Parse an action index from the response. A reply that is exactly the name of one
+    legal action gives that action. Else the ``Action: <n>`` line decides (a number
+    outside the range is no move); with no such line, the last in-range integer; else
+    None (the reply cannot be read: the caller marks the move invalid). A sign is part
+    of a number: ``-1`` is not ``1``."""
     if not response:
         return None
-    m = re.search(r'action\s*[:\-]\s*(\d+)', response, re.IGNORECASE)
-    if m and 0 <= int(m.group(1)) < n_actions:
-        return int(m.group(1))
-    for tok in reversed(re.findall(r'\d+', response)):
+    names = [str(name).strip().lower() for name in (legal or {}).values()]
+    word = response.strip().strip('.').lower()
+    if names.count(word) == 1:
+        return list(legal)[names.index(word)]
+    m = re.search(r'action\s*[:\-]\s*(-?\d+)', response, re.IGNORECASE)
+    if m:
+        return int(m.group(1)) if 0 <= int(m.group(1)) < n_actions else None
+    for tok in reversed(re.findall(r'-?\d+', response)):
         if 0 <= int(tok) < n_actions:
             return int(tok)
     return None
@@ -615,14 +621,14 @@ def api_policy(
             if cache is not None:
                 cache.set(key, response)
 
-        parsed = _parse_action_index(response, n)
+        parsed = _parse_action_index(response, n, legal)
         valid = parsed is not None
         trace.append({'step': len(trace),
                       'response': response, 'action': parsed, 'valid': valid,
                       'payload': payload})
         return {'motor': StreamEvent('motor', parsed, None, {
             'answer': response, 'valid': valid,
-            'parse_error': None if valid else f'no action number from 0 to {n - 1} in the reply',
+            'parse_error': None if valid else f'no action number from 0 to {n - 1} and no action name in the reply',
             'provenance': {'provider': provider_name, 'model': model},
         })}
 

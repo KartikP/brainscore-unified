@@ -164,7 +164,7 @@ def _oracle_with_invalid_moves(invalid, seen):
     state = {'call': 0, 'step': 0}
 
     def policy(row):
-        seen.append(row['observation']['_state']['agent'])
+        seen.append(row['observation']['ascii'])
         call, step = state['call'], state['step']
         state['call'] += 1
         state['step'] += 1
@@ -176,7 +176,7 @@ def _oracle_with_invalid_moves(invalid, seen):
 def test_one_invalid_move_keeps_the_agent_in_place_and_the_run_goes_on(bench):
     seen = []
     score = bench(policy_model(_oracle_with_invalid_moves(lambda call, step: call == 0, seen), 'one'))
-    assert seen[1] == seen[0]                       # the agent stayed for that step
+    assert seen[1] == seen[0]                       # the same board: the agent stayed for that step
     assert score.attrs['success_rate'] == 1.0       # every episode ran and was solved
     assert score.attrs['n_invalid'] == 1 and score.attrs['n_trials'] == len(seen)
     assert 'invalid' in score.attrs['answer_policy']

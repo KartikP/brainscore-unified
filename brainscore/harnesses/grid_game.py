@@ -64,11 +64,11 @@ class GridGameEnv:
     def step(self, action: Optional[int]) -> Tuple[Dict[str, Any], float, bool, Dict]:
         """One step. ``None`` (an invalid move) counts as a step, and the agent stays,
         as for a move into a wall."""
-        self._steps += 1
         nr, nc = self.agent_pos       # None: the agent stays
         if action is not None:
             dr, dc = _DELTA[DiscreteSpec(len(ACTIONS)).validate(action)]
             nr, nc = self.agent_pos[0] + dr, self.agent_pos[1] + dc
+        self._steps += 1              # after the check: a refused action spends no step
         moved = False
         if action is not None and 0 <= nr < self.size and 0 <= nc < self.size and (nr, nc) not in self.walls:
             self.agent_pos = (nr, nc)
