@@ -235,3 +235,31 @@ def test_the_reply_does_not_stand_in_for_a_similarity_owner(settings):
     with pytest.raises(ExecutionNotFeasibleError, match='verbatim'):
         _run(model, ['behavior:choice'], TaskContext(response=Choice(['cat', 'dog'], **settings)))
     assert calls == []
+
+
+# --- a part states the inputs that its answer needs (rule 4.11) -------------------------
+
+def _picture_choice_model(**stated):
+    from tests.brainscore_model.test_behavior_paths import _features
+    return BrainScoreModel('pictures', extractor={'vision': _features, 'text': _features},
+                           answer=lambda stimulus_row, instruction, label_set: label_set[0], **stated)
+
+
+def test_the_inputs_an_answer_needs_are_stated_and_checked_at_pre_flight():
+    from types import SimpleNamespace
+    from brainscore_core.compatibility import CompatibilityError, check_compatibility
+    model = _picture_choice_model(output_inputs={'behavior:choice': {'vision:image'}})
+    assert model.output_inputs['behavior:choice'] == {'vision:image'}
+
+    def benchmark(inputs):
+        return SimpleNamespace(identifier='choice', required_input_channels=inputs,
+                               requested_output_channels={'behavior:choice'})
+    check_compatibility(model, benchmark({'vision:image', 'instruction'}))
+    with pytest.raises(CompatibilityError, match='vision:image'):
+        check_compatibility(model, benchmark({'text'}))
+    assert 'behavior:choice' not in _picture_choice_model().output_inputs   # any input will do
+
+
+def test_a_region_states_its_inputs_in_the_region_layer_map_not_in_output_inputs():
+    with pytest.raises(ValueError, match='region_layer_map'):
+        _picture_choice_model(output_inputs={'neural:IT': {'vision:image'}})

@@ -219,6 +219,10 @@ QWEN_READOUT_STATEMENT = {**REGISTERED_STATEMENTS[QWEN], 'behavior:probabilities
 # scan holds that registration, and only it, to this statement.
 BLIP2_REGISTRATION = 'models/blip2_opt_2_7b/model.py'
 BLIP2_STATEMENT = {'behavior:rating': 'readout'}
+# clip-vit-b-32-zero-shot wires an answer part and a readout, and states that its answer
+# part chooses by similarity (rule 4.11).
+ZERO_SHOT_REGISTRATION = 'models/clip_vit_b_32/model.py'
+ZERO_SHOT_STATEMENT = {'behavior:choice': 'similarity'}
 API = ('answer', 'reply')
 READOUT = ('behavioral_readout_layer',)
 
@@ -344,6 +348,8 @@ def test_every_registration_answers_each_format_with_the_part_of_its_part_set():
             # BLIP-2 wires the Qwen part set but keeps ratings with the readout; the Qwen
             # registrations keep their own references.
             references = [BLIP2_STATEMENT]
+        if where == ZERO_SHOT_REGISTRATION and tuple(wired) == BLIP2:
+            references = [ZERO_SHOT_STATEMENT]
         found = _answering_parts(model)
         assert any(found == _answering_parts(_model(*wired, owners=reference)) for reference in references), (where, found)
 

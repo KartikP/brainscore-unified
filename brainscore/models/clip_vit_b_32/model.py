@@ -114,16 +114,6 @@ def zero_shot_answer(clip_model, clip_processor):
     return answer
 
 
-class ZeroShotCLIP(BrainScoreModel):
-    """The zero-shot registration: its choice needs a picture (rule 4.11, a part states
-    the inputs that its answer needs), so pre-flight gives N/A for a choice task with no
-    picture. Its regions keep the inputs of their extractors (text for the language region)."""
-
-    @property
-    def output_inputs(self):
-        return {**super().output_inputs, 'behavior:choice': frozenset({'vision:image'})}
-
-
 def get_model(identifier: str) -> BrainScoreModel:
     assert identifier in ('clip-vit-b-32', ZERO_SHOT_IDENTIFIER)
     clip_model, clip_processor = load_clip()
@@ -157,8 +147,9 @@ def get_model(identifier: str) -> BrainScoreModel:
     # the 'IT' layer convention). Behavioral benchmarks like Ferguson2024
     # will fit a logistic readout on top of this layer's features.
     if zero_shot:
-        # The answer part owns the choice; the readout keeps the probabilities.
-        return ZeroShotCLIP(
+        # The answer part owns the choice; the readout keeps the probabilities. The
+        # choice needs a picture, so a choice task with no picture is N/A at pre-flight.
+        return BrainScoreModel(
             identifier=identifier,
             model=clip_model,
             region_layer_map=region_layer_map,
@@ -166,6 +157,7 @@ def get_model(identifier: str) -> BrainScoreModel:
             behavioral_readout_layer='encoder.layers.10',
             answer=zero_shot_answer(clip_model, clip_processor),
             capability_config={'behavior-sessions': {'behavior:choice': 'similarity'}},
+            output_inputs={'behavior:choice': {'vision:image'}},
         )
     # The readout derives the choice from its probabilities by argmax.
     return BrainScoreModel(
