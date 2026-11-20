@@ -395,9 +395,9 @@ class _PlacedProcessor(_StandInProcessor):
 
 
 def test_zero_shot_puts_the_network_and_its_inputs_on_the_wrappers_device(monkeypatch, tmp_path):
-    from brainscore.model_helpers import _device
+    from brainscore.model_helpers import device
     from . import model as family
-    monkeypatch.setattr(_device, 'select_device', lambda device=None: 'accelerator')
+    monkeypatch.setattr(device, 'select_device', lambda device=None: 'accelerator')
     network = _ScoringNetwork()
     answer = family.zero_shot_answer(network, _PlacedProcessor())
     assert network.device == 'accelerator'

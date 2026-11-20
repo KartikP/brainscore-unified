@@ -23,15 +23,15 @@ from typing import Any, Mapping, Optional, Sequence
 
 from brainscore import BrainScoreModel
 from brainscore_core.responses import Choice, Text
-from brainscore.model_helpers._device import input_device
+from brainscore.model_helpers.device import input_device
 
-from brainscore.model_helpers.replies import (_Layouts, _generation_settings, _plain_text_scores,
-                                             _scores_alone, _segment_log_probabilities)
+from brainscore.model_helpers.replies import (_Layouts, generation_settings, plain_text_scores,
+                                             _scores_alone, segment_log_probabilities)
 from brainscore.model_helpers.text_wrapper import TextWrapper
 from brainscore.model_helpers.intervention import pytorch_intervention
 
 
-class _CausalLMParts:
+class CausalLMParts:
     """The ``reply`` and ``likelihood`` parts of a text-only causal LM."""
 
     def __init__(self, model: Any, tokenizer: Any, chat_template_kwargs: Optional[dict] = None,
@@ -63,7 +63,7 @@ class _CausalLMParts:
     def reply(self, prompt) -> str:
         """Greedy unless the task's Text response gives a temperature above 0."""
         import torch
-        settings = _generation_settings(prompt, self.max_new_tokens)
+        settings = generation_settings(prompt, self.max_new_tokens)
         if isinstance(prompt.response, Text) and prompt.response.seed is not None:
             torch.manual_seed(prompt.response.seed)
         enc = self.tokenizer([self.format(prompt)], return_tensors='pt',
@@ -81,13 +81,13 @@ class _CausalLMParts:
         return _Layouts(self._continuation, self._segments)
 
     def _segments(self, prompt):
-        return _segment_log_probabilities(self.model, self.tokenizer, prompt.response.segments,
+        return segment_log_probabilities(self.model, self.tokenizer, prompt.response.segments,
                                           sliding_window=self.sliding_window)
 
     def _continuation(self, prompt, candidates: Sequence[str]) -> dict:
         """The summed log probability of each candidate after the trial's text."""
         if isinstance(prompt.response, Choice) and prompt.response.verbatim:
-            return _plain_text_scores(self.model, self.tokenizer, prompt, candidates)
+            return plain_text_scores(self.model, self.tokenizer, prompt, candidates)
         import torch
         context = self.tokenizer(self.format(prompt), add_special_tokens=False)['input_ids']
         encoded = []
@@ -141,7 +141,7 @@ def build_causal_lm_subject(identifier: str, model: Any, tokenizer: Any, *,
     every recorded ``NeuroidAssembly`` (``attrs['provenance']``).
     ``region_layer_map`` names the regions that can be recorded.
     """
-    parts = _CausalLMParts(model, tokenizer, chat_template_kwargs)
+    parts = CausalLMParts(model, tokenizer, chat_template_kwargs)
     # A deep copy: later edits to the caller's dict do not change recorded provenance.
     provenance = {'identifier': identifier, **deepcopy(dict(provenance or {}))}
     return BrainScoreModel(

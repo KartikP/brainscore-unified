@@ -39,7 +39,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     assert identifier == 'gpt2-small'
 
     from transformers import GPT2LMHeadModel, GPT2Tokenizer
-    from brainscore.model_helpers.causal_lm import _CausalLMParts
+    from brainscore.model_helpers.causal_lm import CausalLMParts
     from brainscore.model_helpers.text_wrapper import TextWrapper
 
     # The language head scores the options; its transformer is the network that is recorded.
@@ -71,7 +71,7 @@ def get_model(identifier: str) -> BrainScoreModel:
         behavioral_readout_layer='h.11',
         # The likelihood gives the log probabilities of the options of a verbatim choice.
         # GPT-2 has learned absolute positions: its cache can slide past the 1,024-token window.
-        likelihood=_CausalLMParts(language_model, tokenizer, sliding_window=True).likelihood,
+        likelihood=CausalLMParts(language_model, tokenizer, sliding_window=True).likelihood,
         # The readout derives the choice from its probabilities by argmax; the readout
         # also gives the probabilities and the rating.
         capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}},

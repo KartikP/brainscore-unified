@@ -1,5 +1,9 @@
 """Enforcement check E3: benchmarks, tools and adapters use no private model code.
 
+The folders ``models`` and ``validation`` get the import signal only: a file there
+that reaches a private module or private name of another part fails (a model
+plugin is what an outside author copies, so it uses public helpers).
+
 Contract rules 2.2 and 7.4; House Style pattern 2; Architecture and Ownership
 Map, section 6, E3.
 
@@ -43,8 +47,10 @@ TYPED_METHODS = {'process', 'start_recording', 'start_task'}
 # (path inside brainscore, finding): reason. The target is empty.
 ALLOWED = {}
 
+IMPORT_ONLY_FOLDERS = ('models', 'validation')
 
-def findings(source, module):
+
+def findings(source, module, imports_only=False):
     """Set of E3 findings for one file whose dotted name is ``module``."""
     tree = ast.parse(source)
     own_part = module.split('.')[1]
@@ -63,6 +69,8 @@ def findings(source, module):
                 found.add(f"private {'.'.join(parts[:depth + 1])}")
             else:
                 found.update(f'private {imported}.{name}' for name in private_names)
+    if imports_only:
+        return found
     for node in ast.walk(tree):
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) \
                 and node.value.id in SUBJECT_NAMES and is_private(node.attr):
@@ -74,9 +82,13 @@ def findings(source, module):
 
 
 def violations(root):
-    return {(path, finding)
-            for path, source in python_files(root, FOLDERS)
-            for finding in findings(source, module_name('brainscore', path))}
+    found = {(path, finding)
+             for path, source in python_files(root, FOLDERS)
+             for finding in findings(source, module_name('brainscore', path))}
+    found |= {(path, finding)
+              for path, source in python_files(root, IMPORT_ONLY_FOLDERS)
+              for finding in findings(source, module_name('brainscore', path), imports_only=True)}
+    return found
 
 
 def test_no_private_model_code_in_benchmarks_tools_and_adapters():

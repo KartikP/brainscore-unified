@@ -26,7 +26,7 @@ from PIL import Image
 from brainscore_core.assembly_builder import concat_neuroid_assemblies, make_layer_neuroid_coords
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.extraction_cache import store_xarray
-from brainscore.model_helpers._extractors import (
+from brainscore.model_helpers.extractors import (
     CachingExtractor, LiveRecording, as_float32, catalog_columns, catalog_paths, checked_aggregation,
     layer_assembly, run_batches,
 )
@@ -57,7 +57,7 @@ class VLMVisionWrapper(CachingExtractor):
     """
 
     # The version of what this class extracts: a part of the activation cache key
-    # (``_extractors.cache_config``), read from this class body only. Raise it by
+    # (``extractors.cache_config``), read from this class body only. Raise it by
     # hand when a change can move the extracted values, also through code it calls.
     _VERSION = 1
 
@@ -76,7 +76,7 @@ class VLMVisionWrapper(CachingExtractor):
         self._processor = processor
         self._layer_aggregation = checked_aggregation(layer_aggregation, self.VALID_AGGREGATIONS)
         self._batch_size = batch_size
-        from brainscore.model_helpers._device import place_model
+        from brainscore.model_helpers.device import place_model
         self._model, self._device = place_model(self._model, device)
 
         self._identifier = identifier or model.__class__.__name__

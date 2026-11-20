@@ -20,13 +20,13 @@ The reader is a person who registers a model.
 | Lesion or stimulate units | `intervention.py`: `pytorch_intervention` | An `intervention` part that installs and removes forward hooks on a torch model. |
 | Choose units or a layer for a region | `brainscore/selection.py` (outside this folder): `UnitSelector`, `LayerSelector`, `CompositeSelector` | Unit selection for a region; the `region_layer_map` of the model names the layers. |
 | Add facts to a score's provenance | `provenance.py`: `ProvenanceSubject` | A wrapper that puts your registration facts on every response of a subject. |
-| Choose the device | `_device.py`: `select_device` | A `torch.device`: the one you name, else CUDA, MPS or CPU. |
+| Choose the device | `device.py`: `select_device` | A `torch.device`: the one you name, else CUDA, MPS or CPU. |
 
 ## The files
 
 - `__init__.py`: the module note on the extractors; it holds no code.
-- `_device.py`: the device choice that the wrappers share.
-- `_extractors.py`: the code that every recording shares: layer lookup, hooks (`LiveRecording`), batching, the cache key (`CachingExtractor`), and the check that a recording reads only inputs it knows.
+- `device.py`: the device choice that the wrappers share.
+- `extractors.py`: the code that every recording shares: layer lookup, hooks (`LiveRecording`), batching, the cache key (`CachingExtractor`), and the check that a recording reads only inputs it knows.
 - `text_wrapper.py`: the extractor for text models.
 - `vlm_vision_wrapper.py`: the extractor for pictures in a vision-language model.
 - `video_wrapper.py`: the extractor for video models.

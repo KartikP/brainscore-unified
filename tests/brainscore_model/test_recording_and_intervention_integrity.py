@@ -200,7 +200,7 @@ def test_a_float16_and_a_float64_layer_give_the_same_region_under_both_plans(mon
 
 
 def test_a_direct_call_for_layers_of_different_dtypes_is_refused():
-    from brainscore.model_helpers._extractors import LayerDtypesDiffer
+    from brainscore.model_helpers.extractors import LayerDtypesDiffer
     wrapper = _audio_wrapper(lambda path, rate: np.full(4, 0.5, dtype=np.float32))
     with pytest.raises(LayerDtypesDiffer, match='different dtypes'):
         wrapper._from_paths(['x'], ['low', 'high'])

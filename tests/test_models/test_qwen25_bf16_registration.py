@@ -71,7 +71,7 @@ def build(monkeypatch, tmp_path):
     monkeypatch.setattr(hub, 'cached_file', lambda repo, name, **kwargs: str(tmp_path / name))
     monkeypatch.setattr(registration, 'pin_image_processor', lambda value, *a, **k: value)
     monkeypatch.setattr('brainscore.models._downloads.hf_preflight', lambda *a, **k: {'local_files_only': True, **k})
-    monkeypatch.setattr('brainscore.model_helpers._device.select_device', lambda: torch.device('cpu'))
+    monkeypatch.setattr('brainscore.model_helpers.device.select_device', lambda: torch.device('cpu'))
     monkeypatch.setattr('brainscore.model_helpers.vlm_vision_wrapper.VLMVisionWrapper', Wrapper)
     monkeypatch.setattr('brainscore.model_helpers.text_wrapper.TextWrapper', Wrapper)
     return calls, wrappers
@@ -120,7 +120,7 @@ def test_vision_extractor_keeps_its_identifier_and_cache_key(build, monkeypatch,
         built.append(VLMVisionWrapper(**kwargs))
         return built[-1]
     monkeypatch.setattr('brainscore.model_helpers.vlm_vision_wrapper.VLMVisionWrapper', construct)
-    monkeypatch.setattr('brainscore.model_helpers._device.select_device',
+    monkeypatch.setattr('brainscore.model_helpers.device.select_device',
                         lambda device=None: torch.device('cpu'))
     load_model(identifier)
     (vision,) = built

@@ -15,7 +15,7 @@ IDENTIFIER = 'qwen2.5-0.5b-instruct'
 def get_model() -> 'BrainScoreModel':
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
-    from brainscore.model_helpers._device import select_device
+    from brainscore.model_helpers.device import select_device
     from brainscore.model_helpers.causal_lm import build_causal_lm_subject
 
     checkpoint = os.environ.get('BRAINSCORE_QWEN25_05B_PATH')

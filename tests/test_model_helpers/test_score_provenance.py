@@ -240,7 +240,7 @@ def _store_in(monkeypatch, folder):
 
 def _without_the_note(monkeypatch):
     """The cache signature alone, as before the note: the baseline count."""
-    from brainscore.model_helpers._extractors import CachingExtractor, cache_signature
+    from brainscore.model_helpers.extractors import CachingExtractor, cache_signature
     monkeypatch.setattr(CachingExtractor, '_signature_and_facts', lambda self, log, stored, inputs, identifier:
                         cache_signature(self, stored, self._key_inputs(inputs), identifier))
 

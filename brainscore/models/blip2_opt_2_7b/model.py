@@ -43,7 +43,7 @@ import torch
 from PIL import Image
 from transformers import AutoProcessor, Blip2ForConditionalGeneration
 
-from brainscore.model_helpers.replies import _generation_settings, _plain_text_scores, _segment_log_probabilities
+from brainscore.model_helpers.replies import generation_settings, plain_text_scores, segment_log_probabilities
 from brainscore.model_helpers.text_wrapper import TextWrapper
 from brainscore import BrainScoreModel
 from brainscore_core.compatibility import ExecutionNotFeasibleError
@@ -72,10 +72,10 @@ def _make_answer(blip_model, blip_processor, max_new_tokens: int = 8):
     question-and-answer form, "Question: {instruction} Choose from: {labels}. Answer:",
     and the model's completion is returned for ``BrainScoreModel`` to parse.
     """
-    from brainscore.model_helpers.api_behavioral import _row_parts
+    from brainscore.model_helpers.api_behavioral import row_parts
 
     def generate(stimulus_row, instruction: str, label_set: List[str]) -> str:
-        image_column, text_column = _row_parts(stimulus_row, 'BLIP-2 answer')
+        image_column, text_column = row_parts(stimulus_row, 'BLIP-2 answer')
         # BLIP-2's own "Question: ... Answer:" form; with no instruction there is
         # no question. The row's text comes first.
         prompt = ((f"Question: {instruction} " if instruction else '')
@@ -157,14 +157,14 @@ def _make_parts(blip_model, blip_processor, max_new_tokens: int = 64):
         if isinstance(prompt.response, Text) and prompt.response.seed is not None:
             torch.manual_seed(prompt.response.seed)
         return _write(blip_model, blip_processor, text, image,
-                      _generation_settings(prompt, max_new_tokens)).strip()
+                      generation_settings(prompt, max_new_tokens)).strip()
 
     def likelihood(prompt, candidates) -> dict:
         """The summed log probability of the tokens of each option in ``f"{text} {option}"``."""
         image, text = _shown(prompt)
         if image is None:
             # No picture: BLIP-2's own language model scores the text alone, as plain text.
-            return _plain_text_scores(blip_model.language_model, tokenizer,
+            return plain_text_scores(blip_model.language_model, tokenizer,
                                       Prompt(parts=(('text', text),)), candidates)
         # The picture's query tokens, then the text with no start token.
         inputs = _on_device(blip_model, blip_processor(
@@ -191,7 +191,7 @@ def _make_parts(blip_model, blip_processor, max_new_tokens: int = 64):
     def segments(prompt):
         # A Segments task: BLIP-2's own language model scores the text alone.
         # OPT has learned absolute positions: its cache can slide past the 2,048-token window.
-        return _segment_log_probabilities(blip_model.language_model, tokenizer, prompt.response.segments,
+        return segment_log_probabilities(blip_model.language_model, tokenizer, prompt.response.segments,
                                           sliding_window=True)
 
     return reply, {'continuation': likelihood, 'segment': segments}
@@ -257,7 +257,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     # qformer/language_projection can end up on a different device than
     # vision_model and language_model. Force-align to one device for
     # end-to-end generate() to work.
-    from brainscore.model_helpers._device import select_device
+    from brainscore.model_helpers.device import select_device
     blip_model = blip_model.to(select_device())
 
     # The answer part: BLIP-2's OPT decoder completes a plain choice.
