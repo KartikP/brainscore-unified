@@ -191,12 +191,12 @@ def test_an_answer_part_can_state_the_method_similarity():
     assert choice.attrs['response']['method'] == 'similarity'
 
 
-@pytest.mark.parametrize('parts, owners', [
-    (('behavioral_readout_layer',), {'behavior:choice': 'similarity'}),
-    (('answer', 'reply'), {'behavior:rating': 'similarity'}),
+@pytest.mark.parametrize('parts, owners, remedy', [
+    (('behavioral_readout_layer',), {'behavior:choice': 'similarity'}, 'no answer= part is wired'),
+    (('answer', 'reply'), {'behavior:rating': 'similarity'}, 'does not give'),
 ], ids=['no answer part', 'a format the answer part does not give'])
-def test_a_similarity_statement_needs_an_answer_part_that_gives_the_format(parts, owners):
-    with pytest.raises(ValueError, match='similarity'):
+def test_a_similarity_statement_needs_an_answer_part_that_gives_the_format(parts, owners, remedy):
+    with pytest.raises(ValueError, match=remedy):
         _model(*parts, owners=owners)
 
 
@@ -232,8 +232,9 @@ def test_the_reply_does_not_stand_in_for_a_similarity_owner(settings):
     """A setting the stated owner cannot serve is refused before any compute."""
     calls = []
     model = _model('answer', 'reply', owners={'behavior:choice': 'similarity'}, calls=calls)
-    with pytest.raises(ExecutionNotFeasibleError, match='verbatim'):
+    with pytest.raises(ExecutionNotFeasibleError, match='verbatim') as refused:
         _run(model, ['behavior:choice'], TaskContext(response=Choice(['cat', 'dog'], **settings)))
+    assert 'Remove the named settings' in str(refused.value)      # the refusal states a remedy
     assert calls == []
 
 

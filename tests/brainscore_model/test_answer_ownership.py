@@ -375,7 +375,10 @@ METHOD_FORMS = {
 def test_every_registration_records_the_declared_method_of_the_part_that_answered():
     """For every ``BrainScoreModel(...)`` call the scan reads (no list of plugins): each stated
     method is in the vocabulary, and through ``participate`` each answer records the declared
-    method of the part that was called (shared labels and labels from a column alike)."""
+    method of the part that was called (shared labels and labels from a column alike).
+    Limit: a registration whose statement is not a literal (the Qwen family looks it up in a
+    table) is not read by the scan; its record is checked through its registry loader
+    (``tests/test_models/test_qwen_probability_statements.py``)."""
     registrations, _, _ = _registrations()
     for where, wired, stated in registrations:
         declared = {value if isinstance(value, str) else value[0] for value in stated.values()}

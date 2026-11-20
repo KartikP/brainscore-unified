@@ -427,14 +427,19 @@ class BehavioralReadout:
             raise ExecutionNotFeasibleError(
                 f"Subject '{self.owner.identifier}': the parts {givers} give {output!r} and no "
                 f"owner is stated.", task_type=task.task_type)
-        if owner is None or not (can.get(owner) or any(can.get(p) for p in givers)):
+        if owner is None or (stated != 'similarity'
+                             and not (can.get(owner) or any(can.get(p) for p in givers))):
             return None          # no part can serve it: the caller names what each needs
+        # A stated similarity owner is refused by name: the paths of the caller do not apply.
         if not can.get(owner):
             raise ExecutionNotFeasibleError(
                 f"Subject '{self.owner.identifier}': {output!r} is owned by {stated or owner!r}, which "
                 f"cannot serve this task"
                 + (f" (task settings: {', '.join(settings)})" if settings else '')
-                + '; no other part answers it.', task_type=task.task_type)
+                + '; no other part answers it. '
+                + ('Remove the named settings from the task' if settings else 'Change the task')
+                + f', or use a registration whose owner of {output!r} serves it.',
+                task_type=task.task_type)
         return owner
 
     # The formats of a response task on each side of a crossed likelihood/readout pair.
