@@ -63,3 +63,9 @@ def test_a_probabilities_task_with_no_labels_anywhere_is_refused():
     facade = LegacyBenchmarkFacade(ChanceBaseline(), visual_degrees=8)
     with pytest.raises(ValueError, match='labels'):
         facade.start_task('probabilities', fitting_stimuli=_stimuli(['f1', 'f2'], identifier='chance-nolabels'))
+
+
+def test_a_state_change_is_refused_with_what_to_ask_for():
+    from brainscore_core.events import StateChange
+    with pytest.raises(ExecutionNotFeasibleError, match='behavior'):
+        ChanceBaseline().process(StateChange(kind='lesion', target='IT'))

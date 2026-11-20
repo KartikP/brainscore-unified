@@ -146,7 +146,10 @@ class ChanceBaseline(Subject):
 
     def process(self, input_event) -> Any:
         if isinstance(input_event, (StateChange, Mapping)):
-            raise NotImplementedError
+            from brainscore_core.compatibility import ExecutionNotFeasibleError
+            raise ExecutionNotFeasibleError(
+                "chance-baseline answers stimuli only, not a state change or a closed-loop step. Ask "
+                "for 'behavior', 'behavior:choice' or 'behavior:probabilities' with a stimulus table.")
         stimuli = input_event
         label_set = self._label_set()
         n_stimuli = len(stimuli)
