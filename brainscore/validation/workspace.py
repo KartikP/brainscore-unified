@@ -225,6 +225,9 @@ def qualify(root, out, *, mode='source', wheels=None):
         command = [sys.executable, '-m', 'pytest', *suite_arguments(repo, suite), '-q', '-ra',
                    '-p', 'no:cacheprovider', '-p', 'brainscore.validation.required_checks',
                    '-p', 'brainscore.validation.cpu_profile',
+                   # A test that runs for ten minutes gets the stack of every thread in the
+                   # log, so a suite that reaches the 30-minute limit names the test that stalled.
+                   '-o', 'faulthandler_timeout=600',
                    '--umi-check-report', str(checks), '--umi-repository', repo]
         identity = out.with_name(f'{out.stem}-{repo}-installed.json')
         identity.unlink(missing_ok=True)
