@@ -438,7 +438,7 @@ class CachingExtractor:
             return in_layer_order(getattr(self, f'_from_{self._INPUTS}')(inputs, layers, stimuli_identifier), layers)
         result = getattr(self, stored)(stimuli_identifier=stimuli_identifier, layers=layers,
                                        extraction_fingerprint=signature, **{self._INPUTS: inputs})
-        return in_layer_order(labelled(c_order(result), self._identifier), layers)
+        return c_order(in_layer_order(labelled(result, self._identifier), layers))
 
     def _signature_and_facts(self, log, stored, inputs, stimuli_identifier):
         """The cache signature, and this call's settings fingerprint in the session's part log.
@@ -523,18 +523,22 @@ def labelled(assembly, identifier: str):
 
 
 def in_layer_order(assembly, layers):
-    """``assembly`` with its units in the order of the requested ``layers``.
+    """``assembly`` with its units in the order of a new pass: the layers in the
+    order of the requested ``layers``, each layer's units by their number
+    (``neuroid_num``, which every wrapper writes in pass order).
 
     The one rule of the caching wrappers: a result has its units in the order
-    the caller requested, whether it was computed now or returned by the store
-    (which merges a cached layer and a new one in its own order). Stable within
-    a layer; an assembly already in that order is returned as it is.
+    a new pass gives, whether it was computed now or returned by the store
+    (which merges a cached layer and a new one in its own order, by name); an
+    entry written before this rule reads the same way. An assembly already in
+    that order is returned as it is.
     """
     position = {layer: i for i, layer in enumerate(layers)}
-    order = [position.get(layer, len(position)) for layer in assembly['layer'].values]
-    if order == sorted(order):
+    rank = [position.get(layer, len(position)) for layer in assembly['layer'].values]
+    order = np.lexsort((assembly['neuroid_num'].values, rank))
+    if (order == np.arange(len(order))).all():
         return assembly
-    return assembly.isel(neuroid=np.argsort(order, kind='stable'))
+    return assembly.isel(neuroid=order)
 
 
 def catalog_paths(stimuli, channel: str):

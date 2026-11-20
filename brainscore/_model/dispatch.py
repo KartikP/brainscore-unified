@@ -123,13 +123,14 @@ def normalize_extractors(owner, extractor):
 @contextmanager
 def one_call_per_extractor(model, stimuli, plan):
     """Inside, the first request to an extractor in ``plan``
-    (``[(extractor, layers), ...]``) on ``stimuli`` runs all its listed layers
+    (``[(extractor, layers, alone), ...]``) on ``stimuli`` runs all its listed layers
     once, and each request of those layers gets its part of that output
-    (``_SharedCall``). The caller lists only extractors that declare
+    (``_SharedCall``). ``alone``: the session asked that extractor for one
+    region only; the call is shared because the plan added other layers. The caller lists only extractors that declare
     ``independent_layers``. Every other request runs as before."""
     previous = model._shared_calls
-    model._shared_calls = (stimuli, {id(extractor): _SharedCall(extractor, layers)
-                                     for extractor, layers in plan})
+    model._shared_calls = (stimuli, {id(extractor): _SharedCall(extractor, layers, alone)
+                                     for extractor, layers, alone in plan})
     try:
         yield
     finally:
@@ -440,15 +441,20 @@ class _SharedCall:
     omits one, is called as before). When the listed layers have different
     dtypes, one assembly cannot keep each layer's dtype: the extractor refuses
     the shared call (``LayerDtypesDiffer``) and every request is called alone.
+    So too when the store reads only stored results (``RESULTCACHING_CACHEDONLY``)
+    and a listed layer is not stored (``NotCachedError``): a request for stored
+    layers is read, and a request for a layer that is not stored still fails.
     """
 
-    def __init__(self, extractor, layers) -> None:
+    def __init__(self, extractor, layers, alone: bool = False) -> None:
         self.extractor = extractor
+        self.alone = alone      # release would call the extractor for one region: its part is in C order
         self.layers = list(layers)
         self.output = None
         self.shared = True
 
     def __call__(self, stimuli, layers):
+        from result_caching import NotCachedError
         from brainscore.model_helpers.extractors import LayerDtypesDiffer
         from . import parts
         if self.shared and set(layers) <= set(self.layers):
@@ -456,13 +462,14 @@ class _SharedCall:
                 try:
                     with parts.unnoted():     # each request of the shared pass notes its own layers
                         self.output = call_extractor(self.extractor, stimuli, self.layers)
-                except LayerDtypesDiffer:
+                except (LayerDtypesDiffer, NotCachedError):
                     self.shared = False
                     return call_extractor(self.extractor, stimuli, layers)
             part = _layers_of(self.output, list(layers))
             if part is not None:
                 parts.note('extractor', self.extractor, layers)
-                return part
+                from brainscore.model_helpers.extractors import c_order
+                return c_order(part) if self.alone else part
         return call_extractor(self.extractor, stimuli, layers)
 
 
