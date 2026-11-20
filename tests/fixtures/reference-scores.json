@@ -134,6 +134,36 @@
     "language": "8b0875a"
    },
    "note": "the second run of two old pairs on the code of the twenty-seventh push (reference machine, store off): a label benchmark and the odd-one-out benchmark with an old vision model"
+  },
+  "futrell-base": {
+   "date": "2026-11-20",
+   "commits": {
+    "core": "3a67a726",
+    "unified": "ca1f4081",
+    "vision": "488ea3f2",
+    "language": "d25c13a3"
+   },
+   "note": "the pair gpt2-small on Futrell2018-pearsonr, measured once on the reference machine (a new store for each run, store entry on); value 0x1.dc4415830125cp-2, raw 0.39907878707753985, ceiling 0.8580430223590997, equal in all three runs. Code: the base of unified pull request 157."
+  },
+  "futrell-h157": {
+   "date": "2026-11-20",
+   "commits": {
+    "core": "3a67a726",
+    "unified": "a3737391",
+    "vision": "488ea3f2",
+    "language": "d25c13a3"
+   },
+   "note": "the pair gpt2-small on Futrell2018-pearsonr, measured once on the reference machine (a new store for each run, store entry on); value 0x1.dc4415830125cp-2, raw 0.39907878707753985, ceiling 0.8580430223590997, equal in all three runs. Code: the head of unified pull request 157."
+  },
+  "futrell-release": {
+   "date": "2026-11-20",
+   "commits": {
+    "core": "e14b7e5e",
+    "unified": "f02b8dd7",
+    "vision": "c8622706",
+    "language": "f4561682"
+   },
+   "note": "the pair gpt2-small on Futrell2018-pearsonr, measured once on the reference machine (a new store for each run, store entry on); value 0x1.dc4415830125cp-2, raw 0.39907878707753985, ceiling 0.8580430223590997, equal in all three runs. Code: the release tips of unified-model-interface-v2 at that time."
   }
  },
  "scores": [
@@ -659,6 +689,20 @@
     "reference3-run2"
    ],
    "math_threads": "openblas=1,openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
+  },
+  {
+   "subject": "gpt2-small",
+   "benchmark": "Futrell2018-pearsonr",
+   "value": 0.46510346996391205,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "futrell-base",
+    "futrell-h157",
+    "futrell-release"
+   ],
+   "math_threads": "openblas=16,openblas=16,openmp=16,openmp=8,torch=8"
   }
  ]
 }
