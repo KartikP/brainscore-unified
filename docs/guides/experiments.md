@@ -145,8 +145,9 @@ off and tests the changed network, as an animal trained before a lesion is teste
 Each change stays in place during the fit, so the order of the hooks on the network does
 not change. Only a change made by `pytorch_intervention` can be switched off; with
 another intervention part active, the fit stops with an error. A change made by a network
-tool (`Ablate`, `ScaleActivity`, `PatchActivity`) is not the subject's: it stays on, so the
-fit sees the changed network.
+tool (`Ablate`, `ScaleActivity`, `PatchActivity`) is not the subject's and cannot be switched
+off: the experiment refuses a network tool with `readout_fit='intact'` before any compute
+(`ExecutionNotFeasibleError`). Send the change with `Intervene`, or use `readout_fit='current'`.
 
 For models that generate answers, `RecordNeural(..., during='prompt')` keeps the prompt
 forward pass. The extractor must support recording during answers. Declared channels
