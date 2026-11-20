@@ -409,21 +409,21 @@ _EDITS = {'merge across parts': (_join_the_dog, ['the', 'dog ran', 'home']),
 
 @pytest.mark.parametrize('name', list(_EDITS))
 def test_a_tokenizer_whose_earlier_tokens_move_is_refused_before_a_forward_pass(tiny, name):
-    from brainscore.model_helpers.replies import _segment_log_probabilities
+    from brainscore.model_helpers.replies import segment_log_probabilities
     network, tokenizer = tiny
     edit, parts = _EDITS[name]
     calls = []
     network.register_forward_hook(lambda *args: calls.append(1))
     with pytest.raises(ExecutionNotFeasibleError, match=r'part 2\b') as caught:
-        _segment_log_probabilities(network, _EditedTokens(tokenizer, edit), parts)
+        segment_log_probabilities(network, _EditedTokens(tokenizer, edit), parts)
     assert 'first tokens' in str(caught.value) and 'add_special_tokens' in str(caught.value)
     assert calls == []
 
 
 def test_a_stable_tokenizer_keeps_its_values_and_parameters(tiny):
-    from brainscore.model_helpers.replies import _segment_log_probabilities
+    from brainscore.model_helpers.replies import segment_log_probabilities
     network, tokenizer = tiny
     parts = ['the dog', 'ran home .', 'the', 'cat']
-    values, parameters = _segment_log_probabilities(network, _EditedTokens(tokenizer, list), parts)
-    reference, reference_parameters = _segment_log_probabilities(network, tokenizer, parts)
+    values, parameters = segment_log_probabilities(network, _EditedTokens(tokenizer, list), parts)
+    reference, reference_parameters = segment_log_probabilities(network, tokenizer, parts)
     assert values == reference and parameters == reference_parameters
