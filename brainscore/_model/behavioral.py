@@ -565,11 +565,11 @@ class BehavioralReadout:
                     f"Subject '{owner.identifier}' cannot give implied probabilities: "
                     'it needs likelihood= or a readout (behavioral_readout_layer=, '
                     'fitting_stimuli).', task_type=task.task_type)
-            if not requested - self._PROBABILITY_SIDE and unread:
-                # Only the probability side is requested, no region is recorded and no later
-                # trial reads this one: nothing reads an answer of the choice owner, so it
-                # needs none and only the probability owner runs (ADR-0063 decision 1,
-                # ADR-0073 decision 5).
+            if not requested - self._PROBABILITY_SIDE and (unread or answer_format not in self.owners):
+                # Only the probability side is requested, and no region is recorded and no
+                # later trial reads this one, or the choice has no owner: only the probability
+                # owner runs (ADR-0063 decision 1, ADR-0073 decision 5); a format the session
+                # does not request needs no owner.
                 return source, source
         path = self._owner_serving(answer_format, can, task, settings)
         if path is None:
@@ -582,7 +582,8 @@ class BehavioralReadout:
                 + (f" with the task settings {', '.join(settings)}" if settings else '')
                 + '. Paths tried: ' + '; '.join(f'{p} needs {need}' for p, need in needs.items()),
                 task_type=task.task_type)
-        if log_probabilities and not (requested == {LOG_PROBABILITIES} and unread):
+        if log_probabilities and not (requested == {LOG_PROBABILITIES} and unread) and (
+                'behavior:choice' in self.owners or requested & self._CHOICE_SIDE):
             # The task's choice format keeps an owner that can serve the task, as the setup
             # of the task always checked (``_eligible_picks``); the likelihood answers it here.
             # A session that requests only the log probabilities and that nothing else reads

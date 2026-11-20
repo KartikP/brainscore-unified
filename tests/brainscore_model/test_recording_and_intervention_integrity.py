@@ -672,7 +672,8 @@ _TASKS = {
 }
 _PARTS = {
     'none': {},
-    'readout without fitting': {'behavioral_readout_layer': 'x'},
+    'readout without fitting': {'behavioral_readout_layer': 'x', 'capability_config': {
+        'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}},
     'answer': {'answer': lambda row, instruction, labels: labels[0]},
     'likelihood': {'likelihood': lambda prompt, labels: {label: 0.0 for label in labels}},
     'reply': {'reply': lambda prompt: 'a'},
