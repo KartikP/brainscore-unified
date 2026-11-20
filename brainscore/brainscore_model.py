@@ -64,6 +64,7 @@ class BrainScoreModel(Subject):
         required_channels: Optional[Iterable[str]] = None,
         visual_degrees: int = 8,
         capability_config: Optional[Dict[str, Any]] = None,
+        output_inputs: Optional[Mapping[str, Iterable[str]]] = None,
     ) -> None:
         """A model (or, in principle, a human) evaluated through the unified interface.
 
@@ -173,8 +174,9 @@ class BrainScoreModel(Subject):
             ``subject.capability_config``. Under ``'behavior-sessions'``: the
             owner of answer formats, for example ``{'behavior:rating':
             'generation', 'behavior:probabilities': ('likelihood', 'softmax')}``. A part (``'generation'``, which is
-            ``answer``/``reply``; ``'likelihood'``; ``'readout'``) owns a
-            format it gives natively; ``(part, conversion)`` owns a format the
+            ``answer``/``reply``; ``'likelihood'``; ``'readout'``; ``'similarity'``,
+            an ``answer`` that chooses by the similarity of an input to each
+            option and reads no instruction) owns a format it gives natively; ``(part, conversion)`` owns a format the
             part derives: the readout gives ``behavior:choice`` by
             ``'argmax'``, the likelihood gives ``behavior:probabilities`` by
             ``'softmax'`` and ``behavior:choice`` by ``'softmax_argmax'``. A
@@ -192,6 +194,13 @@ class BrainScoreModel(Subject):
             write. The owner answers its channel. When the owner cannot serve a
             task form, the session is refused before any compute: no other part
             stands in. Log probabilities come only from ``likelihood``.
+        :param output_inputs: the inputs that an answer part needs, by output
+            (rule 4.11, a part states the inputs that its answer needs), for
+            example ``{'behavior:choice': {'vision:image'}}`` for a choice made by
+            the similarity of a picture to each label. Pre-flight gives N/A when a
+            benchmark sends none of them. A region states its inputs in
+            ``region_layer_map``, not here. The property ``output_inputs`` lists
+            these entries with the region entries.
         """
         if memory not in (None, 'trial_history'):
             raise ValueError("memory must be None or 'trial_history'")
@@ -207,6 +216,12 @@ class BrainScoreModel(Subject):
         self._install_region_layer_map(region_layer_map or {})
         self._visual_degrees = visual_degrees
         self._capability_config = dict(capability_config or {})
+        regions = sorted(output for output in (output_inputs or {}) if output.startswith('neural:'))
+        if regions:
+            raise ValueError(f"output_inputs names {regions}: a region states its inputs in "
+                             f"region_layer_map (LayerSelector modality), not in output_inputs.")
+        self._answer_inputs = {output: frozenset(_channels(inputs))
+                               for output, inputs in (output_inputs or {}).items()}
         self._behavioral_readout_layer = behavioral_readout_layer
         self._answer, self._reply = answer, reply
         self._likelihood, self._segment_likelihood = _likelihood_layouts(likelihood)
@@ -310,9 +325,10 @@ class BrainScoreModel(Subject):
         A region whose ``modality`` is a tuple also lists the inputs after the
         first: the registration states that they reach its layer in an answering
         pass (rule 2.5), and a passive session from them is refused at its start.
-        Behavior, policy and perturbation outputs are not listed: behavior and
-        policy can be answered from any input the model takes, perturbation from
-        the intervention inputs it takes (core pre-flight, rule 4).
+        An answer output is listed when the registration states the inputs its
+        answer part needs (the ``output_inputs`` argument); another behavior or a
+        policy output can be answered from any input the model takes, perturbation
+        from the intervention inputs it takes (core pre-flight, rule 4).
         """
         from ._model.recording import region_extractor_keys
         listed = {}
@@ -321,7 +337,7 @@ class BrainScoreModel(Subject):
                         | self._input_channels(self._region_inputs.get(region, ())))
             if channels:
                 listed[f'neural:{region}'] = frozenset(channels)
-        return listed
+        return {**listed, **self._answer_inputs}
 
     def check_session_support(self, channels):
         """The one capability that runs a session requesting ``channels``.
