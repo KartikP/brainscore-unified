@@ -171,8 +171,11 @@ def test_no_pair_that_answers_today_becomes_not_applicable():
     A readout without a choice statement (no registration) could not answer EWoK choice: it
     owns no choice (rule 4.11)."""
     ewok_choice = TaskContext(response=Choice(labels=('1', '2'), verbatim=True), trial_memory='none')
+    calls = []
     with pytest.raises(ExecutionNotFeasibleError):
-        _stand_in(['behavioral_readout_layer'], {})._behavioral._choose_path(ewok_choice)
+        _stand_in(['behavioral_readout_layer'], {}, calls).participate(
+            stimulus_session(STIMULI, ['behavior'], ewok_choice))
+    assert calls == []
 
 
 def test_the_benchmark_declarations_match_the_matrix(synthetic_roar, prepared):

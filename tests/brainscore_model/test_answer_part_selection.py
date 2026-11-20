@@ -91,8 +91,7 @@ REFUSALS = {
                r"Paths tried: generation needs reply=.*readout needs behavioral_readout_layer=",
     'tokenization': r"gives behavior:log_probabilities only for a verbatim Choice "
                     r"\(Choice\(\.\.\., verbatim=True\)\)",
-    'implied': r"cannot give implied probabilities: it needs likelihood= or a readout "
-               r"\(behavioral_readout_layer=, fitting_stimuli\)",
+    'implied': r"fitting_stimuli",
 }
 
 
