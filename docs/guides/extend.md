@@ -55,7 +55,7 @@ itself, as `count` here. Copy payloads before keeping them; never modify them.
 | Key | Value |
 | --- | --- |
 | `kind` | what happened: `repetition_start`, `session_context`, `input`, `output`, `error`, `repetition_end`; tools add `intervention`, `intervention_start`, `intervention_end`, `activity`, `patch_reference` |
-| `payload` | for `input` and `output` of a session, the `StreamEvent` (`channel`, `payload`, `t_ms`, `meta`); for the other kinds, a dict |
+| `payload` | for `input` and `output` of a session, the `StreamEvent` (`channel`, `payload`, `t_ms`, `meta`); for the other kinds, a dict. The `payload` of a `StreamEvent` on `behavior:<format>` is an assembly with a `choice` axis for a readout model, or one checked row (a dict) for a one-trial answer ([Behavior](behavior.md#how-an-answer-was-given)) |
 | `source` | who published it: `'protocol'`, or the `name` of a tool |
 | `condition`, `repetition_id` | the condition and the repetition the event belongs to |
 | `event_id` | one identifier per input; its outputs carry the same one |

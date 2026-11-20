@@ -70,9 +70,15 @@ def is_private(name):
     return name.startswith('_') and not name.startswith('__')
 
 
-def compare(found, allowed, what):
-    """Fail on a finding that is not allowed and on an allowed entry not found."""
+def compare(found, allowed, what, remedies=None):
+    """Fail on a finding that is not allowed and on an allowed entry not found.
+
+    ``remedies`` maps the first element of a finding to what the author must do;
+    the message prints it for each rule that a new finding fails on.
+    """
     new = sorted(set(found) - set(allowed))
     stale = sorted(set(allowed) - set(found))
-    assert not new, f'new {what}: {new}'
+    hints = ''.join(f'\n  {rule}: {remedies[rule]}' for rule in sorted({n[0] for n in new})
+                    if remedies and rule in remedies)
+    assert not new, f'new {what}: {new}{hints}'
     assert not stale, f'allow-list entries that no longer violate; remove them: {stale}'

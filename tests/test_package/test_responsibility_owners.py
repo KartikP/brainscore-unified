@@ -302,6 +302,24 @@ RESPONSIBILITIES = {
                                 {'unified:__init__.py', 'core:io_catalog.py'}),
 }
 
+# What the author must do when a rule fails (shown by the failure message).
+REMEDIES = {
+    'R1 channel matching': 'call channel_declared from brainscore_core.streaming; do not compare channel names yourself',
+    'R2 declaration validation': 'let score() and pre-flight check the declarations; do not add a second check',
+    'R4 N/A decision': 'do not build an N/A score; declare inputs and outputs, and pre-flight decides',
+    'R6 one Session class': 'do not subclass Session; vary the source and give it to Session(source, outputs, task)',
+    'R7 response validation': 'respond through session.respond; the session checks each event',
+    'R9 extractor choice': 'name the extractor by modality in the extractor= mapping of BrainScoreModel',
+    'R11 hooks on a network': 'attach hooks through an extractor or a pytorch_intervention; do not register them yourself',
+    'R12 intervention apply and undo': 'write weights through an intervention capability (it applies and undoes the change)',
+    'R14 encoding regression': 'fit through the metrics of brainscore.metrics.encoding or load_metric; do not import a regressor',
+    'R15 score construction': ('build a ceiling inside the ceiling= argument (or a ceiling property) '
+                               'and return the score with benchmark_score; a benchmark builds no Score itself'),
+    'R17 metadata stamp': 'score() stamps the metadata; do not stamp a score yourself',
+    'R18 cache validity': 'do not switch the cache yourself; give the extractor a cache_config()',
+    'R20 registry assignment': 'register with a line in your plugin __init__.py (for example model_registry[id] = factory)',
+}
+
 # (responsibility, site): reason. Violations only; the target is empty.
 ALLOWED = {}
 
@@ -345,7 +363,7 @@ def violations(files, responsibilities=RESPONSIBILITIES):
 
 def test_each_exclusive_responsibility_has_one_definition_site():
     compare(violations(_library_files()), {**ALLOWED, **STATED_EXCEPTIONS},
-            'second definition sites')
+            'second definition sites', REMEDIES)
 
 
 def test_a_stated_exception_is_not_also_a_violation():
@@ -366,6 +384,8 @@ def test_check_fails_on_a_new_violation():
              ('core:new.py', 'class Mine(Session):\n    pass\n')]
     with pytest.raises(AssertionError, match='new second definition sites'):
         compare(violations(files), ALLOWED, 'second definition sites')
+    with pytest.raises(AssertionError, match=r'R15 score construction: .*benchmark_score'):
+        compare(violations(files), ALLOWED, 'second definition sites', REMEDIES)
     assert violations(files) == {('R14 encoding regression', 'unified:tools/new_tool.py'),
                                  ('R15 score construction', 'unified:benchmarks/new/benchmark.py'),
                                  ('R6 one Session class', 'core:new.py')}

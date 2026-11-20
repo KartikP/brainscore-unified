@@ -91,7 +91,7 @@ In an experiment with several conditions, attach the `Intervene` tool: it sends 
 | | `Intervene` on a subject | A network tool on a network inside a subject |
 | --- | --- | --- |
 | Undo | the subject, by the handle, at the end of the repetition; `reset()` of the subject also undoes it | the tool, when its repetition ends, also after an error; `reset()` of the subject does not undo it |
-| Readout | fits again after each apply and undo; `readout_fit='intact'` fits with the change switched off | not told; the experiment resets the subject at each repetition, so the readout fits on the changed network; `readout_fit='intact'` does not switch the hook off, so that fit also sees the changed network |
+| Readout | fits again after each apply and undo; `readout_fit='intact'` fits with the change switched off | not told; the experiment resets the subject at each repetition, so the readout fits on the changed network; `readout_fit='intact'` with a network tool is refused before any compute |
 | Stored activations | not read or stored while the change is active | the key holds the network's forward hooks, so a hooked pass gets its own entry; `PatchActivity` refuses a pass served from storage |
 | Record of the change | the subject answers on `perturbation`; `Intervene` adds an `intervention` event with the handle | the tool adds `intervention_start` and `intervention_end` events with its description; `PatchActivity` also saves its reference |
 
