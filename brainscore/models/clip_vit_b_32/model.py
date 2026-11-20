@@ -78,7 +78,8 @@ def zero_shot_answer(clip_model, clip_processor):
     network; its ``logits_per_image`` (the cosine similarity of the projections
     scaled by ``logit_scale``) gives one logit per label, and the label with the
     largest softmax probability is the answer. The labels are the task's own; a label that is not text is refused.
-    CLIP takes no instruction: the instruction is not shown.
+    The registration states the method ``similarity``: the part declares no instruction
+    input, so a session never gives it one (``instruction`` is always None here).
     """
     from brainscore.model_helpers.api_behavioral import _row_parts
     from brainscore.model_helpers._device import select_device
@@ -111,6 +112,16 @@ def zero_shot_answer(clip_model, clip_processor):
         return label_set[int(probabilities[0].argmax())]
 
     return answer
+
+
+class ZeroShotCLIP(BrainScoreModel):
+    """The zero-shot registration: its choice needs a picture (rule 4.11, a part states
+    the inputs that its answer needs), so pre-flight gives N/A for a choice task with no
+    picture. Its regions keep the inputs of their extractors (text for the language region)."""
+
+    @property
+    def output_inputs(self):
+        return {**super().output_inputs, 'behavior:choice': frozenset({'vision:image'})}
 
 
 def get_model(identifier: str) -> BrainScoreModel:
@@ -147,14 +158,14 @@ def get_model(identifier: str) -> BrainScoreModel:
     # will fit a logistic readout on top of this layer's features.
     if zero_shot:
         # The answer part owns the choice; the readout keeps the probabilities.
-        return BrainScoreModel(
+        return ZeroShotCLIP(
             identifier=identifier,
             model=clip_model,
             region_layer_map=region_layer_map,
             extractor=extractor,
             behavioral_readout_layer='encoder.layers.10',
             answer=zero_shot_answer(clip_model, clip_processor),
-            capability_config={'behavior-sessions': {'behavior:choice': 'generation'}},
+            capability_config={'behavior-sessions': {'behavior:choice': 'similarity'}},
         )
     # The readout derives the choice from its probabilities by argmax.
     return BrainScoreModel(
