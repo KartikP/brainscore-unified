@@ -78,10 +78,11 @@ def zero_shot_answer(clip_model, clip_processor):
     network; its ``logits_per_image`` (the cosine similarity of the projections
     scaled by ``logit_scale``) gives one logit per label, and the label with the
     largest softmax probability is the answer. The labels are the task's own; a label that is not text is refused.
-    CLIP takes no instruction: the instruction is not shown.
+    The registration states the method ``similarity``: the part declares no instruction
+    input, so a session never gives it one (``instruction`` is always None here).
     """
-    from brainscore.model_helpers.api_behavioral import _row_parts
-    from brainscore.model_helpers._device import select_device
+    from brainscore.model_helpers.api_behavioral import row_parts
+    from brainscore.model_helpers.device import select_device
 
     # The complete network (projection heads included) and its inputs go to the
     # device the wrappers select.
@@ -94,7 +95,7 @@ def zero_shot_answer(clip_model, clip_processor):
         if not label_set or not all(isinstance(label, str) for label in label_set):
             raise ValueError(f'{ZERO_SHOT_IDENTIFIER}: a Choice needs its labels as text; '
                              f'got {label_set!r}.')
-        image_column, _ = _row_parts(stimulus_row, f'{ZERO_SHOT_IDENTIFIER} answer')
+        image_column, _ = row_parts(stimulus_row, f'{ZERO_SHOT_IDENTIFIER} answer')
         if image_column is None:
             raise ValueError(f'{ZERO_SHOT_IDENTIFIER}: the stimulus row has no image.')
         with Image.open(stimulus_row[image_column]) as image:
@@ -146,7 +147,8 @@ def get_model(identifier: str) -> BrainScoreModel:
     # the 'IT' layer convention). Behavioral benchmarks like Ferguson2024
     # will fit a logistic readout on top of this layer's features.
     if zero_shot:
-        # The answer part owns the choice; the readout keeps the probabilities.
+        # The answer part owns the choice; the readout keeps the probabilities. The
+        # choice needs a picture, so a choice task with no picture is N/A at pre-flight.
         return BrainScoreModel(
             identifier=identifier,
             model=clip_model,
@@ -154,7 +156,8 @@ def get_model(identifier: str) -> BrainScoreModel:
             extractor=extractor,
             behavioral_readout_layer='encoder.layers.10',
             answer=zero_shot_answer(clip_model, clip_processor),
-            capability_config={'behavior-sessions': {'behavior:choice': 'generation'}},
+            capability_config={'behavior-sessions': {'behavior:choice': 'similarity'}},
+            output_inputs={'behavior:choice': {'vision:image'}},
         )
     # The readout derives the choice from its probabilities by argmax.
     return BrainScoreModel(

@@ -13,7 +13,11 @@ dataset to download. The subject must have a ``policy`` part (it emits
 the ``motor`` channel); a feature/behavioral model with no ``policy`` part is
 correctly incompatible.
 """
+import contextvars
+from functools import cached_property
+
 import numpy as np
+import pandas as pd
 
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
@@ -24,16 +28,24 @@ from brainscore.harnesses.grid_game import (
 from brainscore.benchmarks._score import benchmark_score
 
 
+# What the metric does with an invalid move (rule 4.12; decided 2026-11-19).
+ANSWER_POLICY = ('An invalid move leaves the agent in its place for that step and counts as an '
+                 'invalid step; the episode and the run go on. The result is invalid when more '
+                 'than 10 percent of the steps are invalid or missing.')
+
+
 def _run(subject, n_episodes, size, max_steps, base_seed):
-    """Run ``n_episodes`` seeded episodes; return (success_rate, mean_efficiency)."""
-    solves, effs = [], []
+    """Run ``n_episodes`` seeded episodes; return (success_rate, mean_efficiency, the
+    step states of each episode)."""
+    solves, effs, states = [], [], []
     for i in range(n_episodes):
         env = GridGameEnv(size=size, seed=base_seed + i, max_steps=max_steps)
         res = play_game(subject, env)
         solves.append(1.0 if res['solved'] else 0.0)
+        states.append(res['step_states'])
         if res['solved']:
             effs.append(res.get('efficiency', 0.0))
-    return float(np.mean(solves)), (float(np.mean(effs)) if effs else 0.0)
+    return float(np.mean(solves)), (float(np.mean(effs)) if effs else 0.0), states
 
 
 def policy_model(policy, identifier):
@@ -48,7 +60,10 @@ class GridGameBenchmark(BenchmarkBase):
 
     Metric: success rate over ``n_episodes`` (each a fresh seeded board),
     ceiling-normalized by the greedy oracle. ``attrs`` carry the raw rate, the
-    random-action floor, mean path efficiency, and an ``above_floor`` flag.
+    random-action floor (the mean rate of the random policy over seeds 0 to 29),
+    mean path efficiency, and an ``above_floor`` flag. An invalid move (no move) leaves
+    the agent in place for that step (``ANSWER_POLICY``); the score carries the step
+    counts and ``result_validity`` against a limit of 10 percent.
 
     :param size: grid side length. :param n_episodes: episodes to average.
     :param max_steps: per-episode step budget. :param base_seed: episode seeds
@@ -69,21 +84,40 @@ class GridGameBenchmark(BenchmarkBase):
         self.required_input_channels = frozenset({'observation', 'instruction', 'reward'})
         self.requested_output_channels = frozenset({'motor'})
 
-        common = dict(n_episodes=n_episodes, size=size,
-                      max_steps=max_steps, base_seed=base_seed)
-        oracle_rate, _ = _run(policy_model(greedy_oracle_policy, 'oracle'), **common)
-        self._random_floor, _ = _run(
-            policy_model(random_action_policy(0), 'random'), **common)
-
         super().__init__(
             identifier=f'GridGame-reach-{size}x{size}',
-            version=1, parent='closed_loop',
-            ceiling=Score(max(oracle_rate, 1e-6)), bibtex='')
+            version=1, parent='closed_loop', ceiling=None, bibtex='')
+
+    @cached_property
+    def _calibration(self):
+        """The oracle rate and the random floor, measured at first use, not when the
+        benchmark is built: a subject that is N/A waits for no episode. The episodes run
+        in an empty context, so they are not noted in the run record of a scored subject."""
+        common = dict(n_episodes=self.n_episodes, size=self.size,
+                      max_steps=self.max_steps, base_seed=self.base_seed)
+
+        def measure():
+            oracle_rate, _, _ = _run(policy_model(greedy_oracle_policy, 'oracle'), **common)
+            floor = float(np.mean([
+                _run(policy_model(random_action_policy(seed), f'random-{seed}'), **common)[0]
+                for seed in range(30)]))   # ADR-0038: one seed gives 0.2 to 0.6
+            return oracle_rate, floor
+        return contextvars.Context().run(measure)
+
+    @cached_property
+    def ceiling(self) -> Score:
+        return Score(max(self._calibration[0], 1e-6))
+
+    @property
+    def _random_floor(self) -> float:
+        return self._calibration[1]
 
     def __call__(self, subject) -> Score:
-        rate, eff = _run(subject, n_episodes=self.n_episodes, size=self.size,
-                         max_steps=self.max_steps, base_seed=self.base_seed)
-        score = benchmark_score(self, raw=rate, metric='success_rate')
+        rate, eff, states = _run(subject, n_episodes=self.n_episodes, size=self.size,
+                                 max_steps=self.max_steps, base_seed=self.base_seed)
+        score = benchmark_score(
+            self, raw=rate, metric='success_rate', answer_policy=ANSWER_POLICY, invalid_limit=0.1,
+            answers=[pd.DataFrame({'response_state': episode}) for episode in states])
         score.attrs['success_rate'] = rate
         score.attrs['mean_efficiency'] = eff
         score.attrs['random_floor'] = self._random_floor

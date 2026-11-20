@@ -16,7 +16,7 @@ import numpy as np
 import torch
 import brainscore
 from brainscore.data.lebel2023.data import _pickle_path
-from brainscore.model_helpers._device import select_device
+from brainscore.model_helpers.device import select_device
 
 REPO = Path(__file__).resolve().parents[2]
 ASSETS = REPO / 'notebooks' / 'assets' / 'whole_brain'

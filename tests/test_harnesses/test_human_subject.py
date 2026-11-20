@@ -61,3 +61,23 @@ def test_reset_clears_config():
     h.reset()
     with pytest.raises(RuntimeError, match="answers in a session"):
         h.process("stim")
+
+
+def test_an_undeclared_input_never_reaches_the_rig():
+    import numpy as np
+    from brainscore_core.streaming_helpers import neural_response
+    from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    stimuli = StimulusSet({'stimulus_id': ['a', 'b'], 'image_path': ['a.png', 'b.png'],
+                           'sentence': ['one', 'two']})
+    stimuli.identifier = 'rig-inputs'
+    shown = []
+
+    def record(region, table):
+        ids = list(table['stimulus_id'])
+        return NeuroidAssembly(np.ones((len(ids), 1)), dims=['presentation', 'neuroid'],
+                               coords={'stimulus_id': ('presentation', ids), 'neuroid_id': ('neuroid', ['n'])})
+
+    rig = HumanSubject("p1", region_layer_map={"IT": "array"}, present_fn=shown.append, record_fn=record)
+    neural_response(rig, stimuli, ['neural:IT'])
+    assert shown and all('sentence' not in table.columns for table in shown)   # text is not declared

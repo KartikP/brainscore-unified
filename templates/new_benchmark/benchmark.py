@@ -21,7 +21,7 @@ from brainscore_core.assembly_builder import replace_presentation_coord
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
 from brainscore_core.streaming_helpers import neural_response
-from brainscore import benchmark_registry, load_metric
+from brainscore import load_metric
 from brainscore.benchmarks import benchmark_score, not_estimated
 
 from .standin_data import BIBTEX, load_assembly   # TODO: your data package
@@ -89,6 +89,3 @@ class YourBenchmark(BenchmarkBase):
         # benchmark_score divides by a measured ceiling (the score is raw otherwise) and
         # writes raw, ceiling, normalized, metric and benchmark_version.
         return benchmark_score(self, raw=raw, metric='linear_predictivity')
-
-
-benchmark_registry['your-benchmark'] = lambda: YourBenchmark()

@@ -1,5 +1,10 @@
 from brainscore import model_registry
-from .model import get_model
+
+
+def get_model(identifier):  # defer the model.py import to load time
+    from .model import get_model
+    return get_model(identifier)
+
 
 model_registry['claude-opus-behavioral'] = lambda: get_model('claude-opus-behavioral')
 model_registry['claude-haiku-behavioral'] = lambda: get_model('claude-haiku-behavioral')

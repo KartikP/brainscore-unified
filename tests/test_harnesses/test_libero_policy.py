@@ -82,6 +82,14 @@ def test_invalid_actions_fail_without_becoming_a_benchmark_result(actions):
         LiberoChunkPolicy(BadPolicy())({'observation': request(), 'instruction': 'task'})
 
 
+def test_a_chunk_shorter_than_the_execution_horizon_states_both_lengths():
+    """The fixture policy predicts 10 actions; a horizon of 12 is refused with both lengths."""
+    with pytest.raises(ValueError) as raised:
+        LiberoChunkPolicy(FixturePolicy(), execution_horizon=12)({'observation': request(),
+                                                                  'instruction': 'task'})
+    assert '10' in str(raised.value) and '12' in str(raised.value)
+
+
 @pytest.mark.parametrize('key,value', [('observation/state', np.zeros(7)),
                                      ('observation/state', np.full(8, np.nan)),
                                      ('observation/image', np.zeros((4, 4, 3)))])

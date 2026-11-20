@@ -414,3 +414,12 @@ def test_participate_only_subject_runs_the_benchmark(synthetic_roar):
                                population=list(range(10))).resolve(None)
     assert (control.layer, control.indices) == ('L', expected.indices)
     assert control.metadata['unit_population'] == list(range(10))
+
+
+def test_a_registered_factory_passes_positional_arguments_to_the_class(monkeypatch):
+    import brainscore
+    from brainscore.benchmarks.induced_dyslexia import benchmark as module
+    received = []
+    monkeypatch.setattr(module, 'InducedDyslexia', lambda *a, **k: received.append((a, k)))
+    brainscore.benchmark_registry['Yeatman2021-induced_dyslexia-text']('VWFA', 10)
+    assert received[0][0] == ('VWFA', 10)

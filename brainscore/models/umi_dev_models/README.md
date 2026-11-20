@@ -31,7 +31,7 @@ measurements of the same weights.
   part is refused. The processor loads before the weights, so a processor fault shows before a
   large download.
 - **Provenance:** each score names the checkpoint and its revision (the commit of its Hub files;
-  `not pinned` until a load test fixes it), the depth hypothesis and the readout layer.
+  a full commit; the plugin test refuses any other value), the depth hypothesis and the readout layer.
 - **One session for regions, one session for an answer:** the language layer is recorded from text
   in a passive session, and a session that asks for it under a task (also with neural outputs only)
   is refused before any compute. A recording during an answer has to be verified for each family
@@ -57,7 +57,7 @@ it would run for SmolVLM, InternVL3 and Qwen2.5-VL). These abilities also need a
 code before a later study could declare them:
 
 - Qwen3-VL and Gemma 3: the language layer during an answer. Qwen3-VL's language model gets
-  `visual_pos_masks`, which the recording refuses (`brainscore/model_helpers/_extractors.py`), and
+  `visual_pos_masks`, which the recording refuses (`brainscore/model_helpers/extractors.py`), and
   Gemma 3's gets its attention mask as a mapping of causal masks, which the text recording cannot
   read (`brainscore/model_helpers/text_wrapper.py`). Pre-flight cannot tell a passive session from
   a session with a task, so a study model refuses the second when it starts.
@@ -71,7 +71,7 @@ code before a later study could declare them:
 Add one entry to `model_configs.json` and one registry line to `__init__.py`. The values:
 
 - `hf_id`: the instruction-tuned checkpoint on the Hub; `revision`: the commit of its files
-  (`not pinned` until a load test fixes it). `model_class`: `architectures` in its `config.json`;
+  (a full commit; the plugin test refuses any other value). `model_class`: `architectures` in its `config.json`;
   it must exist in the pinned transformers.
 - `vision`, `language`: the module path of each part, then the path of its list of repeated
   blocks. Build the class from its config on the meta device (resolve the class first) and print

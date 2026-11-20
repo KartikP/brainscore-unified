@@ -19,6 +19,7 @@ from brainscore_core.compatibility import CompatibilityError, check_compatibilit
 from brainscore_core.contract import TaskContext
 from brainscore_core.events import Perturbation, Selection, StateChange
 from brainscore_core.responses import Choice, Scale, Text
+from brainscore_core.streaming import Session
 from brainscore_core.streaming_helpers import apply_state_change, stimulus_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
@@ -199,7 +200,7 @@ def test_a_float16_and_a_float64_layer_give_the_same_region_under_both_plans(mon
 
 
 def test_a_direct_call_for_layers_of_different_dtypes_is_refused():
-    from brainscore.model_helpers._extractors import LayerDtypesDiffer
+    from brainscore.model_helpers.extractors import LayerDtypesDiffer
     wrapper = _audio_wrapper(lambda path, rate: np.full(4, 0.5, dtype=np.float32))
     with pytest.raises(LayerDtypesDiffer, match='different dtypes'):
         wrapper._from_paths(['x'], ['low', 'high'])
@@ -385,7 +386,7 @@ def test_an_invalid_regions_per_pass_stops_every_session_kind(kind, monkeypatch)
         subject = (BrainScoreModel('p', policy=lambda row: replies.append(row) or {'motor': 0.0},
                                    policy_in_channels={'proprioception'}, policy_out_channels={'motor'})
                    if kind == 'policy' else _weight_subject()[1])
-        session = SimpleNamespace(outputs=['motor' if kind == 'policy' else 'perturbation'])
+        session = Session([], outputs=['motor' if kind == 'policy' else 'perturbation'])
     else:
         channels = ['neural:IT'] if kind == 'neural under a task' else ['behavior:text']
         session = stimulus_session(stimuli, channels, TaskContext(response=Text()))
@@ -671,7 +672,8 @@ _TASKS = {
 }
 _PARTS = {
     'none': {},
-    'readout without fitting': {'behavioral_readout_layer': 'x'},
+    'readout without fitting': {'behavioral_readout_layer': 'x', 'capability_config': {
+        'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}},
     'answer': {'answer': lambda row, instruction, labels: labels[0]},
     'likelihood': {'likelihood': lambda prompt, labels: {label: 0.0 for label in labels}},
     'reply': {'reply': lambda prompt: 'a'},

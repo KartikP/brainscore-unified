@@ -286,10 +286,10 @@ def test_the_first_registration_keeps_its_declaration(stand_ins):
 def test_the_zero_shot_registration_shares_the_network_and_its_cache_names(stand_ins):
     first, zero_shot = stand_ins.get_model('clip-vit-b-32'), stand_ins.get_model('clip-vit-b-32-zero-shot')
     assert zero_shot.identifier == 'clip-vit-b-32-zero-shot'
+    assert type(zero_shot) is BrainScoreModel     # a plain subject (rule 2.3): no subclass
     for key in ('vision', 'text'):
         assert zero_shot.extractor[key].identifier == first.extractor[key].identifier
     assert {r: s.layer_path for r, s in zero_shot.region_layer_selectors.items()} == stand_ins.REGION_LAYER_MAP
-    assert zero_shot._behavioral.owners['behavior:choice'] == 'generation'
     assert {'neural:IT', 'behavior:choice'} <= zero_shot.out_channels
 
 
@@ -300,7 +300,8 @@ def test_zero_shot_answers_a_choice_without_fitting_stimuli(stand_ins, tmp_path)
     assert list(choice['answer_valid'].values) == [True] * 4
     np.testing.assert_array_equal(np.nansum(choice.values, axis=1), [1] * 4)
     record = choice.attrs['response']
-    assert record['method'] == 'generation'
+    # ADR-0081 decision 2: a choice by the similarity of the picture to each label text.
+    assert record['method'] == 'similarity'
 
 
 def test_zero_shot_follows_clips_own_image_text_logits(stand_ins, tmp_path):
@@ -394,9 +395,9 @@ class _PlacedProcessor(_StandInProcessor):
 
 
 def test_zero_shot_puts_the_network_and_its_inputs_on_the_wrappers_device(monkeypatch, tmp_path):
-    from brainscore.model_helpers import _device
+    from brainscore.model_helpers import device
     from . import model as family
-    monkeypatch.setattr(_device, 'select_device', lambda device=None: 'accelerator')
+    monkeypatch.setattr(device, 'select_device', lambda device=None: 'accelerator')
     network = _ScoringNetwork()
     answer = family.zero_shot_answer(network, _PlacedProcessor())
     assert network.device == 'accelerator'
@@ -437,9 +438,45 @@ def test_zero_shot_session_refuses_labels_that_are_not_text_before_inference(mon
     assert network.calls == []
 
 
-def test_zero_shot_session_refuses_a_text_only_choice_before_inference(monkeypatch, stand_ins, text_stimuli):
+def test_a_text_choice_benchmark_is_not_applicable_before_inference(monkeypatch, stand_ins, text_stimuli):
+    """The choice needs a picture (rule 4.11): a choice benchmark that shows only text is N/A
+    at pre-flight (the Yeatman2021 text form), with no call of the network."""
+    from brainscore import score
     subject, network = _scoring_subject(monkeypatch, stand_ins)
-    # The part refuses the first row; pre-flight does not see that the answer needs an image.
-    with pytest.raises(ValueError):
-        _choice(subject, text_stimuli, TaskContext(response=Choice(['dog', 'cat'])))
+
+    class TextChoice:
+        identifier, trial_memory = 'text-choice', 'none'
+        required_input_channels, requested_output_channels = {'text'}, {'behavior:choice'}
+
+        def __call__(self, subject):
+            _choice(subject, text_stimuli, TaskContext(response=Choice(['real', 'pseudo'])))
+
+    result = score(subject, TextChoice(), check_mem=False)
+    assert result.attrs['status'] == 'N/A'
     assert network.calls == []
+
+
+def test_the_regions_of_zero_shot_keep_their_inputs(stand_ins):
+    """Only the choice needs a picture: the language region is still answered from text."""
+    subject = stand_ins.get_model('clip-vit-b-32-zero-shot')
+    assert subject.output_inputs['neural:language_system'] == {'text'}
+    assert subject.output_inputs['behavior:choice'] == {'vision:image'}
+
+
+def test_zero_shot_receives_no_instruction(monkeypatch, stand_ins, tmp_path):
+    """The similarity part declares no instruction input (rule 4.9), so a session never gives it
+    one: an instruction of the task does not reach the answer to be ignored there."""
+    from . import model as family
+    received = []
+    make = family.zero_shot_answer
+
+    def recording(*args):
+        answer = make(*args)
+        return lambda stimulus_row, instruction, label_set: (
+            received.append(instruction), answer(stimulus_row, instruction, label_set))[1]
+    monkeypatch.setattr(family, 'zero_shot_answer', recording)
+    subject = stand_ins.get_model('clip-vit-b-32-zero-shot')
+    assert 'instruction' not in subject.in_channels
+    _choice(subject, _pictures(tmp_path, 'told', 2),
+            TaskContext(response=Choice(LABELS), instruction='Name the animal.'))
+    assert received == [None, None]

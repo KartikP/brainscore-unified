@@ -109,7 +109,7 @@ def tiny_wav2vec2(monkeypatch):
     monkeypatch.setattr(transformers.Wav2Vec2Config, 'from_pretrained', classmethod(lambda cls, *a, **k: config))
     monkeypatch.setattr(transformers.Wav2Vec2FeatureExtractor, 'from_pretrained',
                         classmethod(lambda cls, *a, **k: transformers.Wav2Vec2FeatureExtractor()))
-    monkeypatch.setattr('brainscore.model_helpers._device.select_device', lambda device=None: torch.device('cpu'))
+    monkeypatch.setattr('brainscore.model_helpers.device.select_device', lambda device=None: torch.device('cpu'))
     return config
 
 
@@ -198,7 +198,7 @@ def test_the_shared_image_loader_prepares_images_as_the_old_copies(tmp_path):
 # -- one value set for layer_aggregation --------------------------------------------
 
 def test_every_wrapper_takes_the_one_value_set_and_refuses_others_at_construction(tmp_path):
-    from brainscore.model_helpers._extractors import LAYER_AGGREGATIONS
+    from brainscore.model_helpers.extractors import LAYER_AGGREGATIONS
     from tests.test_model_helpers.test_wrapper_cache_guard import audio_wrapper, text_wrapper
     builders = {'text': (text_wrapper, ('last', 'mean', 'sequence')),
                 'audio': (audio_wrapper, ('mean', 'sequence')),

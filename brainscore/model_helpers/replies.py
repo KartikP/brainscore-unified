@@ -30,7 +30,7 @@ from typing import Mapping, Optional, Sequence
 
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.responses import Choice, Text
-from brainscore.model_helpers._device import input_device
+from brainscore.model_helpers.device import input_device
 
 
 def chat_parts(model, processor, *, max_new_tokens: int = 64,
@@ -44,7 +44,7 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
     def reply(prompt) -> str:
         import torch
         inputs = inputs_for(prompt)
-        settings = _generation_settings(prompt, max_new_tokens)
+        settings = generation_settings(prompt, max_new_tokens)
         if isinstance(prompt.response, Text) and prompt.response.seed is not None:
             torch.manual_seed(prompt.response.seed)
         with torch.no_grad():
@@ -53,12 +53,12 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
                                 skip_special_tokens=True).strip()
 
     def segments(prompt):
-        return _segment_log_probabilities(model, tokenizer, prompt.response.segments)
+        return segment_log_probabilities(model, tokenizer, prompt.response.segments)
 
     def likelihood(prompt, candidates: Sequence[str]) -> dict:
         import torch
         if isinstance(prompt.response, Choice) and prompt.response.verbatim:
-            return _plain_text_scores(model, tokenizer, prompt, candidates)
+            return plain_text_scores(model, tokenizer, prompt, candidates)
         inputs = inputs_for(prompt)
         prompt_ids = inputs['input_ids']
         length = prompt_ids.shape[1]
@@ -88,7 +88,7 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
     return reply, _Layouts(likelihood, segments)
 
 
-def _plain_text_scores(model, tokenizer, prompt, candidates: Sequence[str]) -> dict:
+def plain_text_scores(model, tokenizer, prompt, candidates: Sequence[str]) -> dict:
     """Score each candidate after the trial's text as plain text, as EWoK's ``score`` does.
 
     For a ``verbatim`` task: the text is ``f"{text} {candidate}"`` with no chat
@@ -174,7 +174,7 @@ class _Layouts(_AbcMapping):
 _SEGMENT_JOIN = 'one space; parts of white space only dropped; no space before . , ! ? ; :'
 
 
-def _segment_log_probabilities(model, tokenizer, segments: Sequence[str], sliding_window: bool = False):
+def segment_log_probabilities(model, tokenizer, segments: Sequence[str], sliding_window: bool = False):
     """The log probability, in bits, of each part of one text given the parts before it.
 
     ``(values, parameters)``: one value for each part (``None`` for a part with no scored
@@ -254,7 +254,7 @@ def _segment_log_probabilities(model, tokenizer, segments: Sequence[str], slidin
     return values, parameters
 
 
-def _generation_settings(prompt, max_new_tokens: int) -> dict:
+def generation_settings(prompt, max_new_tokens: int) -> dict:
     """The ``generate`` arguments for one trial, from the task's ``Text`` response.
 
     Without settings the reply is greedy and at most ``max_new_tokens`` long.

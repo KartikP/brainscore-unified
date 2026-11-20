@@ -60,7 +60,7 @@ def _find_column(row, kind: str) -> Optional[str]:
     return None
 
 
-def _row_parts(row, part: str) -> Tuple[Optional[str], Optional[str]]:
+def row_parts(row, part: str) -> Tuple[Optional[str], Optional[str]]:
     """The picture column and the text column of ``row`` (``_find_column``), either may be
     ``None``; a row with neither raises a ValueError that names the accepted columns.
 
@@ -84,7 +84,7 @@ def _encode_image(path: Union[str, Path]) -> Tuple[str, str]:
     return media, b64
 
 
-def _answer_text(instruction: Optional[str], label_set: Sequence[str]) -> str:
+def answer_text(instruction: Optional[str], label_set: Sequence[str]) -> str:
     """The instruction, then the choice directive of core's ``Choice`` (the one text)."""
     return '\n\n'.join(part for part in ((instruction or '').strip(),
                                           Choice(list(label_set)).directive()) if part)
@@ -300,9 +300,9 @@ def api_answer(
 
     def generate(stimulus_row, instruction: str, label_set) -> str:
         label_set = list(label_set)
-        prompt = _answer_text(instruction, label_set)
+        prompt = answer_text(instruction, label_set)
 
-        img_col, txt_col = _row_parts(stimulus_row, 'api_behavioral answer')
+        img_col, txt_col = row_parts(stimulus_row, 'api_behavioral answer')
 
         # stimulus identity for the cache key
         try:
@@ -453,16 +453,22 @@ def _encode_frame(frame, resize: int = 384) -> Tuple[str, str]:
     return 'image/png', base64.standard_b64encode(buf.getvalue()).decode('utf-8')
 
 
-def _parse_action_index(response: str, n_actions: int) -> Optional[int]:
-    """Parse an action index from the response. Prefers a trailing
-    ``Action: <n>`` line; falls back to the last in-range integer; else None
-    (caller picks a random action, the closed-loop null behavior)."""
+def _parse_action_index(response: str, n_actions: int, legal=None) -> Optional[int]:
+    """Parse an action index from the response. A reply that is exactly the name of one
+    legal action gives that action. Else the ``Action: <n>`` line decides (a number
+    outside the range is no move); with no such line, the last in-range integer; else
+    None (the reply cannot be read: the caller marks the move invalid). A sign is part
+    of a number: ``-1`` is not ``1``."""
     if not response:
         return None
-    m = re.search(r'action\s*[:\-]\s*(\d+)', response, re.IGNORECASE)
-    if m and 0 <= int(m.group(1)) < n_actions:
-        return int(m.group(1))
-    for tok in reversed(re.findall(r'\d+', response)):
+    names = [str(name).strip().lower() for name in (legal or {}).values()]
+    word = response.strip().strip('.').lower()
+    if names.count(word) == 1:
+        return list(legal)[names.index(word)]
+    m = re.search(r'action\s*[:\-]\s*(-?\d+)', response, re.IGNORECASE)
+    if m:
+        return int(m.group(1)) if 0 <= int(m.group(1)) < n_actions else None
+    for tok in reversed(re.findall(r'-?\d+', response)):
         if 0 <= int(tok) < n_actions:
             return int(tok)
     return None
@@ -477,7 +483,6 @@ def api_policy(
     system_prompt: Optional[str] = None,
     cache_dir: Optional[Union[str, Path]] = None,
     frame_resize: int = 384,
-    fallback_seed: int = 0,
     history_window: int = 0,
 ) -> Callable:
     """Build a ``policy(row) -> {'motor': StreamEvent}`` that plays a grid
@@ -502,12 +507,15 @@ def api_policy(
         notice it's stuck and break the loop.
 
     Reuses the same provider adapters and response cache as the behavioral
-    generation path. On an unparseable reply the action collapses to a random
-    legal move (the closed-loop null), deterministically seeded so cached re-runs
-    reproduce. No GPU / weights — laptop-runnable with the provider key in env.
+    generation path. Each ``motor`` event carries the catalog's response meta
+    (``RESPONSE_META_KEYS``): the raw reply (``answer``), ``valid``, ``parse_error``
+    and ``provenance`` (provider and model). A reply with no readable action gives
+    no move: the payload is None and ``valid`` is False (Contract Rules 6.2); the
+    benchmark's policy for an invalid trial decides what follows. No GPU / weights
+    — laptop-runnable with the provider key in env.
 
     The returned closure carries a ``.trace`` list: one dict per tick
-    ``{'step', 'response', 'action', 'fallback', 'payload'}`` where ``response``
+    ``{'step', 'response', 'action', 'valid', 'payload'}`` where ``response``
     is the model's full raw reply (the reasoning text it wrote before the
     ``Action:`` line) and ``payload`` is a hash of the observation it saw (used
     for no-op detection). Read it to watch *why* the model moved;
@@ -516,12 +524,10 @@ def api_policy(
     if obs_mode not in ('vision', 'ascii'):
         raise ValueError(f"obs_mode must be 'vision' or 'ascii'; got {obs_mode!r}")
     from brainscore_core.streaming import StreamEvent
-    import numpy as np
 
     call = provider if callable(provider) else PROVIDERS[provider]
     provider_name = getattr(provider, '__name__', str(provider))
     cache = _ResponseCache(cache_dir) if cache_dir is not None else None
-    rng = np.random.RandomState(fallback_seed)
     trace: list = []
 
     def _history_block(legal, payload) -> str:
@@ -531,7 +537,9 @@ def api_policy(
         if not history_window or not trace:
             return ''
         recent = trace[-history_window:]
-        lines = [f"  step {h['step']}: {legal.get(h['action'], 'action %s' % h['action'])}"
+        lines = [f"  step {h['step']}: "
+                 + ('no readable action' if h['action'] is None
+                    else legal.get(h['action'], f"action {h['action']}"))
                  for h in recent]
         warn = ''
         # no-op: did the most recent action leave the observation unchanged?
@@ -553,7 +561,6 @@ def api_policy(
 
     def reset():
         trace.clear()
-        rng.seed(fallback_seed)
 
     def act(row):
         # The episode's first call finds an empty trace: BrainScoreModel calls
@@ -614,15 +621,15 @@ def api_policy(
             if cache is not None:
                 cache.set(key, response)
 
-        parsed = _parse_action_index(response, n)
-        fallback = parsed is None
-        idx = int(rng.randint(0, n)) if fallback else parsed
+        parsed = _parse_action_index(response, n, legal)
+        valid = parsed is not None
         trace.append({'step': len(trace),
-                      'response': response, 'action': idx, 'fallback': fallback,
+                      'response': response, 'action': parsed, 'valid': valid,
                       'payload': payload})
-        return {'motor': StreamEvent('motor', idx, None, {
-            'raw_response': response, 'valid': not fallback,
-            'fallback': fallback, 'model': model, 'provider': provider_name,
+        return {'motor': StreamEvent('motor', parsed, None, {
+            'answer': response, 'valid': valid,
+            'parse_error': None if valid else f'no action number from 0 to {n - 1} and no action name in the reply',
+            'provenance': {'provider': provider_name, 'model': model},
         })}
 
     act.reset = reset

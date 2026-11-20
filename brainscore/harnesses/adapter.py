@@ -60,7 +60,6 @@ def adapter_score(benchmark, value: float, *, metric: str, input_adaptation: dic
     return benchmark_score(
         benchmark, raw=value, metric=metric,
         benchmark_identifier=benchmark.identifier,
-        leaderboard_eligible=benchmark.leaderboard_eligible,
         run_directory=str(context.directory),
         input_adaptation=dict(input_adaptation), **attrs)
 

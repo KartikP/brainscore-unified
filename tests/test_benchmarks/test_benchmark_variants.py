@@ -202,7 +202,7 @@ def test_a_kept_table_and_task_give_the_pinned_inputs_and_a_declaration_equals_t
             SimpleNamespace(stimulus_set=benchmark.stimulus_set, task=getattr(benchmark, 'task', None)))
         assert sorted(derived) == BUILT[identifier][3]
         assert benchmark.required_input_channels is None      # no hand-typed copy of the derived set
-    assert kept == TABLE_AND_TASK
+    assert set(TABLE_AND_TASK) <= set(kept)     # a new benchmark that keeps its table may join
 
 
 MODELS = [

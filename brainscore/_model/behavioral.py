@@ -272,10 +272,14 @@ class BehavioralReadout:
         registration makes for a choice. The reply, which receives the full prompt,
         answers task settings (verbatim, present, options per row), a Scale or a
         Text, trial history, or when answer= is absent. A session decides it once,
-        in its plan.
+        in its plan. When the registration states ``similarity`` for the choice, the
+        answer part answers every Choice; a setting it cannot serve is refused.
         """
         from brainscore_core.responses import Choice
         owner, response = self.owner, task.response
+        if self.owners.get('behavior:choice') == 'similarity':
+            # The stated owner is the answer part: no reply stands in (rule 4.11).
+            return owner._answer is not None and isinstance(response, Choice)
         return (owner._answer is not None and isinstance(response, Choice)
                 and not response.verbatim and task.present is None
                 and not isinstance(response.labels, str) and owner._memory != 'trial_history')
@@ -409,26 +413,33 @@ class BehavioralReadout:
     def _owner_serving(self, output, can, task, settings) -> Optional[str]:
         """The owner of the answer format ``output``, when it can serve ``task`` (rule 4.11).
 
-        The owner is the stated part, or the one wired part that gives the format.
-        When the owner cannot serve the task form, the task is refused before any
-        compute: no other part answers a format it does not own. ``None``: no part gives it.
+        The owner is the stated part, or the one part that gives the format natively
+        (``answer_owners``). A part that only derives the format owns it only by a
+        statement. When the owner cannot serve the task form, the task is refused before
+        any compute: no other part answers a format it does not own. ``None``: no part gives it.
         """
         from brainscore_core.compatibility import ExecutionNotFeasibleError
         formats = _formats_by_part(self.owner)
         givers = sorted(p for p, given in formats.items() if output in given)
-        owner = self.owners.get(output) or (givers[0] if len(givers) == 1 else None)
-        if owner is None and len(givers) > 1:
+        stated = self.owners.get(output)
+        owner = 'generation' if stated == 'similarity' else stated
+        if owner is None and givers:
             raise ExecutionNotFeasibleError(
-                f"Subject '{self.owner.identifier}': the parts {givers} give {output!r} and no "
-                f"owner is stated.", task_type=task.task_type)
-        if owner is None or not (can.get(owner) or any(can.get(p) for p in givers)):
+                f"Subject '{self.owner.identifier}': the parts {givers} derive {output!r} and no "
+                f"owner is stated." + statement_hint(self.owner, [output]), task_type=task.task_type)
+        if owner is None or (stated != 'similarity'
+                             and not (can.get(owner) or any(can.get(p) for p in givers))):
             return None          # no part can serve it: the caller names what each needs
+        # A stated similarity owner is refused by name: the paths of the caller do not apply.
         if not can.get(owner):
             raise ExecutionNotFeasibleError(
-                f"Subject '{self.owner.identifier}': {output!r} is owned by {owner!r}, which "
+                f"Subject '{self.owner.identifier}': {output!r} is owned by {stated or owner!r}, which "
                 f"cannot serve this task"
                 + (f" (task settings: {', '.join(settings)})" if settings else '')
-                + '; no other part answers it.', task_type=task.task_type)
+                + '; no other part answers it. '
+                + ('Remove the named settings from the task' if settings else 'Change the task')
+                + f', or use a registration whose owner of {output!r} serves it.',
+                task_type=task.task_type)
         return owner
 
     # The formats of a response task on each side of a crossed likelihood/readout pair.
@@ -520,10 +531,12 @@ class BehavioralReadout:
                 'Choice (Choice(..., verbatim=True)): its tokenization is then the plain text.',
                 task_type=task.task_type)
         presented = task.present is not None
+        # A stated similarity owner is the answer part alone: the reply does not stand in.
+        similarity = isinstance(response, Choice) and self.owners.get('behavior:choice') == 'similarity'
         can = {
-            'generation': not log_probabilities and (owner._reply is not None or (
-                owner._answer is not None and isinstance(response, Choice)
-                and not verbatim and not presented)),   # answer= takes no settings
+            'generation': not log_probabilities and (owner._reply is not None and not similarity or (
+                owner._answer is not None and isinstance(response, Choice) and not verbatim
+                and not presented and not (similarity and owner._memory == 'trial_history'))),
             'likelihood': owner._likelihood is not None and isinstance(response, Choice),
             'readout': (readout_wired and isinstance(response, (Choice, Scale))
                         and not log_probabilities and not per_row),
@@ -535,6 +548,29 @@ class BehavioralReadout:
                                           ('labels per row', per_row)) if on]
         answer_format = (LOG_PROBABILITIES if log_probabilities
                          else dict(self._ANSWER_FORMATS)[type(response).__name__])
+        source = None
+        wanted = requested & self._PROBABILITY_SIDE
+        # Nothing reads the answer of the choice owner: no region is recorded and no later trial reads this one.
+        unread = (not recording and task.trial_memory == 'none'
+                  and owner._memory != 'trial_history')
+        # The requested formats decide the passes: the probability owner runs (first,
+        # for a reply, so a recording comes from its pass) only when the session
+        # requests probabilities or a reaction time.
+        if isinstance(response, Choice) and wanted and not log_probabilities:
+            source = self._owner_serving('behavior:probabilities', {
+                'likelihood': owner._likelihood is not None,
+                'readout': readout_wired and not per_row}, task, settings)
+            if source is None:
+                raise ExecutionNotFeasibleError(
+                    f"Subject '{owner.identifier}' cannot give implied probabilities: "
+                    'it needs likelihood= or a readout (behavioral_readout_layer=, '
+                    'fitting_stimuli).', task_type=task.task_type)
+            if not requested - self._PROBABILITY_SIDE and unread:
+                # Only the probability side is requested, no region is recorded and no later
+                # trial reads this one: nothing reads an answer of the choice owner, so it
+                # needs none and only the probability owner runs (ADR-0063 decision 1,
+                # ADR-0073 decision 5).
+                return source, source
         path = self._owner_serving(answer_format, can, task, settings)
         if path is None:
             needs = {'generation': 'reply= (or answer= for a plain Choice with none of the settings '
@@ -546,11 +582,6 @@ class BehavioralReadout:
                 + (f" with the task settings {', '.join(settings)}" if settings else '')
                 + '. Paths tried: ' + '; '.join(f'{p} needs {need}' for p, need in needs.items()),
                 task_type=task.task_type)
-        source = None
-        wanted = requested & self._PROBABILITY_SIDE
-        # Nothing reads the answer of the choice owner: no region is recorded and no later trial reads this one.
-        unread = (not recording and task.trial_memory == 'none'
-                  and owner._memory != 'trial_history')
         if log_probabilities and not (requested == {LOG_PROBABILITIES} and unread):
             # The task's choice format keeps an owner that can serve the task, as the setup
             # of the task always checked (``_eligible_picks``); the likelihood answers it here.
@@ -560,22 +591,8 @@ class BehavioralReadout:
         if log_probabilities:
             # One likelihood pass gives the log probabilities and what derives from them.
             return path, (path if wanted else None)
-        # The requested formats decide the passes: the probability owner runs (first,
-        # for a reply, so a recording comes from its pass) only when the session
-        # requests probabilities or a reaction time.
-        if isinstance(response, Choice) and wanted:
-            source = self._owner_serving('behavior:probabilities', {
-                'likelihood': owner._likelihood is not None,
-                'readout': readout_wired and not per_row}, task, settings)
-            if source is None:
-                raise ExecutionNotFeasibleError(
-                    f"Subject '{owner.identifier}' cannot give implied probabilities: "
-                    'it needs likelihood= or a readout (behavioral_readout_layer=, '
-                    'fitting_stimuli).', task_type=task.task_type)
         if wanted and not requested - self._PROBABILITY_SIDE and unread:
-            # Only the probability side is requested, no region is recorded and no later trial
-            # reads this one: the answer of the choice owner would be read by nothing, so only
-            # the probability owner runs (ADR-0063 decision 1).
+            # A probability-only session of a response with no implied probabilities.
             return source, source
         if {path, source} != {'likelihood', 'readout'}:
             return path, source
@@ -657,6 +674,7 @@ class BehavioralReadout:
             # Within generation: the answer part or the reply part (the plan's decision).
             by_answer = (self.owner._session_plan.by_answer if planned is not None
                          else self.by_answer(task))
+            by_reply = owner._reply is not None and not by_answer
             if path == 'likelihood':
                 def call(row, prompt):
                     parts.note('likelihood', owner._likelihood, serves=channels)
@@ -664,7 +682,7 @@ class BehavioralReadout:
                     if remember:
                         self.history.append((prompt, max(scores, key=scores.get)))
                     return scores
-            elif owner._reply is not None and not by_answer:
+            elif by_reply:
                 def call(row, prompt):
                     shown = with_history(prompt)
                     # Scoring first keeps the recorded first pass the prompt alone.
@@ -720,10 +738,14 @@ class BehavioralReadout:
                                                      parsed_by='model'), raw=replies)
             else:
                 parsed = [prompt.response.parse(str(reply)) for prompt, reply in zip(prompts, replies)]
+                # The declared method of the part that answered (rule 4.11): the answer
+                # part states generation or similarity; the reply states generation.
+                method = ('similarity' if not by_reply and self.owners.get('behavior:choice') == 'similarity'
+                          else 'generation')
                 outputs['behavior:choice'] = answers.one_hot(
                     [label for label, _ in parsed], [label is not None for label, _ in parsed],
                     stimuli, row_labels, axis,
-                    response_record('behavior:choice', 'generation', parsed_by='model',
+                    response_record('behavior:choice', method, parsed_by='model',
                                     parameters=(VERBATIM_IN_TEMPLATE if response.verbatim
                                                 and owner._reply is not None else None)),
                     raw=replies, errors=[error for _, error in parsed])
@@ -908,7 +930,7 @@ class BehavioralReadout:
         # BRAINSCORE_REGIONS_PER_PASS: 'all' extracts the readout layer and every
         # region in one call; 'one' gives the readout and each region its own call,
         # as does 'all' when the layers have different dtypes (one call cannot keep them).
-        from brainscore.model_helpers._extractors import LayerDtypesDiffer
+        from brainscore.model_helpers.extractors import LayerDtypesDiffer
         joint = None
         plan = owner._session_plan
         if (plan.regions_per_pass if plan is not None else 'all') == 'all':
@@ -1039,16 +1061,20 @@ def statement_hint(subject, missing) -> str:
     return ''.join(lines)
 
 
+# The methods a part states (the record's ``method``) and the argument that wires each.
+# ``similarity``: an answer chosen by the similarity of an input to each option (rule
+# 4.11); the ``answer=`` part states it in place of ``generation``, and reads no instruction.
 _ARGUMENTS = {'generation': 'answer= or reply=', 'likelihood': 'likelihood=',
-              'readout': 'behavioral_readout_layer= (with an extractor)'}
+              'readout': 'behavioral_readout_layer= (with an extractor)',
+              'similarity': 'answer='}
 
 
 def answer_owners(subject, stated) -> Dict[str, str]:
     """Check the owner statements at construction; return the owner part of each format (rule 4.11).
 
     ``stated`` is ``capability_config['behavior-sessions']``: format ->
-    a part (``'generation'``, ``'likelihood'``, ``'readout'``) for a format the
-    part gives natively, or ``(part, conversion)`` for a format it derives
+    a part (``'generation'``, ``'likelihood'``, ``'readout'``, or ``'similarity'`` for an
+    ``answer=`` part that chooses by similarity) for a format the part gives natively, or ``(part, conversion)`` for a format it derives
     (``_PART_FORMATS``). A format with exactly one native part is owned by that
     part without a statement; a format with two or more native parts needs a
     statement. A wrong statement fails with a message that says what to write.
@@ -1061,6 +1087,9 @@ def answer_owners(subject, stated) -> Dict[str, str]:
     followers = {f for formats in _PART_FORMATS.values() for f, how in formats.items()
                  if how == 'link'}
     formats = sorted({f for kinds in _PART_FORMATS.values() for f in kinds} - followers)
+    stated_parts = dict(parts)
+    if subject._answer is not None:
+        stated_parts['similarity'] = dict(_PART_FORMATS['answer'])
     owners: Dict[str, str] = {}
     for key, value in (stated or {}).items():
         if key == 'behavior':
@@ -1081,18 +1110,18 @@ def answer_owners(subject, stated) -> Dict[str, str]:
         part, conversion = (value, None) if isinstance(value, str) else value
         if part not in _ARGUMENTS:
             raise ValueError(f"{prefix}names the part {part!r} for {key!r}; parts are "
-                             f"'generation', 'likelihood', 'readout'.")
+                             + ', '.join(map(repr, _ARGUMENTS)) + '.')
         if conversion is not None and conversion not in ('argmax', 'softmax', 'softmax_argmax'):
             raise ValueError(f"{prefix}names the conversion {conversion!r} for {key!r}; "
                              f"conversions are 'argmax', 'softmax', 'softmax_argmax'.")
-        if part not in parts:
+        if part not in stated_parts:
             raise ValueError(f"{prefix}names {part!r} for {key!r}, but no {_ARGUMENTS[part]} "
                              f"part is wired.")
-        if key not in parts[part]:
-            givers = sorted(p for p, given in parts.items() if key in given)
+        if key not in stated_parts[part]:
+            givers = sorted(p for p, given in stated_parts.items() if key in given)
             raise ValueError(f"{prefix}names {part!r} for {key!r}, but {part!r} does not give "
                              f"{key!r}. Parts of this subject that give it: {givers}.")
-        given = parts[part][key]
+        given = stated_parts[part][key]
         if conversion is None and given is not None:
             raise ValueError(f"{prefix}{part!r} gives {key!r} only by a conversion. "
                              f"Write {key!r}: ({part!r}, {given!r}).")

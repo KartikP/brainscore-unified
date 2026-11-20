@@ -103,7 +103,7 @@ def test_blip2_combination_keeps_its_legacy_cache_path(tmp_path, monkeypatch):
             patch('brainscore.models.blip2_opt_2_7b.model.pin_image_processor',
                   side_effect=lambda p, *a, **k: p), \
             patch.object(registration, 'build_audio_wrapper', side_effect=lambda *a, **k: _audio()), \
-            patch('brainscore.model_helpers._device.select_device', return_value=torch.device('cpu')):
+            patch('brainscore.model_helpers.device.select_device', return_value=torch.device('cpu')):
         model = registration.get_model('blip2-wav2vec2')
     path = _stored_identifier(model.extractor['vision'], tmp_path, monkeypatch)
     assert path.startswith(f'{STORED}/identifier=blip2-wav2vec2-vision,stimuli_identifier=stimuli,')

@@ -12,7 +12,6 @@ from ._model import dispatch
 from brainscore_core import io_catalog
 from brainscore_core.io_catalog import MODALITY_TO_INPUT_CHANNEL, canonical_modality
 from brainscore_core.events import InputEvent, OutputEvent, StateChange
-from brainscore_core.streaming_helpers import one_session_at_a_time
 from ._model.intervention import Interventions
 from ._model.recording import RecordingRequest
 from .selection import UnitSelector, _promote_to_selector, _with_modality
@@ -65,6 +64,7 @@ class BrainScoreModel(Subject):
         required_channels: Optional[Iterable[str]] = None,
         visual_degrees: int = 8,
         capability_config: Optional[Dict[str, Any]] = None,
+        output_inputs: Optional[Mapping[str, Iterable[str]]] = None,
     ) -> None:
         """A model (or, in principle, a human) evaluated through the unified interface.
 
@@ -174,8 +174,9 @@ class BrainScoreModel(Subject):
             ``subject.capability_config``. Under ``'behavior-sessions'``: the
             owner of answer formats, for example ``{'behavior:rating':
             'generation', 'behavior:probabilities': ('likelihood', 'softmax')}``. A part (``'generation'``, which is
-            ``answer``/``reply``; ``'likelihood'``; ``'readout'``) owns a
-            format it gives natively; ``(part, conversion)`` owns a format the
+            ``answer``/``reply``; ``'likelihood'``; ``'readout'``; ``'similarity'``,
+            an ``answer`` that chooses by the similarity of an input to each
+            option and reads no instruction) owns a format it gives natively; ``(part, conversion)`` owns a format the
             part derives: the readout gives ``behavior:choice`` by
             ``'argmax'``, the likelihood gives ``behavior:probabilities`` by
             ``'softmax'`` and ``behavior:choice`` by ``'softmax_argmax'``. A
@@ -193,6 +194,13 @@ class BrainScoreModel(Subject):
             write. The owner answers its channel. When the owner cannot serve a
             task form, the session is refused before any compute: no other part
             stands in. Log probabilities come only from ``likelihood``.
+        :param output_inputs: the inputs that an answer part needs, by output
+            (rule 4.11, a part states the inputs that its answer needs), for
+            example ``{'behavior:choice': {'vision:image'}}`` for a choice made by
+            the similarity of a picture to each label. Pre-flight gives N/A when a
+            benchmark sends none of them. A region states its inputs in
+            ``region_layer_map``, not here. The property ``output_inputs`` lists
+            these entries with the region entries.
         """
         if memory not in (None, 'trial_history'):
             raise ValueError("memory must be None or 'trial_history'")
@@ -208,6 +216,12 @@ class BrainScoreModel(Subject):
         self._install_region_layer_map(region_layer_map or {})
         self._visual_degrees = visual_degrees
         self._capability_config = dict(capability_config or {})
+        regions = sorted(output for output in (output_inputs or {}) if output.startswith('neural:'))
+        if regions:
+            raise ValueError(f"output_inputs names {regions}: a region states its inputs in "
+                             f"region_layer_map (LayerSelector modality), not in output_inputs.")
+        self._answer_inputs = {output: frozenset(_channels(inputs))
+                               for output, inputs in (output_inputs or {}).items()}
         self._behavioral_readout_layer = behavioral_readout_layer
         self._answer, self._reply = answer, reply
         self._likelihood, self._segment_likelihood = _likelihood_layouts(likelihood)
@@ -311,9 +325,10 @@ class BrainScoreModel(Subject):
         A region whose ``modality`` is a tuple also lists the inputs after the
         first: the registration states that they reach its layer in an answering
         pass (rule 2.5), and a passive session from them is refused at its start.
-        Behavior, policy and perturbation outputs are not listed: behavior and
-        policy can be answered from any input the model takes, perturbation from
-        the intervention inputs it takes (core pre-flight, rule 4).
+        An answer output is listed when the registration states the inputs its
+        answer part needs (the ``output_inputs`` argument); another behavior or a
+        policy output can be answered from any input the model takes, perturbation
+        from the intervention inputs it takes (core pre-flight, rule 4).
         """
         from ._model.recording import region_extractor_keys
         listed = {}
@@ -322,7 +337,7 @@ class BrainScoreModel(Subject):
                         | self._input_channels(self._region_inputs.get(region, ())))
             if channels:
                 listed[f'neural:{region}'] = frozenset(channels)
-        return listed
+        return {**listed, **self._answer_inputs}
 
     def check_session_support(self, channels):
         """The one capability that runs a session requesting ``channels``.
@@ -469,13 +484,17 @@ class BrainScoreModel(Subject):
         """Run a session through the one registered capability that claims it.
 
         The capability sees only the streams this model declares in
-        ``in_channels``; every other stream the experiment sends is skipped
-        before it reaches any part (Contract Rules v3, rule 5.5).
+        ``in_channels``: the ``Subject`` base narrows the session before this
+        body runs, and refuses a second session while one runs (rule 5.5).
 
         ``BRAINSCORE_REGIONS_PER_PASS`` is read and checked here, once, for every
-        kind of session (see ``brainscore._model.channels``). The session's plan
+        kind of session (see ``brainscore._model.channels``), before the plan that
+        needs it and before any input is read: the setting belongs to this model,
+        so the base, which runs first, does not read it. The session's plan
         (``_model/plan.py``) is built once, before any setup or compute, and the
         capabilities read it; a combination that cannot run is refused there.
+        The base keeps what the session notes until this body returns, so the
+        plan and the parts reach the score only from a session that succeeded.
         """
         from brainscore_core.score_metadata import note_session
         from ._model.channels import regions_per_pass
@@ -483,25 +502,22 @@ class BrainScoreModel(Subject):
         from ._model import parts
         from ._model.plan import plan_session
         passes = regions_per_pass()
-        note_session(session, passes)   # this model owns the plan, so the run record gets it from here
-        with one_session_at_a_time(self):
-            session = session.declare_inputs(self.in_channels)
-            self._session_plan = plan_session(self, session, passes)
-            try:
-                from .capabilities.registry import _setup_once
-                # Every part notes its calls in the session's log, from set-up (a readout fit) on.
-                with parts.session_log() as log:
-                    _setup_once(self, self._session_plan.capability)
-                    # A task the session configures ends with the session (rule 4.5).
-                    # Weights are hashed once per session for the activation cache key;
-                    # inside score() the run's scope is reused.
-                    with self._behavioral.session_scope(), weight_fingerprint_scope():
-                        self._session_plan.capability.participate(self, session)
-                        # Once per session: the parts that ran and their facts, to the run
-                        # record (no response is changed). A failed session sends nothing.
-                        note_session(session, provenance=provenance.session_entry(self, session, log))
-            finally:
-                self._session_plan = None
+        self._session_plan = plan_session(self, session, passes)
+        try:
+            from .capabilities.registry import _setup_once
+            # Every part notes its calls in the session's log, from set-up (a readout fit) on.
+            with parts.session_log() as log:
+                _setup_once(self, self._session_plan.capability)
+                # A task the session configures ends with the session (rule 4.5).
+                # Weights are hashed once per session for the activation cache key;
+                # inside score() the run's scope is reused.
+                with self._behavioral.session_scope(), weight_fingerprint_scope():
+                    self._session_plan.capability.participate(self, session)
+                    # Once per session: the plan and the parts that ran, with their facts
+                    # (no response is changed). This model owns the plan, so it names it.
+                    note_session(session, passes, provenance=provenance.session_entry(self, session, log))
+        finally:
+            self._session_plan = None
 
     def detect_modalities(self, stimuli) -> Set[str]:
         """Declared input modalities whose columns appear in ``stimuli``."""

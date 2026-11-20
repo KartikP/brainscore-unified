@@ -115,6 +115,5 @@ def file_preflight(identifier: str, source: str, destination: Path,
     if not _present(destination):
         _require_download(
             identifier, source, destination, approximate_gb,
-            'set HF_HOME or XDG_CACHE_HOME before starting Python; '
-            'V-JEPA v1 uses the vjepa_v1 subdirectory.',
+            'set HF_HOME or XDG_CACHE_HOME before starting Python.',
         )
