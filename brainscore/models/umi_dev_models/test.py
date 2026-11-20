@@ -300,6 +300,33 @@ def test_each_declared_output_comes_out_of_one_session(stand_in, identifier):
         assert np.array_equal(_collect(subject, pictures, ['neural:IT'], passive)['neural:IT'].values, intact)
 
 
+@pytest.mark.parametrize('identifier', ['smolvlm2-256m_UMI-dev', 'gemma-3-4b_UMI-dev'])
+def test_two_regions_of_the_picture_path_share_one_pass_over_the_table(stand_in, monkeypatch, identifier):
+    """The picture path records the layers of several regions in one forward pass over the table, and
+    each region's output equals its output when it is requested alone."""
+    import uuid
+    seen = []
+    load = study._load
+
+    def counting_load(name, config):
+        model, processor = load(name, config)
+        vision = model.get_submodule(config['vision'][0])
+        vision.register_forward_pre_hook(
+            lambda module, args, kwargs: seen.append(1), with_kwargs=True)
+        return model, processor
+    monkeypatch.setattr(study, '_load', counting_load)
+    subject = model_registry[identifier]()
+    passive = TaskContext(task_type='passive')
+    pictures = _pictures(stand_in, 3)
+    pictures.identifier = f'umi-dev-together-{uuid.uuid4().hex}'     # a name no cache has seen
+    _collect(subject, _pictures(stand_in, 3), ['neural:V1', 'neural:IT'], passive)    # the PCA fits happen here
+    del seen[:]
+    together = _collect(subject, pictures, ['neural:V1', 'neural:IT'], passive)
+    assert len(seen) == 1
+    for channel, values in together.items():
+        assert np.array_equal(values.values, _collect(subject, pictures, [channel], passive)[channel].values)
+
+
 QWEN_VIDEO = [i for i in IDENTIFIERS if study.MODEL_CONFIGS[i].get('video_sampling')]
 _KEYS = ('fps', 'min_frames', 'max_frames', 'do_sample_frames')
 
