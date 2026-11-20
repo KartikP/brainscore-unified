@@ -120,7 +120,9 @@ def _refuse(identifier, config):
                             f"'{package}' yourself.")
     if not hasattr(transformers, config['model_class']):
         raise LoadError(f"'{identifier}' needs transformers.{config['model_class']}, which transformers "
-                        f"{transformers.__version__} does not have.")
+                        f"{transformers.__version__} does not have. Next step: run it in the study's environment "
+                        f"(transformers as install/environment-unified.yml pins it), or choose a registration "
+                        f"whose class this transformers has.")
 
 
 def _load(identifier, config):
