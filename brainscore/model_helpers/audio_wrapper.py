@@ -27,7 +27,7 @@ Design:
 - Sampling rate: the wrapper target rate is taken from the processor's
     ``sampling_rate`` attribute; audio is resampled on load so the processor
     sees the rate it expects.
-- Caching: the ``@store_xarray`` key is explicit (``_extractors.cache_config``):
+- Caching: the ``@store_xarray`` key is explicit (``extractors.cache_config``):
     the weights, settings and inputs, not the identifier. Two registrations
     sharing one audio backbone and its settings reuse activations.
 
@@ -49,7 +49,7 @@ from brainscore_core.assembly_builder import (
 )
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.extraction_cache import store_xarray
-from brainscore.model_helpers._extractors import (
+from brainscore.model_helpers.extractors import (
     CachingExtractor, LiveRecording, as_numpy, attention_mask, catalog_columns, catalog_paths,
     checked_aggregation, one_dtype, run_batches,
 )
@@ -119,7 +119,7 @@ class AudioWrapper(CachingExtractor):
     """
 
     # The version of what this class extracts: a part of the activation cache key
-    # (``_extractors.cache_config``), read from this class body only. Raise it by
+    # (``extractors.cache_config``), read from this class body only. Raise it by
     # hand when a change can move the extracted values, also through code it calls.
     _VERSION = 1
 
@@ -153,7 +153,7 @@ class AudioWrapper(CachingExtractor):
         self._batch_size = batch_size
         self._audio_loader = audio_loader or _default_audio_loader
 
-        from brainscore.model_helpers._device import place_model
+        from brainscore.model_helpers.device import place_model
         self._model, self._device = place_model(self._model, device)
 
         self._target_sample_rate = (

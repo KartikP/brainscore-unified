@@ -60,7 +60,7 @@ def _find_column(row, kind: str) -> Optional[str]:
     return None
 
 
-def _row_parts(row, part: str) -> Tuple[Optional[str], Optional[str]]:
+def row_parts(row, part: str) -> Tuple[Optional[str], Optional[str]]:
     """The picture column and the text column of ``row`` (``_find_column``), either may be
     ``None``; a row with neither raises a ValueError that names the accepted columns.
 
@@ -84,7 +84,7 @@ def _encode_image(path: Union[str, Path]) -> Tuple[str, str]:
     return media, b64
 
 
-def _answer_text(instruction: Optional[str], label_set: Sequence[str]) -> str:
+def answer_text(instruction: Optional[str], label_set: Sequence[str]) -> str:
     """The instruction, then the choice directive of core's ``Choice`` (the one text)."""
     return '\n\n'.join(part for part in ((instruction or '').strip(),
                                           Choice(list(label_set)).directive()) if part)
@@ -300,9 +300,9 @@ def api_answer(
 
     def generate(stimulus_row, instruction: str, label_set) -> str:
         label_set = list(label_set)
-        prompt = _answer_text(instruction, label_set)
+        prompt = answer_text(instruction, label_set)
 
-        img_col, txt_col = _row_parts(stimulus_row, 'api_behavioral answer')
+        img_col, txt_col = row_parts(stimulus_row, 'api_behavioral answer')
 
         # stimulus identity for the cache key
         try:

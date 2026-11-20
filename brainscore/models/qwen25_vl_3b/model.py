@@ -95,12 +95,12 @@ def _make_answer(qwen_model, qwen_processor, max_new_tokens: int = 8):
     Signature (the ``answer`` part of BrainScoreModel):
         fn(stimulus_row, instruction, label_set) -> the generated text
     """
-    from brainscore.model_helpers.api_behavioral import _row_parts
+    from brainscore.model_helpers.api_behavioral import row_parts
     device = next(qwen_model.parameters()).device
 
     def generate(stimulus_row, instruction: str, label_set: List[str]) -> str:
         # The row's picture, then its text (before the instruction and the directive).
-        image_column, text_column = _row_parts(stimulus_row, 'Qwen2.5-VL answer')
+        image_column, text_column = row_parts(stimulus_row, 'Qwen2.5-VL answer')
         text = (f'{instruction} ' if instruction else '') + Choice(label_set).directive()
         if text_column:
             text = f'{stimulus_row[text_column]}\n\n{text}'
@@ -157,7 +157,7 @@ def load_qwen(identifier: str, size: str):
     # names, moving the default from PIL to torchvision and shifting pixels.
     # The whole model on one device: the 7B's output head is not tied to its
     # input embeddings, so moving the towers alone would leave it behind.
-    from brainscore.model_helpers._device import select_device
+    from brainscore.model_helpers.device import select_device
     qwen_model = qwen_model.to(select_device())
     qwen_processor = AutoProcessor.from_pretrained(hf_id, **download)
     qwen_processor = pin_image_processor(qwen_processor, hf_id, **download)

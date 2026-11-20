@@ -73,7 +73,7 @@ from brainscore_core.supported_data_standards.brainio.assemblies import (
 )
 from brainscore.temporal import window_plan
 from brainscore_core.extraction_cache import store_xarray
-from brainscore.model_helpers._extractors import (
+from brainscore.model_helpers.extractors import (
     CachingExtractor, LiveRecording, as_float32, catalog_columns, catalog_paths,
 )
 
@@ -193,7 +193,7 @@ class VideoWrapper(CachingExtractor):
     """
 
     # The version of what this class extracts: a part of the activation cache key
-    # (``_extractors.cache_config``), read from this class body only. Raise it by
+    # (``extractors.cache_config``), read from this class body only. Raise it by
     # hand when a change can move the extracted values, also through code it calls.
     _VERSION = 1
 
@@ -236,7 +236,7 @@ class VideoWrapper(CachingExtractor):
         self._out_of_bound = out_of_bound
         self._max_clip_ms = max_clip_ms
 
-        from brainscore.model_helpers._device import place_model
+        from brainscore.model_helpers.device import place_model
         self._model, self._device = place_model(self._model, device)
 
         self._identifier = identifier or model.__class__.__name__

@@ -926,7 +926,7 @@ class BehavioralReadout:
         # BRAINSCORE_REGIONS_PER_PASS: 'all' extracts the readout layer and every
         # region in one call; 'one' gives the readout and each region its own call,
         # as does 'all' when the layers have different dtypes (one call cannot keep them).
-        from brainscore.model_helpers._extractors import LayerDtypesDiffer
+        from brainscore.model_helpers.extractors import LayerDtypesDiffer
         joint = None
         plan = owner._session_plan
         if (plan.regions_per_pass if plan is not None else 'all') == 'all':

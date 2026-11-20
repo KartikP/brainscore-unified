@@ -133,7 +133,7 @@ def _load(identifier, config):
     model = getattr(transformers, config['model_class']).from_pretrained(
         config['hf_id'], dtype=getattr(torch, config['dtype']), **placement, **download)
     if config['device_map'] is None:
-        from brainscore.model_helpers._device import select_device
+        from brainscore.model_helpers.device import select_device
         model = model.to(select_device())
     return model.eval(), processor
 
@@ -213,14 +213,14 @@ def _pixel_extractor(token_pool=None):
     the extractors' own hook helper; the network computes in bfloat16, other dtypes export unchanged.
     With ``token_pool``, each layer's patch tokens are pooled (``_pool_tokens``) before any PCA."""
     from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
-    from brainscore.model_helpers._extractors import _hook, as_numpy
+    from brainscore.model_helpers.extractors import hook, as_numpy
 
     class Float32Export(PytorchWrapper):
         def register_hook(self, layer, layer_name, target_dict):
             def keep(output, name=layer_name):
                 activity = as_numpy(output)
                 target_dict[name] = activity if token_pool is None else _pool_tokens(activity, token_pool)
-            return _hook(layer, layer_name, keep)
+            return hook(layer, layer_name, keep)
     return Float32Export
 
 

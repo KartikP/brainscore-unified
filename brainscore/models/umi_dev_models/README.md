@@ -57,7 +57,7 @@ it would run for SmolVLM, InternVL3 and Qwen2.5-VL). These abilities also need a
 code before a later study could declare them:
 
 - Qwen3-VL and Gemma 3: the language layer during an answer. Qwen3-VL's language model gets
-  `visual_pos_masks`, which the recording refuses (`brainscore/model_helpers/_extractors.py`), and
+  `visual_pos_masks`, which the recording refuses (`brainscore/model_helpers/extractors.py`), and
   Gemma 3's gets its attention mask as a mapping of causal masks, which the text recording cannot
   read (`brainscore/model_helpers/text_wrapper.py`). Pre-flight cannot tell a passive session from
   a session with a task, so a study model refuses the second when it starts.

@@ -555,16 +555,16 @@ def _r27(log, monkeypatch, tmp_path):
 
 @row('R28 parts', r"Plain-text scoring takes exactly one text part; got \['text', 'image'\]")
 def _r28_parts(log, monkeypatch, tmp_path):
-    from brainscore.model_helpers.replies import _plain_text_scores
+    from brainscore.model_helpers.replies import plain_text_scores
     from brainscore_core.responses import Prompt
-    _plain_text_scores(None, None, Prompt(parts=(('text', 'a'), ('image', 'b.png'))), ['x'])
+    plain_text_scores(None, None, Prompt(parts=(('text', 'a'), ('image', 'b.png'))), ['x'])
 
 
 @row('R28 history', r'Plain-text scoring scores the text alone; it cannot show earlier trials')
 def _r28_history(log, monkeypatch, tmp_path):
-    from brainscore.model_helpers.replies import _plain_text_scores
+    from brainscore.model_helpers.replies import plain_text_scores
     from brainscore_core.responses import Prompt
-    _plain_text_scores(None, None, Prompt(parts=(('text', 'a'),), history=(('earlier', 'cat'),)), ['x'])
+    plain_text_scores(None, None, Prompt(parts=(('text', 'a'),), history=(('earlier', 'cat'),)), ['x'])
 
 
 def _intervened(log, result=None):

@@ -346,8 +346,10 @@ def _validate_case(case, subject_factory, benchmark_loader, *,
             setattr(benchmark, attr, metric)
             pending = sys.exc_info()[1]
             try:
-                if hasattr(subject, 'reset'):
-                    subject.reset()
+                # A session subject declares reset; only an original old model may lack it.
+                reset = getattr(subject, 'reset', None) if route == 'legacy' else subject.reset
+                if reset is not None:
+                    reset()
             except Exception as reset_error:
                 if pending is None:
                     raise

@@ -127,7 +127,7 @@ def registered(monkeypatch):
     It returns the model, the record of calls and ``replies``: ``replies[0]`` is the text the
     stand-in network writes.
     """
-    import brainscore.model_helpers._device as device
+    import brainscore.model_helpers.device as device
     import brainscore.models._downloads as downloads
     from brainscore.models.blip2_opt_2_7b import model as blip2
 
@@ -357,7 +357,7 @@ def test_a_segments_task_is_answered_by_the_language_model_with_the_shared_score
         scored.append((network, tokenizer, segments, sliding_window))
         return [float('nan'), -1.5, -2.5], parameters
 
-    monkeypatch.setattr(blip2, "_segment_log_probabilities", scorer)
+    monkeypatch.setattr(blip2, "segment_log_probabilities", scorer)
     stimuli = _texts('seg', ['the dog ran'], segments=[('the', 'dog', 'ran')])
     answer = _run(model, stimuli, ['behavior:log_probabilities'],
                   TaskContext(response=Segments('segments')))['behavior:log_probabilities']

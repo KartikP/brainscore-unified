@@ -150,7 +150,7 @@ def stand_in(monkeypatch, tmp_path):
     def refuse(*args, **kwargs):
         raise AssertionError('a test must not load a checkpoint')
     monkeypatch.setattr(transformers.PreTrainedModel, 'from_pretrained', classmethod(refuse))
-    monkeypatch.setattr('brainscore.model_helpers._device.select_device', lambda device=None: 'cpu')
+    monkeypatch.setattr('brainscore.model_helpers.device.select_device', lambda device=None: 'cpu')
     monkeypatch.setattr(study, '_refuse', lambda identifier, config: None)
 
     def load(identifier, config):
@@ -442,7 +442,7 @@ def test_a_pinned_revision_reaches_every_load(monkeypatch):
     monkeypatch.setattr(hf_compat, 'pin_image_processor', lambda processor, *a, **k: processor)
     # The first lazy loads above can put another module object under the name: set the class on the one there now.
     monkeypatch.setattr(sys.modules['transformers'], 'PinnedWeights', Weights, raising=False)
-    monkeypatch.setattr('brainscore.model_helpers._device.select_device', lambda device=None: 'cpu')
+    monkeypatch.setattr('brainscore.model_helpers.device.select_device', lambda device=None: 'cpu')
     pinned = {i: c for i, c in study.MODEL_CONFIGS.items() if c['revision'] != 'not pinned'}
     assert pinned and all(len(c['revision']) == 40 for c in pinned.values())     # a commit of the Hub files
     for identifier, config in pinned.items():

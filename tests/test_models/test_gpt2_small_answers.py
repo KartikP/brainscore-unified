@@ -2,7 +2,7 @@
 
 The registration is built through ``brainscore.load_model`` with stand-ins for the
 network, the tokenizer and the text extractor; the likelihood part is the shipped
-one (``_CausalLMParts``) over a small stand-in language model.
+one (``CausalLMParts``) over a small stand-in language model.
 """
 from types import SimpleNamespace
 

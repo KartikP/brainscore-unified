@@ -286,7 +286,7 @@ RESPONSIBILITIES = {
     'R11 hooks on a network': (
         lambda tree: _calls(tree, {'register_forward_hook', 'register_forward_pre_hook',
                                    'register_full_backward_hook'}),
-        _everywhere, {'unified:model_helpers/_extractors.py', 'unified:model_helpers/intervention.py',
+        _everywhere, {'unified:model_helpers/extractors.py', 'unified:model_helpers/intervention.py',
                       'unified:experiments/tools.py'}),
     'R12 intervention apply and undo': (_writes_tensor_data, _core_and_unified_library,
                                         {'unified:model_helpers/intervention.py'}),

@@ -140,9 +140,9 @@ def _subclass(cls):
 
 @pytest.mark.parametrize('cls', [_Unversioned, _SameModule], ids=['other-module', 'parent-module'])
 def test_a_subclass_without_its_own_version_does_not_use_the_cache(cls, store, tmp_path, monkeypatch):
-    from brainscore.model_helpers import _extractors
+    from brainscore.model_helpers import extractors
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(_extractors, '_UNVERSIONED', set())
+    monkeypatch.setattr(extractors, '_UNVERSIONED', set())
     stimuli = _stimuli('share-subclass', sentence=['the cat sat', 'dog ran'])
     wrapper = _subclass(cls)
     store.install(wrapper)
@@ -160,7 +160,7 @@ def test_a_subclass_without_its_own_version_does_not_use_the_cache(cls, store, t
 
 def test_a_subclass_with_its_own_version_is_cached_under_its_own_key(store, tmp_path, monkeypatch):
     import warnings
-    from brainscore.model_helpers._extractors import cache_signature
+    from brainscore.model_helpers.extractors import cache_signature
     monkeypatch.chdir(tmp_path)
     stimuli = _stimuli('share-versioned', sentence=['the cat sat', 'dog ran'])
     wrapper, parent = _subclass(_Versioned), text_wrapper()
@@ -187,7 +187,7 @@ LIST_INPUTS = {'text': lambda: ['the cat sat', 'dog ran'], 'audio': _audio_files
 @pytest.mark.parametrize('name', sorted(LIST_INPUTS))
 def test_a_list_of_inputs_with_a_stimuli_identifier_is_cached_as_a_table_is(name, store, tmp_path, monkeypatch):
     """One scaffold for the four wrappers: a list takes the same cache path as a table."""
-    from brainscore.model_helpers._extractors import CachingExtractor
+    from brainscore.model_helpers.extractors import CachingExtractor
     monkeypatch.chdir(tmp_path)
     build, _, layers = CASES[name]
     wrapper = build()
