@@ -272,10 +272,14 @@ class BehavioralReadout:
         registration makes for a choice. The reply, which receives the full prompt,
         answers task settings (verbatim, present, options per row), a Scale or a
         Text, trial history, or when answer= is absent. A session decides it once,
-        in its plan.
+        in its plan. When the registration states ``similarity`` for the choice, the
+        answer part answers every Choice; a setting it cannot serve is refused.
         """
         from brainscore_core.responses import Choice
         owner, response = self.owner, task.response
+        if self.owners.get('behavior:choice') == 'similarity':
+            # The stated owner is the answer part: no reply stands in (rule 4.11).
+            return owner._answer is not None and isinstance(response, Choice)
         return (owner._answer is not None and isinstance(response, Choice)
                 and not response.verbatim and task.present is None
                 and not isinstance(response.labels, str) and owner._memory != 'trial_history')
@@ -427,7 +431,7 @@ class BehavioralReadout:
             return None          # no part can serve it: the caller names what each needs
         if not can.get(owner):
             raise ExecutionNotFeasibleError(
-                f"Subject '{self.owner.identifier}': {output!r} is owned by {owner!r}, which "
+                f"Subject '{self.owner.identifier}': {output!r} is owned by {stated or owner!r}, which "
                 f"cannot serve this task"
                 + (f" (task settings: {', '.join(settings)})" if settings else '')
                 + '; no other part answers it.', task_type=task.task_type)
@@ -522,10 +526,12 @@ class BehavioralReadout:
                 'Choice (Choice(..., verbatim=True)): its tokenization is then the plain text.',
                 task_type=task.task_type)
         presented = task.present is not None
+        # A stated similarity owner is the answer part alone: the reply does not stand in.
+        similarity = isinstance(response, Choice) and self.owners.get('behavior:choice') == 'similarity'
         can = {
-            'generation': not log_probabilities and (owner._reply is not None or (
-                owner._answer is not None and isinstance(response, Choice)
-                and not verbatim and not presented)),   # answer= takes no settings
+            'generation': not log_probabilities and (owner._reply is not None and not similarity or (
+                owner._answer is not None and isinstance(response, Choice) and not verbatim
+                and not presented and not (similarity and owner._memory == 'trial_history'))),
             'likelihood': owner._likelihood is not None and isinstance(response, Choice),
             'readout': (readout_wired and isinstance(response, (Choice, Scale))
                         and not log_probabilities and not per_row),
@@ -659,6 +665,7 @@ class BehavioralReadout:
             # Within generation: the answer part or the reply part (the plan's decision).
             by_answer = (self.owner._session_plan.by_answer if planned is not None
                          else self.by_answer(task))
+            by_reply = owner._reply is not None and not by_answer
             if path == 'likelihood':
                 def call(row, prompt):
                     parts.note('likelihood', owner._likelihood, serves=channels)
@@ -666,7 +673,7 @@ class BehavioralReadout:
                     if remember:
                         self.history.append((prompt, max(scores, key=scores.get)))
                     return scores
-            elif owner._reply is not None and not by_answer:
+            elif by_reply:
                 def call(row, prompt):
                     shown = with_history(prompt)
                     # Scoring first keeps the recorded first pass the prompt alone.
@@ -722,8 +729,9 @@ class BehavioralReadout:
                                                      parsed_by='model'), raw=replies)
             else:
                 parsed = [prompt.response.parse(str(reply)) for prompt, reply in zip(prompts, replies)]
-                # The answer part's stated method: generation, or similarity (rule 4.11).
-                method = ('similarity' if by_answer and self.owners.get('behavior:choice') == 'similarity'
+                # The declared method of the part that answered (rule 4.11): the answer
+                # part states generation or similarity; the reply states generation.
+                method = ('similarity' if not by_reply and self.owners.get('behavior:choice') == 'similarity'
                           else 'generation')
                 outputs['behavior:choice'] = answers.one_hot(
                     [label for label, _ in parsed], [label is not None for label, _ in parsed],

@@ -198,3 +198,40 @@ def test_an_answer_part_can_state_the_method_similarity():
 def test_a_similarity_statement_needs_an_answer_part_that_gives_the_format(parts, owners):
     with pytest.raises(ValueError, match='similarity'):
         _model(*parts, owners=owners)
+
+
+# --- the method of a choice is the declared method of the part that answered ---------
+
+def _similarity_choice(parts, task, stimuli=None):
+    """A choice of a model whose answer part states ``similarity``; the record and the parts called."""
+    from brainscore_core.streaming_helpers import stimulus_session
+    from tests.brainscore_model.test_behavior_paths import STIMULI
+    calls = []
+    model = _model(*parts, owners={'behavior:choice': 'similarity'}, calls=calls)
+    session = stimulus_session(STIMULI if stimuli is None else stimuli, ['behavior:choice'], task)
+    model.participate(session)
+    return session.collect('behavior:choice').attrs['response']['method'], calls
+
+
+@pytest.mark.parametrize('parts', [('answer',), ('answer', 'behavioral_readout_layer'), ('answer', 'reply')],
+                         ids=['answer', 'answer and readout', 'answer and reply'])
+@pytest.mark.parametrize('labels', ['shared', 'per row'])
+def test_the_answer_part_that_states_similarity_answers_and_records_it(parts, labels):
+    """Shared labels and labels from a column (``Choice('options')``): the answer part answers
+    and the record names its declared method, also when a reply part is wired."""
+    from tests.brainscore_model.test_answer_ownership import OPTIONS
+    task, stimuli = ((CHOICE, None) if labels == 'shared'
+                     else (TaskContext(response=Choice('options')), OPTIONS))
+    method, calls = _similarity_choice(parts, task, stimuli)
+    assert method == 'similarity'
+    assert 'answer' in calls and 'reply' not in calls
+
+
+@pytest.mark.parametrize('settings', [{'verbatim': True}], ids=['verbatim'])
+def test_the_reply_does_not_stand_in_for_a_similarity_owner(settings):
+    """A setting the stated owner cannot serve is refused before any compute."""
+    calls = []
+    model = _model('answer', 'reply', owners={'behavior:choice': 'similarity'}, calls=calls)
+    with pytest.raises(ExecutionNotFeasibleError, match='verbatim'):
+        _run(model, ['behavior:choice'], TaskContext(response=Choice(['cat', 'dog'], **settings)))
+    assert calls == []
