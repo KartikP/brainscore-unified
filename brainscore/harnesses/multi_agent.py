@@ -30,7 +30,9 @@ Only one subject acts at a time, so a run is as deterministic as its subjects.
 
 The outputs of a turn are what the subject sends between the ``respond`` signal
 of that turn and the next one, in any order. A turn that misses a requested
-output, or an error of any subject, stops the run with an error.
+output, or an error of any subject, stops the run with an error. The harness
+waits with no time limit: a subject that never answers stops the run for ever, so
+the caller owns a time limit.
 """
 import contextvars
 import queue
