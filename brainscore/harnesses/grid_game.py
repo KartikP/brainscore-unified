@@ -4,6 +4,7 @@ GridGameEnvironment declares observations/actions for an EnvironmentSource.
 The oracle reads privileged _state; visual policies use the rendered frame.
 """
 import zlib
+from types import SimpleNamespace
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
@@ -60,13 +61,16 @@ class GridGameEnv:
         self._steps = 0
         return self._observe()
 
-    def step(self, action: int) -> Tuple[Dict[str, Any], float, bool, Dict]:
-        action = DiscreteSpec(len(ACTIONS)).validate(action)
+    def step(self, action: Optional[int]) -> Tuple[Dict[str, Any], float, bool, Dict]:
+        """One step. ``None`` (an invalid move) counts as a step, and the agent stays,
+        as for a move into a wall."""
         self._steps += 1
-        dr, dc = _DELTA[action]
-        nr, nc = self.agent_pos[0] + dr, self.agent_pos[1] + dc
+        nr, nc = self.agent_pos       # None: the agent stays
+        if action is not None:
+            dr, dc = _DELTA[DiscreteSpec(len(ACTIONS)).validate(action)]
+            nr, nc = self.agent_pos[0] + dr, self.agent_pos[1] + dc
         moved = False
-        if 0 <= nr < self.size and 0 <= nc < self.size and (nr, nc) not in self.walls:
+        if action is not None and 0 <= nr < self.size and 0 <= nc < self.size and (nr, nc) not in self.walls:
             self.agent_pos = (nr, nc)
             moved = True
         reached = self.agent_pos == self.goal_pos
@@ -164,7 +168,12 @@ class GridGameEnvironment:
         }, allow_extra=True)  # _state is privileged input for the oracle demo.
 
     def action_spec(self):
-        return DiscreteSpec(len(ACTIONS))
+        """One integer action, or None for an invalid move: the agent stays for that
+        step (the benchmark's policy for an invalid move, rule 4.12)."""
+        moves = DiscreteSpec(len(ACTIONS))
+        return SimpleNamespace(
+            validate=lambda value: None if value is None else moves.validate(value),
+            describe=lambda: {**moves.describe(), 'none': 'an invalid move: the agent stays'})
 
     def reset(self, *, seed=None, options=None) -> Dict[str, Any]:
         if options:
@@ -242,7 +251,8 @@ def play_game(subject, env: GridGameEnv, max_steps: Optional[int] = None,
     """
     wrapper = GridGameEnvironment(env, max_steps=max_steps)
     responses = run_environment(subject, wrapper, seed=seed, require_specs=True)
-    actions = [int(np.asarray(action).item()) for action in responses]
+    # None is an invalid move: the agent stayed for that step (rule 4.12).
+    actions = [None if action is None else int(np.asarray(action).item()) for action in responses]
     taken = len(actions)
     return {
         'solved': wrapper.solved,
@@ -251,6 +261,7 @@ def play_game(subject, env: GridGameEnv, max_steps: Optional[int] = None,
         'optimal_steps': wrapper.optimal_steps,
         'efficiency': round(wrapper.optimal_steps / taken, 3) if (wrapper.solved and taken) else 0.0,
         'actions': actions,
+        'step_states': ['invalid' if action is None else 'valid' for action in actions],
     }
 
 
