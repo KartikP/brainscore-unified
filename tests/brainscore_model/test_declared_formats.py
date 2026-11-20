@@ -168,10 +168,14 @@ def test_the_matrix_changes_only_where_the_declarations_change():
 
 def test_no_pair_that_answers_today_becomes_not_applicable():
     """Each newly N/A pair was an error of the run before: no part could answer its task.
-    A readout without a choice statement (no registration) could not answer EWoK choice."""
+    A readout without a choice statement (no registration) could not answer EWoK choice: it
+    owns no choice (rule 4.11)."""
     ewok_choice = TaskContext(response=Choice(labels=('1', '2'), verbatim=True), trial_memory='none')
-    with pytest.raises(ExecutionNotFeasibleError, match='Paths tried'):
-        _stand_in(['behavioral_readout_layer'], {})._behavioral._choose_path(ewok_choice)
+    calls = []
+    with pytest.raises(ExecutionNotFeasibleError):
+        _stand_in(['behavioral_readout_layer'], {}, calls).participate(
+            stimulus_session(STIMULI, ['behavior'], ewok_choice))
+    assert calls == []
 
 
 def test_the_benchmark_declarations_match_the_matrix(synthetic_roar, prepared):

@@ -429,6 +429,8 @@ class TestBehavioralPathDispatch:
             behavioral_readout_layer='layer4' if has_readout else None,
             **answer,
             **({'capability_config': {'behavior-sessions': {}}} if answer and has_readout else {}),
+            **({'capability_config': {'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}}
+               if has_readout and not answer else {}),
         )
 
     def _fitting_stub(self):

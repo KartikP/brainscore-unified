@@ -78,7 +78,7 @@ vision = PytorchWrapper(identifier='my-cnn', model=net, preprocessing=preprocess
 region_layer_map = {'V1': 'layer1', 'V4': 'layer3', 'IT': 'layer4'}
 ```
 
-This map is a hypothesis. To choose layers from data, run the layer mapping explorer (`brainscore_vision.tools.layer_mapping_explorer`), which scores each layer on standard region benchmarks. The layer it picks scores best on those benchmarks because it was picked there, so report the model's score on data that did not take part in the choice.
+This map is a hypothesis. To choose layers from data, score each layer against measured responses. For a model in the vision registry, the vision layer mapping explorer (`brainscore_vision.tools.layer_mapping_explorer`) loads the model by its registry identifier and scores each layer on standard region benchmarks. For a model wrapped here and not registered, `brainscore.tools.layer_mapping.sweep_model(wrapper, stimuli, target, target_stimulus_ids, layers)` scores each layer against a response array that you give; it runs no benchmark. The layer either tool picks scores best on the data it was picked on, so report the model's score on data that did not take part in the choice.
 
 **4. Assemble.**
 

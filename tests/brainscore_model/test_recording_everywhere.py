@@ -137,7 +137,9 @@ def test_a_column_of_single_value_arrays_is_kept_on_a_recording_while_answering(
     model = BrainScoreModel('toy', extractor={'text': _PassiveToo(net)},
                             region_layer_map={'A': LayerSelector('early', modality='text')},
                             likelihood=lambda prompt, labels: net.forward(prompt.text()) and {
-                                label: -1.0 for label in labels})
+                                label: -1.0 for label in labels},
+                            capability_config={'behavior-sessions': {
+                                'behavior:choice': ('likelihood', 'softmax_argmax')}})
     task = stimulus_session(stimuli, ['behavior:log_probabilities', 'neural:A'],
                             task=TaskContext(response=Choice(['cat', 'dog'], verbatim=True)))
     model.participate(task)

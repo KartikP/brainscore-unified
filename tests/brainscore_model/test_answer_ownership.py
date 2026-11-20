@@ -397,3 +397,32 @@ def test_every_registration_records_the_declared_method_of_the_part_that_answere
             expected = ('similarity' if called == 'answer' and 'similarity' in declared
                         else PART_METHODS[called])
             assert session.collect(channel).attrs['response']['method'] == expected, (where, form, called)
+
+
+# --- an unstated derived choice has no owner (rule 4.11) ----------------------
+
+@pytest.mark.parametrize('arguments, statement', [
+    (('behavioral_readout_layer',), "('readout', 'argmax')"),
+    (('likelihood', 'behavioral_readout_layer'), "('likelihood', 'softmax_argmax')"),
+], ids=['one part derives it', 'two parts derive it'])
+def test_a_choice_that_no_statement_names_is_refused_with_the_statement_to_write(arguments, statement):
+    """Bare ``behavior`` carries the choice; a part that only derives the choice answers it
+    only when a statement names it. The refusal names the line to write."""
+    calls = []
+    model = _model(*arguments, calls=calls)
+    with pytest.raises(ExecutionNotFeasibleError) as raised:
+        _run(model, ['behavior'], CHOICE)
+    assert "'behavior-sessions'" in str(raised.value) and statement in str(raised.value)
+    assert calls == []
+
+
+def test_a_probability_only_session_runs_their_owner_when_the_choice_owner_cannot_serve():
+    """ADR-0073 decision 5: nothing reads the choice of a probability-only session, so a
+    choice owner that cannot serve the task does not block the probabilities."""
+    calls = []
+    model = _model('likelihood', 'behavioral_readout_layer', calls=calls, owners={
+        'behavior:choice': ('readout', 'argmax'), 'behavior:probabilities': ('likelihood', 'softmax')})
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))   # no fitting stimuli
+    session = _run(model, ['behavior:probabilities'], task)
+    assert session.collect('behavior:probabilities').attrs['response']['method'] == 'likelihood'
+    assert 'extract' not in calls

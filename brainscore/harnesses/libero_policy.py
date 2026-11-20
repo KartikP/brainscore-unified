@@ -53,7 +53,9 @@ class LiberoChunkPolicy:
                 or actions.dtype.kind not in 'fiu' or not np.isfinite(actions).all()):
             raise ValueError('Expected a nonempty finite action chunk with shape (horizon, 7)')
         if self.execution_horizon is not None and self.execution_horizon > len(actions):
-            raise ValueError('Predicted chunk does not cover execution_horizon')
+            raise ValueError(f'The policy predicted {len(actions)} actions; execution_horizon is '
+                             f'{self.execution_horizon}. Set execution_horizon to at most '
+                             f'{len(actions)}, or give a policy that predicts a longer chunk.')
         return {'motor': StreamEvent('motor', actions.copy(), None, {
             'policy_output': deepcopy({k: v for k, v in result.items() if k != 'actions'}),
             'action_kind': 'chunk', 'prediction_horizon': len(actions),

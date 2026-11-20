@@ -413,20 +413,20 @@ class BehavioralReadout:
     def _owner_serving(self, output, can, task, settings) -> Optional[str]:
         """The owner of the answer format ``output``, when it can serve ``task`` (rule 4.11).
 
-        The owner is the stated part, or the one wired part that gives the format.
-        When the owner cannot serve the task form, the task is refused before any
-        compute: no other part answers a format it does not own. ``None``: no part gives it.
+        The owner is the stated part, or the one part that gives the format natively
+        (``answer_owners``). A part that only derives the format owns it only by a
+        statement. When the owner cannot serve the task form, the task is refused before
+        any compute: no other part answers a format it does not own. ``None``: no part gives it.
         """
         from brainscore_core.compatibility import ExecutionNotFeasibleError
         formats = _formats_by_part(self.owner)
         givers = sorted(p for p, given in formats.items() if output in given)
         stated = self.owners.get(output)
-        owner = ('generation' if stated == 'similarity' else stated) or (
-            givers[0] if len(givers) == 1 else None)
-        if owner is None and len(givers) > 1:
+        owner = 'generation' if stated == 'similarity' else stated
+        if owner is None and givers:
             raise ExecutionNotFeasibleError(
-                f"Subject '{self.owner.identifier}': the parts {givers} give {output!r} and no "
-                f"owner is stated.", task_type=task.task_type)
+                f"Subject '{self.owner.identifier}': the parts {givers} derive {output!r} and no "
+                f"owner is stated." + statement_hint(self.owner, [output]), task_type=task.task_type)
         if owner is None or (stated != 'similarity'
                              and not (can.get(owner) or any(can.get(p) for p in givers))):
             return None          # no part can serve it: the caller names what each needs
@@ -548,6 +548,29 @@ class BehavioralReadout:
                                           ('labels per row', per_row)) if on]
         answer_format = (LOG_PROBABILITIES if log_probabilities
                          else dict(self._ANSWER_FORMATS)[type(response).__name__])
+        source = None
+        wanted = requested & self._PROBABILITY_SIDE
+        # Nothing reads the answer of the choice owner: no region is recorded and no later trial reads this one.
+        unread = (not recording and task.trial_memory == 'none'
+                  and owner._memory != 'trial_history')
+        # The requested formats decide the passes: the probability owner runs (first,
+        # for a reply, so a recording comes from its pass) only when the session
+        # requests probabilities or a reaction time.
+        if isinstance(response, Choice) and wanted and not log_probabilities:
+            source = self._owner_serving('behavior:probabilities', {
+                'likelihood': owner._likelihood is not None,
+                'readout': readout_wired and not per_row}, task, settings)
+            if source is None:
+                raise ExecutionNotFeasibleError(
+                    f"Subject '{owner.identifier}' cannot give implied probabilities: "
+                    'it needs likelihood= or a readout (behavioral_readout_layer=, '
+                    'fitting_stimuli).', task_type=task.task_type)
+            if not requested - self._PROBABILITY_SIDE and unread:
+                # Only the probability side is requested, no region is recorded and no later
+                # trial reads this one: nothing reads an answer of the choice owner, so it
+                # needs none and only the probability owner runs (ADR-0063 decision 1,
+                # ADR-0073 decision 5).
+                return source, source
         path = self._owner_serving(answer_format, can, task, settings)
         if path is None:
             needs = {'generation': 'reply= (or answer= for a plain Choice with none of the settings '
@@ -559,11 +582,6 @@ class BehavioralReadout:
                 + (f" with the task settings {', '.join(settings)}" if settings else '')
                 + '. Paths tried: ' + '; '.join(f'{p} needs {need}' for p, need in needs.items()),
                 task_type=task.task_type)
-        source = None
-        wanted = requested & self._PROBABILITY_SIDE
-        # Nothing reads the answer of the choice owner: no region is recorded and no later trial reads this one.
-        unread = (not recording and task.trial_memory == 'none'
-                  and owner._memory != 'trial_history')
         if log_probabilities and not (requested == {LOG_PROBABILITIES} and unread):
             # The task's choice format keeps an owner that can serve the task, as the setup
             # of the task always checked (``_eligible_picks``); the likelihood answers it here.
@@ -573,22 +591,8 @@ class BehavioralReadout:
         if log_probabilities:
             # One likelihood pass gives the log probabilities and what derives from them.
             return path, (path if wanted else None)
-        # The requested formats decide the passes: the probability owner runs (first,
-        # for a reply, so a recording comes from its pass) only when the session
-        # requests probabilities or a reaction time.
-        if isinstance(response, Choice) and wanted:
-            source = self._owner_serving('behavior:probabilities', {
-                'likelihood': owner._likelihood is not None,
-                'readout': readout_wired and not per_row}, task, settings)
-            if source is None:
-                raise ExecutionNotFeasibleError(
-                    f"Subject '{owner.identifier}' cannot give implied probabilities: "
-                    'it needs likelihood= or a readout (behavioral_readout_layer=, '
-                    'fitting_stimuli).', task_type=task.task_type)
         if wanted and not requested - self._PROBABILITY_SIDE and unread:
-            # Only the probability side is requested, no region is recorded and no later trial
-            # reads this one: the answer of the choice owner would be read by nothing, so only
-            # the probability owner runs (ADR-0063 decision 1).
+            # A probability-only session of a response with no implied probabilities.
             return source, source
         if {path, source} != {'likelihood', 'readout'}:
             return path, source

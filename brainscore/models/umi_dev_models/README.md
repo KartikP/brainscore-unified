@@ -31,7 +31,7 @@ measurements of the same weights.
   part is refused. The processor loads before the weights, so a processor fault shows before a
   large download.
 - **Provenance:** each score names the checkpoint and its revision (the commit of its Hub files;
-  `not pinned` until a load test fixes it), the depth hypothesis and the readout layer.
+  a full commit; the plugin test refuses any other value), the depth hypothesis and the readout layer.
 - **One session for regions, one session for an answer:** the language layer is recorded from text
   in a passive session, and a session that asks for it under a task (also with neural outputs only)
   is refused before any compute. A recording during an answer has to be verified for each family
@@ -71,7 +71,7 @@ code before a later study could declare them:
 Add one entry to `model_configs.json` and one registry line to `__init__.py`. The values:
 
 - `hf_id`: the instruction-tuned checkpoint on the Hub; `revision`: the commit of its files
-  (`not pinned` until a load test fixes it). `model_class`: `architectures` in its `config.json`;
+  (a full commit; the plugin test refuses any other value). `model_class`: `architectures` in its `config.json`;
   it must exist in the pinned transformers.
 - `vision`, `language`: the module path of each part, then the path of its list of repeated
   blocks. Build the class from its config on the meta device (resolve the class first) and print
