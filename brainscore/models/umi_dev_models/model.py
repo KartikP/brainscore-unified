@@ -216,6 +216,8 @@ def _pixel_extractor(token_pool=None):
     from brainscore.model_helpers.extractors import hook, as_numpy
 
     class Float32Export(PytorchWrapper):
+        independent_layers = True      # a layer's pooled tokens and its PCA depend on that layer alone
+
         def register_hook(self, layer, layer_name, target_dict):
             def keep(output, name=layer_name):
                 activity = as_numpy(output)
