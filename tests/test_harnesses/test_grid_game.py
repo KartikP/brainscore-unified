@@ -40,6 +40,13 @@ class TestEnvMechanics:
         assert env.agent_pos == (0, 0)
         assert info['moved'] is False
 
+    def test_a_refused_action_spends_no_step(self):
+        env = GridGameEnv(size=4, seed=0, max_steps=2)
+        with pytest.raises(ValueError):
+            env.step(4)                              # not a legal action
+        _, _, done, info = env.step(None)            # an invalid move: the agent stays
+        assert info['steps'] == 1 and not done
+
     def test_reaching_goal_gives_reward_and_done(self):
         env = GridGameEnv(size=4, seed=0)
         env.agent_pos = (1, 0)

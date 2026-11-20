@@ -50,8 +50,9 @@ R15 score construction. Signal: a call of ``Score(`` in unified
     ``benchmarks`` or ``harnesses`` that is not part of a ``ceiling=``
     argument. A metric returns its raw value as a ``Score`` by the core
     ``Metric`` contract, and a ceiling handed to the base class or to
-    ``benchmark_score`` is a reference, not a score; neither is score
-    construction. Cannot detect: a score built by a legacy helper
+    ``benchmark_score``, or returned by a benchmark's ``ceiling`` property
+    (a ceiling measured at first use), is a reference, not a score; neither
+    is score construction. Cannot detect: a score built by a legacy helper
     (``explained_variance``, ``ceiling_normalize`` in the ``-unified``
     MajajHong and Pereira pair) or by ``Score.__new__``.
 R17 score metadata stamp. Signal: ``stamp_score_metadata`` is defined or
@@ -176,14 +177,35 @@ CEILING_RECIPIENTS = ('benchmark_score', 'super().__init__', 'BenchmarkBase.__in
                       'BenchmarkBase')
 
 
+def _ceiling_property_returns(cls):
+    """The calls a ``ceiling`` property (or cached property) of ``cls`` returns itself, not
+    the returns of a function nested in it."""
+    for method in cls.body:
+        if not (isinstance(method, ast.FunctionDef) and method.name == 'ceiling' and any(
+                ast.unparse(decorator).split('.')[-1] in ('property', 'cached_property')
+                for decorator in method.decorator_list)):
+            continue
+        pending = list(method.body)
+        while pending:
+            statement = pending.pop()
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
+                continue
+            if isinstance(statement, ast.Return) and isinstance(statement.value, ast.Call):
+                yield statement.value
+            pending.extend(ast.iter_child_nodes(statement))
+
+
 def _ceiling_scores(tree):
     """The ``Score(`` calls that are the reference ceiling of an accepted recipient.
 
-    Accepted expressions: the ``ceiling=`` value itself, or a branch of a conditional
-    expression that is the value (``not_estimated() if c is None else Score(c)``).
+    Accepted expressions: the ``ceiling=`` value itself, a branch of a conditional
+    expression that is the value (``not_estimated() if c is None else Score(c)``), or
+    the value a ``ceiling`` property of a class returns.
     """
     accepted = set()
     for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            accepted |= {id(value) for value in _ceiling_property_returns(node)}
         if isinstance(node, ast.Call) and any(
                 ast.unparse(node.func) in (name, f'self.{name}') or
                 ast.unparse(node.func).endswith(f'.{name}') and '(' not in name
@@ -264,7 +286,7 @@ RESPONSIBILITIES = {
     'R11 hooks on a network': (
         lambda tree: _calls(tree, {'register_forward_hook', 'register_forward_pre_hook',
                                    'register_full_backward_hook'}),
-        _everywhere, {'unified:model_helpers/_extractors.py', 'unified:model_helpers/intervention.py',
+        _everywhere, {'unified:model_helpers/extractors.py', 'unified:model_helpers/intervention.py',
                       'unified:experiments/tools.py'}),
     'R12 intervention apply and undo': (_writes_tensor_data, _core_and_unified_library,
                                         {'unified:model_helpers/intervention.py'}),
@@ -347,6 +369,27 @@ def test_check_fails_on_a_new_violation():
     assert violations(files) == {('R14 encoding regression', 'unified:tools/new_tool.py'),
                                  ('R15 score construction', 'unified:benchmarks/new/benchmark.py'),
                                  ('R6 one Session class', 'core:new.py')}
+
+
+_PATH = 'unified:benchmarks/lazy/benchmark.py'
+
+
+@pytest.mark.parametrize('decorator', ['property', 'cached_property', 'functools.cached_property'])
+def test_a_ceiling_measured_at_first_use_is_a_reference_and_another_score_is_not(decorator):
+    lazy = f'class B:\n    @{decorator}\n    def ceiling(self):\n        return Score(self.rate)\n'
+    assert not violations([(_PATH, lazy)])
+    built = lazy + '    def __call__(self, s):\n        return Score(0.5)\n'
+    assert violations([(_PATH, built)]) == {('R15 score construction', _PATH)}
+
+
+@pytest.mark.parametrize('source', [
+    'def ceiling():\n    return Score(0.5)\n',                                   # a free function
+    'class B:\n    def ceiling(self):\n        return Score(0.5)\n',             # not a property
+    ('class B:\n    @property\n    def ceiling(self):\n'
+     '        def inner():\n            return Score(0.5)\n        return inner\n'),  # nested
+])
+def test_only_the_return_of_a_ceiling_property_is_a_reference(source):
+    assert violations([(_PATH, source)]) == {('R15 score construction', _PATH)}
 
 
 def test_check_fails_on_a_stale_entry():

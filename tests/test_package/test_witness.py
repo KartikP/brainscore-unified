@@ -68,7 +68,7 @@ def test_witness_trace_is_json_serializable():
 class _ParticipateOnly(Subject):
     """A subject with participate only: no process, no BrainScoreModel internals."""
     identifier = 'participate-only'
-    in_channels = frozenset({'text'})
+    in_channels = frozenset({'text', 'instruction'})
     out_channels = frozenset({'behavior'})
 
     def participate(self, session):

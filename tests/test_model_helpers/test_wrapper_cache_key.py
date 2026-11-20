@@ -12,7 +12,7 @@ import pytest
 import torch
 
 from brainscore_core.extraction_cache import file_inputs, implementation_config
-from brainscore.model_helpers._extractors import cache_signature
+from brainscore.model_helpers.extractors import cache_signature
 from tests.test_model_helpers.test_wrapper_cache_guard import (
     MODULES, _audio_files, _image_files, _video_files, audio_wrapper, text_wrapper, video_wrapper,
     vlm_vision_wrapper,

@@ -14,8 +14,10 @@ import numpy as np
 import pytest
 from sklearn.linear_model import Ridge
 
-from brainscore.benchmarks.lahner2024 import (
-    VISUAL_ROI_CEILING, Lahner2024BOLDMoments, Lahner2024BOLDMoments_timeresolved, RunBlocks)
+from brainscore.benchmarks.lahner2024 import VISUAL_ROI_CEILING
+from brainscore.benchmarks.lahner2024.benchmark import Lahner2024BOLDMoments
+from brainscore.benchmarks.lahner2024.benchmark_timeresolved import (
+    Lahner2024BOLDMoments_timeresolved, RunBlocks)
 from brainscore.benchmarks.lahner2024.benchmark import _split_half_reliability
 from brainscore.benchmarks.lahner2024.benchmark_timeresolved import TR_SEC
 from brainscore.temporal import double_gamma_hrf, hrf_convolve

@@ -100,7 +100,8 @@ def test_pre_flight_passes_the_picture_task_only_with_the_statement():
     (dict(reply=lambda prompt: 'yes'), 'behavior:choice'),
     (dict(answer=lambda stimulus_row, instruction, label_set: label_set[0]), 'behavior:choice'),
     (dict(likelihood=lambda prompt, labels: {label: -float(i) for i, label in enumerate(labels)},
-          capability_config={'behavior-sessions': {'behavior:probabilities': ('likelihood', 'softmax')}}),
+          capability_config={'behavior-sessions': {'behavior:probabilities': ('likelihood', 'softmax'),
+                                                   'behavior:choice': ('likelihood', 'softmax_argmax')}}),
      'behavior:probabilities'),
 ], ids=['reply', 'answer', 'likelihood'])
 def test_a_picture_task_records_the_region_from_the_answering_pass(parts, output):
@@ -143,7 +144,7 @@ def test_a_text_session_is_unchanged(language):
 def test_a_wrong_statement_fails_at_the_first_pass():
     """A picture-tower region stated as reached from text passes pre-flight; a text reply never runs that tower."""
     torch = pytest.importorskip('torch')
-    from brainscore.model_helpers._extractors import LiveRecording
+    from brainscore.model_helpers.extractors import LiveRecording
 
     class Net(torch.nn.Module):
         def __init__(self):

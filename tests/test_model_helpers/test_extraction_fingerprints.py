@@ -152,7 +152,7 @@ def test_an_entry_under_the_old_key_form_is_kept_and_not_read(monkeypatch, isola
     wrapper = _wrapper(TextWrapper)
     storage = isolated_cache(wrapper._from_texts_stored)
     old_configuration = wrapper_config(wrapper, TextWrapper.CACHE_FIELDS)
-    old_configuration['implementation'].append(('brainscore.model_helpers._extractors', 'module source'))
+    old_configuration['implementation'].append(('brainscore.model_helpers.extractors', 'module source'))
     old_signature = fingerprint({'configuration': old_configuration, 'inputs': ['a']})
     old_key = ('brainscore.model_helpers.text_wrapper.TextWrapper._from_texts_stored/identifier=cache-fixture,'
                f'stimuli_identifier=stimuli,extraction_fingerprint={old_signature}')

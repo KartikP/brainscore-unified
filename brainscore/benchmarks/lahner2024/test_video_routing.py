@@ -3,7 +3,7 @@ and frames sampled from each clip otherwise. The route comes from declarations,
 never from raw extractor keys."""
 import pytest
 
-from brainscore.benchmarks.lahner2024 import Lahner2024BOLDMoments
+from brainscore.benchmarks.lahner2024.benchmark import Lahner2024BOLDMoments
 from tests.lahner_synthetic import Recorder, install
 
 

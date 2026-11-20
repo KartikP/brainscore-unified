@@ -1,7 +1,7 @@
 """The concrete subject exposes its observation configuration."""
 # -- Public observation surface: ``extractor`` + ``detect_modalities`` --------
 # Core-only fakes (no framework). Observation tools read these instead of the
-# private ``_extractors``; neither is a Subject member.
+# private ``extractors``; neither is a Subject member.
 
 from types import MappingProxyType
 

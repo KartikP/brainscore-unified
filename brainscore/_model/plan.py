@@ -124,11 +124,11 @@ def _presented_table(session):
 
     Only then can the plan check the whole table, group the recordings and read its
     input forms before any set-up: ``stimulus_session`` states it (core
-    ``Session._presents_table``, listed and streaming). A source given with a table
+    ``Session.presents_table``, listed and streaming). A source given with a table
     by its caller may present other rows or other forms, so each batch decides, as
     before the plan.
     """
-    return session.stimuli if getattr(session, '_presents_table', False) else None
+    return session.stimuli if session.presents_table else None
 
 
 def _spans_several_inputs(stimuli) -> bool:

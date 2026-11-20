@@ -542,14 +542,3 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         score.attrs['n_videos_scored'] = int(test.sum())
         score.attrs.update(route_attrs)
         return score
-
-# Noise ceiling for the visual-ROI voxel set. For a predictivity correlation the ceiling
-# is sqrt(reliability): the highest r a perfect model could reach given measurement
-# noise. Under the protocol of the data set the constant is the median of
-# sqrt(reliability on the scored videos, the 93 test-set videos) over the voxels of the
-# mask (reliability of at least 0.3 on the 933 training-set videos) that have a
-# positive ceiling. Measured on the hosted data: the mask has 3958 voxels, every one
-# with a positive ceiling, and this is their median. It is what ``benchmark.ceiling``
-# reports for both ``-visualROI`` variants; the score divides each voxel by its own
-# ceiling and does not read this value.
-VISUAL_ROI_CEILING = 0.8515666971964203

@@ -87,7 +87,9 @@ class BehaviorSessions(Capability):
                 or subject._reply is not None or subject._likelihood is not None)
 
     def declared_input_channels(self, subject):
-        replies = (subject._answer, subject._reply, subject._likelihood)
+        # An answer chosen by similarity reads no instruction, so it does not declare one.
+        similarity = 'similarity' in subject._behavioral.owners.values()
+        replies = (None if similarity else subject._answer, subject._reply, subject._likelihood)
         return {'instruction'} if any(part is not None for part in replies) else set()
 
     def declared_output_channels(self, subject):
@@ -232,31 +234,6 @@ for _capability in (_NEURAL, _BEHAVIOR, _MOTOR, InterventionSessions()):
     register_capability(_capability)
 
 
-def _presented_times(session, events, n_rows):
-    """The time of each row of the presented table: that of the first input event that presented it.
-
-    The session's own table is presented in row order: one event per row, or one event
-    per input column with ``meta['table_row']``. Rows rebuilt from events (no table) are
-    keyed as core rebuilds them: ``stimulus_index``, else ``stimulus_id``, else the
-    event's position. A row no event presented has no time.
-    """
-    times = [None] * n_rows
-    seen = set()
-    own_table = getattr(session, 'stimuli', None) is not None
-    position, keys = -1, {}
-    for index, event in enumerate(events):
-        if own_table:
-            row = event.meta.get('table_row')
-            position = row if row is not None else position + 1
-        else:
-            key = event.meta.get('stimulus_index', event.meta.get('stimulus_id', index))
-            position = keys.setdefault(key, len(keys))
-        if 0 <= position < n_rows and position not in seen:
-            seen.add(position)
-            times[position] = event.t_ms
-    return times
-
-
 def drive_behavior_and_neural_session(subject, session, driver: str = "interact") -> None:
     """Record ``neural:<region>`` while the subject does the session's task.
 
@@ -274,18 +251,22 @@ def drive_behavior_and_neural_session(subject, session, driver: str = "interact"
     regions, answers = list(plan.regions), list(plan.answers)
     # The plan chose the answering part for the requested formats. The requested outputs decide whether the readout is fitted (as they decide the parts).
     subject.start_task(task, formats=answers)
-    # A streaming session reads one trial, answers it and sends its outputs, then
-    # reads the next. Otherwise the inputs are read first. A subject without the
-    # trait keeps no history, so it can answer the whole table at once; one that
-    # keeps history is answered trial by trial so a begin can fall between trials.
+    # A trial is read, answered and its outputs sent before the next is read. A
+    # subject without the trait keeps no history, so a listed session can be answered
+    # as one whole table ('table'); otherwise a begin can fall between trials.
     # Each batch is (stimuli, t_ms): a trial answers at the time of its input, or with no
     # time when its input has none (rule 4.2); its index is in meta['trial_index'].
     # The whole table answered at once is many trials: its events carry no time.
-    if plan.delivery == 'stream':
-        batches = enumerate(_drivers.stream_trials(session, task))
+    # A begin starts a new episode; a source with no begin still starts with one.
+    pending = True
+
+    def begin():
+        nonlocal pending
+        pending = True
+
+    if plan.delivery != 'table':
+        batches = enumerate(_drivers.stream_trials(session, task, on_begin=begin))
     else:
-        # Every input is read first. A trial is a row of the presented table; it keeps the
-        # time of the input events that presented it, never a time column of the table.
         events = [event for event in _drivers.drain_session_inputs(session)
                   if event.channel != 'instruction']
         stimuli = (_drivers.session_stimuli(session, events)
@@ -293,12 +274,7 @@ def drive_behavior_and_neural_session(subject, session, driver: str = "interact"
                    else _drivers.behavior_stimuli_from_session(session, task))
         if stimuli is None:
             raise ValueError("Recording during a task needs stimuli to present.")
-        if plan.delivery == 'per_trial':
-            times = _presented_times(session, events, len(stimuli))
-            batches = enumerate((_drivers.preserve_stimulus_set_type(stimuli, stimuli.iloc[[index]]),
-                                 times[index]) for index in range(len(stimuli)))
-        else:
-            batches = [(0, (stimuli, None))]
+        batches = [(0, (stimuli, None))]
     from brainscore_core.compatibility import ExecutionNotFeasibleError
     from brainscore_core.responses import Segments
     for index, (batch, t_ms) in batches:
@@ -308,8 +284,9 @@ def drive_behavior_and_neural_session(subject, session, driver: str = "interact"
             raise ExecutionNotFeasibleError(
                 f"Subject '{subject.identifier}' answers one Segments trial in a session; a "
                 "second trial arrived", channels=set(answers), task_type=task.task_type)
-        if index == 0 or task.trial_memory == 'none':
+        if pending or task.trial_memory == 'none':
             subject._begin_episode()
+            pending = False
         behavior, neural = subject._behavioral.respond(batch, answers, regions)
         trial = {} if plan.delivery == 'table' else {"trial_index": index}
         # A value that is a StreamEvent keeps its meta: a reply's extra data (send_outputs).

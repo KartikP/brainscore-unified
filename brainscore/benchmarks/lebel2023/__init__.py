@@ -21,22 +21,25 @@ that atlas is present: ``python -m brainscore.data lana-atlas``.
 
 from brainscore import benchmark_registry
 
-from .benchmark import (LeBel2023Encoding, LeBel2023EncodingLanguageMask,
-                        LeBel2023EncodingWordLevel)
+
+def _load(name: str, **configuration):
+    from . import benchmark
+    return getattr(benchmark, name)(**configuration)
+
 
 benchmark_registry['LeBel2023-UTS03-encoding'] = (
-    lambda: LeBel2023EncodingWordLevel(pooling='lanczos'))
+    lambda: _load('LeBel2023EncodingWordLevel', pooling='lanczos'))
 benchmark_registry['LeBel2023-UTS03-encoding-smoke'] = (
-    lambda: LeBel2023EncodingWordLevel(
-        identifier='LeBel2023-UTS03-encoding-smoke', pooling='lanczos',
+    lambda: _load(
+        'LeBel2023EncodingWordLevel', identifier='LeBel2023-UTS03-encoding-smoke', pooling='lanczos',
         max_targets=2000))
 
 # Retained for comparison: one context window per TR, read at its last token.
 benchmark_registry['LeBel2023-UTS03-encoding-contextwindow'] = (
-    lambda: LeBel2023Encoding(identifier='LeBel2023-UTS03-encoding-contextwindow'))
+    lambda: _load('LeBel2023Encoding', identifier='LeBel2023-UTS03-encoding-contextwindow'))
 
 # Reports the reference pipeline's statistic. Same fit as the default variant;
 # only the summary differs. Requires the LanA atlas (a local, user-supplied
 # asset) and says so if it is absent.
 benchmark_registry['LeBel2023-UTS03-encoding-languagemask'] = (
-    lambda: LeBel2023EncodingLanguageMask())
+    lambda: _load('LeBel2023EncodingLanguageMask'))

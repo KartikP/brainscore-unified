@@ -150,7 +150,7 @@ def stand_in(monkeypatch, tmp_path):
     def refuse(*args, **kwargs):
         raise AssertionError('a test must not load a checkpoint')
     monkeypatch.setattr(transformers.PreTrainedModel, 'from_pretrained', classmethod(refuse))
-    monkeypatch.setattr('brainscore.model_helpers._device.select_device', lambda device=None: 'cpu')
+    monkeypatch.setattr('brainscore.model_helpers.device.select_device', lambda device=None: 'cpu')
     monkeypatch.setattr(study, '_refuse', lambda identifier, config: None)
 
     def load(identifier, config):
@@ -421,6 +421,15 @@ def test_the_readout_answers_a_picture_with_other_inputs_or_without_a_table(stan
         subject.participate(Session(text, [output], task()))
 
 
+def test_every_registration_states_a_commit_of_its_hub_files():
+    """A study registration loads one fixed set of Hub files: its revision is a full commit."""
+    import re
+    moving = {identifier: config['revision'] for identifier, config in study.MODEL_CONFIGS.items()
+              if not re.fullmatch(r'[0-9a-f]{40}', config['revision'])}
+    assert not moving, (f'{moving}: state the commit of the Hub files in model_configs.json, for example '
+                        "the 'sha' of https://huggingface.co/api/models/<hf_id> on the day of the load test.")
+
+
 def test_a_pinned_revision_reaches_every_load(monkeypatch):
     """The revision a model states reaches the download check, its processor and its weights."""
     import brainscore.models._downloads as downloads
@@ -442,7 +451,7 @@ def test_a_pinned_revision_reaches_every_load(monkeypatch):
     monkeypatch.setattr(hf_compat, 'pin_image_processor', lambda processor, *a, **k: processor)
     # The first lazy loads above can put another module object under the name: set the class on the one there now.
     monkeypatch.setattr(sys.modules['transformers'], 'PinnedWeights', Weights, raising=False)
-    monkeypatch.setattr('brainscore.model_helpers._device.select_device', lambda device=None: 'cpu')
+    monkeypatch.setattr('brainscore.model_helpers.device.select_device', lambda device=None: 'cpu')
     pinned = {i: c for i, c in study.MODEL_CONFIGS.items() if c['revision'] != 'not pinned'}
     assert pinned and all(len(c['revision']) == 40 for c in pinned.values())     # a commit of the Hub files
     for identifier, config in pinned.items():
@@ -502,7 +511,7 @@ def test_a_missing_package_and_a_missing_class_are_named_before_any_download(mon
                 model_registry[identifier]()
         else:
             study._refuse(identifier, config)       # a model that uses none of the packages loads without them
-    with pytest.raises(LoadError, match='NoSuchVLM'):
+    with pytest.raises(LoadError, match='NoSuchVLM.*Next step'):
         study._refuse('m', dict(study.MODEL_CONFIGS['qwen3-vl-2b_UMI-dev'], model_class='NoSuchVLM'))
 
 

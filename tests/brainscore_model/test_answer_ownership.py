@@ -219,6 +219,10 @@ QWEN_READOUT_STATEMENT = {**REGISTERED_STATEMENTS[QWEN], 'behavior:probabilities
 # scan holds that registration, and only it, to this statement.
 BLIP2_REGISTRATION = 'models/blip2_opt_2_7b/model.py'
 BLIP2_STATEMENT = {'behavior:rating': 'readout'}
+# clip-vit-b-32-zero-shot wires an answer part and a readout, and states that its answer
+# part chooses by similarity (rule 4.11).
+ZERO_SHOT_REGISTRATION = 'models/clip_vit_b_32/model.py'
+ZERO_SHOT_STATEMENT = {'behavior:choice': 'similarity'}
 API = ('answer', 'reply')
 READOUT = ('behavioral_readout_layer',)
 
@@ -344,6 +348,81 @@ def test_every_registration_answers_each_format_with_the_part_of_its_part_set():
             # BLIP-2 wires the Qwen part set but keeps ratings with the readout; the Qwen
             # registrations keep their own references.
             references = [BLIP2_STATEMENT]
+        if where == ZERO_SHOT_REGISTRATION and tuple(wired) == BLIP2:
+            references = [ZERO_SHOT_STATEMENT]
         found = _answering_parts(model)
         assert any(found == _answering_parts(_model(*wired, owners=reference)) for reference in references), (where, found)
 
+
+
+# --- every registration: the method an answer records is the declared one (rule 4.11) ---
+
+# The methods a part of a BrainScoreModel states (rule 4.11, Response Format Standard 4.3).
+DECLARED_METHODS = {'generation', 'likelihood', 'readout', 'similarity'}
+# The method each part declares when no statement names another; 'extract' is the readout.
+PART_METHODS = {'answer': 'generation', 'reply': 'generation', 'likelihood': 'likelihood',
+                'extract': 'readout'}
+METHOD_FORMS = {
+    'shared labels': ('behavior:choice', CHOICE, STIMULI),
+    'labels per row': ('behavior:choice', TaskContext(response=Choice('options'), fitting_stimuli=FITTING),
+                       OPTIONS),
+    'probabilities': ('behavior:probabilities', CHOICE, STIMULI),
+    'rating': ('behavior:rating', TaskContext(instruction='How much?', response=Scale(1, 7)), STIMULI),
+    'text': ('behavior:text', FREE_TEXT, STIMULI),
+}
+
+
+def test_every_registration_records_the_declared_method_of_the_part_that_answered():
+    """For every ``BrainScoreModel(...)`` call the scan reads (no list of plugins): each stated
+    method is in the vocabulary, and through ``participate`` each answer records the declared
+    method of the part that was called (shared labels and labels from a column alike).
+    Limit: a registration whose statement is not a literal (the Qwen family looks it up in a
+    table) is not read by the scan; its record is checked through its registry loader
+    (``tests/test_models/test_qwen_probability_statements.py``)."""
+    registrations, _, _ = _registrations()
+    for where, wired, stated in registrations:
+        declared = {value if isinstance(value, str) else value[0] for value in stated.values()}
+        assert declared <= DECLARED_METHODS, (where, declared - DECLARED_METHODS)
+        for form, (channel, task, stimuli) in METHOD_FORMS.items():
+            calls = []
+            model = _model(*wired, owners=stated, calls=calls)
+            if channel not in model.out_channels:
+                continue
+            session = stimulus_session(stimuli, [channel], task)
+            try:
+                model.participate(session)
+            except ExecutionNotFeasibleError:
+                continue
+            called = next(part for part in PART_METHODS if part in calls)
+            expected = ('similarity' if called == 'answer' and 'similarity' in declared
+                        else PART_METHODS[called])
+            assert session.collect(channel).attrs['response']['method'] == expected, (where, form, called)
+
+
+# --- an unstated derived choice has no owner (rule 4.11) ----------------------
+
+@pytest.mark.parametrize('arguments, statement', [
+    (('behavioral_readout_layer',), "('readout', 'argmax')"),
+    (('likelihood', 'behavioral_readout_layer'), "('likelihood', 'softmax_argmax')"),
+], ids=['one part derives it', 'two parts derive it'])
+def test_a_choice_that_no_statement_names_is_refused_with_the_statement_to_write(arguments, statement):
+    """Bare ``behavior`` carries the choice; a part that only derives the choice answers it
+    only when a statement names it. The refusal names the line to write."""
+    calls = []
+    model = _model(*arguments, calls=calls)
+    with pytest.raises(ExecutionNotFeasibleError) as raised:
+        _run(model, ['behavior'], CHOICE)
+    assert "'behavior-sessions'" in str(raised.value) and statement in str(raised.value)
+    assert calls == []
+
+
+def test_a_probability_only_session_runs_their_owner_when_the_choice_owner_cannot_serve():
+    """ADR-0073 decision 5: nothing reads the choice of a probability-only session, so a
+    choice owner that cannot serve the task does not block the probabilities."""
+    calls = []
+    model = _model('likelihood', 'behavioral_readout_layer', calls=calls, owners={
+        'behavior:choice': ('readout', 'argmax'), 'behavior:probabilities': ('likelihood', 'softmax')})
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))   # no fitting stimuli
+    session = _run(model, ['behavior:probabilities'], task)
+    assert session.collect('behavior:probabilities').attrs['response']['method'] == 'likelihood'
+    assert 'extract' not in calls

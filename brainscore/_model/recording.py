@@ -57,7 +57,7 @@ def records_while_answering(owner, region: str, stimuli=None) -> bool:
     another input does not count.
     """
     from .dispatch import extractor_for, extractor_keys
-    from brainscore.model_helpers._extractors import get_layer
+    from brainscore.model_helpers.extractors import get_layer
     modality = region_modality(owner, region)
     if modality is None:
         return False
@@ -268,7 +268,7 @@ def _hook_recording(model, layers, identifier):
     previous take, each layer's output flattened per presentation, as a
     still-image extractor packages it.
     """
-    from brainscore.model_helpers._extractors import LiveRecording, as_float32, layer_assembly
+    from brainscore.model_helpers.extractors import LiveRecording, as_float32, layer_assembly
 
     return LiveRecording(model, model, layers, as_float32, lambda activity, _read, _row: {
         layer: layer_assembly(identifier, layer, values.reshape(1, -1)) for layer, values in activity.items()})

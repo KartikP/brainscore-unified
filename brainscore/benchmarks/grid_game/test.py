@@ -49,14 +49,22 @@ def test_same_boards_every_candidate(bench):
 
 def test_a_seeded_null_gives_one_score_each_time():
     """The registered settings: one subject scored twice, and a new subject with
-    the same seed, give the first score; the first score is the measured floor."""
+    the same seed, give the first score."""
     import brainscore
     bench = brainscore.load_benchmark('GridGame-reach-5x5')
     subject = policy_model(random_action_policy(0), 'random')
     scores = [float(bench(subject)) for _ in range(2)]
     scores.append(float(bench(policy_model(random_action_policy(0), 'random-again'))))
     assert scores == [scores[0]] * 3
-    assert scores[0] * float(bench.ceiling) == bench._random_floor == pytest.approx(8 / 15)
+
+
+def test_the_registered_floor_is_the_mean_rate_of_the_random_policy_over_seeds_0_to_29():
+    """The floor of the owner's decision (2026-11-19): the random policy with seeds 0 to 29,
+    each on the 15 registered boards, gives 167 successes in 450 episodes (measured
+    2026-11-19). One seed alone gives from 0.2 to 0.6."""
+    import brainscore
+    score = brainscore.load_benchmark('GridGame-reach-5x5')(policy_model(random_action_policy(0), 'r'))
+    assert score.attrs['random_floor'] == pytest.approx(167 / 450)
 
 
 def test_a_seeded_null_gives_an_episode_the_same_actions_after_any_other_episode():
@@ -124,3 +132,59 @@ def test_declares_the_rows_it_sends_and_the_action_it_needs(bench):
 def test_a_participate_only_subject_gets_a_score(bench):
     score = bench(_Mover())
     assert 0.0 <= score.attrs['raw'] <= 1.0
+
+
+def test_the_calibration_runs_at_first_use_and_stays_out_of_the_run_record(monkeypatch):
+    """The oracle and the random floor run when the ceiling is first read, not when the
+    benchmark is built nor for an incompatible subject; the provenance of a scored subject
+    names only that subject."""
+    import brainscore
+    from brainscore_core.streaming import Session
+    sessions = []
+    start = Session.__init__
+
+    def counted(self, *args, **kwargs):
+        sessions.append(True)
+        start(self, *args, **kwargs)
+    monkeypatch.setattr(Session, '__init__', counted)
+    built = GridGameBenchmark(size=5, n_episodes=2)
+    assert not sessions                                       # nothing measured at build
+    assert np.isnan(float(brainscore.score(brainscore.load_model('chance-baseline'), built)))
+    assert not sessions                                       # N/A before any episode
+    score = brainscore.score(policy_model(random_action_policy(3), 'probe'), built)
+    assert sessions
+    assert [entry['subject'] for entry in score.attrs['provenance']] == ['probe']
+    assert float(score.attrs['ceiling']) == 1.0
+
+
+# --- an invalid move (rule 4.12, decided 2026-11-19) -------------------------------
+
+def _oracle_with_invalid_moves(invalid, seen):
+    """The oracle, except that ``invalid(call, step)`` steps give no move (an unreadable reply)."""
+    state = {'call': 0, 'step': 0}
+
+    def policy(row):
+        seen.append(row['observation']['ascii'])
+        call, step = state['call'], state['step']
+        state['call'] += 1
+        state['step'] += 1
+        return {'motor': None} if invalid(call, step) else greedy_oracle_policy(row)
+    policy.reset = lambda: state.__setitem__('step', 0)
+    return policy
+
+
+def test_one_invalid_move_keeps_the_agent_in_place_and_the_run_goes_on(bench):
+    seen = []
+    score = bench(policy_model(_oracle_with_invalid_moves(lambda call, step: call == 0, seen), 'one'))
+    assert seen[1] == seen[0]                       # the same board: the agent stayed for that step
+    assert score.attrs['success_rate'] == 1.0       # every episode ran and was solved
+    assert score.attrs['n_invalid'] == 1 and score.attrs['n_trials'] == len(seen)
+    assert 'invalid' in score.attrs['answer_policy']
+    assert score.attrs['result_validity'] == 'valid'
+
+
+def test_above_ten_percent_invalid_steps_the_result_is_invalid_and_returned(bench):
+    score = bench(policy_model(_oracle_with_invalid_moves(lambda call, step: step < 3, []), 'many'))
+    assert score.attrs['n_invalid'] == 3 * bench.n_episodes
+    assert score.attrs['result_validity'] == 'invalid'
+    assert np.isfinite(float(score))
