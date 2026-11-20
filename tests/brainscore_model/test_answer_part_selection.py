@@ -149,7 +149,7 @@ EXPECTED = {
         'PL': 'generation:reply', 'AP': 'generation:answer',
     },
     'plain probabilities fit=False': {
-        'R': '!choice', 'AR': '!implied', 'APLR': 'likelihood:likelihood',
+        'R': '!implied', 'AR': '!implied', 'APLR': 'likelihood:likelihood',
         'PL': 'likelihood:likelihood', 'AP': '-',
     },
     'per-row choice fit=False': {
@@ -189,7 +189,7 @@ EXPECTED = {
         'PL': 'generation:reply', 'AP': 'generation:reply',
     },
     'reaction time evidence_margin fit=False': {
-        'R': '!choice', 'AR': '!implied', 'APLR': 'link/likelihood:likelihood',
+        'R': '!implied', 'AR': '!implied', 'APLR': 'link/likelihood:likelihood',
         'PL': 'link/likelihood:likelihood', 'AP': '-',
     },
     'reaction time evidence_margin fit=True': {
@@ -197,7 +197,7 @@ EXPECTED = {
         'PL': 'link/likelihood:likelihood', 'AP': '-',
     },
     'reaction time surprisal fit=False': {
-        'R': '!choice', 'AR': '!implied', 'APLR': 'link/likelihood:likelihood',
+        'R': '!implied', 'AR': '!implied', 'APLR': 'link/likelihood:likelihood',
         'PL': 'link/likelihood:likelihood', 'AP': '-',
     },
     'reaction time surprisal fit=True': {
