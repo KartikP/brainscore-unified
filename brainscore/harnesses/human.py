@@ -18,6 +18,8 @@ stimulus presentation.
 from typing import Any, Callable, Dict, List, Optional, Set, Union
 
 from brainscore_core.contract import Subject, TaskContext
+from brainscore_core.io_catalog import form_problem
+from brainscore_core.streaming import StreamEvent
 
 
 def _no_hardware(*_args, **_kwargs):
@@ -40,6 +42,14 @@ class HumanSubject(Subject):
         activity from the configured region.
     :param respond_fn: ``callable(task, stimulus) -> response`` collecting
         a behavioral response.
+    :param out_channels: the behavior channels the rig gives with ``respond_fn``,
+        for example ``{'behavior:choice'}``. For a stated format the session's task
+        and its stimuli table go to ``respond_fn``, and its return value is the answer
+        on that channel (an answer carries its record, ``attrs['response']``). A
+        benchmark that requests a format the rig did not state is not applicable
+        before any stimulus is presented. A rig that states none declares only its
+        ``neural:<region>`` outputs: a session built directly on bare ``behavior``
+        still gets the return value of ``respond_fn`` on ``behavior``.
     """
 
     def __init__(self, identifier: str,
@@ -47,13 +57,21 @@ class HumanSubject(Subject):
                  region_layer_map: Optional[Dict[str, str]] = None,
                  present_fn: Optional[Callable] = None,
                  record_fn: Optional[Callable] = None,
-                 respond_fn: Optional[Callable] = None):
+                 respond_fn: Optional[Callable] = None,
+                 out_channels: Optional[Set[str]] = None):
         self._identifier = identifier
         self._in_channels = set(in_channels or {"vision:image"})
         self._region_layer_map = dict(region_layer_map or {})
         self._present_fn = present_fn or _no_hardware
         self._record_fn = record_fn or _no_hardware
         self._respond_fn = respond_fn or _no_hardware
+        self._behavior_channels = set(out_channels or ())
+        for channel in self._behavior_channels:
+            if channel.split(':', 1)[0] != 'behavior' or form_problem(channel):
+                raise ValueError(
+                    f"HumanSubject states {channel!r} in out_channels: state only the behavior "
+                    "channels the rig gives, for example 'behavior:choice'; a neural output "
+                    "comes from region_layer_map.")
         self._recording_region: Optional[Union[str, List[str]]] = None
         self._task: Optional[TaskContext] = None
 
@@ -71,13 +89,21 @@ class HumanSubject(Subject):
 
     @property
     def out_channels(self) -> Set[str]:
-        """``neural:<region>`` for every mapped region."""
-        return {f"neural:{region}" for region in self._region_layer_map}
+        """``neural:<region>`` for every mapped region, and the stated behavior channels."""
+        return {f"neural:{region}" for region in self._region_layer_map} | self._behavior_channels
 
     def participate(self, session) -> None:
         """Run ``session`` through the typed methods below. The recording region and the task
         it sets hold for this call only: the next session starts from none."""
-        from brainscore_core.streaming_helpers import drive_typed_session
+        from brainscore_core.streaming_helpers import (
+            drain_session_inputs, drive_typed_session, session_stimuli)
+        outputs = list(session.outputs or ())
+        if len(outputs) == 1 and outputs[0] in self._behavior_channels - {'behavior'}:
+            stimuli = session_stimuli(session, drain_session_inputs(session))
+            self._present_fn(stimuli)
+            answer = self._respond_fn(session.task, stimuli)
+            session.respond(StreamEvent(outputs[0], answer, None, {}))
+            return
         try:
             drive_typed_session(self, session)
         finally:
