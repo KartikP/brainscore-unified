@@ -915,3 +915,30 @@ def test_plain_text_scoring_refuses_several_parts_and_trial_history():
     earlier = Prompt((('text', 'a'),), response=response)
     with pytest.raises(ExecutionNotFeasibleError, match='earlier trials'):
         likelihood(Prompt((('text', 'ab'),), response=response, history=((earlier, 'c'),)), ['c', 'dd'])
+
+
+@pytest.mark.parametrize('fit, tool', [('intact', 'network'), ('current', 'network'),
+                                       ('intact', 'intervention')])
+def test_a_network_tool_with_a_fit_on_the_intact_network_is_refused_before_any_pass(
+        tmp_path, fit, tool):
+    """A network tool changes the network outside the subject, so a fit on the intact
+    network cannot switch it off: the pair is refused; each half alone runs."""
+    from brainscore.experiments import Ablate, TorchInstrumentation
+    net = Net()
+    task = TaskContext(response=Choice(['short', 'long']), instruction='Is it long?', readout_fit=fit)
+    silence = StateChange(kind='ablation', target=Selection(layer='early'),
+                          perturbation=Perturbation(kind='zero'))
+    change = {'network': Ablate(['early'], conditions=['silenced']),
+              'intervention': Intervene(silence, conditions=['silenced'])}[tool]
+    experiment = Experiment(subject=_subject(net),
+                            protocol=TaskProtocol(STIMULI, task, conditions=['baseline', 'silenced']),
+                            tools=[RecordBehavior(), change],
+                            instrumentation=TorchInstrumentation({'early': torch.nn.Identity()}),
+                            output_dir=tmp_path / 'run')
+    if (fit, tool) == ('intact', 'network'):
+        with pytest.raises(ExecutionNotFeasibleError, match="readout_fit='current'"):
+            experiment.run()
+        assert net.passes == 0
+    else:
+        experiment.run()
+        assert net.passes == 2 * len(STIMULI)

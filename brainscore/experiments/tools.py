@@ -121,6 +121,16 @@ class Ablate(Tool):
         if experiment.instrumentation is None:
             raise ValueError(f'{type(self).__name__} requires an instrumentation')
         experiment.instrumentation.validate(self.operation, self.targets)
+        task = getattr(experiment.protocol, 'task', None)
+        if task is not None and task.readout_fit == 'intact':
+            # The change is made outside the subject, so a fit on the intact network
+            # cannot switch it off (Contract Rules 4.9).
+            from brainscore_core.compatibility import ExecutionNotFeasibleError
+            raise ExecutionNotFeasibleError(
+                f"{type(self).__name__} changes the network outside the subject, so "
+                "readout_fit='intact' cannot switch it off for the fit. Send the change "
+                "to the subject with Intervene, or use readout_fit='current'.",
+                task_type=task.task_type)
         available_conditions = getattr(experiment.protocol, 'conditions', ('default',))
         if self.conditions is not None and (not self.conditions or set(self.conditions) - set(available_conditions)):
             raise ValueError(f'{type(self).__name__} conditions must belong to the protocol')
