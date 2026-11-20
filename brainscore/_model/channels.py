@@ -12,7 +12,10 @@ Regions that one extractor records share its call when the extractor declares
 stimuli for the layers of all those regions, and each channel's own request
 gets its layers' part of that output (``dispatch.one_call_per_extractor``).
 Every other step of the standalone path still runs per channel. Regions of an
-extractor without the declaration run one call each, as before.
+extractor without the declaration run one call each, as before. With a stored
+stimulus table, that call also records the other regions of the map that the
+extractor records, so the next session on the same table reads them from the
+store (``_shared_layers``).
 
 The environment variable ``BRAINSCORE_REGIONS_PER_PASS`` selects the plan:
 ``all`` (the default) shares the call as above; ``one`` gives every region its
@@ -156,18 +159,28 @@ def _shared_layers(model, stimuli, regions: List[str]) -> List[Tuple[object, Lis
     region reads (``region_modality``, then ``extractor_for``), so two
     registration keys that hold different extractors never share. A region
     whose input is not named, when several inputs could serve it, shares nothing.
+
+    When the stimuli have an identifier and the store is on, the call of such
+    an extractor also records the layers of every other region of the
+    ``region_layer_map`` that it records from these stimuli. The store keeps
+    each layer apart, so a later session that asks one of those regions on the
+    same stimuli reads it from the store, with no new pass.
     """
+    import result_caching
+    stored = bool(getattr(stimuli, 'identifier', None)) and result_caching.is_enabled('')
+    others = [region for region in model._region_layer_map_dict if region not in regions] if stored else []
     groups: Dict[int, Tuple[object, List[str], int]] = {}
-    for region in regions:
+    for region in list(regions) + others:
         modality = region_modality(model, region)
         extractor = None if modality is None else extractor_for(
             model, modality, stimuli, region_selector(model, region).layer_paths)
-        if extractor is None or not _declares_independent_layers(extractor):
+        if (extractor is None or not _declares_independent_layers(extractor)
+                or (region in others and id(extractor) not in groups)):
             continue
         _, layers, count = groups.get(id(extractor), (extractor, [], 0))
-        layers.extend(path for path in region_selector(model, region).layer_paths
-                      if path not in layers)
-        groups[id(extractor)] = (extractor, layers, count + 1)
+        new = [path for path in region_selector(model, region).layer_paths if path not in layers]
+        layers.extend(new)
+        groups[id(extractor)] = (extractor, layers, count + (region in regions or bool(new)))
     return [(extractor, layers) for extractor, layers, count in groups.values() if count > 1]
 
 
