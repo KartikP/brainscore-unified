@@ -155,3 +155,36 @@ def test_the_calibration_runs_at_first_use_and_stays_out_of_the_run_record(monke
     assert sessions
     assert [entry['subject'] for entry in score.attrs['provenance']] == ['probe']
     assert float(score.attrs['ceiling']) == 1.0
+
+
+# --- an invalid move (rule 4.12, decided 2026-11-19) -------------------------------
+
+def _oracle_with_invalid_moves(invalid, seen):
+    """The oracle, except that ``invalid(call, step)`` steps give no move (an unreadable reply)."""
+    state = {'call': 0, 'step': 0}
+
+    def policy(row):
+        seen.append(row['observation']['ascii'])
+        call, step = state['call'], state['step']
+        state['call'] += 1
+        state['step'] += 1
+        return {'motor': None} if invalid(call, step) else greedy_oracle_policy(row)
+    policy.reset = lambda: state.__setitem__('step', 0)
+    return policy
+
+
+def test_one_invalid_move_keeps_the_agent_in_place_and_the_run_goes_on(bench):
+    seen = []
+    score = bench(policy_model(_oracle_with_invalid_moves(lambda call, step: call == 0, seen), 'one'))
+    assert seen[1] == seen[0]                       # the same board: the agent stayed for that step
+    assert score.attrs['success_rate'] == 1.0       # every episode ran and was solved
+    assert score.attrs['n_invalid'] == 1 and score.attrs['n_trials'] == len(seen)
+    assert 'invalid' in score.attrs['answer_policy']
+    assert score.attrs['result_validity'] == 'valid'
+
+
+def test_above_ten_percent_invalid_steps_the_result_is_invalid_and_returned(bench):
+    score = bench(policy_model(_oracle_with_invalid_moves(lambda call, step: step < 3, []), 'many'))
+    assert score.attrs['n_invalid'] == 3 * bench.n_episodes
+    assert score.attrs['result_validity'] == 'invalid'
+    assert np.isfinite(float(score))
