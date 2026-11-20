@@ -4,6 +4,8 @@ Uses a mock callable provider, so these exercise the full closure logic (modalit
 dispatch, response caching, label parsing) and the registration wiring without
 ever hitting a live API.
 """
+import contextlib
+
 import pandas as pd
 import pytest
 
@@ -268,8 +270,8 @@ class TestGameActionFn:
 
     def test_an_unreadable_reply_in_a_grid_episode_is_no_random_move(self):
         """Through participate: the policy's move after an unreadable reply reaches the
-        environment as no move, marked invalid with the raw reply. The grid game states no
-        policy for an invalid move, so its action check refuses it and the episode stops."""
+        environment as no move, marked invalid with the raw reply. What the grid game does
+        with an invalid move is its own policy (rule 4.12), so the outcome is not checked."""
         from brainscore import BrainScoreModel
         from brainscore.harnesses.grid_game import GridGameEnv, GridGameEnvironment
         from brainscore.model_helpers.api_behavioral import api_policy
@@ -279,13 +281,12 @@ class TestGameActionFn:
             policy_in_channels=('observation', 'instruction'))
         session = environment_session(GridGameEnvironment(GridGameEnv(size=3, seed=0)),
                                       require_specs=True)
-        with pytest.raises(Exception):
+        with contextlib.suppress(ValueError):     # the grid game's present refusal of no move
             model.participate(session)
-        proposal = session.source.action_events[-1]
+        proposal = session.source.action_events[0]
         assert proposal.payload is None
         assert proposal.meta['valid'] is False and proposal.meta['answer'] == 'no idea'
         assert proposal.meta['parse_error'] and proposal.meta['provenance']['provider']
-        assert proposal.meta['action_status'] == 'rejected'
 
     def test_trace_flags_an_unreadable_reply(self):
         from brainscore.model_helpers.api_behavioral import api_policy
