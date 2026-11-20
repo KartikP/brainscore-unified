@@ -353,3 +353,44 @@ def test_every_registration_answers_each_format_with_the_part_of_its_part_set():
         found = _answering_parts(model)
         assert any(found == _answering_parts(_model(*wired, owners=reference)) for reference in references), (where, found)
 
+
+
+# --- every registration: the method an answer records is the declared one (rule 4.11) ---
+
+# The methods a part of a BrainScoreModel states (rule 4.11, Response Format Standard 4.3).
+DECLARED_METHODS = {'generation', 'likelihood', 'readout', 'similarity'}
+# The method each part declares when no statement names another; 'extract' is the readout.
+PART_METHODS = {'answer': 'generation', 'reply': 'generation', 'likelihood': 'likelihood',
+                'extract': 'readout'}
+METHOD_FORMS = {
+    'shared labels': ('behavior:choice', CHOICE, STIMULI),
+    'labels per row': ('behavior:choice', TaskContext(response=Choice('options'), fitting_stimuli=FITTING),
+                       OPTIONS),
+    'probabilities': ('behavior:probabilities', CHOICE, STIMULI),
+    'rating': ('behavior:rating', TaskContext(instruction='How much?', response=Scale(1, 7)), STIMULI),
+    'text': ('behavior:text', FREE_TEXT, STIMULI),
+}
+
+
+def test_every_registration_records_the_declared_method_of_the_part_that_answered():
+    """For every ``BrainScoreModel(...)`` call the scan reads (no list of plugins): each stated
+    method is in the vocabulary, and through ``participate`` each answer records the declared
+    method of the part that was called (shared labels and labels from a column alike)."""
+    registrations, _, _ = _registrations()
+    for where, wired, stated in registrations:
+        declared = {value if isinstance(value, str) else value[0] for value in stated.values()}
+        assert declared <= DECLARED_METHODS, (where, declared - DECLARED_METHODS)
+        for form, (channel, task, stimuli) in METHOD_FORMS.items():
+            calls = []
+            model = _model(*wired, owners=stated, calls=calls)
+            if channel not in model.out_channels:
+                continue
+            session = stimulus_session(stimuli, [channel], task)
+            try:
+                model.participate(session)
+            except ExecutionNotFeasibleError:
+                continue
+            called = next(part for part in PART_METHODS if part in calls)
+            expected = ('similarity' if called == 'answer' and 'similarity' in declared
+                        else PART_METHODS[called])
+            assert session.collect(channel).attrs['response']['method'] == expected, (where, form, called)
