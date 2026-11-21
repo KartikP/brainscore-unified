@@ -10,7 +10,7 @@ from brainscore.model_helpers.provenance import ProvenanceSubject
 
 MODEL_CONFIGS = json.loads((Path(__file__).parent / 'model_configs.json').read_text())
 # Comparison registrations: the same weights with every frame of a 16-frame Sun2025 clip (min_frames 16);
-# the stated default above stays 4 frames. Two models only (fast-model-runs-plan, section 4c).
+# the stated default above stays 4 frames. Two models only.
 for _base in ('qwen2.5-vl-7b_UMI-dev', 'qwen3-vl-8b_UMI-dev'):
     MODEL_CONFIGS[_base.replace('_UMI-dev', '-all-frames_UMI-dev')] = {**MODEL_CONFIGS[_base], 'video_sampling': {
         **MODEL_CONFIGS[_base]['video_sampling'], 'min_frames': 16,
