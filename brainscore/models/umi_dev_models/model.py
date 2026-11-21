@@ -9,6 +9,13 @@ from pathlib import Path
 from brainscore.model_helpers.provenance import ProvenanceSubject
 
 MODEL_CONFIGS = json.loads((Path(__file__).parent / 'model_configs.json').read_text())
+# Comparison registrations: the same weights with every frame of a 16-frame Sun2025 clip (min_frames 16);
+# the stated default above stays 4 frames. Two models only.
+for _base in ('qwen2.5-vl-7b_UMI-dev', 'qwen3-vl-8b_UMI-dev'):
+    MODEL_CONFIGS[_base.replace('_UMI-dev', '-all-frames_UMI-dev')] = {**MODEL_CONFIGS[_base], 'video_sampling': {
+        **MODEL_CONFIGS[_base]['video_sampling'], 'min_frames': 16,
+        'source': "the model authors' tool `qwen-vl-utils` (2 frames per second, at most 768), with at least 16 "
+                  "frames so that a 16-frame clip keeps every frame; comparison run, not the default"}}
 # The packages the study needs beyond the reference environment, with their versions: stated once, in
 # requirements.txt. A model names the ones its processor or forward uses (``packages`` in its values).
 REQUIREMENTS = [re.split(r'[<>=!~;\[ ]', line.strip())[0] for line in
