@@ -158,8 +158,8 @@ def stand_in(monkeypatch, tmp_path):
     monkeypatch.setattr(study, '_load', load)
     corpus = list(_pictures(tmp_path, n=4)['image_file_name'])
     monkeypatch.setattr(pca, '_get_imagenet_val', lambda num_images: corpus)
-    hook = pca.LayerPCA.hook.__func__
-    monkeypatch.setattr(pca.LayerPCA, 'hook', classmethod(lambda cls, extractor, n_components: hook(cls, extractor, 2)))
+    init = pca.LayerPCA.__init__
+    monkeypatch.setattr(pca.LayerPCA, '__init__', lambda self, activations_extractor, n_components: init(self, activations_extractor, 2))
     return tmp_path
 
 
@@ -325,6 +325,44 @@ def test_two_regions_of_the_picture_path_share_one_pass_over_the_table(stand_in,
     assert len(seen) == 1
     for channel, values in together.items():
         assert np.array_equal(values.values, _collect(subject, pictures, [channel], passive)[channel].values)
+
+
+def test_the_pca_fit_holds_the_activations_of_one_layer_at_a_time(stand_in, monkeypatch):
+    """The LayerPCA fit of the picture path extracts and fits one layer at a time, so the fit holds the
+    corpus activations of one layer (four layers fitted together ended at 63 GB on a 64 GB machine)."""
+    from brainscore_vision.model_helpers.activations import core, pca
+    corpus, held = pca._get_imagenet_val(1000), []
+    call = core.ActivationsExtractorHelper.__call__
+
+    def counting(self, stimuli, layers, *args, **kwargs):
+        if list(stimuli) == corpus:
+            held.append(len(layers))
+        return call(self, stimuli, layers, *args, **kwargs)
+    monkeypatch.setattr(core.ActivationsExtractorHelper, '__call__', counting)
+    subject = model_registry['smolvlm2-256m_UMI-dev']()
+    _collect(subject, _pictures(stand_in, 3), ['neural:V1', 'neural:IT'], TaskContext(task_type='passive'))
+    assert held and max(held) == 1
+
+
+def test_the_fit_of_one_layer_at_a_time_gives_the_bits_of_the_fit_of_the_layers_together(stand_in):
+    """Each layer's components depend on that layer alone (the same pictures, order, number format and
+    random state), so the projections equal those of LayerPCA's fit of all layers together, bit for bit."""
+    from functools import partial
+    from brainscore_vision.model_helpers.activations.pca import LayerPCA
+    config = study.MODEL_CONFIGS['smolvlm2-256m_UMI-dev']
+    model, processor = study._load('smolvlm2-256m_UMI-dev', config)
+    vision, blocks = study._blocks(model, config['vision'])
+    layers = sorted(set(study.depth_layers(blocks, study.DEPTH_TABLE['vision']).values()))
+    pictures = list(_pictures(stand_in, 3)['image_file_name'])
+
+    def projected(pca_class):
+        extractor = study._pixel_extractor()(model=vision, identifier='umi-dev-pca-bits', preprocessing=partial(
+            study._whole_images, image_processor=processor.image_processor, settings=config['image_processor_kwargs']))
+        fit = pca_class(extractor, 2)
+        fit.handle = extractor.register_batch_activations_hook(fit)
+        return extractor(pictures, layers=layers).values
+    assert len(layers) == 4
+    assert np.array_equal(projected(study._one_layer_pca()), projected(LayerPCA))
 
 
 QWEN_VIDEO = [i for i in IDENTIFIERS if study.MODEL_CONFIGS[i].get('video_sampling')]
@@ -681,8 +719,8 @@ def test_qualify_the_family(identifier, monkeypatch, tmp_path):
     monkeypatch.setattr(study, '_load', lambda *a: (network, processor))
     corpus = list(_pictures(tmp_path, 4)['image_file_name'])
     monkeypatch.setattr(pca, '_get_imagenet_val', lambda num_images: corpus)
-    hook = pca.LayerPCA.hook.__func__
-    monkeypatch.setattr(pca.LayerPCA, 'hook', classmethod(lambda cls, extractor, n_components: hook(cls, extractor, 2)))
+    init = pca.LayerPCA.__init__
+    monkeypatch.setattr(pca.LayerPCA, '__init__', lambda self, activations_extractor, n_components: init(self, activations_extractor, 2))
     subject = model_registry[identifier]()
 
     # The regions are the stated depths of the real blocks.
