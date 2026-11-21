@@ -226,6 +226,20 @@ def _pixel_extractor(token_pool=None):
     return Float32Export
 
 
+def _one_layer_pca():
+    """``LayerPCA`` that extracts and fits the corpus activations of one layer at a time, so the fit holds
+    one layer in memory (four layers fitted together ended at 63 GB on a 64 GB machine). A layer's
+    components depend on that layer alone (the same pictures, order, number format and random state):
+    they are the same bits as a fit of several layers together."""
+    from brainscore_vision.model_helpers.activations.pca import LayerPCA
+
+    class OneLayerPCA(LayerPCA):
+        def _compute_pcas(self, identifier, layers, n_components, extraction_fingerprint):
+            return {layer: super(OneLayerPCA, self)._compute_pcas(
+                identifier, [layer], n_components, extraction_fingerprint)[layer] for layer in layers}
+    return OneLayerPCA
+
+
 def _reply_client(reply):
     """The model's own ``reply`` as an ``api_policy`` client: ``(model, system, messages, settings)`` -> text,
     so it is asked as an API model is. A picture arrives as base64 data."""
@@ -281,13 +295,13 @@ def get_model(identifier: str):
         image = VLMVisionWrapper(model=vision_module, processor=processor, identifier=f'{identifier}-vision',
                                  device=_one_device(identifier, vision_module, 'vision'))
     else:                       # whole pictures as (B, C, H, W); every patch token kept (or pooled), so PCA to 1000
-        from brainscore_vision.model_helpers.activations.pca import LayerPCA
         pool = config.get('token_pool')
         image = _pixel_extractor(pool)(
             model=vision_module, identifier=f'{identifier}-vision' + (f'-pool{pool}' if pool else ''),
             device=_one_device(identifier, vision_module, 'vision'),
             preprocessing=partial(_whole_images, image_processor=processor.image_processor, settings=pixels))
-        LayerPCA.hook(image, n_components=1000)
+        pca = _one_layer_pca()(image, n_components=1000)
+        pca.handle = image.register_batch_activations_hook(pca)
     extractor = {'vision': image, 'text': TextWrapper(
         model=language_module, tokenizer=processor.tokenizer, identifier=f'{identifier}-text',
         device=_one_device(identifier, language_module, 'language'))}
