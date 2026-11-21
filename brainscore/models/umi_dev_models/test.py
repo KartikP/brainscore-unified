@@ -802,3 +802,16 @@ def test_the_stated_sampling_keeps_the_frame_count(stand_in, monkeypatch, identi
     assert _frames_kept(16, 30, after) == _frames_kept(16, 30, before) == 4
     assert _frames_kept(30 * 600, 30, after) == _frames_kept(30 * 600, 30, before)
 
+
+
+@pytest.mark.parametrize('base', ['qwen2.5-vl-7b_UMI-dev', 'qwen3-vl-8b_UMI-dev'])
+def test_all_frames_registration_differs_only_in_the_frame_setting(base):
+    """The comparison registration keeps every frame of a 16-frame clip; the default keeps 4."""
+    name = base.replace('_UMI-dev', '-all-frames_UMI-dev')
+    default, variant = study.MODEL_CONFIGS[base], study.MODEL_CONFIGS[name]
+    assert name in model_registry
+    assert {k: v for k, v in variant.items() if k != 'video_sampling'} == {k: v for k, v in default.items() if k != 'video_sampling'}
+    assert _frames_kept(16, 30, default['video_sampling']) == 4
+    assert _frames_kept(16, 30, variant['video_sampling']) == 16
+    assert {k: v for k, v in variant['video_sampling'].items() if k not in ('min_frames', 'source')} == \
+        {k: v for k, v in default['video_sampling'].items() if k not in ('min_frames', 'source')}
