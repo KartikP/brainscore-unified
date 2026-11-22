@@ -23,10 +23,12 @@ from brainscore import BrainScoreModel, LayerSelector, load_model
 from brainscore.harnesses.human import HumanSubject
 from brainscore.harnesses.multi_agent import EchoAgent
 from brainscore.model_helpers.provenance import ProvenanceSubject
+from brainscore.models.umi_dev_models.model import _StudySubject
 from brainscore_core import streaming_helpers
 from brainscore_core.contract import Subject, TaskContext
 from brainscore_core.environment import DiscreteSpec
-from brainscore_core.responses import Choice
+from brainscore_core.responses import Choice, Text
+from brainscore_core.streaming import Session, StreamEvent, begin_event, end_event, respond_event
 from brainscore_core.streaming_helpers import (
     drive_behavior_session, drive_behavior_session_streaming, drive_environment_session,
     drive_neural_session, drive_neural_session_streaming, environment_session, run_environment,
@@ -183,15 +185,14 @@ SUBJECTS = {
     'chance-baseline': (lambda: load_model('chance-baseline'), 'sentence', 'IT'),
     'provenance': (lambda: ProvenanceSubject(load_model('chance-baseline'), {'study': 'one-rule'}),
                    'sentence', 'IT'),
+    'study': (lambda: _StudySubject(load_model('chance-baseline'), {'study': 'one-rule'}),
+              'image_path', 'IT'),
     'human-harness': (_rig, 'sentence', 'IT'),
     'echo-agent': (lambda: EchoAgent('echo'), 'sentence', 'IT'),
 }
 
 # A subject class with no entry, and why.
-STATED = {
-    '_StudySubject': "a study registration's ProvenanceSubject; it loads weights. Its stated "
-                     "refusal (a language recording together with an answer) comes before compute.",
-}
+STATED = {}
 
 
 # A subject whose joint request is refused at the start of the session, before it reads an input.
@@ -208,17 +209,32 @@ def _probes(region):
         (('behavior:choice',), TaskContext(response=Choice(LABELS))),
         (('behavior:probabilities',), TaskContext(response=Choice(LABELS))),
         ((f'neural:{region}',), TaskContext(task_type='passive')),
+        (('behavior:text',), TaskContext(response=Text())),
     )
+
+
+def _session(column, outputs, task, streaming=False):
+    """A table session; a text answer comes in a conversation: two turns of one text, each
+    answered on its ``respond`` signal."""
+    if 'behavior:text' in outputs:
+        turn = [begin_event(), StreamEvent('text', 'the cat', None), respond_event(), end_event('terminal')]
+        return Session(turn * 2, list(outputs), task)
+    return stimulus_session(_stimuli(column), list(outputs), task, streaming=streaming)
+
+
+def _values(payload):
+    """The values of an answer: of an assembly, or of a text answer's record."""
+    return payload['values'] if isinstance(payload, dict) else getattr(payload, 'values', payload)
 
 
 def _run(subject, column, outputs, task, streaming=False):
     """What one session gives: its answers by channel, or the kind of its refusal. The session
     must keep the source it was built with."""
-    session = stimulus_session(_stimuli(column), list(outputs), task, streaming=streaming)
+    session = _session(column, outputs, task, streaming)
     source = session.source
     try:
         subject.participate(session)
-        outcome = [(event.channel, str(getattr(event.payload, 'values', event.payload)))
+        outcome = [(event.channel, str(_values(event.payload)))
                    for event in session.emitted]
     except Exception as refusal:
         outcome = type(refusal).__name__
@@ -260,9 +276,9 @@ def test_each_begin_clears_the_trial_history(name):
     for outputs, task in _probes(region):
         if not set(outputs) <= set(make().out_channels) or isinstance(_run(make(), column, outputs, task), str):
             continue          # not declared, or refused as a table session too: not this case
-        session = stimulus_session(_stimuli(column), list(outputs), task, streaming=True)
+        session = _session(column, outputs, task, streaming=True)
         make().participate(session)
-        rows = [np.asarray(getattr(event.payload, 'values', event.payload)) for event in session.emitted]
+        rows = [np.asarray(_values(event.payload)) for event in session.emitted]
         if len(rows) == 1:         # one answer for both trials: its rows along the first axis
             rows = list(rows[0])
         assert len(rows) == 2, f'{name}: {list(outputs)} gives {len(rows)} answers for two trials'
