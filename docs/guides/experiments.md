@@ -176,11 +176,11 @@ from brainscore.experiments import (Experiment, SessionProtocol, RecordInputsOut
 
 @contextmanager
 def make_session(repetition):                # repetition.condition, repetition.identifier
-    yield stimulus_session(stimuli, ['behavior'], task)   # a behavior session needs its task
+    yield stimulus_session(stimuli, ['behavior:choice'], task)   # a behavior session needs its task
 
 protocol = SessionProtocol(identifier='silence-layer3', session_factory=make_session,
                            conditions=['baseline', 'silenced'], repetitions=[0, 1, 2],
-                           required_input_channels=['vision:image'], requested_output_channels=['behavior'])
+                           required_input_channels=['vision:image'], requested_output_channels=['behavior:choice'])
 
 # Tools that save events, lesion, and record layer3
 experiment = Experiment(
@@ -282,8 +282,8 @@ def evaluate(subject, context):
     for trial in range(3):
         # One request is one session, recorded as record repetition `trial`.
         # Arguments: subject, context, repetition, stimuli, outputs, task
-        session = run_request(subject, context, trial, stimuli, ['behavior'], task)
-        answers.append(session.collect('behavior'))
+        session = run_request(subject, context, trial, stimuli, ['behavior:choice'], task)
+        answers.append(session.collect('behavior:choice'))
     return my_score(answers)
 
 

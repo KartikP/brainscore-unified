@@ -25,9 +25,10 @@ tests that define the contract. `../docs/02_core_concepts.md` covers the vocabul
    file changes. A plugin in another package (another repository) registers when you import that package before you load it. A tool in Brain-Score is one line in `_TOOLS` of
    `brainscore/tools/_registry.py`; a tool in your own package registers with
    `register_tool(identifier, factory)` when you import that package.
-4. Move the template's test to `tests/test_<part>/test_<your_name>.py`, adapt it and run it. Every
-   plugin's test lives in `tests/`; the template keeps its test beside it only so the
-   template can be tried in place.
+4. Run the template's test. A model or a benchmark keeps its test as `test.py` in its own
+   folder (`brainscore/models/<your_name>/test.py`), the file that the plugin runner finds.
+   A data, metric, tool or capability plugin moves its test to
+   `tests/test_<part>/test_<your_name>.py`.
 
 The core package is deliberately small: it ships the extension seams and a few reference
 integrations, and the catalog grows through contributed plugins. `../EXTENDING.md`
