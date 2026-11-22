@@ -456,13 +456,13 @@ class TestApiReply:
             {'type': 'text', 'text': 'second'}]}]
         assert call['settings'] == {'max_tokens': 512, 'temperature': 1.0, 'seed': 3}
 
-    def test_no_settings_uses_its_own_length_only(self):
+    def test_no_settings_uses_its_own_length_and_a_fixed_temperature(self):
         from brainscore.model_helpers.api_behavioral import build_api_reply
         from brainscore_core.responses import Choice, Prompt
         provider, calls = _recording_provider()
         reply = build_api_reply(provider, 'm-1', max_tokens=64)
         reply(Prompt((('text', 'x'),), response=Choice(['a', 'b'])))
-        assert calls[0]['settings'] == {'max_tokens': 64}
+        assert calls[0]['settings'] == {'max_tokens': 64, 'temperature': 0}
 
     def test_history_becomes_earlier_turns(self):
         from brainscore.model_helpers.api_behavioral import build_api_reply
@@ -551,12 +551,12 @@ class TestApiReply:
         monkeypatch.setitem(sys.modules, 'anthropic', fake)
         reply = build_api_reply('anthropic', 'claude-x', cache_dir=tmp_path)
         prompt = Prompt((('text', '2 + 2?'),), response=Text())
-        for _ in range(2):   # the second reply comes from the cache, with its extra data
+        for _ in range(2):   # sampled at the API's default with no seed: never stored
             answer = reply(prompt)
             assert isinstance(answer, StreamEvent) and answer.payload == ' 4 '   # exactly as given
             assert answer.meta == {'reasoning': 'Add them.',
                                    'token_usage': {'input_tokens': 7, 'output_tokens': 2}}
-        assert len(requests) == 1
+        assert len(requests) == 2
 
     def test_openai_reply_returns_reasoning_and_token_usage_as_extra_data(self, monkeypatch):
         import sys
@@ -617,7 +617,7 @@ class TestApiReply:
             assert list(answer['raw_answer'].values if channel == 'behavior:choice'
                         else answer.values) == ['long']
         assert [call['model'] for call in calls] == ['gpt-4o-2024-08-06'] * 2
-        assert calls[0]['settings'] == {'max_tokens': 8}
+        assert calls[0]['settings'] == {'max_tokens': 8, 'temperature': 0}
         # A plain Choice goes to the answer part, which phrases its own prompt.
         assert calls[1]['messages'][0]['content'][-1] == {
             'type': 'text',
@@ -649,3 +649,50 @@ def build_messages(trial, experiment):
         assert calls[0]['settings'] == {'max_tokens': 512, 'temperature': 1.0}
         saved = json.loads((tmp_path / 'run/coggym/run-001.json').read_text())
         assert saved['trials'][0]['response'] == '{"answer": 3}'
+
+
+# ── every registered API model states its temperature ───────────────────
+
+@pytest.mark.parametrize('identifier', sorted(__import__(
+    'brainscore.models.api_closed.model', fromlist=['REGISTRY']).REGISTRY))
+def test_every_request_of_a_registered_api_model_states_its_temperature(identifier, tmp_path,
+                                                                        monkeypatch):
+    """A provider that takes a temperature gets one in every request, for every response
+    kind; the Anthropic client takes none (its default is sampling), so its sampled
+    reply with no seed is never stored. A new model, provider or path is covered here."""
+    import sys
+    import types
+    from brainscore.models.api_closed.model import REGISTRY, get_model
+    from brainscore_core.contract import TaskContext
+    from brainscore_core.responses import Choice, Text
+    from brainscore_core.streaming_helpers import stimulus_session
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    requests = []
+
+    def create(**kwargs):
+        requests.append(kwargs)
+        text = types.SimpleNamespace(type='text', text='yes')
+        message = types.SimpleNamespace(content='yes')
+        return types.SimpleNamespace(content=[text], choices=[types.SimpleNamespace(message=message)])
+    client = types.SimpleNamespace(create=create)
+    client.messages = client.completions = client.chat = client
+    monkeypatch.setitem(sys.modules, 'anthropic', types.SimpleNamespace(Anthropic=lambda: client))
+    monkeypatch.setitem(sys.modules, 'openai', types.SimpleNamespace(OpenAI=lambda **k: client))
+    monkeypatch.setenv('HOME', str(tmp_path))   # the response store is under the home folder
+    stimuli = StimulusSet({'stimulus_id': ['s0'], 'sentence': ['The sky is blue.']})
+    stimuli.identifier = 'temperature-stated'
+    tasks = {'behavior:choice': [Choice(['yes', 'no']), Choice(['yes', 'no'], verbatim=True)],
+             'behavior:text': [Text()]}
+    sent = {}
+    for output, responses in tasks.items():
+        for index, response in enumerate(responses):
+            before = len(requests)
+            for _ in range(2):   # the second run reads the store where a reply is fixed
+                get_model(identifier).participate(stimulus_session(
+                    stimuli, [output], TaskContext(instruction=None if index else 'Answer.', response=response)))
+            sent[output, index] = len(requests) - before
+    if REGISTRY[identifier]['provider'] == 'anthropic':
+        # The reply part answers these: sampled with no seed, so asked again each time.
+        assert sent['behavior:choice', 1] == 2 and sent['behavior:text', 0] == 2
+    else:
+        assert requests and all('temperature' in r for r in requests)
