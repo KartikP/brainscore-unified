@@ -111,6 +111,13 @@ class HumanSubject(Subject):
                     f"HumanSubject {self.identifier!r} gives one stated format per session from "
                     f"respond_fn; this session asks for {stated}. Ask for each in its own session.",
                     channels=stated)
+            other = [channel for channel in outputs if channel not in stated
+                     and not (channel.startswith('neural:') and channel in self.out_channels)]
+            if other:
+                raise ExecutionNotFeasibleError(
+                    f"HumanSubject {self.identifier!r} gives {stated} from respond_fn and records "
+                    f"the regions of region_layer_map; this session also asks for {other}. Ask only "
+                    f"for outputs in {sorted(self.out_channels)}.", channels=other)
             refuse_variance(self, session)
             stimuli = session_stimuli(session, drain_session_inputs(session))
             self._present_fn(stimuli)

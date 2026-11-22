@@ -143,3 +143,21 @@ def test_a_rig_refuses_a_stated_output_that_is_not_a_behavior_channel():
         _choice_rig([], out_channels={'behavior:guess'})
     with pytest.raises(ValueError, match='behavior'):
         _choice_rig([], out_channels={'neural:IT'})
+
+
+@pytest.mark.parametrize('other', ['behavior', 'neural:V4'])
+def test_a_rig_refuses_an_output_it_does_not_give_before_any_stimulus(other):
+    """With a stated format, every other requested output must be a recorded region."""
+    from brainscore_core.compatibility import ExecutionNotFeasibleError
+    from brainscore_core.responses import Choice
+    from brainscore_core.streaming_helpers import stimulus_session
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    stimuli = StimulusSet({'stimulus_id': ['a'], 'image_path': ['a.png']})
+    stimuli.identifier = 'rig-other-output'
+    shown = []
+    rig = _choice_rig(shown, out_channels={'behavior:choice'}, region_layer_map={'IT': 'array'},
+                      record_fn=lambda region, table: shown.append(region))
+    session = stimulus_session(stimuli, ['behavior:choice', other], TaskContext(response=Choice(['cat', 'dog'])))
+    with pytest.raises(ExecutionNotFeasibleError, match=other):
+        rig.participate(session)
+    assert shown == []
