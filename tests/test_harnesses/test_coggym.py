@@ -555,3 +555,28 @@ def _run_experiment(experiment, selected, provider, model, *args, **kwargs):
     assert [issue['trial_id'] for issue in issues] == ['trial-0']
     # Core's reason on its own: not CogGym's error text of the call.
     assert issues[0]['response_state'] == 'missing' and issues[0]['reason'] != saved['trials'][0]['error']
+
+
+def test_the_evaluator_gets_only_the_listed_environment_variables(reference, tmp_path, monkeypatch):
+    """A secret of the scoring process (an API key) never reaches CogGym's evaluator; the
+    stated variables (the home folder) do."""
+    root, stand_in = reference
+    stand_in.cli('''
+import os
+
+
+def build_messages(trial, experiment):
+    return 'system', [{'role': 'user', 'content': ' '.join(sorted(os.environ))}]
+''')
+    monkeypatch.setenv('OPENAI_API_KEY', 'not for the evaluator')
+    monkeypatch.setenv('HOME', str(tmp_path))
+    seen = []
+
+    def capture(prompt):
+        seen.append(set(prompt.parts[-1][1].split()))
+        return 'ok'
+
+    runner = coggym.CogGymRunner(root, model='fixture')
+    Experiment(subject=make_subject(capture), protocol=runner.protocol(reset=lambda repetition: None),
+               output_dir=tmp_path / 'run').run()
+    assert seen and all('HOME' in names and 'OPENAI_API_KEY' not in names for names in seen)
