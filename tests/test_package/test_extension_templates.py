@@ -8,7 +8,9 @@ code did. All inputs are small synthetic fixtures; no scores here are evidence
 about any model. The model template needs Torch; it is exercised by
 ``test_api_cohesion.py::test_new_model_template_supports_public_recording_workflow``.
 """
+import ast
 import importlib.util
+import math
 import re
 import zlib
 from pathlib import Path
@@ -223,14 +225,58 @@ def test_documented_code_blocks_run(page, tmp_path):
     relative = str(page.relative_to(DOCUMENTS))
     blocks = re.findall(r'^```python[^\n]*\n(.*?)^```', page.read_text(encoding='utf-8'),
                         flags=re.S | re.M)
-    code = '\n'.join(block for index, block in enumerate(blocks)
-                     if (relative, index) not in NEEDS_DOWNLOADS)
+    code, expected = _with_output_markers([block for index, block in enumerate(blocks)
+                                           if (relative, index) not in NEEDS_DOWNLOADS])
     in_templates = relative.startswith('templates/') or relative == 'EXTENDING.md'
     environment = dict(os.environ, RESULTCACHING_DISABLE='1', MPLBACKEND='Agg')
     result = subprocess.run([sys.executable, '-'], input=code, capture_output=True, text=True,
                             cwd=TEMPLATES if in_templates else tmp_path, env=environment,
                             timeout=600)
     assert result.returncode == 0, result.stderr[-3000:]
+    printed = dict(re.findall(r'@@start (\d+)\n(.*?)@@end', result.stdout, flags=re.S))
+    for index, (line, comment) in enumerate(expected):
+        assert _same_output(printed[str(index)], comment), (
+            f'{relative}, line {line}: the page states\n{comment}\nthe code prints\n{printed[str(index)]}')
+
+
+def _with_output_markers(blocks):
+    """The code of the blocks, with markers around each top-level statement that prints and
+    is followed by comment lines: those lines state its output. Returns the code and, for
+    each such statement, its line in the block and the stated output."""
+    expected, code = [], []
+    for block in blocks:
+        lines = block.splitlines()
+        inserts = []                                   # (index in lines, text)
+        for node in ast.parse(block).body:
+            if not any(isinstance(n, ast.Call) and getattr(n.func, 'id', '') == 'print'
+                       for n in ast.walk(node)):
+                continue
+            end = node.end_lineno
+            comment = []
+            while end + len(comment) < len(lines) and lines[end + len(comment)].startswith('#'):
+                comment.append(lines[end + len(comment)].lstrip('#').strip())
+            if comment:
+                inserts += [(node.lineno - 1, f"print('@@start {len(expected)}')"), (end, "print('@@end')")]
+                expected.append((node.lineno, ' '.join(comment)))
+        for position, text in sorted(inserts, reverse=True):
+            lines.insert(position, text)
+        code.append('\n'.join(lines))
+    return '\n'.join(code), expected
+
+
+def _same_output(printed, stated):
+    """Equal word by word; numbers equal to six digits."""
+    printed, stated = printed.split(), stated.split()
+    if len(printed) != len(stated):
+        return False
+    for a, b in zip(printed, stated):
+        try:
+            if not math.isclose(float(a), float(b), rel_tol=1e-6, abs_tol=1e-9):
+                return False
+        except ValueError:
+            if a != b:
+                return False
+    return True
 
 
 # --- new_benchmark -----------------------------------------------------------------

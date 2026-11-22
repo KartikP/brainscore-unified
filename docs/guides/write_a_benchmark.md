@@ -91,7 +91,7 @@ gives 1.25: a ceiled score can exceed 1.
 
 ## A behavior benchmark
 
-A behavior benchmark keeps its task as `self.task`, gives the task's `fitting_stimuli` a `label` column (a readout reads its labels from that column), runs one session that requests `behavior:choice`, and passes the answers and the answer policy to `benchmark_score`. This one has two participants, so its ceiling is their agreement. It uses a made-up model that always answers "real":
+A behavior benchmark keeps its task as `self.task`, gives the task's `fitting_stimuli` a `label` column (a readout reads its labels from that column), runs one session that requests `behavior:choice`, and passes the answers and the answer policy to `benchmark_score`. This one has two participants, so its ceiling is their agreement. It uses a made-up model that answers "real", except that it gives no readable answer for "cloud": that trial is invalid, so it counts as wrong:
 
 ```python
 import numpy as np
@@ -128,8 +128,9 @@ class MyWordBenchmark(BenchmarkBase):
         session = stimulus_session(self.stimulus_set, ['behavior:choice'], self.task)
         subject.participate(session)
         answers = session.collect('behavior:choice')       # presentation x choice
-        chosen = np.array(LABELS)[answers.values.argmax(axis=1)]
-        raw = float(np.mean(chosen == self._human))        # agreement with participant p1
+        valid = answers['response_state'].values == 'valid'   # an invalid or missing row is all NaN
+        chosen = np.array(LABELS)[np.nan_to_num(answers.values).argmax(axis=1)]
+        raw = float(np.mean(valid & (chosen == self._human)))   # agreement with participant p1; a trial that is not valid is wrong
         return benchmark_score(self, raw=raw, metric='agreement', answers=answers,
                                answer_policy='invalid: wrong, counted; missing: wrong, counted')
 
@@ -137,9 +138,9 @@ class MyWordBenchmark(BenchmarkBase):
 benchmark = MyWordBenchmark({'p1': ['real', 'pseudo', 'real', 'pseudo'],
                              'p2': ['real', 'pseudo', 'real', 'real']})
 score = benchmark(BrainScoreModel(identifier='always-real', in_channels={'text'},
-                                  reply=lambda prompt: 'real'))
-print(float(score.attrs['raw']), float(score.attrs['ceiling']), score.attrs['n_valid'])
-# 0.5 0.75 4
+                                  reply=lambda prompt: 'unsure' if 'cloud' in prompt.text() else 'real'))
+print(float(score.attrs['raw']), float(score.attrs['ceiling']), score.attrs['n_valid'], score.attrs['n_invalid'])
+# 0.25 0.75 3 1
 ```
 
 ## The parts
@@ -178,7 +179,7 @@ The folders of `brainscore_vision/metrics/` hold more specialized metrics.
 each test fold and average over folds. By default they make 10 folds, each with 90 % of
 the stimuli to fit and 10 % to test, stratified by the presentation coordinate
 `object_name`. A correlation on two stimuli is always +1 or -1, so each test fold needs at
-least three stimuli; these metrics do not check it. With the default split that means at
+least three stimuli; these metrics warn when a fold is that small and score it anyway. With the default split that means at
 least 30 stimuli. With fewer, give a larger test fold:
 
 ```python

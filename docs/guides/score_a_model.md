@@ -19,11 +19,12 @@ from brainscore.harnesses.grid_game import random_action_policy
 subject = BrainScoreModel(identifier='random-moves', policy=random_action_policy(seed=0))
 score = brainscore.score(subject, 'GridGame-reach-5x5')
 print(float(score), score.attrs['success_rate'], score.attrs['random_floor'])
-# 0.5333333333333333 0.5333333333333333 0.5333333333333333
+# 0.5333333333333333 0.5333333333333333 0.3711111111111112
 ```
 
-The random subject reaches the goal on 8 of the 15 boards, the same rate as the floor
-that the benchmark measures with its own random policy. A subject with no `policy` part,
+This random subject (seed 0) reaches the goal on more boards than the floor, which is the
+mean success rate of 30 random seeds (one seed gives 0.2 to 0.6). Score a different seed and
+the score moves; the floor does not. A subject with no `policy` part,
 such as `chance-baseline`, does not give the `motor` output, so this pair is N/A.
 
 ## A model on brain data

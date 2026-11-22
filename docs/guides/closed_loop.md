@@ -61,6 +61,8 @@ print(actions)   # [1, 1, 1]
 
 `run_environment` returns an empty list when the episode ends at its start.
 
+A benchmark states what an invalid move does. In `GridGame-reach-5x5`, a policy that returns `None` makes an invalid move: the agent stays in place for that step, and the score is marked invalid when more than 10 percent of the steps are invalid.
+
 For long episodes, `environment_session(..., history_limit=N)` bounds memory.
 
 ## Established robotics evaluators
