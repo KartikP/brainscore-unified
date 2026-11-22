@@ -152,14 +152,11 @@ def test_with_installs_off_a_missing_folder_stops_the_load_before_model_use(monk
     assert not (tmp_path / 'none').exists()
 
 
-def test_the_default_folder_and_explicit_provider_reset(reference, tmp_path, monkeypatch):
+def test_the_default_folder_needs_no_folder_argument(reference, tmp_path, monkeypatch):
     # A ready folder at the default place under BRAINSCORE_ENVIRONMENTS_HOME: no folder= needed.
     monkeypatch.setenv('BRAINSCORE_ENVIRONMENTS_HOME', str(tmp_path / 'folders'))
     write_ready_folder(default_place(tmp_path / 'folders'), analyze=ANALYZE_ROW)
-    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1')
-    with pytest.raises(ValueError, match='reset=adapter.reset'):
-        benchmark(make_subject(reply_with_trial))
-    assert math.isnan(float(benchmark.ceiling))
+    assert math.isnan(float(brainscore.load_benchmark('CogGym.Hu2023Fine.exp1').ceiling))
 
 
 def test_registered_scoring_preserves_raw_score_and_repetitions(scored_reference, tmp_path, monkeypatch):
@@ -275,7 +272,7 @@ class _ParticipateOnlySubject(Subject):
     out_channels = frozenset({"behavior:text"})
 
     def __init__(self):
-        self.requests = []
+        self.requests, self.resets = [], []
 
     def participate(self, session):
         from brainscore_core.streaming import StreamEvent
@@ -284,7 +281,7 @@ class _ParticipateOnlySubject(Subject):
             session.respond(StreamEvent('behavior:text', event.payload, event.t_ms, dict(event.meta)))
 
     def reset(self):
-        pass
+        self.resets.append(len(self.requests))
 
 
 def test_participate_only_subject_is_scored(scored_reference, tmp_path):
@@ -304,13 +301,42 @@ def test_participate_only_subject_is_scored(scored_reference, tmp_path):
     assert all(output.channel == 'behavior:text' for output in outputs)
 
 
-def test_reset_is_required_before_any_request(scored_reference):
+def test_the_plain_call_runs_and_keeps_an_active_intervention(reference, tmp_path, monkeypatch):
+    """``score(subject, 'CogGym...')`` with no reset given: the subject is not reset, so an
+    intervention applied around the run stays active (Contract Rules 5.12, 8.3, 8.5), and
+    every trial reaches the subject (each trial is its own session with no trial memory)."""
+    monkeypatch.setenv('BRAINSCORE_ENVIRONMENTS_HOME', str(tmp_path / 'folders'))
+    write_ready_folder(default_place(tmp_path / 'folders'), analyze=ANALYZE_ROW)
+
+    class Lesioned(_ParticipateOnlySubject):
+        def __init__(self):
+            super().__init__()
+            self.lesion = 'active'         # applied by the caller around the run
+
+        def reset(self):
+            super().reset()
+            self.lesion = None             # reset() removes interventions
+
+    subject = Lesioned()
+    score = brainscore.score(subject, 'CogGym.Hu2023Fine.exp1', check_mem=False)
+    assert float(score.attrs['raw']) == 0.375
+    assert subject.lesion == 'active' and subject.resets == []
+    repetitions = score.attrs['configuration']['repetitions']
+    trials = [request for request in subject.requests if str(request).startswith('trial-')]
+    assert len(trials) == 3 * repetitions   # the stand-in's three trials in each repetition
+
+
+@pytest.mark.parametrize('reset, stated', [(None, 'none'), (lambda repetition: None, 'caller')])
+def test_the_record_states_whether_a_reset_was_given(scored_reference, tmp_path, reset, stated):
+    """The score and the saved run file say truly whether a reset was given (rule 6.3)."""
+    import json
     root, _ = scored_reference
-    subject = _ParticipateOnlySubject()
-    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root)
-    with pytest.raises(ValueError, match='reset=adapter.reset'):
-        benchmark(subject)
-    assert subject.requests == []
+    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root, reset=reset,
+                                          output_dir=tmp_path / 'run')
+    score = benchmark(_ParticipateOnlySubject())
+    saved = json.loads((tmp_path / 'run/coggym/run-001.json').read_text())
+    assert score.attrs['configuration']['reset'].startswith(stated)
+    assert saved['umi']['reset'].startswith(stated)
 
 
 def _record_events(directory):

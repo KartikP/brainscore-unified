@@ -321,10 +321,12 @@ def api_answer(
         payload_hash = hashlib.sha256(payload.encode('utf-8')).hexdigest()[:16]
 
         key = _key(prompt, label_set, stim_key, payload_hash)
-        response = cache.get(key) if cache is not None else None
+        # Anthropic gets no temperature and no seed: its reply is a sample, never stored.
+        use_cache = cache is not None and call is not _call_anthropic
+        response = cache.get(key) if use_cache else None
         if response is None:
             response = _one_turn(call, model, system_prompt, user_text, image, max_tokens)
-            if cache is not None:
+            if use_cache:
                 cache.set(key, response)
 
         return response   # the provider's text, exactly: BrainScoreModel parses it
@@ -385,7 +387,8 @@ def build_api_reply(
     The reply shows the trial's parts in order (text and images), with the
     task's instruction as the system text, and obeys the generation settings
     of the task's ``Text`` response: ``max_tokens`` (``max_tokens`` here when
-    the task gives none), ``temperature``, ``top_p`` and ``seed``. A provider
+    the task gives none), ``temperature`` (0 when the task gives none; the
+    Anthropic API's default 1.0 for Claude), ``top_p`` and ``seed``. A provider
     that refuses a setting the task gives fails before any request is sent:
     the Anthropic API has no seed and refuses temperature (other than its
     default 1.0) and top_p. Video and audio parts are refused; register the
@@ -412,6 +415,10 @@ def build_api_reply(
             given = {'max_tokens': response.max_tokens, 'temperature': response.temperature,
                      'top_p': response.top_p, 'seed': response.seed}
             settings.update({name: value for name, value in given.items() if value is not None})
+        # The temperature is stated: the Anthropic client sends none and samples at its
+        # default; any other client gets 0 when the task gives none.
+        settings.setdefault('temperature', _ANTHROPIC_DEFAULT_TEMPERATURE
+                            if call is _call_anthropic else 0)
         if call is _call_anthropic:
             _anthropic_settings(settings)   # fail before the cache or a request
         system, messages = _reply_messages(prompt)
@@ -419,7 +426,7 @@ def build_api_reply(
                                          _CACHE_FORM], sort_keys=True).encode('utf-8')).hexdigest()
         # A sampled call without a seed differs on each repetition: do not cache it.
         use_cache = cache is not None and not (
-            (settings.get('temperature') or 0) > 0 and settings.get('seed') is None)
+            settings['temperature'] > 0 and settings.get('seed') is None)
         answer = cache.get(key) if use_cache else None
         if answer is None:
             answer = call(model, system, messages, settings)
