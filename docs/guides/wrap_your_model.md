@@ -98,6 +98,7 @@ model = BrainScoreModel(
 print(sorted(model.out_channels))                # the declared outputs
 # ['behavior', 'behavior:choice', 'behavior:probabilities', 'behavior:rating', 'behavior:rt',
 #  'neural:IT', 'neural:V1', 'neural:V4']
+
 # Without that line, 'behavior:choice' is not in the list.
 ```
 
@@ -298,3 +299,7 @@ print(session.collect('behavior:rt').values.tolist())       # [450.0, 450.0]
 You can always pass the object directly to `brainscore.score`. To load it by name, register a factory. In the Brain-Score repository: copy [templates/new_model](../../templates/new_model) into `brainscore/models`, and implement the factory and its test. In your own package: add the factory to `brainscore.model_registry` when the package is imported, and import the package before you load the model ([Your own package](your_own_package.md)).
 
 A model plugin is one folder in `brainscore/models`: `__init__.py` registers each identifier (`model_registry['my-model'] = ...`), `model.py` builds the model, and `test.py` loads each identifier with `load_model` and compares the identifier. The plugin checks also run a generic suite, `brainscore/model_helpers/generic_plugin_tests.py`, once for each identifier registered in `__init__.py`, after a real load. It loads the model once and checks three things: the identifier is the registered one; the input and output channels are not empty; the whole declaration passes core's pre-flight (`brainscore_core.compatibility.check_compatibility`) for an experiment that sends the model's own inputs and requests its own outputs. The pre-flight reads the channels, the required channels, the inputs each output answers from, and the traits. It sends no input to the model, so it does not show that a declared output works: put that test in the plugin's own `test.py`. You write no extra file for the generic suite.
+
+## A person as the subject
+
+A person is a subject too. `HumanSubject` (`brainscore.harnesses.human`) declares the behavior formats that its rig gives, for example `out_channels={'behavior:choice'}`, and calls your `respond_fn(task, stimuli)` for each session. What it returns is the answer on that channel. A benchmark that requests a format the rig did not state gets N/A before any stimulus is shown. The class does not drive hardware: `present_fn`, `record_fn` and `respond_fn` are yours.
