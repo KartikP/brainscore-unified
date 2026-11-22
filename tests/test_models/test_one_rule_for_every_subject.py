@@ -330,7 +330,8 @@ DRIVERS = {
         lambda s: _table_answers(s, ['behavior'], _LABEL_TASK, True)),
     'drive_behavior_session': (
         lambda s, session: drive_behavior_session(s, session, on_begin=s.clear),
-        lambda s: _table_answers(s, ['behavior'], _LABEL_TASK, False) * 2),
+        lambda s: _table_answers(s, ['behavior'], _LABEL_TASK, False)
+        + _table_answers(s, ['behavior'], _LABEL_TASK, False)),     # two sessions on one subject
     'drive_environment_session': (
         lambda s, session: drive_environment_session(s, session, on_begin=s.clear),
         _first_actions),
