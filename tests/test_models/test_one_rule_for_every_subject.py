@@ -56,6 +56,9 @@ def _neuroid(table, value=0.0):
 
 # ---------------------------------------------------------------- the subject classes
 
+LOOKS = []      # one entry for each look_at call of an old vision model
+
+
 class _OldVisionModel:
     """Stands in for an old vision plugin."""
     identifier = 'old-vision'
@@ -75,6 +78,7 @@ class _OldVisionModel:
         self.task = None if task == 'passive' else task
 
     def look_at(self, stimuli, number_of_trials=1):
+        LOOKS.append(1)
         ids = list(stimuli['stimulus_id'])
         if self.task is None:
             return _neuroid(stimuli)
@@ -168,6 +172,12 @@ SUBJECTS = {
     'brainscore-model-answer': (lambda: BrainScoreModel(
         'one-rule-answer', in_channels={'text'},
         answer=lambda stimulus_row, instruction, label_set: label_set[0]), 'sentence', 'IT'),
+    'brainscore-model-likelihood': (lambda: BrainScoreModel(
+        'one-rule-likelihood', in_channels={'text'},
+        likelihood=lambda prompt, candidates: {c: float(i) for i, c in enumerate(candidates)},
+        capability_config={'behavior-sessions': {'behavior:choice': ('likelihood', 'softmax_argmax'),
+                                                 'behavior:probabilities': ('likelihood', 'softmax')}}),
+        'sentence', 'IT'),
     'vision-adapter': (lambda: _adapter('vision'), 'image_path', 'IT'),
     'language-adapter': (lambda: _adapter('language'), 'sentence', 'language_system'),
     'chance-baseline': (lambda: load_model('chance-baseline'), 'sentence', 'IT'),
@@ -234,8 +244,10 @@ def test_a_request_for_two_declared_outputs_gives_both(name):
     make, column, region = SUBJECTS[name]
     candidates = {'behavior:choice', 'behavior:probabilities', f'neural:{region}'} & set(make().out_channels)
     for pair in combinations(sorted(candidates), 2):
+        LOOKS.clear()
         outcome = _run(make(), column, pair, TaskContext(response=Choice(LABELS)))
         if name in STATED_JOINT and outcome == 'ExecutionNotFeasibleError':
+            assert LOOKS == [], f'{name}: {list(pair)} is refused after {len(LOOKS)} look_at calls'
             continue
         given = outcome if isinstance(outcome, str) else sorted({channel for channel, _ in outcome})
         assert given == sorted(pair), f'{name}: a request for {list(pair)} gives {given}'
