@@ -450,10 +450,15 @@ def _packages():
 
 
 def test_every_subject_class_and_driver_has_an_entry():
+    here = 'tests/test_models/test_one_rule_for_every_subject.py'
     covered = {type(make()).__name__ for make, _, _ in SUBJECTS.values()}
-    assert _subject_classes() - covered - set(STATED) == set()
+    missing = _subject_classes() - covered - set(STATED)
+    assert not missing, (f'Subject classes {sorted(missing)} have no entry: add one to SUBJECTS in {here} '
+                         f'(or, with the reason, to STATED).')
     drivers = {name for name in dir(streaming_helpers) if name.startswith('drive_')}
-    assert drivers - set(DRIVERS) - set(STATED_DRIVERS) == set()
+    missing = drivers - set(DRIVERS) - set(STATED_DRIVERS)
+    assert not missing, (f'Core drivers {sorted(missing)} have no entry: add one to DRIVERS in {here} '
+                         f'(or, with the reason, to STATED_DRIVERS).')
 
 
 # ---------------------------------------------------------------- the adapters' time
