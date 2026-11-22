@@ -84,7 +84,8 @@ def test_factory_argument_does_not_change_when_conditions_are_added(conditions):
         yield Session(())
     protocol = SessionProtocol(identifier='stable', session_factory=factory, conditions=conditions)
     subject = SimpleNamespace(reset=lambda: None, participate=lambda session: None)
-    context = SimpleNamespace(repetition=lambda *a, **k: nullcontext(), publish=lambda *a: None)
+    context = SimpleNamespace(repetition=lambda *a, **k: nullcontext(), publish=lambda *a: None,
+                              experiment=SimpleNamespace(tools=()))
     protocol.run(subject, context)
     assert all(isinstance(request, Repetition) and request.identifier == 0 for request in requests)
 
@@ -97,7 +98,8 @@ def test_identifier_factory_is_an_explicit_compatibility_option():
         yield Session(())
     protocol = SessionProtocol(identifier='old', session_factory=factory, factory_argument='identifier')
     protocol.run(SimpleNamespace(reset=lambda: None, participate=lambda session: None),
-                 SimpleNamespace(repetition=lambda *a, **k: nullcontext(), publish=lambda *a: None))
+                 SimpleNamespace(repetition=lambda *a, **k: nullcontext(), publish=lambda *a: None,
+                              experiment=SimpleNamespace(tools=())))
     assert requests == [0]
 
 

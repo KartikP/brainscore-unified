@@ -64,7 +64,8 @@ class GymnasiumEnvironment:
         })
 
     def action_spec(self):
-        return self._action_spec
+        from brainscore.harnesses.grid_game import _or_invalid_move
+        return _or_invalid_move(self._action_spec)
 
     def _observation(self, obs):
         self.mission = _mission(self.env, obs)
@@ -76,14 +77,19 @@ class GymnasiumEnvironment:
 
     def reset(self, *, seed=None, options=None):
         obs, self.last_info = self.env.reset(seed=seed, options=options)
+        self._last_obs = obs
         self.steps = 0
         self.total_reward = self.last_reward = 0.
         self.terminated = self.truncated = False
         return {'observation': self._observation(obs), 'instruction': self.mission}
 
     def step(self, outputs):
-        action = self._action_spec.validate(outputs['motor'])
-        obs, reward, terminated, truncated, self.last_info = self.env.step(action)
+        action = self.action_spec().validate(outputs['motor'])
+        if action is None:      # an invalid move: the agent stays for this step
+            obs, reward, terminated, truncated = self._last_obs, 0., False, False
+        else:
+            obs, reward, terminated, truncated, self.last_info = self.env.step(action)
+        self._last_obs = obs
         self.steps += 1
         self.last_reward = float(reward)
         self.total_reward += self.last_reward
@@ -130,7 +136,7 @@ def play_gym_episode(subject, env_id: str, max_steps: int = 60, seed: int = 0,
         'env_id': env_id, 'seed': seed, 'mission': wrapper.mission,
         'solved': None if solved is None else bool(solved),
         'steps': len(responses), 'total_reward': round(wrapper.total_reward, 4),
-        'actions': [int(np.asarray(action).item()) for action in responses],
+        'actions': [None if action is None else int(np.asarray(action).item()) for action in responses],
         'optimal_unknown': True,
     }
 

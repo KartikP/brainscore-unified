@@ -24,6 +24,15 @@ _GOAL = (40, 190, 70)      # green goal
 _WALL = (30, 30, 30)
 
 
+def _or_invalid_move(moves: DiscreteSpec):
+    """One integer action of ``moves``, or None for an invalid move (an unreadable reply,
+    rule 6.2): the agent stays for that step (the benchmark's policy for an invalid move,
+    rule 4.12). Every discrete environment here states this one rule."""
+    return SimpleNamespace(
+        validate=lambda value: None if value is None else moves.validate(value),
+        describe=lambda: {**moves.describe(), 'none': 'an invalid move: the agent stays'})
+
+
 class GridGameEnv:
     """A tiny grid-navigation video game.
 
@@ -168,12 +177,7 @@ class GridGameEnvironment:
         }, allow_extra=True)  # _state is privileged input for the oracle demo.
 
     def action_spec(self):
-        """One integer action, or None for an invalid move: the agent stays for that
-        step (the benchmark's policy for an invalid move, rule 4.12)."""
-        moves = DiscreteSpec(len(ACTIONS))
-        return SimpleNamespace(
-            validate=lambda value: None if value is None else moves.validate(value),
-            describe=lambda: {**moves.describe(), 'none': 'an invalid move: the agent stays'})
+        return _or_invalid_move(DiscreteSpec(len(ACTIONS)))
 
     def reset(self, *, seed=None, options=None) -> Dict[str, Any]:
         if options:

@@ -94,15 +94,37 @@ class HumanSubject(Subject):
 
     def participate(self, session) -> None:
         """Run ``session`` through the typed methods below. The recording region and the task
-        it sets hold for this call only: the next session starts from none."""
+        it sets hold for this call only: the next session starts from none.
+
+        Limit: one stated format per session (``respond_fn`` is not told the channel); a
+        request for two is refused before any stimulus is presented."""
+        from brainscore_core.compatibility import ExecutionNotFeasibleError
         from brainscore_core.streaming_helpers import (
-            drain_session_inputs, drive_typed_session, session_stimuli)
+            drain_session_inputs, drive_typed_session, refuse_variance, session_stimuli)
         outputs = list(session.outputs or ())
-        if len(outputs) == 1 and outputs[0] in self._behavior_channels - {'behavior'}:
+        stated = [channel for channel in outputs if channel in self._behavior_channels - {'behavior'}]
+        if stated:
+            # The stated format, and each requested region recorded during the same presentation
+            # (rule 4.5): the table is presented once.
+            if len(stated) > 1:
+                raise ExecutionNotFeasibleError(
+                    f"HumanSubject {self.identifier!r} gives one stated format per session from "
+                    f"respond_fn; this session asks for {stated}. Ask for each in its own session.",
+                    channels=stated)
+            other = [channel for channel in outputs if channel not in stated
+                     and not (channel.startswith('neural:') and channel in self.out_channels)]
+            if other:
+                raise ExecutionNotFeasibleError(
+                    f"HumanSubject {self.identifier!r} gives {stated} from respond_fn and records "
+                    f"the regions of region_layer_map; this session also asks for {other}. Ask only "
+                    f"for outputs in {sorted(self.out_channels)}.", channels=other)
+            refuse_variance(self, session)
             stimuli = session_stimuli(session, drain_session_inputs(session))
             self._present_fn(stimuli)
-            answer = self._respond_fn(session.task, stimuli)
-            session.respond(StreamEvent(outputs[0], answer, None, {}))
+            for channel in outputs:
+                answer = (self._respond_fn(session.task, stimuli) if channel in stated
+                          else self._record_fn(channel.split(':', 1)[1], stimuli))
+                session.respond(StreamEvent(channel, answer, None, {}))
             return
         try:
             drive_typed_session(self, session)
