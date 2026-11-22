@@ -257,9 +257,12 @@ def _reads_cache_switch(tree):
         if isinstance(node, ast.Attribute) and node.attr == 'is_enabled' \
                 and ast.unparse(node.value).endswith('result_caching'):
             return True
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
-                and node.func.attr in ('get', 'getenv') and node.args \
+        if isinstance(node, ast.Call) and node.args \
+                and ast.unparse(node.func).split('.')[-1] in ('get', 'getenv') \
                 and ast.unparse(node.args[0]) == "'RESULTCACHING_DISABLE'":
+            return True
+        if isinstance(node, ast.Compare) and ast.unparse(node.left) == "'RESULTCACHING_DISABLE'" \
+                and any(isinstance(op, (ast.In, ast.NotIn)) for op in node.ops):
             return True
         if isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Load) \
                 and ast.unparse(node.slice) == "'RESULTCACHING_DISABLE'":
@@ -469,6 +472,8 @@ def test_check_fails_on_a_stale_entry():
     ('R18 cache validity', "os.environ.get('RESULTCACHING_DISABLE')"),
     ('R18 cache validity', "os.getenv('RESULTCACHING_DISABLE', '0')"),
     ('R18 cache validity', "on = os.environ['RESULTCACHING_DISABLE'] == '1'"),
+    ('R18 cache validity', "from os import getenv\non = getenv('RESULTCACHING_DISABLE')"),
+    ('R18 cache validity', "off = 'RESULTCACHING_DISABLE' in os.environ"),
     ('R18 cache validity', 'from result_caching import is_enabled'),
     ('R18 cache validity', "import result_caching\non = result_caching.is_enabled('')"),
     ('R20 registry assignment', 'model_registry = {}'),
