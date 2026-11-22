@@ -393,7 +393,7 @@ def build_api_reply(
     the Anthropic API has no seed and refuses temperature (other than its
     default 1.0) and top_p.
 
-    Limit: video and audio parts are refused at the first trial; register the
+    Limit: video and audio parts are refused at the first trial that shows one; register the
     model without those inputs so such a task is N/A.
 
     :param provider: ``'anthropic'``, ``'openai'``, ``'deepseek'``,

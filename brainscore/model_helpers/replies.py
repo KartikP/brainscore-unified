@@ -287,7 +287,7 @@ def chat_inputs(model, processor, prompt, template=None):
     """Processor inputs for one trial: earlier turns from ``prompt.history``, then
     the prompt's parts in order (images as images, clips as video).
 
-    Limit: a part of another kind (audio) is refused at the first trial; register the
+    Limit: a part of another kind (audio) is refused at the first trial that shows one; register the
     model without that input so such a task is N/A."""
     from PIL import Image
     images, videos, metadata = [], [], []
