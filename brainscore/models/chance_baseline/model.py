@@ -61,16 +61,23 @@ class ChanceBaseline(Subject):
         return {'behavior', 'behavior:choice', 'behavior:probabilities'}
 
     def participate(self, session) -> None:
-        if list(session.outputs or ()) == ['behavior:probabilities']:
-            return self._answer_probabilities(session)
-        if list(session.outputs or ()) != ['behavior:choice']:
-            from brainscore_core.streaming_helpers import drive_typed_session
+        from brainscore_core.streaming_helpers import drain_session_inputs, drive_typed_session
+        outputs = set(session.outputs or ())
+        if not outputs or not outputs <= {'behavior:choice', 'behavior:probabilities'}:
             try:        # the task the session sets holds for this call only
                 return drive_typed_session(self, session)
             finally:
                 self.reset()
-        # One answer for the whole table: the choice derived from uniform rows, one row
-        # for each trial (a stimulus shown twice is answered twice).
+        # Each requested format from the same inputs: one request for both gives both.
+        events = drain_session_inputs(session)
+        if 'behavior:probabilities' in outputs:
+            self._answer_probabilities(session, events)
+        if 'behavior:choice' in outputs:
+            self._answer_choice(session, events)
+
+    def _answer_choice(self, session, events) -> None:
+        """One answer for the whole table: the choice derived from uniform rows, one row
+        for each trial (a stimulus shown twice is answered twice)."""
         from brainscore_core.response_formats import argmax, response_record
         from brainscore_core.streaming import StreamEvent
         labels = session.task.response.labels
@@ -79,7 +86,7 @@ class ChanceBaseline(Subject):
                              f"row (Choice({labels!r})) are not supported.")
         labels = list(labels)
         trials = []
-        while (event := session.next_input()) is not None:
+        for event in events:
             meta = event.meta or {}
             if meta.get('stimulus_id') is not None:
                 trial = (meta['stimulus_id'], meta.get('table_row', meta.get('stimulus_index')))
@@ -97,17 +104,16 @@ class ChanceBaseline(Subject):
                                                source_format='behavior:probabilities')})
         session.respond(StreamEvent('behavior:choice', answer, None, {}))
 
-    def _answer_probabilities(self, session) -> None:
+    def _answer_probabilities(self, session, events) -> None:
         """Uniform rows over the Choice's labels, one per presented stimulus, with the
         stimulus columns (float32, as this model gives its rows)."""
         from brainscore_core.response_formats import response_record
         from brainscore_core.streaming import StreamEvent
-        from brainscore_core.streaming_helpers import drain_session_inputs, session_stimuli
+        from brainscore_core.streaming_helpers import session_stimuli
         labels = session.task.response.labels
         if isinstance(labels, str):
             raise ValueError("chance-baseline answers a Choice with shared options; options per "
                              f"row (Choice({labels!r})) are not supported.")
-        events = drain_session_inputs(session)
         stimuli = session_stimuli(session, events)
         rows = np.full((len(stimuli), len(labels)), 1.0 / len(labels), dtype=np.float32)
         coords = {'stimulus_id': ('presentation', list(stimuli['stimulus_id'].values))}
