@@ -123,9 +123,9 @@ filterwarnings = [
 [tool.setuptools.package-data]
 # The shipped data files of a plugin, the expected records of its rebuild check, and each data
 # plugin's README, whose Rebuild block the tests compare with its declaration (also installed),
-# and the study configuration that the study registrations read at import.
+# and the study configuration and requirements that the study registrations read at import.
 brainscore = ["data/rajalingham2018_2afc/*.csv", "data/*/data_packaging/expected.json", "data/*/README.md",
-              "models/umi_dev_models/model_configs.json"]
+              "models/umi_dev_models/model_configs.json", "models/umi_dev_models/requirements.txt"]
 
 "brainscore.models.vjepa_v1.backbone" = ["LICENSE", "NOTICE.md"]
 # The pinned packages of the environment Brain-Score makes for CogGym's evaluator, and the
