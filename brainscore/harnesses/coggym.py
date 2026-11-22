@@ -39,6 +39,7 @@ import hashlib
 import json
 import math
 import mimetypes
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -51,8 +52,8 @@ import pandas as pd
 
 from brainscore.experiments import CallableProtocol
 from brainscore.harnesses._child_process import ChildFailed, ChildProcess
-from brainscore.harnesses._environment_folder import (Library, _command_environment, environment_python,
-                                                      ready_folder)
+from brainscore.harnesses._environment_folder import (Library, _RUNTIME_VARIABLES, _command_environment,
+                                                      environment_python, ready_folder)
 from brainscore.harnesses.adapter import run_request
 from brainscore.harnesses.coggym_validation import SLIDER_VALIDATION_POLICY
 from brainscore_core.compatibility import ExecutionNotFeasibleError
@@ -101,10 +102,12 @@ def _check_checkout(checkout):
 def _evaluator(folder: Path, log_directory: Path) -> ChildProcess:
     """CogGym's evaluator in a child process with the Python of the folder's own environment.
 
-    The child gets the stated variables of a git or pip command only: no ``PYTHONPATH``,
-    ``PYTHONHOME`` or key of the scoring environment (its model calls go to the parent)."""
+    The child gets the run-time variables only (the user, the locale, the temporary folder):
+    no ``PYTHONPATH``, ``PYTHONHOME``, key, proxy, certificate, package index or git setting of
+    the scoring environment. It makes no network call (its model calls go to the parent)."""
+    environment = {name: os.environ[name] for name in _RUNTIME_VARIABLES if name in os.environ}
     return ChildProcess([environment_python(folder), _WORKER, folder / 'checkout'],
-                        env=_command_environment(),
+                        env={**environment, 'PYTHONNOUSERSITE': '1'},
                         log_directory=log_directory, idle_timeout_s=_EVALUATOR_SILENCE_S)
 
 
