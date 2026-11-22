@@ -301,17 +301,28 @@ def test_participate_only_subject_is_scored(scored_reference, tmp_path):
     assert all(output.channel == 'behavior:text' for output in outputs)
 
 
-def test_the_plain_call_runs_with_the_subjects_own_reset(reference, tmp_path, monkeypatch):
-    """``score(subject, 'CogGym...')`` with no reset given: the subject's own reset() runs
-    before each repetition and every trial reaches the subject."""
+def test_the_plain_call_runs_and_keeps_an_active_intervention(reference, tmp_path, monkeypatch):
+    """``score(subject, 'CogGym...')`` with no reset given: the subject is not reset, so an
+    intervention applied around the run stays active (Contract Rules 5.12, 8.3, 8.5), and
+    every trial reaches the subject (each trial is its own session with no trial memory)."""
     monkeypatch.setenv('BRAINSCORE_ENVIRONMENTS_HOME', str(tmp_path / 'folders'))
     write_ready_folder(default_place(tmp_path / 'folders'), analyze=ANALYZE_ROW)
-    subject = _ParticipateOnlySubject()
+
+    class Lesioned(_ParticipateOnlySubject):
+        def __init__(self):
+            super().__init__()
+            self.lesion = 'active'         # applied by the caller around the run
+
+        def reset(self):
+            super().reset()
+            self.lesion = None             # reset() removes interventions
+
+    subject = Lesioned()
     score = brainscore.score(subject, 'CogGym.Hu2023Fine.exp1', check_mem=False)
     assert float(score.attrs['raw']) == 0.375
+    assert subject.lesion == 'active' and subject.resets == []
     repetitions = score.attrs['configuration']['repetitions']
     trials = [request for request in subject.requests if str(request).startswith('trial-')]
-    assert len(subject.resets) == repetitions and subject.resets[0] == 0
     assert len(trials) == 3 * repetitions   # the stand-in's three trials in each repetition
 
 

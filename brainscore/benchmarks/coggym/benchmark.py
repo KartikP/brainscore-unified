@@ -48,8 +48,8 @@ class CogGymBenchmark(BenchmarkBase):
     load (``folder`` names another one; ``BRAINSCORE_ENVIRONMENTS_HOME`` moves the default place;
     ``BS_INSTALL_DEPENDENCIES=no`` forbids making it). ``reset`` is the
     adapter's reset(repetition) callback; it must preserve instrumentation.
-    Without it, the subject's own ``reset()`` runs before each repetition; that
-    also removes interventions applied around the run.
+    Without it, nothing is reset between repetitions: each trial is already its
+    own session with no trial memory, and interventions applied around the run stay.
     One repetition is a preliminary evaluation, not a leaderboard replication.
 
     Each CogGym trial reaches the subject on the common channels: the system
@@ -162,10 +162,10 @@ class CogGymBenchmark(BenchmarkBase):
         # Experiment supplies the subject (model interface) and context (run
         # directory and artifact registration). CogGym still owns the trial loop.
         def evaluate(subject, context):
-            # No reset given: the subject's own reset() runs before each repetition
-            # (Contract Rule 2.2: reset is a contract method).
+            # No reset given: no reset between repetitions. Each trial is its own session
+            # with no trial memory; subject.reset() would remove a caller's intervention.
             native = runner.protocol(reset=reset if reset is not None
-                                     else lambda repetition: subject.reset())
+                                     else lambda repetition: None)
             # Call evaluate(), not run(): the outer protocol already owns the run.
             # The runner records each request and answer as one session, in its
             # own record repetition.
