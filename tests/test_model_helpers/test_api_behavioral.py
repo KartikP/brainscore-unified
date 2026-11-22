@@ -692,7 +692,7 @@ def test_every_request_of_a_registered_api_model_states_its_temperature(identifi
                     stimuli, [output], TaskContext(instruction=None if index else 'Answer.', response=response)))
             sent[output, index] = len(requests) - before
     if REGISTRY[identifier]['provider'] == 'anthropic':
-        # The reply part answers these: sampled with no seed, so asked again each time.
-        assert sent['behavior:choice', 1] == 2 and sent['behavior:text', 0] == 2
+        # Sampled with no seed, by the answer part and the reply part: asked again each time.
+        assert all(count == 2 for count in sent.values()), sent
     else:
-        assert requests and all('temperature' in r for r in requests)
+        assert requests and all(r.get('temperature') == 0 for r in requests)
