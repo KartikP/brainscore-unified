@@ -137,6 +137,8 @@ def participate_observed(subject, session, context):
     rebuilds exactly this session. Every protocol that runs a session uses this
     one block: ``SessionProtocol`` and the adapters for external libraries.
     """
+    from brainscore.experiments.tools import _refuse_intact_fit
+    _refuse_intact_fit(context.experiment.tools, getattr(session, 'task', None))
     settings = {name: getattr(session, name) for name in _SESSION_CONTEXT_FIELDS
                 if getattr(session, name, None) is not None}
     if settings:
