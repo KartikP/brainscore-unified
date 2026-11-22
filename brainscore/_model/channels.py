@@ -169,6 +169,12 @@ def _shared_layers(model, stimuli, regions: List[str]) -> List[Tuple[object, Lis
     the extra layers for nothing, and so does an extractor whose store the
     switch turns off (``store_enabled`` with the store path ``kind``): their
     call keeps the session's layers.
+
+    Limit: the question to the switch names the extractor's own class. For an
+    extractor that wraps another store (the study models around the vision
+    activations store), a prefix that names the inner store is not seen, and a
+    prefix that names only the outer class turns the shared pass off although
+    the inner store is on. The cost is time and memory, no value.
     """
     from brainscore.model_helpers.extractors import kind
     from brainscore_core.extraction_cache import store_enabled
