@@ -93,7 +93,8 @@ builds its own prompt from the instruction and the parts, so a chat model can
 place the instruction in the user turn, where CogGym's client sends a separate
 system text. The score says so in `score.attrs['input_adaptation']`.
 
-Supply the reset callback of a model that keeps state between repetitions.
+With no `reset=` callback, the model's own `reset()` runs before each repetition;
+that also removes interventions applied around the run, so supply a callback to keep them.
 Save run outputs outside CogGym's folder. UMI records model calls while
 CogGym keeps its trial selection and scoring. Brain-Score gives each call the id
 of its trial by a wrap of CogGym's `build_messages` that reads the trial and
