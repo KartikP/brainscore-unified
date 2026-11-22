@@ -166,10 +166,13 @@ def _shared_layers(model, stimuli, regions: List[str]) -> List[Tuple[object, Lis
     that it records from these stimuli. The store keeps each layer apart, so a
     later session that asks one of those regions on the same stimuli reads it
     from the store, with no new pass. An extractor without a store would run
-    the extra layers for nothing, so its call keeps the session's layers.
+    the extra layers for nothing, and so does an extractor whose store the
+    switch turns off (``store_enabled`` with the store path ``kind``): their
+    call keeps the session's layers.
     """
-    import result_caching
-    stored = bool(getattr(stimuli, 'identifier', None)) and result_caching.is_enabled('')
+    from brainscore.model_helpers.extractors import kind
+    from brainscore_core.extraction_cache import store_enabled
+    stored = bool(getattr(stimuli, 'identifier', None)) and store_enabled('')
     others = [region for region in model._region_layer_map_dict if region not in regions] if stored else []
     groups: Dict[int, Tuple[object, List[str], int, int]] = {}
     for region in list(regions) + others:
@@ -178,7 +181,8 @@ def _shared_layers(model, stimuli, regions: List[str]) -> List[Tuple[object, Lis
             model, modality, stimuli, region_selector(model, region).layer_paths)
         if (extractor is None or not _declares_independent_layers(extractor)
                 or (region in others and (id(extractor) not in groups
-                                          or not callable(getattr(extractor, 'cache_config', None))))):
+                                          or not callable(getattr(extractor, 'cache_config', None))
+                                          or not store_enabled(kind(extractor))))):
             continue
         _, layers, count, asked = groups.get(id(extractor), (extractor, [], 0, 0))
         new = [path for path in region_selector(model, region).layer_paths if path not in layers]
