@@ -942,3 +942,24 @@ def test_a_network_tool_with_a_fit_on_the_intact_network_is_refused_before_any_p
     else:
         experiment.run()
         assert net.passes == 2 * len(STIMULI)
+
+
+def test_a_network_tool_is_refused_with_an_intact_fit_that_a_session_sets(tmp_path):
+    """The refusal reads the task of each session, also of a session a protocol builds itself."""
+    from brainscore.experiments import Ablate, SessionProtocol, TorchInstrumentation
+    from brainscore_core.streaming_helpers import stimulus_session
+    net = Net()
+    task = TaskContext(response=Choice(['short', 'long']), instruction='Is it long?', readout_fit='intact')
+
+    @contextmanager
+    def sessions(repetition):
+        yield stimulus_session(STIMULI, ['behavior:choice'], task)
+
+    protocol = SessionProtocol('own-task', sessions, required_input_channels=('text',),
+                               requested_output_channels=('behavior:choice',))
+    experiment = Experiment(subject=_subject(net), protocol=protocol, tools=[Ablate(['early'])],
+                            instrumentation=TorchInstrumentation({'early': torch.nn.Identity()}),
+                            output_dir=tmp_path / 'run')
+    with pytest.raises(ExecutionNotFeasibleError, match="readout_fit='current'"):
+        experiment.run()
+    assert net.passes == 0

@@ -23,7 +23,7 @@ closed-loop benchmark (for example the grid game) for that.
 
 Metric (per scored state, then averaged over states):
 
-- model agreement  = counts[model_action] / n
+- model agreement  = counts[model_action] / n (0 for an invalid answer, None)
   (probability a random participant made the model's choice)
 - human ceiling    = sum_a counts[a] * (counts[a] - 1) / (n * (n - 1))
   (probability two different participants agree)
@@ -60,7 +60,8 @@ class ReplayEnvironment:
         self._index = 0
 
     def action_spec(self):
-        return self._spec
+        from brainscore.harnesses.grid_game import _or_invalid_move
+        return _or_invalid_move(self._spec)
 
     def reset(self):
         self._index = 0
@@ -79,10 +80,10 @@ def replay_actions(subject, steps: Sequence[Mapping[str, Any]], n_actions: int) 
     """Replay ``steps`` through ``participate``, return its choices.
 
     The episode's ``begin`` clears the subject's episode state; its interventions
-    and task setup stay.
+    and task setup stay. An invalid answer (None) stays None.
     """
     responses = run_environment(subject, ReplayEnvironment(steps, n_actions))
-    actions = [int(np.asarray(action).item()) for action in responses]
+    actions = [None if action is None else int(np.asarray(action).item()) for action in responses]
     if len(actions) != len(steps):
         raise RuntimeError(f'Expected {len(steps)} actions, got {len(actions)}')
     return actions
@@ -99,7 +100,7 @@ def human_agreement(model_actions: Sequence[int],
         n = counts.sum()
         if n < 2:
             continue
-        model.append(counts[action] / n)
+        model.append(0. if action is None else counts[action] / n)   # None agrees with no participant
         human.append((counts * (counts - 1)).sum() / (n * (n - 1)))
         chance.append(1.0 / len(counts))
     if not model:

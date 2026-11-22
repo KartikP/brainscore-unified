@@ -57,7 +57,9 @@ def plan_session(model, session, passes: str) -> SessionPlan:
     together, a task session without a task, several time bins during a task, an
     task with no response, trial-to-trial variance, a task no
     part can answer, trial history without a part that sees it, a region the
-    readout cannot record from its input (``ExecutionNotFeasibleError``); a
+    readout cannot record from its input, an environment session for an answering
+    part (a policy answers it), a passive recording of a trial that presents two
+    columns of one kind (``ExecutionNotFeasibleError``); a
     malformed task, a bad prompt layout and rows with different numbers of
     options (``ValueError``).
     """
@@ -86,6 +88,12 @@ def plan_session(model, session, passes: str) -> SessionPlan:
 
     pick = pick_key = by_answer = recordings = passive = None
     if task_path:
+        from brainscore_core.streaming_helpers import EnvironmentSource
+        if isinstance(session.source, EnvironmentSource):
+            raise ExecutionNotFeasibleError(
+                f"Subject '{model.identifier}' answers {list(answers)} from a stimulus table; a closed "
+                "loop on a behavior action needs a policy. Give the model policy= with "
+                f"policy_out_channels={tuple(answers)!r}.", channels=set(answers), task_type=task_type)
         _refuse_task_session(model, session, task, answers, regions)
         delivery = 'stream' if streaming else 'per_trial' if history else 'table'
         if task.response is not None or task.task_type != 'passive':
@@ -99,6 +107,14 @@ def plan_session(model, session, passes: str) -> SessionPlan:
                 recordings = plan_recordings(model, stimuli, _region_layers(model, regions))
     elif capability is _NEURAL:
         refuse_variance(model, session)
+        kinds = [entry.split(':', 1)[0] for entry in (getattr(task, 'present', None) or ())]
+        if len(kinds) != len(set(kinds)):
+            # Limit: a passive recording reads the first column of each kind (core's catalog);
+            # a recording during a reply records each part.
+            raise ExecutionNotFeasibleError(
+                f"Subject '{model.identifier}' records {list(regions)} in a passive session from the first "
+                f"column of each kind; this task presents {list(task.present)}. Record each column in its "
+                "own session, or record during a reply.", channels=set(outputs), task_type=task_type)
         per_trial = history and (task is None or task.trial_memory == 'none')
         delivery = 'stream' if streaming else 'per_trial' if per_trial else 'table'
         stimuli = _presented_table(session)

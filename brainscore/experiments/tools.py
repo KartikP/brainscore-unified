@@ -97,6 +97,20 @@ class RecordActivity(Tool):
             yield
 
 
+def _refuse_intact_fit(tools, task) -> None:
+    """A network tool changes the network outside the subject, so a fit on the intact
+    network cannot switch it off (Contract Rules 4.9): ``readout_fit='intact'`` with one
+    is refused before any compute. Read for the protocol's task and for each session's."""
+    tool = next((tool for tool in tools if isinstance(tool, Ablate)), None)
+    if tool is not None and task is not None and task.readout_fit == 'intact':
+        from brainscore_core.compatibility import ExecutionNotFeasibleError
+        raise ExecutionNotFeasibleError(
+            f"{type(tool).__name__} changes the network outside the subject, so "
+            "readout_fit='intact' cannot switch it off for the fit. Send the change "
+            "to the subject with Intervene, or use readout_fit='current'.",
+            task_type=task.task_type)
+
+
 class Ablate(Tool):
     """Zero selected layer outputs in chosen conditions or repetitions."""
     name = 'ablation'
@@ -121,16 +135,7 @@ class Ablate(Tool):
         if experiment.instrumentation is None:
             raise ValueError(f'{type(self).__name__} requires an instrumentation')
         experiment.instrumentation.validate(self.operation, self.targets)
-        task = getattr(experiment.protocol, 'task', None)
-        if task is not None and task.readout_fit == 'intact':
-            # The change is made outside the subject, so a fit on the intact network
-            # cannot switch it off (Contract Rules 4.9).
-            from brainscore_core.compatibility import ExecutionNotFeasibleError
-            raise ExecutionNotFeasibleError(
-                f"{type(self).__name__} changes the network outside the subject, so "
-                "readout_fit='intact' cannot switch it off for the fit. Send the change "
-                "to the subject with Intervene, or use readout_fit='current'.",
-                task_type=task.task_type)
+        _refuse_intact_fit([self], getattr(experiment.protocol, 'task', None))
         available_conditions = getattr(experiment.protocol, 'conditions', ('default',))
         if self.conditions is not None and (not self.conditions or set(self.conditions) - set(available_conditions)):
             raise ValueError(f'{type(self).__name__} conditions must belong to the protocol')
