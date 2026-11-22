@@ -44,8 +44,8 @@ _COMMAND_TIMEOUT_S = 3600
 # the temporary folder, certificates, proxies and the package index. Nothing that can move
 # pip's destination (PIP_TARGET, PIP_PREFIX, PIP_ROOT, PIP_USER, a pip configuration file) or
 # git's repository (GIT_DIR, GIT_WORK_TREE) passes.
-_PASSED_VARIABLES = (
-    'PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TMPDIR',
+_RUNTIME_VARIABLES = ('PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TMPDIR')
+_PASSED_VARIABLES = _RUNTIME_VARIABLES + (
     'SSL_CERT_FILE', 'SSL_CERT_DIR', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE',
     'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy',
     'PIP_INDEX_URL', 'PIP_EXTRA_INDEX_URL', 'PIP_TRUSTED_HOST', 'PIP_CERT', 'PIP_CLIENT_CERT',

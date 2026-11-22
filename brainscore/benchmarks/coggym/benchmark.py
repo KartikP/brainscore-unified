@@ -41,21 +41,6 @@ _PROMPT_NOTE = {
 }
 
 
-def _require_reset(reset):
-    """The adapter's reset(repetition) callback, or an error before any compute.
-
-    The benchmark never reads it from the subject (Contract Rule 2.2): the
-    caller supplies it, because only the caller knows its adapter.
-    """
-    if reset is None:
-        raise ValueError(
-            'The CogGym benchmark needs a reset callback. Load it with '
-            "load_benchmark('CogGym...', reset=adapter.reset). "
-            'An adapter with no state can pass reset=lambda repetition: None.'
-        )
-    return reset
-
-
 class CogGymBenchmark(BenchmarkBase):
     """One public experiment, returning upstream raw R² without a human ceiling.
 
@@ -63,7 +48,8 @@ class CogGymBenchmark(BenchmarkBase):
     load (``folder`` names another one; ``BRAINSCORE_ENVIRONMENTS_HOME`` moves the default place;
     ``BS_INSTALL_DEPENDENCIES=no`` forbids making it). ``reset`` is the
     adapter's reset(repetition) callback; it must preserve instrumentation.
-    Scoring needs it: give it here or to ``protocol``.
+    Without it, nothing is reset between repetitions: each trial is already its
+    own session with no trial memory, and interventions applied around the run stay.
     One repetition is a preliminary evaluation, not a leaderboard replication.
 
     Each CogGym trial reaches the subject on the common channels: the system
@@ -171,12 +157,15 @@ class CogGymBenchmark(BenchmarkBase):
         reset = reset if reset is not None else self._reset
         if reset is not None and not callable(reset):
             raise TypeError('reset must be a reset(repetition) callback')
-        runner = CogGymRunner(model=model, **self._configuration)
+        runner = CogGymRunner(model=model, reset_given=reset is not None, **self._configuration)
 
         # Experiment supplies the subject (model interface) and context (run
         # directory and artifact registration). CogGym still owns the trial loop.
         def evaluate(subject, context):
-            native = runner.protocol(reset=_require_reset(reset))
+            # No reset given: no reset between repetitions. Each trial is its own session
+            # with no trial memory; subject.reset() would remove a caller's intervention.
+            native = runner.protocol(reset=reset if reset is not None
+                                     else lambda repetition: None)
             # Call evaluate(), not run(): the outer protocol already owns the run.
             # The runner records each request and answer as one session, in its
             # own record repetition.
@@ -248,5 +237,5 @@ class CogGymBenchmark(BenchmarkBase):
         Default scoring deletes the call records on success and failure; an
         explicit ``output_dir`` keeps them. ``score()`` runs the pre-flight.
         """
-        protocol = self.protocol(model=subject.identifier, reset=_require_reset(self._reset))
+        protocol = self.protocol(model=subject.identifier)
         return run_recorded(subject, protocol, self._output_dir)

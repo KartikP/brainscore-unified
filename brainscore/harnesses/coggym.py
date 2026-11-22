@@ -39,8 +39,8 @@ import hashlib
 import json
 import math
 import mimetypes
-from pathlib import Path
 import os
+from pathlib import Path
 import subprocess
 import sys
 import tempfile
@@ -52,8 +52,8 @@ import pandas as pd
 
 from brainscore.experiments import CallableProtocol
 from brainscore.harnesses._child_process import ChildFailed, ChildProcess
-from brainscore.harnesses._environment_folder import (Library, _command_environment, environment_python,
-                                                      ready_folder)
+from brainscore.harnesses._environment_folder import (Library, _RUNTIME_VARIABLES, _command_environment,
+                                                      environment_python, ready_folder)
 from brainscore.harnesses.adapter import run_request
 from brainscore.harnesses.coggym_validation import SLIDER_VALIDATION_POLICY
 from brainscore_core.compatibility import ExecutionNotFeasibleError
@@ -102,10 +102,12 @@ def _check_checkout(checkout):
 def _evaluator(folder: Path, log_directory: Path) -> ChildProcess:
     """CogGym's evaluator in a child process with the Python of the folder's own environment.
 
-    The child gets no ``PYTHONPATH`` or ``PYTHONHOME`` of the scoring environment."""
-    environment = {name: value for name, value in os.environ.items()
-                   if name not in ('PYTHONPATH', 'PYTHONHOME')}
-    return ChildProcess([environment_python(folder), _WORKER, folder / 'checkout'], env=environment,
+    The child gets the run-time variables only (the user, the locale, the temporary folder):
+    no ``PYTHONPATH``, ``PYTHONHOME``, key, proxy, certificate, package index or git setting of
+    the scoring environment. It makes no network call (its model calls go to the parent)."""
+    environment = {name: os.environ[name] for name in _RUNTIME_VARIABLES if name in os.environ}
+    return ChildProcess([environment_python(folder), _WORKER, folder / 'checkout'],
+                        env={**environment, 'PYTHONNOUSERSITE': '1'},
                         log_directory=log_directory, idle_timeout_s=_EVALUATOR_SILENCE_S)
 
 
@@ -353,6 +355,7 @@ class CogGymRunner:
         trial_ids: Sequence[str] | None = None,
         experiment: str = DEFAULT_EXPERIMENT,
         modalities: Sequence[str] = ('text',),
+        reset_given: bool = True,
     ) -> None:
         if not isinstance(model, str) or not model.strip():
             raise ValueError('Supply the model identifier')
@@ -363,6 +366,7 @@ class CogGymRunner:
         if type(repetitions) is not int or repetitions < 1:
             raise ValueError('repetitions must be a positive integer')
         self.model, self.temperature = model, temperature
+        self.reset_given = reset_given   # False: the reset callback does nothing (the record says so)
         self.max_tokens, self.repetitions = max_tokens, repetitions
         if not modalities or set(modalities) - {'text', 'image', 'video'}:
             raise ValueError('Declare supported modalities: text, image, video')
@@ -444,7 +448,8 @@ class CogGymRunner:
             'scope': ('canonical_selection' if len(self._trials) == self.canonical_trial_count
                       else 'smoke_subset'),
             'clock': 'no physical clock; provider_call is an attempt index',
-            'reset': 'caller-supplied callback before each repetition',
+            'reset': ('caller-supplied callback before each repetition' if self.reset_given
+                      else 'none (each trial is its own session with no trial memory)'),
             'slider_validation': SLIDER_VALIDATION_POLICY,
             'evaluator_environment': dict(self._environment),
         }

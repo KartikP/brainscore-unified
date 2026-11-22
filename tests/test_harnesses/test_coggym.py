@@ -555,3 +555,35 @@ def _run_experiment(experiment, selected, provider, model, *args, **kwargs):
     assert [issue['trial_id'] for issue in issues] == ['trial-0']
     # Core's reason on its own: not CogGym's error text of the call.
     assert issues[0]['response_state'] == 'missing' and issues[0]['reason'] != saved['trials'][0]['error']
+
+
+def test_the_evaluator_gets_only_the_listed_environment_variables(reference, tmp_path, monkeypatch):
+    """A secret of the scoring process (an API key, a package index or proxy address that can
+    hold a password) and its Python path never reach CogGym's evaluator; only the stated
+    run-time variables do (the home folder among them)."""
+    from brainscore.harnesses._environment_folder import _RUNTIME_VARIABLES
+    root, stand_in = reference
+    stand_in.cli('''
+import os
+
+
+def build_messages(trial, experiment):
+    return 'system', [{'role': 'user', 'content': ' '.join(sorted(os.environ))}]
+''')
+    monkeypatch.setenv('OPENAI_API_KEY', 'not for the evaluator')
+    monkeypatch.setenv('PIP_INDEX_URL', 'https://user:password@index.invalid/simple')
+    monkeypatch.setenv('HTTPS_PROXY', 'http://user:password@proxy.invalid:3128')
+    monkeypatch.setenv('PYTHONPATH', str(tmp_path))
+    monkeypatch.setenv('HOME', str(tmp_path))
+    seen = []
+
+    def capture(prompt):
+        seen.append(set(prompt.parts[-1][1].split()))
+        return 'ok'
+
+    runner = coggym.CogGymRunner(root, model='fixture')
+    Experiment(subject=make_subject(capture), protocol=runner.protocol(reset=lambda repetition: None),
+               output_dir=tmp_path / 'run').run()
+    # The stand-in's environment Python is a shell script; the shell sets PWD, SHLVL and _.
+    stated = set(_RUNTIME_VARIABLES) | {'BRAINSCORE_CHILD_FDS', 'PYTHONNOUSERSITE', 'PWD', 'SHLVL', '_'}
+    assert seen and all('HOME' in names and names <= stated for names in seen), [n - stated for n in seen]
