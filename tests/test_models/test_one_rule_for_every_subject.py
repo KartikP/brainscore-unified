@@ -260,12 +260,13 @@ def test_each_begin_clears_the_trial_history(name):
     for outputs, task in _probes(region):
         if not set(outputs) <= set(make().out_channels) or isinstance(_run(make(), column, outputs, task), str):
             continue          # not declared, or refused as a table session too: not this case
-        outcome = _run(make(), column, outputs, task, streaming=True)
-        assert not isinstance(outcome, str), f'{name}: a streamed {list(outputs)} session is refused: {outcome}'
-        values = [value for _, value in outcome]
-        if len(values) == 1:       # one answer for both trials: compare its rows
-            values = [row for row in values[0].split('\n') if row.strip()]
-        assert len(set(v.strip(' []') for v in values)) == 1, f'{name}: {list(outputs)} gives {values}'
+        session = stimulus_session(_stimuli(column), list(outputs), task, streaming=True)
+        make().participate(session)
+        rows = [np.asarray(getattr(event.payload, 'values', event.payload)) for event in session.emitted]
+        if len(rows) == 1:         # one answer for both trials: its rows along the first axis
+            rows = list(rows[0])
+        assert len(rows) == 2, f'{name}: {list(outputs)} gives {len(rows)} answers for two trials'
+        assert all(np.array_equal(row, rows[0]) for row in rows), f'{name}: {list(outputs)} gives {rows}'
 
 
 # ---------------------------------------------------------------- the core drivers
