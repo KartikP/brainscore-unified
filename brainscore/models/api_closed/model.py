@@ -11,8 +11,9 @@ from brainscore import BrainScoreModel
 from brainscore.model_helpers.api_behavioral import api_answer, build_api_reply
 
 # identifier -> (provider, model id, declared input channels). Pin dated snapshots
-# where the provider offers them (OpenAI) so behavioral scores reproduce; Claude
-# uses the canonical alias + the response cache for reproducibility.
+# where the provider offers them (OpenAI) so behavioral scores reproduce. Claude
+# uses the canonical alias; its replies are samples (no temperature, no seed),
+# so the response store keeps none of them.
 REGISTRY = {
     'claude-opus-behavioral': dict(
         provider='anthropic', model='claude-opus-4-8',

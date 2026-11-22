@@ -84,7 +84,8 @@ def test_an_invalid_reply_is_stored_exactly(transport, provider):
     assert list(choice['parse_error'].values) == ["several labels in the reply: ['real', 'pseudo']"]
 
 
-@pytest.mark.parametrize('provider', PROVIDERS)
+# Anthropic's answer is a sample with no seed and is never stored.
+@pytest.mark.parametrize('provider', [p for p in PROVIDERS if p != 'anthropic'])
 def test_the_answer_cache_gives_the_exact_text_and_no_old_stripped_entry(transport, provider, tmp_path):
     from brainscore.model_helpers.api_behavioral import answer_text
     payload = hashlib.sha256(b'florp').hexdigest()[:16]

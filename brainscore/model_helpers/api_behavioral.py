@@ -321,10 +321,12 @@ def api_answer(
         payload_hash = hashlib.sha256(payload.encode('utf-8')).hexdigest()[:16]
 
         key = _key(prompt, label_set, stim_key, payload_hash)
-        response = cache.get(key) if cache is not None else None
+        # Anthropic gets no temperature and no seed: its reply is a sample, never stored.
+        use_cache = cache is not None and call is not _call_anthropic
+        response = cache.get(key) if use_cache else None
         if response is None:
             response = _one_turn(call, model, system_prompt, user_text, image, max_tokens)
-            if cache is not None:
+            if use_cache:
                 cache.set(key, response)
 
         return response   # the provider's text, exactly: BrainScoreModel parses it
