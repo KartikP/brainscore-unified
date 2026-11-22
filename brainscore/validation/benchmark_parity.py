@@ -218,7 +218,8 @@ def _validate_case(case, subject_factory, benchmark_loader, *,
     from brainscore_language.compat.unified_adapter import LanguageModelAdapter
     from brainscore_vision.compat.unified_adapter import VisionModelAdapter
     from brainscore_core.legacy_facade import declared_visual_degrees, subject_for_benchmark
-    if os.environ.get('RESULTCACHING_DISABLE') != '1':
+    from brainscore_core.extraction_cache import store_enabled
+    if store_enabled(''):
         raise RuntimeError('Parity validation requires RESULTCACHING_DISABLE=1')
     benchmark_loader = benchmark_loader or load_benchmark
     if policy not in POLICIES:

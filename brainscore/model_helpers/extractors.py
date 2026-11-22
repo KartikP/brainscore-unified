@@ -21,11 +21,10 @@ from collections import OrderedDict
 from typing import Callable, List
 
 import numpy as np
-from result_caching import is_enabled
 from tqdm.auto import tqdm
 
 from brainscore_core.assembly_builder import make_assembly, make_layer_neuroid_coords, make_neuroid_ids
-from brainscore_core.extraction_cache import extraction_fingerprint, file_inputs, model_config
+from brainscore_core.extraction_cache import extraction_fingerprint, file_inputs, model_config, store_enabled
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.model_helpers.selection import split_site
 
@@ -450,7 +449,7 @@ class CachingExtractor:
         signature, settings = cache_signature(self, stored, self._key_inputs(inputs), stimuli_identifier,
                                               settings=True)
         if signature is None:
-            settings = ('not hashed (store off)' if not is_enabled(f'{kind(self)}.{stored}')
+            settings = ('not hashed (store off)' if not store_enabled(f'{kind(self)}.{stored}')
                         else 'not hashed (store not used)')
         log.settings.setdefault(id(self), set()).add(settings)
         return signature
