@@ -157,7 +157,7 @@ class CogGymBenchmark(BenchmarkBase):
         reset = reset if reset is not None else self._reset
         if reset is not None and not callable(reset):
             raise TypeError('reset must be a reset(repetition) callback')
-        runner = CogGymRunner(model=model, **self._configuration)
+        runner = CogGymRunner(model=model, reset_given=reset is not None, **self._configuration)
 
         # Experiment supplies the subject (model interface) and context (run
         # directory and artifact registration). CogGym still owns the trial loop.

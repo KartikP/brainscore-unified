@@ -355,6 +355,7 @@ class CogGymRunner:
         trial_ids: Sequence[str] | None = None,
         experiment: str = DEFAULT_EXPERIMENT,
         modalities: Sequence[str] = ('text',),
+        reset_given: bool = True,
     ) -> None:
         if not isinstance(model, str) or not model.strip():
             raise ValueError('Supply the model identifier')
@@ -365,6 +366,7 @@ class CogGymRunner:
         if type(repetitions) is not int or repetitions < 1:
             raise ValueError('repetitions must be a positive integer')
         self.model, self.temperature = model, temperature
+        self.reset_given = reset_given   # False: the reset callback does nothing (the record says so)
         self.max_tokens, self.repetitions = max_tokens, repetitions
         if not modalities or set(modalities) - {'text', 'image', 'video'}:
             raise ValueError('Declare supported modalities: text, image, video')
@@ -446,7 +448,8 @@ class CogGymRunner:
             'scope': ('canonical_selection' if len(self._trials) == self.canonical_trial_count
                       else 'smoke_subset'),
             'clock': 'no physical clock; provider_call is an attempt index',
-            'reset': 'caller-supplied callback before each repetition',
+            'reset': ('caller-supplied callback before each repetition' if self.reset_given
+                      else 'none (each trial is its own session with no trial memory)'),
             'slider_validation': SLIDER_VALIDATION_POLICY,
             'evaluator_environment': dict(self._environment),
         }

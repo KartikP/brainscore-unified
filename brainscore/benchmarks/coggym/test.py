@@ -326,6 +326,19 @@ def test_the_plain_call_runs_and_keeps_an_active_intervention(reference, tmp_pat
     assert len(trials) == 3 * repetitions   # the stand-in's three trials in each repetition
 
 
+@pytest.mark.parametrize('reset, stated', [(None, 'none'), (lambda repetition: None, 'caller')])
+def test_the_record_states_whether_a_reset_was_given(scored_reference, tmp_path, reset, stated):
+    """The score and the saved run file say truly whether a reset was given (rule 6.3)."""
+    import json
+    root, _ = scored_reference
+    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', folder=root, reset=reset,
+                                          output_dir=tmp_path / 'run')
+    score = benchmark(_ParticipateOnlySubject())
+    saved = json.loads((tmp_path / 'run/coggym/run-001.json').read_text())
+    assert score.attrs['configuration']['reset'].startswith(stated)
+    assert saved['umi']['reset'].startswith(stated)
+
+
 def _record_events(directory):
     from brainscore.experiments import read_events
     return read_events(directory)
