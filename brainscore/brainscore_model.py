@@ -194,6 +194,11 @@ class BrainScoreModel(Subject):
             write. The owner answers its channel. When the owner cannot serve a
             task form, the session is refused before any compute: no other part
             stands in. Log probabilities come only from ``likelihood``.
+            Limit: a registration that states ``similarity`` and also wires
+            ``reply`` is not built: the reply answers no Choice, and a Choice
+            setting the answer part cannot serve (verbatim, present, trial
+            history) is refused before compute; register such a model without
+            ``reply``.
         :param output_inputs: the inputs that an answer part needs, by output
             (rule 4.11, a part states the inputs that its answer needs), for
             example ``{'behavior:choice': {'vision:image'}}`` for a choice made by

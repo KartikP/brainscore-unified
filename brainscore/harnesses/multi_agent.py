@@ -142,6 +142,10 @@ def multi_agent_rollout(subjects: Union[Sequence, Dict[str, Any]],
     order, where ``action`` is the payload on ``action_channel``. An entry also
     holds each other requested output of that turn under its channel name. The
     shared state is on ``mediator`` (for example ``mediator.history``).
+
+    Limit: the run is turn based and waits for each answer with no time limit, so
+    real-time control is out of scope and a subject that never answers stops the run
+    for ever. Put a time limit around the call.
     """
     if isinstance(subjects, dict):
         subjects = [subjects[k] for k in (order or list(subjects))]
