@@ -252,6 +252,9 @@ def play_game(subject, env: GridGameEnv, max_steps: Optional[int] = None,
 
     The caller owns subject reset. SessionProtocol provides isolated trials when
     using tools or comparing conditions.
+
+    Limit: a step is invalid only when the action is None; a legal integer sent with
+    ``valid=False`` counts as a valid step. A policy marks an unreadable reply by sending None.
     """
     wrapper = GridGameEnvironment(env, max_steps=max_steps)
     responses = run_environment(subject, wrapper, seed=seed, require_specs=True)

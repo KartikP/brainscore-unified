@@ -78,7 +78,11 @@ class _StudySubject(ProvenanceSubject):
     def _shown(self, session):
         """The inputs this session delivers to the model, as its task presents them: the table's, or the
         events of a listed source with no table (read here and given back as the same list). None for a
-        stream with no table: its inputs are known only when they arrive."""
+        stream with no table: its inputs are known only when they arrive.
+
+        Limit: a listed source with no table is read ahead and replaced by a plain ``FixedSource`` of
+        the same events; a custom listed source with its own ``respond`` loses it. Give a study model a
+        table or a plain listed source."""
         from brainscore_core.responses import PART_CHANNELS
         from brainscore_core.streaming import FixedSource
         from brainscore_core.streaming_helpers import task_input_channels
@@ -237,7 +241,11 @@ def _one_layer_pca():
     """``LayerPCA`` that extracts and fits the corpus activations of one layer at a time, so the fit holds
     one layer in memory (four layers fitted together ended at 63 GB on a 64 GB machine). A layer's
     components depend on that layer alone (the same pictures, order, number format and random state):
-    they are the same bits as a fit of several layers together."""
+    they are the same bits as a fit of several layers together.
+
+    Limit: two processes that fit the same reduction entry of one model on an empty store at one time
+    collide in the store package's temporary file name, and the second fails. Run the first pair of a
+    model alone, so that it fills the store before other pairs start."""
     from brainscore_vision.model_helpers.activations.pca import LayerPCA
 
     class OneLayerPCA(LayerPCA):
