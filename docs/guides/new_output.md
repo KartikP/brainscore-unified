@@ -76,8 +76,9 @@ def policy(row):
     red, green, blue = row['observation'][48, 48]   # the centre of the button
     return {'motor': action('click', x=48, y=48) if green > red else action('run')}
 
-subject = BrainScoreModel(identifier='screen-agent', policy=policy,
-                        policy_in_channels=('observation',), policy_out_channels=('motor',))
+# The policy reads 'observation' and returns 'motor': both are the defaults of
+# policy_in_channels and policy_out_channels, so the registration does not state them
+subject = BrainScoreModel(identifier='screen-agent', policy=policy)
 ```
 
 Run one episode. The actions and the reason the episode ended come back from the session:

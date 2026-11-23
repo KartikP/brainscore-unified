@@ -167,8 +167,7 @@ class TurnWhenBlocked:
 
 
 # Subject with the history-keeping policy
-subject = BrainScoreModel(identifier='turn-when-blocked', policy=TurnWhenBlocked(),
-                        policy_in_channels=('observation',))
+subject = BrainScoreModel(identifier='turn-when-blocked', policy=TurnWhenBlocked())
 score = brainscore.score(subject, 'GridGame-reach-5x5')   # 15 episodes, so 15 resets
 ```
 
