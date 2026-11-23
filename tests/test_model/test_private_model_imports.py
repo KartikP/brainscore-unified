@@ -23,8 +23,17 @@ Reads (with ``ast``, never imported) every file under ``brainscore/`` folders
 - a call of ``.process``, ``.start_recording`` or ``.start_task`` on any
   object (the typed calling convention, House Style pattern 2).
 
-Cannot detect: private access through ``getattr`` with a string, through a
-variable with another name than the three listed, or through a public helper
+Rule 2.2 in core and in the model helpers (``brainscore_core`` and, in
+``brainscore``, the folder ``model_helpers`` and ``__init__.py``): no ability is
+discovered by a read of a private name with ``getattr`` or ``hasattr`` and a text
+argument on another object than ``self`` or ``cls``, or by ``isinstance`` against a
+subject class or a part class (a subclass of ``Subject``, ``CachingExtractor`` or
+``Capability`` defined in core or unified; ``Subject`` itself is the contract type and
+is allowed). These places have their own short list, ``DISCOVERY_ALLOWED``.
+
+Cannot detect: private access through ``getattr`` with a name held in a variable,
+``type(x) is``, ``issubclass``, signature inspection, a class of vision or language,
+through a variable with another name than the three listed, or through a public helper
 that forwards to private code; imports through ``importlib``. A second call of
 the same method on the same receiver inside a file that is already
 allow-listed is not reported (findings are per file).
@@ -48,6 +57,32 @@ TYPED_METHODS = {'process', 'start_recording', 'start_task'}
 ALLOWED = {}
 
 IMPORT_ONLY_FOLDERS = ('models', 'validation')
+
+# Rule 2.2 places: package -> folders or files read for the discovery signal.
+DISCOVERY_PLACES = {'brainscore_core': ('',), 'brainscore': ('model_helpers', '__init__.py')}
+PART_BASES = {'Subject', 'CachingExtractor', 'Capability'}
+
+# (package/path, finding): reason. Each is a stated place; a new place fails.
+_HINT = ('N/A reason text only: the hint reads the wiring of the model class; a hint from '
+         'declarations needs a new public name (owner decision, audit 2026-11-22 finding 27)')
+_FACTS = ('provenance facts of a caching wrapper (network, batch size, token limit); public '
+          'names would be new (open, finding 29); no ability is chosen by it')
+_DEVICE = ('the cache key reads the input device of a wrapper (unified wrappers and the vision '
+           'PytorchWrapper); a public name would be new on both (open, finding 29)')
+DISCOVERY_ALLOWED = {
+    ('brainscore/__init__.py', 'class check BrainScoreModel'): _HINT,
+    ('brainscore/model_helpers/provenance.py', 'class check CachingExtractor'): _FACTS,
+    ('brainscore/model_helpers/provenance.py', 'getattr obj._model'): _FACTS,
+    ('brainscore/model_helpers/provenance.py', 'getattr obj._batch_size'): _FACTS,
+    ('brainscore/model_helpers/provenance.py', 'getattr obj._max_length'): _FACTS,
+    ('brainscore/model_helpers/extractors.py', 'getattr wrapper._device'):
+        'the module defines CachingExtractor, whose subclasses set _device',
+    ('brainscore_core/extraction_cache.py', 'getattr wrapper._device'): _DEVICE,
+    ('brainscore_core/_evaluation/measures.py', 'getattr session._measure_key'):
+        'the module writes this marker on the session itself and reads it back',
+    ('brainscore_core/memory.py', 'hasattr benchmark._assembly'):
+        'stated exception in the module docstring: Brain-Score 2.0 benchmarks keep sizes there',
+}
 
 
 def findings(source, module, imports_only=False):
@@ -91,6 +126,55 @@ def violations(root):
     return found
 
 
+def part_classes(roots):
+    """Names of the classes in ``roots`` that derive from a part base, the bases' own
+    subclasses included; ``Subject`` itself is left out (the contract type)."""
+    bases = {}
+    for root in roots:
+        for _, source in python_files(root):
+            for node in ast.walk(ast.parse(source)):
+                if isinstance(node, ast.ClassDef):
+                    bases.setdefault(node.name, set()).update(
+                        getattr(base, 'attr', getattr(base, 'id', None)) for base in node.bases)
+    found = set(PART_BASES)
+    while new := {name for name, parents in bases.items() if parents & found} - found:
+        found |= new
+    return found - {'Subject'}
+
+
+def discovery_findings(source, classes):
+    """Rule 2.2 findings of one file: a private read by text, a class check of a part."""
+    found = set()
+    for node in ast.walk(ast.parse(source)):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and len(node.args) >= 2):
+            continue
+        target, what = node.args[:2]
+        if node.func.id in ('getattr', 'hasattr') and isinstance(what, ast.Constant) \
+                and isinstance(what.value, str) and is_private(what.value) \
+                and not (isinstance(target, ast.Name) and target.id in ('self', 'cls')):
+            found.add(f'{node.func.id} {ast.unparse(target)}.{what.value}')
+        if node.func.id == 'isinstance':
+            for kind in (what.elts if isinstance(what, ast.Tuple) else [what]):
+                name = getattr(kind, 'attr', getattr(kind, 'id', None))
+                if name in classes:
+                    found.add(f'class check {name}')
+    return found
+
+
+def discovery_violations(roots, classes):
+    return {(f'{package}/{path}', finding)
+            for package, root in roots.items()
+            for path, source in python_files(root, DISCOVERY_PLACES[package])
+            for finding in discovery_findings(source, classes)}
+
+
+def test_no_ability_is_discovered_by_private_read_or_class_check_in_core_and_helpers():
+    roots = {package: package_root(package) for package in DISCOVERY_PLACES}
+    compare(discovery_violations(roots, part_classes(roots.values())), DISCOVERY_ALLOWED,
+            'discovery by private read or class check (rule 2.2)')
+
+
 def test_no_private_model_code_in_benchmarks_tools_and_adapters():
     compare(violations(package_root('brainscore')), ALLOWED, 'private model access')
 
@@ -113,6 +197,44 @@ def test_check_fails_on_a_stale_entry(tmp_path):
     with pytest.raises(AssertionError, match='no longer violate'):
         compare(violations(root), {('tools/clean.py', 'call candidate.process'): 'stale'},
                 'private model access')
+
+
+CLASSES = {'BrainScoreModel', 'CachingExtractor', 'TextWrapper'}
+
+
+@pytest.mark.parametrize('source', [
+    "getattr(wrapper, '_device', None)",
+    "hasattr(benchmark, '_assembly')",
+    "getattr(self.extractor, '_model')",
+    'isinstance(subject, BrainScoreModel)',
+    'isinstance(part, (str, wrappers.TextWrapper))',
+])
+def test_discovery_signal_catches(source):
+    assert discovery_findings(source, CLASSES)
+
+
+@pytest.mark.parametrize('source', [
+    "getattr(self, '_cache', None)",
+    "getattr(subject, 'identifier', None)",
+    "getattr(module, '__name__')",
+    'isinstance(event, StreamEvent)',
+    'isinstance(subject, Subject)',
+])
+def test_discovery_signal_allows(source):
+    assert not discovery_findings(source, CLASSES)
+
+
+def test_part_classes_follow_subclasses(tmp_path):
+    _tree(tmp_path, {'a.py': 'class Wrap(CachingExtractor): pass\nclass Deep(Wrap): pass\n'
+                             'class Agent(Subject): pass\nclass Other: pass\n'})
+    assert {'Wrap', 'Deep', 'Agent'} <= part_classes([tmp_path])
+    assert not {'Other', 'Subject'} & part_classes([tmp_path])
+
+
+def test_discovery_check_fails_on_a_new_place(tmp_path):
+    root = _tree(tmp_path, {'new.py': 'ok = isinstance(subject, BrainScoreModel)\n'})
+    with pytest.raises(AssertionError, match='new discovery'):
+        compare(discovery_violations({'brainscore_core': root}, CLASSES), {}, 'discovery')
 
 
 @pytest.mark.parametrize('source', [
