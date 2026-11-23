@@ -182,3 +182,26 @@ def test_three_regions_asked_together_keep_the_layout_of_one_joint_call(tmp_path
         np.testing.assert_array_equal(actual.values, expected.values)
         assert actual.values.strides == expected.values.strides
         assert np.array_equal(actual.mean('time_bin').values, expected.mean('time_bin').values)
+
+
+@pytest.mark.parametrize('switch', ['1', 'prefix'])
+def test_a_store_that_the_switch_turns_off_gives_a_one_region_session_its_own_layers(
+        tmp_path, store, monkeypatch, switch):
+    """'1' and a prefix that names the extractor's store both turn that store off: the store, the
+    cache key and the one-pass choice give the same answer, so the session records only its region
+    and nothing is written."""
+    from brainscore.model_helpers.extractors import kind
+    from brainscore_core.extraction_cache import store_enabled
+    wrapper, stimuli, regions, network = tiny_wrappers.vlm_vision(tmp_path)
+    store(wrapper, network, [])
+    monkeypatch.setenv('RESULTCACHING_DISABLE', '1' if switch == '1' else f'other.module,{kind(wrapper)}')
+    calls = []
+    call = type(wrapper).__call__
+    monkeypatch.setattr(type(wrapper), '__call__',
+                        lambda self, stimuli, layers, **kwargs: calls.append(list(layers)) or call(
+                            self, stimuli, layers, **kwargs))
+    model = BrainScoreModel('tiny-vlm_vision', extractor={'vision': wrapper}, region_layer_map=regions)
+    _payload(model, stimuli, 'V1')
+    assert not store_enabled(kind(wrapper))
+    assert calls == [list(regions['V1'].layer_paths)]
+    assert not (tmp_path / 'store').exists() or not any((tmp_path / 'store').rglob('*.pkl'))

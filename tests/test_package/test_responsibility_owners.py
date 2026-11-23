@@ -59,9 +59,13 @@ R17 score metadata stamp. Signal: ``stamp_score_metadata`` is defined or
     called. Cannot detect: score attributes written directly.
 R18 activation cache validity. Signal: a write to the
     ``RESULTCACHING_DISABLE`` variable of ``os.environ`` (not an environment
-    built for a child process), or a definition of
-    ``extraction_fingerprint`` or ``weight_fingerprint_scope``. Cannot detect:
-    a cache key built under another name.
+    built for a child process), a read of it (``os.environ``, ``os.getenv``, or
+    ``is_enabled`` of ``result_caching``), or a definition of
+    ``extraction_fingerprint`` or ``weight_fingerprint_scope``. The one reader
+    is ``store_enabled``; a read is also looked for in the library code of
+    vision (not its plugin folders ``models/``, ``benchmarks/``, ``data/``).
+    Cannot detect: a cache key built under another name, or the variable name
+    built at run time.
 R20 registry assignment. Signal: a module-level name ending in ``_registry``
     is assigned, or a module-level function ``register_*`` is defined. Cannot
     detect: a registry held under another name.
@@ -242,7 +246,28 @@ def _writes_cache_switch(tree):
         if any('RESULTCACHING_DISABLE' in text and 'environ' in text
                for text in map(ast.unparse, targets)):
             return True
-    return _defines(tree, {'extraction_fingerprint', 'weight_fingerprint_scope'})
+    return _reads_cache_switch(tree) or _defines(tree, {'extraction_fingerprint', 'weight_fingerprint_scope'})
+
+
+def _reads_cache_switch(tree):
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == 'result_caching' \
+                and any(alias.name == 'is_enabled' for alias in node.names):
+            return True
+        if isinstance(node, ast.Attribute) and node.attr == 'is_enabled' \
+                and ast.unparse(node.value).endswith('result_caching'):
+            return True
+        if isinstance(node, ast.Call) and node.args \
+                and ast.unparse(node.func).split('.')[-1] in ('get', 'getenv') \
+                and ast.unparse(node.args[0]) == "'RESULTCACHING_DISABLE'":
+            return True
+        if isinstance(node, ast.Compare) and ast.unparse(node.left) == "'RESULTCACHING_DISABLE'" \
+                and any(isinstance(op, (ast.In, ast.NotIn)) for op in node.ops):
+            return True
+        if isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Load) \
+                and ast.unparse(node.slice) == "'RESULTCACHING_DISABLE'":
+            return True
+    return False
 
 
 def _defines_registry(tree):
@@ -316,7 +341,8 @@ REMEDIES = {
     'R15 score construction': ('build a ceiling inside the ceiling= argument (or a ceiling property) '
                                'and return the score with benchmark_score; a benchmark builds no Score itself'),
     'R17 metadata stamp': 'score() stamps the metadata; do not stamp a score yourself',
-    'R18 cache validity': 'do not switch the cache yourself; give the extractor a cache_config()',
+    'R18 cache validity': ('do not switch or read the cache switch yourself; give the extractor a '
+                           'cache_config() and ask brainscore_core.extraction_cache.store_enabled'),
     'R20 registry assignment': 'register with a line in your plugin __init__.py (for example model_registry[id] = factory)',
 }
 
@@ -443,6 +469,13 @@ def test_check_fails_on_a_stale_entry():
     ('R17 metadata stamp', 'stamp_score_metadata(score, b, s)'),
     ('R18 cache validity', "os.environ['RESULTCACHING_DISABLE'] = '1'"),
     ('R18 cache validity', "os.environ.pop('RESULTCACHING_DISABLE', None)"),
+    ('R18 cache validity', "os.environ.get('RESULTCACHING_DISABLE')"),
+    ('R18 cache validity', "os.getenv('RESULTCACHING_DISABLE', '0')"),
+    ('R18 cache validity', "on = os.environ['RESULTCACHING_DISABLE'] == '1'"),
+    ('R18 cache validity', "from os import getenv\non = getenv('RESULTCACHING_DISABLE')"),
+    ('R18 cache validity', "off = 'RESULTCACHING_DISABLE' in os.environ"),
+    ('R18 cache validity', 'from result_caching import is_enabled'),
+    ('R18 cache validity', "import result_caching\non = result_caching.is_enabled('')"),
     ('R20 registry assignment', 'model_registry = {}'),
     ('R20 registry assignment', 'def register_widget(name, w): ...'),
 ])
@@ -461,8 +494,8 @@ def test_signal_catches(name, source):
     ('R15 score construction', 'benchmark_score(b, raw=r, ceiling=Score(float(c)))'),
     ('R15 score construction', 'BenchmarkBase.__init__(self, identifier=i, ceiling=Score(c))'),
     ('R14 encoding regression', 'import sklearn.linear_model as lm\nc = lm.LogisticRegression()'),
-    ('R18 cache validity', "os.environ.get('RESULTCACHING_DISABLE')"),
     ('R18 cache validity', "env.update(RESULTCACHING_DISABLE='1')"),
+    ('R18 cache validity', "env = {'RESULTCACHING_DISABLE': '1'}"),
     ('R20 registry assignment', "model_registry['x'] = build"),
     ('R20 registry assignment', 'class Hooks:\n    def register_hook(self): ...'),
 ])
@@ -486,3 +519,13 @@ def test_only_the_umi_code_of_vision_and_language_is_read():
     assert not any(site.startswith(('vision:model_helpers/', 'language:model_helpers/'))
                    for site in sites)
 
+
+
+def test_no_library_module_of_vision_reads_the_store_switch():
+    """The stores of vision ask ``store_enabled`` (R18). Its plugin folders (``models/``,
+    ``benchmarks/``, ``data/``) are Brain-Score 2.0 plugins and are not read."""
+    root = package_root('brainscore_vision')
+    folders = [path.name for path in root.iterdir()
+               if path.name not in ('models', 'benchmarks', 'data') and (path.is_dir() or path.suffix == '.py')]
+    readers = [path for path, source in python_files(root, folders) if _reads_cache_switch(ast.parse(source))]
+    assert not readers, f'{readers}: {REMEDIES["R18 cache validity"]}'
