@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from brainscore_core.compatibility import ExecutionNotFeasibleError
+from brainscore_core.compatibility import CompatibilityError, ExecutionNotFeasibleError
 
 from brainscore_core.legacy_facade import (
     LegacyBenchmarkFacade,
@@ -100,7 +100,7 @@ def test_variance_request_fails_instead_of_returning_identical_trials():
     model, extractor = _model()
     facade = _facade(model)
     facade.start_recording('IT', time_bins=[(70, 170)])
-    with pytest.raises(ExecutionNotFeasibleError, match='trial-to-trial variance'):
+    with pytest.raises(CompatibilityError, match='trial-to-trial variance'):  # before any input: N/A
         facade.look_at(_images(), number_of_trials=3, require_variance=True)
     assert extractor.calls == []
 
@@ -111,9 +111,9 @@ def test_visual_degrees_reported():
 
 
 def test_start_behavioral_task_fails_clearly():
-    from brainscore_core.compatibility import ExecutionNotFeasibleError
+    from brainscore_core.compatibility import CompatibilityError
     model, _ = _model('text')
-    with pytest.raises(ExecutionNotFeasibleError, match="'reading_times'"):
+    with pytest.raises(CompatibilityError, match="'reading_times'"):  # before any input: N/A
         _facade(model).start_behavioral_task('reading_times')
 
 
@@ -321,7 +321,7 @@ def test_typed_behavioral_variance_request_fails_before_compute():
     facade = _facade(model)
     facade.start_task('probabilities', fitting_stimuli=_labelled_images())
     calls = len(extractor.calls)
-    with pytest.raises(ExecutionNotFeasibleError, match='trial-to-trial variance'):
+    with pytest.raises(CompatibilityError, match='trial-to-trial variance'):  # before any input: N/A
         facade.look_at(_images(), number_of_trials=3, require_variance=True)
     assert len(extractor.calls) == calls
 

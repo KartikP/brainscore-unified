@@ -84,3 +84,57 @@ def test_typed_model_scores_identically_to_process(monkeypatch):
     assert score.attrs['degrees'] == 8
     model.start_recording('IT', time_bins=[(70, 170)])
     np.testing.assert_array_equal(score.attrs['output'].values, model.process(benchmark.stimuli).values)
+
+
+# --- a refusal of an old benchmark's task: N/A before any input, an error after one ---
+
+import pytest
+
+from brainscore_core.compatibility import ExecutionNotFeasibleError
+from brainscore_core.contract import Subject
+
+
+class _OldTaskBenchmark(_LegacyBenchmark):
+    """An old behavior benchmark: it states no requested output and asks its task at run time."""
+    identifier = 'legacy-odd-one-out'
+    region = None
+
+    def __call__(self, candidate):
+        candidate.start_task('odd_one_out')
+        candidate.look_at(self.stimuli)
+        raise AssertionError('the subject refused the task, so the benchmark does not get here')
+
+
+class _Refuser(Subject):
+    """Refuses the task after it read ``inputs_before_refusal`` inputs."""
+    identifier = 'refuser'
+    in_channels = {'vision:image'}
+    out_channels = {'behavior'}
+
+    def __init__(self, inputs_before_refusal):
+        self.inputs_before_refusal = inputs_before_refusal
+        self.inputs_read = 0
+
+    def participate(self, session):
+        for _ in range(self.inputs_before_refusal):
+            session.next_input()
+            self.inputs_read += 1
+        raise ExecutionNotFeasibleError(f"{self.identifier} has no answer for task_type "
+                                        f"{session.task.task_type!r}", channels={'behavior'})
+
+
+def test_an_old_task_refused_before_any_input_is_not_applicable():
+    subject = _Refuser(inputs_before_refusal=0)
+    result = brainscore.score(subject, _OldTaskBenchmark(), check_mem=False)
+    assert result.attrs['status'] == 'N/A'
+    assert 'no answer for task_type' in result.attrs['reason']
+    assert result.attrs['missing_channels'] == ['behavior']
+    assert np.isnan(result.values)
+    assert subject.inputs_read == 0
+
+
+def test_an_old_task_refused_after_an_input_stays_an_error():
+    subject = _Refuser(inputs_before_refusal=1)
+    with pytest.raises(ExecutionNotFeasibleError, match='no answer for task_type'):
+        brainscore.score(subject, _OldTaskBenchmark(), check_mem=False)
+    assert subject.inputs_read == 1

@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 from brainscore import BrainScoreModel
-from brainscore_core.compatibility import ExecutionNotFeasibleError
+from brainscore_core.compatibility import CompatibilityError, ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.legacy_facade import LegacyBenchmarkFacade
 from brainscore_core.responses import Segments
@@ -117,7 +117,7 @@ def test_a_likelihood_without_the_segment_layout_is_refused_before_any_call(tiny
 
     facade = LegacyBenchmarkFacade(_subject(continuation))
     facade.start_behavioral_task('reading_times')
-    with pytest.raises(ExecutionNotFeasibleError, match="states no 'segment' layout"):
+    with pytest.raises(CompatibilityError, match="states no 'segment' layout"):   # before any input: N/A
         facade.digest_text(['the', 'dog'])
     assert calls == []
 
@@ -152,7 +152,7 @@ def test_a_model_with_no_likelihood_part_is_refused_before_compute():
 
     facade = LegacyBenchmarkFacade(BrainScoreModel('answers-only', in_channels={'text'}, answer=answer))
     facade.start_behavioral_task('reading_times')      # the old route: bare behavior
-    with pytest.raises((ValueError, ExecutionNotFeasibleError), match='states no response'):
+    with pytest.raises(CompatibilityError, match='states no response'):   # before any input: N/A
         facade.digest_text(['the', 'dog'])
     assert answered == []
 
