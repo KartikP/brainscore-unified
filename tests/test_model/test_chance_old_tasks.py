@@ -69,3 +69,13 @@ def test_a_state_change_is_refused_with_what_to_ask_for():
     from brainscore_core.events import StateChange
     with pytest.raises(ExecutionNotFeasibleError, match='behavior'):
         ChanceBaseline().process(StateChange(kind='lesion', target='IT'))
+
+
+def test_a_request_for_trial_to_trial_variance_is_refused():
+    """Identical rows are no variance (Contract Rules 6.2): the request is refused, not answered."""
+    fitting = _stimuli(['f1', 'f2'], ['dog', 'cat'], 'chance-variance-fit')
+    facade = LegacyBenchmarkFacade(ChanceBaseline(), visual_degrees=8)
+    facade.start_task('probabilities', fitting_stimuli=fitting)
+    with pytest.raises(ExecutionNotFeasibleError, match='trial-to-trial variance'):
+        facade.look_at(_stimuli(['t1', 't2'], identifier='chance-variance'), number_of_trials=3,
+                       require_variance=True)

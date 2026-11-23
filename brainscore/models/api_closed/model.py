@@ -46,6 +46,7 @@ REGISTRY = {
 
 # Cache lives on disk so re-scoring a benchmark doesn't re-bill the API and the
 # scored result reproduces even though the live model may change behind the API.
+# The two Anthropic registrations store no reply: each is a sample with no seed.
 _CACHE_ROOT = '~/.brainscore/api_behavioral_cache'
 
 

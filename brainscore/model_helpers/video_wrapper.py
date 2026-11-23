@@ -193,7 +193,7 @@ class VideoWrapper(CachingExtractor):
     """
 
     # The version of what this class extracts: a part of the activation cache key
-    # (``extractors.cache_config``), read from this class body only. Raise it by
+    # (``CachingExtractor.cache_config``), read from this class body only. Raise it by
     # hand when a change can move the extracted values, also through code it calls.
     _VERSION = 1
 
