@@ -79,7 +79,7 @@ def _subject(log, *, parts=(), regions=None, owners=None, memory=None, extractor
         'likelihood': lambda prompt, labels: log.append('likelihood') or {
             label: -float(i) for i, label in enumerate(labels)},
         'behavioral_readout_layer': 'late'}
-    config = {'capability_config': {'behavior-sessions': owners}} if owners else {}
+    config = {'answer_owners': owners} if owners else {}
     return BrainScoreModel('logged', extractor={key: extract for key in extractors}, in_channels=set(in_channels),
                            region_layer_map=regions or {}, memory=memory,
                            **{part: available[part] for part in parts}, **config, **kwargs)
@@ -470,7 +470,7 @@ def _readout_two_forms(log):
     model = BrainScoreModel('readout-missing', extractor={'vision': _Pictures(['late'], log),
                                                           'video': _Pictures(['early'], log)},
                             region_layer_map={'V4': 'early'}, behavioral_readout_layer='late',
-                            capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
+                            answer_owners={'behavior:choice': ('readout', 'argmax')})
 
     def pictures(ids, labels, identifier):
         table = StimulusSet({'stimulus_id': ids, 'image_path': [f'{i}.png' for i in ids],

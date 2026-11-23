@@ -56,8 +56,8 @@ def picture_subject(calls):
         return '3' if isinstance(prompt.response, Scale) else 'yes'
     return BrainScoreModel('picture-reader', in_channels={'vision:image'}, reply=reply,
                            likelihood=lambda prompt, labels: {label: -float(i) for i, label in enumerate(labels)},
-                           capability_config={'behavior-sessions': {
-                               'behavior:probabilities': ('likelihood', 'softmax')}})
+                           answer_owners={
+                               'behavior:probabilities': ('likelihood', 'softmax')})
 
 
 FORMS = {'choice': ([], 'choice'), 'confidence': ([], 'rating'),

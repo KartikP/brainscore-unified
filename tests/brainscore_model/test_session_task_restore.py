@@ -52,7 +52,7 @@ def _model():
     extractor = _Extractor()
     model = BrainScoreModel('restore', region_layer_map={'IT': 'layer'},
                             extractor={'vision': extractor}, behavioral_readout_layer='layer',
-                            capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
+                            answer_owners={'behavior:choice': ('readout', 'argmax')})
     return model, extractor
 
 
@@ -221,7 +221,7 @@ def test_an_intervention_refits_only_a_readout_fitted_on_the_current_model(reado
                 lambda: lesioned.pop())
     model = BrainScoreModel('restore', extractor={'vision': extractor},
                             behavioral_readout_layer='layer', intervention=intervention,
-                            capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
+                            answer_owners={'behavior:choice': ('readout', 'argmax')})
     task = _task()
     task.readout_fit = readout_fit
     before = behavioral_response(model, _images(), task)

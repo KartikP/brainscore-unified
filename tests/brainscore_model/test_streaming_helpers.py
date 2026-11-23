@@ -269,7 +269,7 @@ def _behavior_model(features, model_cls=BrainScoreModel):
         region_layer_map={},
         extractor={"vision": _fake_preprocessor_returning(features)},
         behavioral_readout_layer="some_layer",
-        capability_config={"behavior-sessions": {"behavior:choice": ("readout", "argmax")}},
+        answer_owners={"behavior:choice": ("readout", "argmax")},
     )
 
 

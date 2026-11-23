@@ -156,7 +156,7 @@ def get_model(identifier: str) -> BrainScoreModel:
             extractor=extractor,
             behavioral_readout_layer='encoder.layers.10',
             answer=zero_shot_answer(clip_model, clip_processor),
-            capability_config={'behavior-sessions': {'behavior:choice': 'similarity'}},
+            answer_owners={'behavior:choice': 'similarity'},
             output_inputs={'behavior:choice': {'vision:image'}},
         )
     # The readout derives the choice from its probabilities by argmax.
@@ -166,5 +166,5 @@ def get_model(identifier: str) -> BrainScoreModel:
         region_layer_map=region_layer_map,
         extractor=extractor,
         behavioral_readout_layer='encoder.layers.10',
-        capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}},
+        answer_owners={'behavior:choice': ('readout', 'argmax')},
     )

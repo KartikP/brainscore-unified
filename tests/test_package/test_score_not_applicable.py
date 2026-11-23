@@ -373,8 +373,8 @@ def test_the_na_reason_names_the_statement_a_readout_needs():
                               region_layer_map={}, behavioral_readout_layer='late')
     result = brainscore.score(subject, _ChoiceBenchmark(), check_mem=False)
     assert result.attrs['status'] == 'N/A' and result.attrs['missing_channels'] == ['behavior:choice']
-    assert ("'behavior:choice' is derived by a wired part; state it: capability_config="
-            "{'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}.") in result.attrs['reason']
+    assert ("'behavior:choice' is derived by a wired part; state it: answer_owners="
+            "{'behavior:choice': ('readout', 'argmax')}.") in result.attrs['reason']
     assert extractor.calls == 0
 
 

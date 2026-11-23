@@ -76,7 +76,7 @@ def _model(parts, owners, log, memory=None, live=False):
         return _features(stimuli, layers, **kwargs)
     available = {'answer': answer, 'reply': reply, 'likelihood': likelihood,
                  'behavioral_readout_layer': 'late'}
-    config = {'capability_config': {'behavior-sessions': owners}} if owners else {}
+    config = {'answer_owners': owners} if owners else {}
     return BrainScoreModel('logged', extractor={'text': _Live(log) if live else extract}, in_channels={'text'},
                            region_layer_map=dict(REGIONS), memory=memory,
                            **{part: available[part] for part in parts}, **config)

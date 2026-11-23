@@ -53,7 +53,7 @@ SCRIPT = textwrap.dedent('''
         extractor = PytorchWrapper(model=net, identifier='order-' + shape, batch_size=4, device='cpu',
                                    preprocessing=lambda paths: np.array([np.loadtxt(p) for p in paths], dtype=np.float32))
         return BrainScoreModel('order-' + shape, model=net, extractor={'vision': extractor}, behavioral_readout_layer='0',
-                               capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
+                               answer_owners={'behavior:choice': ('readout', 'argmax')})
 
     task = TaskContext(response=Choice(['animal', 'vehicle'], reaction_time='evidence_margin'),
                        fitting_stimuli=table('f', fitting=True))

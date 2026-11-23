@@ -277,7 +277,7 @@ def test_reset_and_readout_clear_composite_recording():
     model = BrainScoreModel('composite-reset',
         region_layer_map={'IT': CompositeSelector((('L', (0,)),))},
         extractor={'text': _Extractor(np.ones((4, 2)))}, behavioral_readout_layer='L',
-        capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
+        answer_owners={'behavior:choice': ('readout', 'argmax')})
     model.start_recording('IT', time_bins=[(0, 1)])
     # Readout extraction must also work while composite recording is configured.
     from brainscore_core.responses import Choice

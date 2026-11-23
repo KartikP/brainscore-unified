@@ -161,8 +161,7 @@ def test_the_causal_helper_outside_verbatim_gives_the_values_of_the_batched_layo
         context = tok(tok.apply_chat_template([{'content': prompt.text()}]))['input_ids']
         values = _batched_layout(net, [context + tok(c)['input_ids'] for c in candidates], len(context))
         return dict(zip(candidates, values))
-    base = BrainScoreModel('batched-layout', in_channels={'text'}, likelihood=batched, capability_config={
-        'behavior-sessions': {'behavior:probabilities': ('likelihood', 'softmax')}})
+    base = BrainScoreModel('batched-layout', in_channels={'text'}, likelihood=batched, answer_owners={'behavior:probabilities': ('likelihood', 'softmax')})
     tables = []
     for model in (_subject('causal_lm', net, tok), base):
         session = stimulus_session(_control_stimuli(), ['behavior:probabilities'],

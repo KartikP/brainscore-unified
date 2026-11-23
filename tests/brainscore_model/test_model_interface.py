@@ -428,8 +428,8 @@ class TestBehavioralPathDispatch:
             extractor={'vision': make_stub_extractor()},
             behavioral_readout_layer='layer4' if has_readout else None,
             **answer,
-            **({'capability_config': {'behavior-sessions': {}}} if answer and has_readout else {}),
-            **({'capability_config': {'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}}
+            **({'answer_owners': {}} if answer and has_readout else {}),
+            **({'answer_owners': {'behavior:choice': ('readout', 'argmax')}}
                if has_readout and not answer else {}),
         )
 

@@ -262,7 +262,7 @@ def _readout_model():
     model = BrainScoreModel('readout', region_layer_map={'IT': 'layer'},
                             extractor={'vision': extractor},
                             behavioral_readout_layer='layer',
-                            capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
+                            answer_owners={'behavior:choice': ('readout', 'argmax')})
     return model, extractor
 
 
@@ -290,7 +290,7 @@ def test_repeated_task_refits_after_a_state_change():
     model = BrainScoreModel(
         'lesioned', region_layer_map={'IT': 'layer'}, extractor={'vision': extractor},
         behavioral_readout_layer='layer',
-        capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}},
+        answer_owners={'behavior:choice': ('readout', 'argmax')},
         intervention=lambda change: (
             PerturbationApplied(handle_id='h', target=change.target,
                                 perturbation=change.perturbation),
@@ -363,7 +363,7 @@ def test_an_old_probabilities_answer_keeps_the_column_order_when_the_subject_ign
         stimuli.identifier = f'ignored-input-{prefix}'
         return stimuli
     model = BrainScoreModel('text-readout', extractor={'text': extract}, behavioral_readout_layer='late',
-                            capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
+                            answer_owners={'behavior:choice': ('readout', 'argmax')})
     facade = _facade(model)
     facade.start_task('probabilities', fitting_stimuli=table('f'))
     names = list(facade.look_at(table('s')).indexes['presentation'].names)

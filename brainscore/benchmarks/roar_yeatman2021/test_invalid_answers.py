@@ -64,8 +64,8 @@ def test_session_reading_matches_the_configured_readout():
         # As the registered readout-only models (CLIP, random ViT, GPT-2) state it.
         return BrainScoreModel(identifier='readout', extractor={'text': extractor},
                                region_layer_map={}, behavioral_readout_layer='L',
-                               capability_config={'behavior-sessions': {
-                                   'behavior:choice': ('readout', 'argmax')}})
+                               answer_owners={
+                                   'behavior:choice': ('readout', 'argmax')})
 
     benchmark = _benchmark()
     benchmark._train_stimuli = stimuli(['w1', 'w2', 'p1', 'p2'])

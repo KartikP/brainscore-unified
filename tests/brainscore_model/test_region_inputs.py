@@ -100,8 +100,8 @@ def test_pre_flight_passes_the_picture_task_only_with_the_statement():
     (dict(reply=lambda prompt: 'yes'), 'behavior:choice'),
     (dict(answer=lambda stimulus_row, instruction, label_set: label_set[0]), 'behavior:choice'),
     (dict(likelihood=lambda prompt, labels: {label: -float(i) for i, label in enumerate(labels)},
-          capability_config={'behavior-sessions': {'behavior:probabilities': ('likelihood', 'softmax'),
-                                                   'behavior:choice': ('likelihood', 'softmax_argmax')}}),
+          answer_owners={'behavior:probabilities': ('likelihood', 'softmax'),
+                                                   'behavior:choice': ('likelihood', 'softmax_argmax')}),
      'behavior:probabilities'),
 ], ids=['reply', 'answer', 'likelihood'])
 def test_a_picture_task_records_the_region_from_the_answering_pass(parts, output):
@@ -115,7 +115,7 @@ def test_a_picture_task_records_the_region_from_the_answering_pass(parts, output
 def test_the_readout_is_refused_before_compute():
     log = []
     model = _subject(log, behavioral_readout_layer='blocks.28',
-                     capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
+                     answer_owners={'behavior:choice': ('readout', 'argmax')})
     task = TaskContext(instruction='Is it a word?', fitting_stimuli=FIT, response=Choice(['yes', 'no']))
     with pytest.raises(ExecutionNotFeasibleError, match=r"Region 'language_system' reads 'text' input, but the "
                                                         r"readout presents 'vision' input"):

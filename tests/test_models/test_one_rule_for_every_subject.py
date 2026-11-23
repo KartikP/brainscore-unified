@@ -176,8 +176,8 @@ SUBJECTS = {
     'brainscore-model-likelihood': (lambda: BrainScoreModel(
         'one-rule-likelihood', in_channels={'text'},
         likelihood=lambda prompt, candidates: {c: float(i) for i, c in enumerate(candidates)},
-        capability_config={'behavior-sessions': {'behavior:choice': ('likelihood', 'softmax_argmax'),
-                                                 'behavior:probabilities': ('likelihood', 'softmax')}}),
+        answer_owners={'behavior:choice': ('likelihood', 'softmax_argmax'),
+                                                 'behavior:probabilities': ('likelihood', 'softmax')}),
         'sentence', 'IT'),
     'vision-adapter': (lambda: _adapter('vision'), 'image_path', 'IT'),
     'language-adapter': (lambda: _adapter('language'), 'sentence', 'language_system'),

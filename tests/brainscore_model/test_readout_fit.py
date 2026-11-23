@@ -25,7 +25,7 @@ def _model(calls, answer=True):
     parts = {'answer': lambda stimulus_row, instruction, label_set: calls.append(('answer',)) or label_set[0]}
     owners = {} if answer else {'behavior:choice': ('readout', 'argmax')}
     return BrainScoreModel('fitted', extractor={'text': extract}, in_channels={'text'},
-                           behavioral_readout_layer='late', capability_config={'behavior-sessions': owners},
+                           behavioral_readout_layer='late', answer_owners=owners,
                            **(parts if answer else {}))
 
 

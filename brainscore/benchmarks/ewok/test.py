@@ -43,7 +43,7 @@ def likelihood_subject(likelihood):
     """A normal model with a ``likelihood`` part: it runs both modes."""
     # The likelihood derives the probabilities; the statement declares them (rule 4.11).
     return BrainScoreModel('fixture', in_channels={'text'}, likelihood=likelihood,
-                           capability_config={'behavior-sessions': {'behavior:probabilities': ('likelihood', 'softmax')}})
+                           answer_owners={'behavior:probabilities': ('likelihood', 'softmax')})
 
 
 def scenario(prompt):
@@ -251,8 +251,8 @@ def test_a_likelihood_part_also_runs_choice(prepared, tmp_path, parts={'likeliho
         return '1' if ' A ' in stimulus_row['text'].split('# TEST EXAMPLE')[1].split('## Scenario')[1] else '2'
     # The likelihood derives the choice by softmax_argmax; the statement declares it (rule 4.11).
     model=BrainScoreModel('fixture', in_channels={'text'},
-                          **({'likelihood':likelihood, 'capability_config': {'behavior-sessions': {
-                              'behavior:choice': ('likelihood', 'softmax_argmax')}}}
+                          **({'likelihood':likelihood, 'answer_owners': {
+                              'behavior:choice': ('likelihood', 'softmax_argmax')}}
                              if 'likelihood' in parts else {'answer':answer}))
     b=brainscore.load_benchmark('EWoK-core-1.0-choice',root=prepared,output_dir=tmp_path/'run')
     assert float(b(model))==1
@@ -693,7 +693,7 @@ def _stateful_intervened_subject():
 
     model = BrainScoreModel('stateful-fixture', in_channels={'text'},
                             likelihood=likelihood, intervention=intervention,
-                            capability_config={'behavior-sessions': {'behavior:probabilities': ('likelihood', 'softmax')}})
+                            answer_owners={'behavior:probabilities': ('likelihood', 'softmax')})
     return model, state
 
 

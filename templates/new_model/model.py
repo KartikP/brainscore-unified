@@ -3,7 +3,7 @@
 A model is ONE BrainScoreModel construction. The optional parts you fill decide which
 channels the subject declares, and so which sessions it can take part in (see
 https://brain-score.github.io/public/UMI/architecture.html for the full map):
-  - extractor     -> neural:<region> outputs (+ behavioral readout with behavioral_readout_layer; a choice from it needs capability_config)
+  - extractor     -> neural:<region> outputs (+ behavioral readout with behavioral_readout_layer; a choice from it needs answer_owners)
   - answer, reply -> behavioral answers in words (instruction-following)
   - policy        -> closed loop (a row of channel -> payload)
   - intervention  -> lesion/perturbation (StateChange)
@@ -59,5 +59,5 @@ def get_model() -> BrainScoreModel:
         # behavioral_readout_layer='TODO.layer',
         # The readout gives probabilities. For a model that must answer a choice task, also state
         # that its choice is the most probable option:
-        # capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}},
+        # answer_owners={'behavior:choice': ('readout', 'argmax')},
     )

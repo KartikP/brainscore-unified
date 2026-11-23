@@ -98,8 +98,8 @@ def test_the_qwen_statement_answers_choice_by_generation_and_probabilities_by_so
 def test_the_qwen_set_without_a_rating_owner_is_refused():
     owners = {k: v for k, v in QWEN_STATEMENT.items() if k != 'behavior:rating'}
     with pytest.raises(ValueError, match=r"the parts \['generation', 'readout'\] give 'behavior:rating' "
-                                         r"natively\. State the owner: capability_config="
-                                         r"\{'behavior-sessions': \{'behavior:rating': 'generation'\}\} "
+                                         r"natively\. State the owner: answer_owners="
+                                         r"\{'behavior:rating': 'generation'\} "
                                          r"\(or 'readout'\)"):
         _model(*QWEN, owners=owners)
 
@@ -137,7 +137,7 @@ def test_a_readout_does_not_declare_log_probabilities():
 def test_a_redundant_native_statement_is_accepted():
     model = BrainScoreModel('m', extractor={'text': lambda *a, **k: None}, in_channels={'text'},
                             behavioral_readout_layer='late',
-                            capability_config={'behavior-sessions': {'behavior:rating': 'readout'}})
+                            answer_owners={'behavior:rating': 'readout'})
     assert 'behavior:rating' in model.out_channels
 
 
@@ -154,11 +154,11 @@ def test_no_message_names_a_word_a_registrant_cannot_write():
 
 @pytest.mark.parametrize('parts, channel, line', [
     (('behavioral_readout_layer',), 'behavior:choice',
-     "capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}"),
+     "answer_owners={'behavior:choice': ('readout', 'argmax')}"),
     (('likelihood',), 'behavior:choice',
-     "capability_config={'behavior-sessions': {'behavior:choice': ('likelihood', 'softmax_argmax')}}"),
+     "answer_owners={'behavior:choice': ('likelihood', 'softmax_argmax')}"),
     (('likelihood',), 'behavior:probabilities',
-     "capability_config={'behavior-sessions': {'behavior:probabilities': ('likelihood', 'softmax')}}"),
+     "answer_owners={'behavior:probabilities': ('likelihood', 'softmax')}"),
 ], ids=['readout choice', 'likelihood choice', 'likelihood probabilities'])
 def test_a_derived_format_without_its_statement_is_refused_with_the_line_to_write(parts, channel, line):
     calls = []
@@ -177,8 +177,8 @@ def test_two_parts_that_derive_a_format_are_both_named():
     with pytest.raises(ExecutionNotFeasibleError) as raised:
         _run(model, ['behavior:choice'], task)
     assert ("'behavior:choice' is derived by 2 wired parts; state one: "
-            "capability_config={'behavior-sessions': {'behavior:choice': ('likelihood', 'softmax_argmax')}} or "
-            "capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}.") in str(raised.value)
+            "answer_owners={'behavior:choice': ('likelihood', 'softmax_argmax')} or "
+            "answer_owners={'behavior:choice': ('readout', 'argmax')}.") in str(raised.value)
 
 
 # --- the method 'similarity' (ADR-0081 decision 2, rule 4.11) -------------------------

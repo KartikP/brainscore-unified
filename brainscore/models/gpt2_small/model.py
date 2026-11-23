@@ -74,5 +74,5 @@ def get_model(identifier: str) -> BrainScoreModel:
         likelihood=CausalLMParts(language_model, tokenizer, sliding_window=True).likelihood,
         # The readout derives the choice from its probabilities by argmax; the readout
         # also gives the probabilities and the rating.
-        capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}},
+        answer_owners={'behavior:choice': ('readout', 'argmax')},
     )

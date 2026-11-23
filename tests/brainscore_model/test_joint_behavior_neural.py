@@ -104,9 +104,9 @@ def _model(net, extractor_type=ToyExtractor, **kwargs):
                            region_layer_map={'A': LayerSelector('early', modality='text'),
                                              'B': LayerSelector('late', modality='text')},
                            answer=answer, intervention=intervention, **kwargs,
-                           capability_config={'behavior-sessions': (
+                           answer_owners=(
                                {'behavior:choice': ('readout', 'argmax')}
-                               if 'behavioral_readout_layer' in kwargs else {})})
+                               if 'behavioral_readout_layer' in kwargs else {}))
 
 
 def _run(model, task, channels):

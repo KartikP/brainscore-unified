@@ -121,7 +121,7 @@ A callable cannot list its layers, so it counts as having every layer. Next to a
 | `likelihood` | `(prompt, candidates) -> {candidate: log probability}` | `chat_parts` |
 | `policy` | `row -> {output channel: payload}`; keeps its own history and clears it in `reset()` | `api_policy` (hosted APIs), `DroidPolicy` (`brainscore.harnesses.droid_policy`), `LiberoChunkPolicy` (`brainscore.harnesses.libero_policy`) |
 | `intervention` | `StateChange -> (PerturbationApplied, undo_function)` | `pytorch_intervention(net)` |
-| `behavioral_readout_layer` | a layer path; to answer a choice, add `capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}` | |
+| `behavioral_readout_layer` | a layer path; to answer a choice, add `answer_owners={'behavior:choice': ('readout', 'argmax')}` | |
 
 ## Events
 

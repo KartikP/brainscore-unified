@@ -64,7 +64,7 @@ def test_a_region_that_cannot_be_recorded_while_answering_is_refused_before_the_
         return _features(stimuli, layers, **kwargs)
     model = BrainScoreModel('answers', extractor={'text': extract}, in_channels={'text'},
                             region_layer_map={'IT': 'late'}, behavioral_readout_layer='late', answer=answer,
-                            capability_config={'behavior-sessions': {}})
+                            answer_owners={})
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)
     session = stimulus_session(STIMULI, ['behavior:choice', 'behavior:probabilities', 'neural:IT'], task)
     with pytest.raises(ExecutionNotFeasibleError, match=r"cannot record \['IT'\] while it answers"):

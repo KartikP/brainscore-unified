@@ -5,7 +5,8 @@ from types import MappingProxyType
 from collections.abc import Mapping
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
 
-from ._model.behavioral import BehavioralReadout, answer_owners, statement_hint
+from ._model import behavioral
+from ._model.behavioral import BehavioralReadout, statement_hint
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import Subject, TaskContext
 from ._model import dispatch
@@ -64,7 +65,7 @@ class BrainScoreModel(Subject):
         in_channels: Optional[Iterable[str]] = None,
         required_channels: Optional[Iterable[str]] = None,
         visual_degrees: int = 8,
-        capability_config: Optional[Dict[str, Any]] = None,
+        answer_owners: Optional[Mapping[str, Any]] = None,
         output_inputs: Optional[Mapping[str, Iterable[str]]] = None,
     ) -> None:
         """A model (or, in principle, a human) evaluated through the unified interface.
@@ -174,10 +175,7 @@ class BrainScoreModel(Subject):
             also claims.
         :param visual_degrees: the visual field legacy vision benchmarks place
             stimuli in; ignored by other benchmarks.
-        :param capability_config: settings for capabilities, keyed by the
-            capability identifier; a capability reads it as
-            ``subject.capability_config``. Under ``'behavior-sessions'``: the
-            owner of answer formats, for example ``{'behavior:rating':
+        :param answer_owners: the owner of answer formats, for example ``{'behavior:rating':
             'generation', 'behavior:probabilities': ('likelihood', 'softmax')}``. A part (``'generation'``, which is
             ``answer``/``reply``; ``'likelihood'``; ``'readout'``; ``'similarity'``,
             an ``answer`` that chooses by the similarity of an input to each
@@ -225,7 +223,6 @@ class BrainScoreModel(Subject):
             _KEY_FOR_CHANNEL.get(channel, channel) for channel in _channels(in_channels)}
         self._install_region_layer_map(region_layer_map or {})
         self._visual_degrees = visual_degrees
-        self._capability_config = dict(capability_config or {})
         regions = sorted(output for output in (output_inputs or {}) if output.startswith('neural:'))
         if regions:
             raise ValueError(f"output_inputs names {regions}: a region states its inputs in "
@@ -244,8 +241,7 @@ class BrainScoreModel(Subject):
 
         self._recording_request = RecordingRequest(self)
         self._behavioral = BehavioralReadout(self)
-        self._behavioral.owners = answer_owners(
-            self, self._capability_config.get('behavior-sessions'))
+        self._behavioral.owners = behavioral.answer_owners(self, answer_owners)
         self._interventions = Interventions(self)
         self._shared_calls = None       # set by dispatch.one_call_per_extractor
         self._session_plan = None       # the running session's plan (_model/plan.py), set in participate
@@ -270,11 +266,6 @@ class BrainScoreModel(Subject):
             problem = io_catalog.form_problem(channel)
             if problem:
                 raise ValueError(f"policy_out_channels: {problem}")
-
-    @property
-    def capability_config(self):
-        """Read-only registration configuration for external capability authors."""
-        return MappingProxyType(self._capability_config)
 
     @property
     def extractor(self) -> Mapping[str, Callable]:

@@ -179,7 +179,7 @@ def test_participate_selects_the_part_once_and_never_calls_process():
     model = NoProcess('once', extractor={'vision': extractor}, region_layer_map={'IT': 'layer4'},
                       behavioral_readout_layer='layer4', policy=lambda row: {'motor': 0},
                       # The readout derives the choice; the statement declares it (rule 4.11).
-                      capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}},
+                      answer_owners={'behavior:choice': ('readout', 'argmax')},
                       intervention=lambda change: (PerturbationApplied(
                           handle_id='h', target=change.target, perturbation=change.perturbation),
                           lambda: None))

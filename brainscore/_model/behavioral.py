@@ -1045,7 +1045,7 @@ def statement_hint(subject, missing) -> str:
     """The statement that would declare each missing format a wired part only derives.
 
     A refusal names the exact line to write, for example
-    ``capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}``.
+    ``answer_owners={'behavior:choice': ('readout', 'argmax')}``.
     With two candidate parts it names each line and asks for one. Empty when no wired
     part derives a missing format.
     """
@@ -1056,7 +1056,7 @@ def statement_hint(subject, missing) -> str:
     for channel in sorted(missing):
         candidates = [(part, formats[channel]) for part, formats in sorted(parts.items())
                       if formats.get(channel) not in (None, 'link')]
-        written = [f"capability_config={{'behavior-sessions': {{{channel!r}: ({part!r}, {how!r})}}}}"
+        written = [f"answer_owners={{{channel!r}: ({part!r}, {how!r})}}"
                    for part, how in candidates]
         if len(written) == 1:
             lines.append(f' {channel!r} is derived by a wired part; state it: {written[0]}.')
@@ -1077,7 +1077,7 @@ _ARGUMENTS = {'generation': 'answer= or reply=', 'likelihood': 'likelihood=',
 def answer_owners(subject, stated) -> Dict[str, str]:
     """Check the owner statements at construction; return the owner part of each format (rule 4.11).
 
-    ``stated`` is ``capability_config['behavior-sessions']``: format ->
+    ``stated`` is the ``answer_owners`` argument of the model: format ->
     a part (``'generation'``, ``'likelihood'``, ``'readout'``, or ``'similarity'`` for an
     ``answer=`` part that chooses by similarity) for a format the part gives natively, or ``(part, conversion)`` for a format it derives
     (``_PART_FORMATS``). A format with exactly one native part is owned by that
@@ -1085,7 +1085,7 @@ def answer_owners(subject, stated) -> Dict[str, str]:
     statement. A wrong statement fails with a message that says what to write.
     """
     who = f"Subject '{subject.identifier}': "
-    prefix = who + "capability_config['behavior-sessions'] "
+    prefix = who + "answer_owners "
     parts = _formats_by_part(subject)
     if not subject._extractors:
         parts.pop('readout', None)   # a readout layer without an extractor never answers
@@ -1144,7 +1144,7 @@ def answer_owners(subject, stated) -> Dict[str, str]:
         if len(native) > 1:
             raise ValueError(
                 f"{who}the parts {native} give {output!r} natively. State the owner: "
-                f"capability_config={{'behavior-sessions': {{{output!r}: {native[0]!r}}}}} (or "
+                f"answer_owners={{{output!r}: {native[0]!r}}} (or "
                 + ' or '.join(repr(p) for p in native[1:]) + ').')
         owners[output] = native[0]
     return owners

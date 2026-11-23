@@ -65,7 +65,7 @@ def _model(calls, **parts):
     chosen = {'answer': answer, 'reply': reply, 'likelihood': likelihood}
     return BrainScoreModel('paths', extractor={'text': _features}, behavioral_readout_layer='late',
                            **{name: chosen[name] for name in parts},
-                           capability_config={'behavior-sessions': STATEMENTS[frozenset(parts)]})
+                           answer_owners=STATEMENTS[frozenset(parts)])
 
 
 def _run(model, outputs, task):

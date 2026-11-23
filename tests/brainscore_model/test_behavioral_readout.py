@@ -119,7 +119,7 @@ class TestBrainScoreModelBehavioral:
             region_layer_map={},
             extractor={'vision': extractor},
             behavioral_readout_layer='some_layer',
-            capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}},
+            answer_owners={'behavior:choice': ('readout', 'argmax')},
         )
         task = TaskContext(response=Choice(['cat', 'dog']), fitting_stimuli=labeled_stimuli)
         model.start_task(task)
@@ -218,7 +218,7 @@ def test_a_readout_layer_whose_features_keep_a_time_axis_is_refused_with_a_clear
             'neuroid_id': ('neuroid', ['n0', 'n1']), 'layer': ('neuroid', ['clip_layer'] * 2),
             'time_bin_start_ms': ('time_bin', [0, 100, 200]), 'time_bin_end_ms': ('time_bin', [100, 200, 300])})
     model = BrainScoreModel('time-axis-readout', extractor={'vision': extract},
-                            behavioral_readout_layer='clip_layer', capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}},)
+                            behavioral_readout_layer='clip_layer', answer_owners={'behavior:choice': ('readout', 'argmax')},)
     task = TaskContext(response=Choice(['cat', 'dog']),
                        fitting_stimuli=_make_image_stimulus_set(['cat', 'dog'] * 3, identifier='time_fit'))
     with pytest.raises(ExecutionNotFeasibleError, match=r"'clip_layer' keep a time axis"):

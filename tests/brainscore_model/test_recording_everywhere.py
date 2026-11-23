@@ -78,10 +78,10 @@ def _model(net, region_map=None, replies=True):
     return BrainScoreModel('toy', extractor={'text': Recordable(net)},
                            region_layer_map=region_map or {'A': LayerSelector('early', modality='text')},
                            reply=reply if replies else None, likelihood=likelihood,
-                           capability_config={'behavior-sessions': {
+                           answer_owners={
                                # The likelihood derives these formats; the statements declare them.
                                'behavior:probabilities': ('likelihood', 'softmax'),
-                               **({} if replies else {'behavior:choice': ('likelihood', 'softmax_argmax')})}})
+                               **({} if replies else {'behavior:choice': ('likelihood', 'softmax_argmax')})})
 
 
 def _run(model, task, channels, streaming=False):
@@ -138,8 +138,8 @@ def test_a_column_of_single_value_arrays_is_kept_on_a_recording_while_answering(
                             region_layer_map={'A': LayerSelector('early', modality='text')},
                             likelihood=lambda prompt, labels: net.forward(prompt.text()) and {
                                 label: -1.0 for label in labels},
-                            capability_config={'behavior-sessions': {
-                                'behavior:choice': ('likelihood', 'softmax_argmax')}})
+                            answer_owners={
+                                'behavior:choice': ('likelihood', 'softmax_argmax')})
     task = stimulus_session(stimuli, ['behavior:log_probabilities', 'neural:A'],
                             task=TaskContext(response=Choice(['cat', 'dog'], verbatim=True)))
     model.participate(task)

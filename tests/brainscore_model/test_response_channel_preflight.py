@@ -47,9 +47,8 @@ def _likelihood_model():
         return {c: float(i) for i, c in enumerate(candidates)}
 
     # The likelihood derives both formats; the statements declare them (rule 4.11).
-    return BrainScoreModel(identifier='toy-likelihood', likelihood=likelihood, capability_config={
-        'behavior-sessions': {'behavior:choice': ('likelihood', 'softmax_argmax'),
-                              'behavior:probabilities': ('likelihood', 'softmax')}}), calls
+    return BrainScoreModel(identifier='toy-likelihood', likelihood=likelihood, answer_owners={'behavior:choice': ('likelihood', 'softmax_argmax'),
+                              'behavior:probabilities': ('likelihood', 'softmax')}), calls
 
 
 def _ask(model, task, channels):

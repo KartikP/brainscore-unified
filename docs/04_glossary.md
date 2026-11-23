@@ -47,7 +47,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **`process(...)`** | A convenience method on `BrainScoreModel` and adapters for interactive use. Not part of the contract. It records activity; a behavioral answer comes only from a session. |
 | **Prompt** | One trial as a replying model sees it, in order: the instruction, the stimulus parts (in `present` order), then the response's directive. |
 | **Protocol** | The procedure of an experiment: which conditions, how many repetitions, where sessions begin and end, and when the subject is reset. |
-| **Readout** | A classifier fitted on one layer's activity (`behavioral_readout_layer`). It gives probabilities; its choice is the most probable option, which the registration names with `capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}`. |
+| **Readout** | A classifier fitted on one layer's activity (`behavioral_readout_layer`). It gives probabilities; its choice is the most probable option, which the registration names with `answer_owners={'behavior:choice': ('readout', 'argmax')}`. |
 | **`record`** | To read activity from a subject; a saved run is a `RunRecord`. What to record is a requested output (`neural:<region>`), never a separate argument. |
 | **Region** | A brain area a benchmark names, such as `IT`. A benchmark requests it as the channel `neural:<region>`. |
 | **`region_layer_map`** | Which layer (or units) stands in for each brain region. A hypothesis that benchmarks test. |

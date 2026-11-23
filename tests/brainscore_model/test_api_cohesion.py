@@ -214,8 +214,8 @@ def test_the_model_parts_choose_the_behavioral_path(monkeypatch, parts):
     model = BrainScoreModel(
         identifier='dual-path', in_channels={'text'}, behavioral_readout_layer='layer',
         extractor={'text': Extractor()}, **answer,
-        capability_config={'behavior-sessions': {} if answer
-                           else {'behavior:choice': ('readout', 'argmax')}},
+        answer_owners={} if answer
+                           else {'behavior:choice': ('readout', 'argmax')},
     )
     fitted = []
     monkeypatch.setattr(model._behavioral, 'fit_behavioral_readout', lambda stimuli: fitted.append(stimuli))

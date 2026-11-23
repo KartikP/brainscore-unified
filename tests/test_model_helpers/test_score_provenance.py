@@ -470,7 +470,7 @@ def test_a_readout_that_owns_the_probabilities_is_named_for_them_beside_the_repl
     reply = pseudo.reply_model()._reply
     model = BrainScoreModel('reply-and-readout', extractor={'text': reading._extractors['text']},
                             in_channels={'text'}, reply=reply, behavioral_readout_layer='late',
-                            capability_config={'behavior-sessions': {'behavior:rating': 'generation'}})
+                            answer_owners={'behavior:rating': 'generation'})
     outputs = ['behavior:choice', 'behavior:probabilities']
     task = TaskContext(instruction='Is this a real word?', response=Choice(pseudo.OPTIONS),
                        fitting_stimuli=pseudo.FITTING)

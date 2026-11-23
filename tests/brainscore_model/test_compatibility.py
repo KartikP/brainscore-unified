@@ -56,8 +56,8 @@ def _model(calls):
                            extractor={'vision': extractor}, behavioral_readout_layer='layer',
                            policy=policy, intervention=intervention,
                            # The readout derives the choice; the statement declares it (rule 4.11).
-                           capability_config={'behavior-sessions': {
-                               'behavior:choice': ('readout', 'argmax')}})
+                           answer_owners={
+                               'behavior:choice': ('readout', 'argmax')})
 
 
 class _Benchmark:
