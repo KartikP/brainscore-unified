@@ -74,6 +74,8 @@ vision = PytorchWrapper(identifier='my-cnn', model=net, preprocessing=preprocess
 
 Limit: `PytorchWrapper` keeps one value for each module, so for a module that runs more than once for one input it keeps only the last call, without an error, and it refuses a `<layer>-t<n>` or `:input` name when you build the model. For such a module, use a wrapper of `brainscore.model_helpers`, or name a module that runs once.
 
+For a Hugging Face vision model, use `VLMVisionWrapper(model=<hf vision model>, processor=<image processor>)` from `brainscore.model_helpers.vlm_vision_wrapper`. `PytorchWrapper` reads float32 outputs only (a bfloat16 model fails) and keeps the last call of a repeated layer; `VLMVisionWrapper` reads bfloat16 and float16 outputs, and for a repeated layer it records the call you name as `<layer>-t<n>`. Load the image processor with `use_fast=False`; for a processor that holds an image processor, `pin_image_processor(processor, model_id)` (from `brainscore_core.hf_compat`) does this, so the preprocessed pixels do not change with the transformers version.
+
 **3. Propose a region-to-layer map.** Each region becomes a `neural:<region>` output.
 
 ```python
