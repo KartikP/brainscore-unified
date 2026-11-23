@@ -119,6 +119,13 @@ class MotorSessions(Capability):
 
     def participate(self, subject, session) -> None:
         requested = _drivers.session_outputs(session)
+        if session.presents_table:
+            # A table sends no 'respond' signal: the policy would never be called.
+            from brainscore_core.compatibility import ExecutionNotFeasibleError
+            raise ExecutionNotFeasibleError(
+                f"Subject '{subject.identifier}' answers with a policy, once per closed-loop step; a "
+                "table session has no steps. Run the policy in environment_session(environment, "
+                "outputs, task).", channels=set(requested))
         regions = [parse_channel(c)[1] for c in requested if parse_channel(c)[0] == 'neural']
         with _PolicySteps(subject, session, regions) as steps:
             _drivers.drive_environment_session(steps, session, on_begin=steps.begin)
