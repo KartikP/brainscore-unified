@@ -71,8 +71,8 @@ _HINT = ('N/A reason text only: the hint reads the wiring of the model class; a 
          'declarations needs a new public name (owner decision, audit 2026-11-22 finding 27)')
 _FACTS = ('provenance facts of a caching wrapper (network, batch size, token limit); public '
           'names would be new (open, finding 29); no ability is chosen by it')
-_DEVICE = ('the cache key reads the input device of a wrapper (unified wrappers and the vision '
-           'PytorchWrapper); a public name would be new on both (open, finding 29)')
+_DEVICE = ('the cache key of the vision PytorchWrapper (the one caller, pytorch.py) reads the '
+           'input device of the wrapper; a public name would be new there (open, finding 29)')
 _HF_ATTENTION = ('a fact for the parity record from a Hugging Face config; transformers has no '
                  'public name for the attention implementation; no subject is read')
 _PLACEMENTS = ('the integration runner keeps its own record on the pytest config and reads it '
@@ -95,7 +95,8 @@ DISCOVERY_ALLOWED = {
     ('brainscore/validation/integration_checks.py', 'getattr config._umi_model_placements'):
         _PLACEMENTS,
     ('brainscore_core/memory.py', 'hasattr benchmark._assembly'):
-        'stated exception in the module docstring: Brain-Score 2.0 benchmarks keep sizes there',
+        'open legacy guess (finding 28), not a rule exception: with no stated metric category, '
+        'the memory estimate guesses neural or behavioral from an _assembly; estimate only',
 }
 
 
