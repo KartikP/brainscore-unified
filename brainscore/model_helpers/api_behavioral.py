@@ -391,7 +391,9 @@ def build_api_reply(
     Anthropic API's default 1.0 for Claude), ``top_p`` and ``seed``. A provider
     that refuses a setting the task gives fails before any request is sent:
     the Anthropic API has no seed and refuses temperature (other than its
-    default 1.0) and top_p. Video and audio parts are refused; register the
+    default 1.0) and top_p.
+
+    Limit: video and audio parts are refused at the first trial that shows one; register the
     model without those inputs so such a task is N/A.
 
     :param provider: ``'anthropic'``, ``'openai'``, ``'deepseek'``,

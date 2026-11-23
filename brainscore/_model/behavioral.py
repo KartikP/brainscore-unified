@@ -397,7 +397,8 @@ class BehavioralReadout:
             self.readout_classifier = saved_classifier
 
         if 'time_bin' in features.dims:
-            # Known only after a pass: no extractor states a time axis before it runs.
+            # Limit: this refusal comes after one pass at the readout layer, not before compute:
+            # no extractor states a time axis before it runs. Name a readout layer with no time axis.
             from brainscore_core.compatibility import ExecutionNotFeasibleError
             raise ExecutionNotFeasibleError(
                 f"Subject {owner.identifier!r}: the features of the behavioral readout layer "
@@ -417,6 +418,10 @@ class BehavioralReadout:
         (``answer_owners``). A part that only derives the format owns it only by a
         statement. When the owner cannot serve the task form, the task is refused before
         any compute: no other part answers a format it does not own. ``None``: no part gives it.
+
+        Limit: a subject whose only choice-giving part derives the choice (a likelihood-only
+        part set) and that states no choice owner is refused, with the statement to write, also
+        when it records a region with probabilities; write the statement the error names.
         """
         from brainscore_core.compatibility import ExecutionNotFeasibleError
         formats = _formats_by_part(self.owner)
