@@ -150,7 +150,12 @@ def _qualified(function):
     return f'{function.__module__}.{function.__qualname__}'
 
 
-READOUT = 'brainscore._model.behavior.ProbabilitiesClassifier'
+def _readout_kind():
+    from brainscore._model.fitted_readout import ProbabilitiesClassifier
+    return _qualified(ProbabilitiesClassifier)
+
+
+READOUT = _readout_kind()
 
 
 def _answer_model():

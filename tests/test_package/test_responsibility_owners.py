@@ -316,7 +316,7 @@ RESPONSIBILITIES = {
     'R12 intervention apply and undo': (_writes_tensor_data, _core_and_unified_library,
                                         {'unified:model_helpers/intervention.py'}),
     'R14 encoding regression': (_imports_sklearn_regression, _everywhere,
-                                {'unified:metrics/encoding.py', 'unified:_model/behavior.py'}),
+                                {'unified:metrics/encoding.py', 'unified:_model/fitted_readout.py'}),
     'R15 score construction': (_builds_score, _unified_score_code,
                                {'unified:benchmarks/_score.py'}),
     'R17 metadata stamp': (

@@ -1,9 +1,10 @@
 """
-Behavioral readout for BrainScoreModel.
+The readouts that BrainScoreModel fits on training stimuli: ``ProbabilitiesClassifier``
+(probabilities over labels) and ``RatingRegressor`` (numeric ratings).
 
-Ports the `ProbabilitiesClassifier` pattern from `brainscore_vision.model_helpers
-.brain_transformation.behavior` into `brainscore_core` so behavioral readout is
-available to any Subject without depending on domain-specific code.
+``ProbabilitiesClassifier`` follows the pattern of ``brainscore_vision.model_helpers
+.brain_transformation.behavior``; it lives here, in unified, so it does not depend on
+the vision package.
 
 Usage (internal to BrainScoreModel):
     classifier = ProbabilitiesClassifier()

@@ -341,7 +341,7 @@ class BehavioralReadout:
 
     def fit_behavioral_readout(self, fitting_stimuli) -> None:
         """Extract readout-layer features and fit a probabilities classifier."""
-        from brainscore._model.behavior import ProbabilitiesClassifier
+        from brainscore._model.fitted_readout import ProbabilitiesClassifier
 
         owner = self.owner
         task_type = (
@@ -364,7 +364,7 @@ class BehavioralReadout:
         from brainscore_core.responses import Scale
         response = self.task.response if self.task is not None else None
         if isinstance(response, Scale):
-            from brainscore._model.behavior import RatingRegressor
+            from brainscore._model.fitted_readout import RatingRegressor
             self.readout_classifier = RatingRegressor().fit(features, labels)
         else:
             self.readout_classifier = ProbabilitiesClassifier()

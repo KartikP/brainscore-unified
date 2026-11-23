@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from brainscore import BrainScoreModel, LayerSelector
-from brainscore._model.behavior import ProbabilitiesClassifier
+from brainscore._model.fitted_readout import ProbabilitiesClassifier
 from brainscore._model.intervention import Interventions
 
 pytestmark = pytest.mark.unit

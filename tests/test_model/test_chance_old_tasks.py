@@ -33,7 +33,7 @@ def test_an_old_probabilities_task_with_fitting_stimuli_is_answered_uniformly():
 
 
 def test_the_label_order_is_the_order_of_the_readout_classifier():
-    from brainscore._model.behavior import ProbabilitiesClassifier
+    from brainscore._model.fitted_readout import ProbabilitiesClassifier
     from brainscore._model.behavioral import BehavioralReadout
     fitting = _stimuli(['a', 'b', 'c', 'd', 'e'], ['z', 'y', 'z', 'x', 'y'], 'chance-order')
     classifier = ProbabilitiesClassifier()
