@@ -240,7 +240,7 @@
         "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperPerToken::test_long_input_is_chunked_not_truncated",
         "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperPerToken::test_padding_is_nan_past_token_length",
         "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperPerToken::test_per_token_features_differ_across_positions",
-        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperCausalMode::test_process_matches_wrapper"
+        "tests/test_model_helpers/test_text_wrapper.py::TestTextWrapperCausalMode::test_a_session_matches_wrapper"
       ],
       "expected_count": 21,
       "device": "cpu",
