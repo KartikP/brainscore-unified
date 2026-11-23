@@ -312,34 +312,6 @@ def kind(wrapper) -> str:
     return f'{cls.__module__}.{cls.__qualname__}'
 
 
-def cache_config(wrapper, fields):
-    """The explicit cache key of a wrapper, without its inputs.
-
-    Parts: the kind (``<module>.<Class>``); the ``_VERSION`` in the body of the
-    wrapper's class; the settings ``fields`` (``CACHE_FIELDS``, batch size included; a
-    callable counts by its code); the model (weights hash, structure, dtypes,
-    library versions, precision, hooks); the input device. ``cache_signature``
-    adds the inputs. No source text is part of it, so an edit that keeps values
-    (a comment, a docstring, a move) keeps the key.
-
-    ``_VERSION`` is read from the body of the wrapper's own class only. A
-    subclass does not inherit it, since its own code can change values; without
-    its own ``_VERSION``, ``cache_signature`` does not cache it.
-
-    A torch autocast context around the call changes the values, so when
-    autocast is enabled for the input device type, its dtype is part of the
-    key (``autocast``). Without autocast the key has no such part.
-    """
-    config = {'kind': kind(wrapper), 'version': _version(type(wrapper)),
-              'settings': {field: getattr(wrapper, field) for field in fields},
-              'input_device': str(getattr(wrapper, '_device', None)),
-              'model': model_config(wrapper._model)}
-    autocast = _autocast(getattr(wrapper, '_device', None))
-    if autocast is not None:
-        config['autocast'] = autocast
-    return config
-
-
 def _autocast(device):
     """The autocast dtype in force for ``device``'s type at this moment, or None when autocast is off."""
     import torch
@@ -403,6 +375,7 @@ class CachingExtractor:
     """
 
     _INPUTS = 'paths'
+    _device = None   # a wrapper with a model on a device sets it
 
     @property
     def identifier(self) -> str:
@@ -423,7 +396,30 @@ class CachingExtractor:
         return self._finish(assembly)
 
     def cache_config(self):
-        return cache_config(self, self.CACHE_FIELDS)
+        """The explicit cache key of a wrapper, without its inputs.
+
+        Parts: the kind (``<module>.<Class>``); the ``_VERSION`` in the body of the
+        wrapper's class; the settings ``CACHE_FIELDS`` (batch size included; a
+        callable counts by its code); the model (weights hash, structure, dtypes,
+        library versions, precision, hooks); the input device. ``cache_signature``
+        adds the inputs. No source text is part of it, so an edit that keeps values
+        (a comment, a docstring, a move) keeps the key.
+
+        ``_VERSION`` is read from the body of the wrapper's own class only. A
+        subclass does not inherit it, since its own code can change values; without
+        its own ``_VERSION``, ``cache_signature`` does not cache it.
+
+        A torch autocast context around the call changes the values, so when
+        autocast is enabled for the input device type, its dtype is part of the
+        key (``autocast``). Without autocast the key has no such part.
+        """
+        config = {'kind': kind(self), 'version': _version(type(self)),
+                  'settings': {field: getattr(self, field) for field in self.CACHE_FIELDS},
+                  'input_device': str(self._device), 'model': model_config(self._model)}
+        autocast = _autocast(self._device)
+        if autocast is not None:
+            config['autocast'] = autocast
+        return config
 
     def _cached(self, inputs, layers, stimuli_identifier=None):
         from brainscore._model import parts

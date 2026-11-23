@@ -84,11 +84,7 @@ DISCOVERY_ALLOWED = {
     ('brainscore/model_helpers/provenance.py', 'getattr obj._model'): _FACTS,
     ('brainscore/model_helpers/provenance.py', 'getattr obj._batch_size'): _FACTS,
     ('brainscore/model_helpers/provenance.py', 'getattr obj._max_length'): _FACTS,
-    ('brainscore/model_helpers/extractors.py', 'getattr wrapper._device'):
-        'the module defines CachingExtractor, whose subclasses set _device',
     ('brainscore_core/extraction_cache.py', 'getattr wrapper._device'): _DEVICE,
-    ('brainscore_core/_evaluation/measures.py', 'getattr session._measure_key'):
-        'the module writes this marker on the session itself and reads it back',
     ('brainscore/validation/benchmark_parity.py', 'class check BrainScoreModel'):
         'the parity tool refuses a subject that does not match its route (native means the '
         'model class); it chooses no ability',
