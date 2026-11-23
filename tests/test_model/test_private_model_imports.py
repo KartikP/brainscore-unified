@@ -29,7 +29,8 @@ discovered by a read of a private name with ``getattr`` or ``hasattr`` and a tex
 argument on another object than ``self`` or ``cls``, or by ``isinstance`` against a
 subject class or a part class (a subclass of ``Subject``, ``CachingExtractor`` or
 ``Capability`` defined in core or unified; ``Subject`` itself is the contract type and
-is allowed). These places have their own short list, ``DISCOVERY_ALLOWED``.
+is allowed; classes are matched by module and class name, so a plugin class with
+the name of a core class is another class). These places have their own short list, ``DISCOVERY_ALLOWED``.
 
 Cannot detect: private access through a variable with another name than the three
 listed, or through a public helper that forwards to private code; imports through
@@ -61,7 +62,9 @@ IMPORT_ONLY_FOLDERS = ('models', 'validation')
 # Rule 2.2 places: all of core; all of unified but the plugin folders below.
 DISCOVERY_PACKAGES = ('brainscore_core', 'brainscore')
 PLUGIN_FOLDERS = ('benchmarks', 'models')
-PART_BASES = {'Subject', 'CachingExtractor', 'Capability'}
+PART_BASES = {'brainscore_core.contract.Subject',
+              'brainscore.model_helpers.extractors.CachingExtractor',
+              'brainscore.capabilities.base.Capability'}
 
 # (package/path, finding): reason. Each is a stated place; a new place fails.
 _HINT = ('N/A reason text only: the hint reads the wiring of the model class; a hint from '
@@ -141,31 +144,75 @@ def violations(root):
     return found
 
 
+def file_names(tree, module):
+    """Name in one file -> the qualified name it stands for: an import (relative ones resolved,
+    ``as`` names followed) or a class defined in the file. ``module`` is the dotted file name."""
+    parts = module.split('.')
+    own = '.'.join(parts[:-1] if parts[-1] == '__init__' else parts)
+    names, classes = {}, {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                first = alias.name.split('.')[0]
+                names[alias.asname or first] = alias.name if alias.asname else first
+        elif isinstance(node, ast.ImportFrom):
+            source = node.module or ''
+            if node.level:
+                base = parts[:len(parts) - node.level]
+                source = '.'.join(base + ([node.module] if node.module else []))
+            for alias in node.names:
+                names[alias.asname or alias.name] = f'{source}.{alias.name}'
+        elif isinstance(node, ast.ClassDef):
+            classes[node.name] = f'{own}.{node.name}'
+    return {**names, **classes}, own
+
+
+def qualified(node, names, own, tables):
+    """Qualified name of a name or dotted name, followed through re-exports in ``tables``."""
+    text = ast.unparse(node)
+    first, _, rest = text.partition('.')
+    name = names.get(first, f'{own}.{first}') + (f'.{rest}' if rest else '')
+    for _ in range(20):
+        module, _, last = name.rpartition('.')
+        target = tables.get(module, {}).get(last, name)
+        if target == name:
+            break
+        name = target
+    return name
+
+
 def part_classes(roots):
-    """Names of the classes in ``roots`` that derive from a part base, the bases' own
-    subclasses included; ``Subject`` itself is left out (the contract type)."""
-    bases = {}
-    for root in roots:
-        for _, source in python_files(root):
-            for node in ast.walk(ast.parse(source)):
-                if isinstance(node, ast.ClassDef):
-                    bases.setdefault(node.name, set()).update(
-                        getattr(base, 'attr', getattr(base, 'id', None)) for base in node.bases)
+    """Qualified names (module and class) of the classes in ``roots`` (package -> folder) that
+    derive from a part base, the bases' own subclasses included; ``Subject`` itself is left
+    out (the contract type). Also returns the name tables of the files read."""
+    tables, bases = {}, {}
+    files = [(module_name(package, path), ast.parse(source))
+             for package, root in roots.items() for path, source in python_files(root)]
+    for module, tree in files:
+        names, own = file_names(tree, module)
+        tables[own] = names
+    for module, tree in files:
+        own = file_names(tree, module)[1]
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                bases.setdefault(f'{own}.{node.name}', set()).update(
+                    qualified(base, tables[own], own, tables) for base in node.bases
+                    if isinstance(base, (ast.Name, ast.Attribute)))
     found = set(PART_BASES)
     while new := {name for name, parents in bases.items() if parents & found} - found:
         found |= new
-    return found - {'Subject'}
+    return found - {'brainscore_core.contract.Subject'}, tables
 
 
-def class_names(node):
-    """Class names in a class argument: a name, a dotted name, a tuple or a ``|`` of them."""
+def class_nodes(node):
+    """Class expressions in a class argument: a name, a dotted name, a tuple or a ``|``."""
     if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
-        return [name for element in node.elts for name in class_names(element)]
+        return [kind for element in node.elts for kind in class_nodes(element)]
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-        return class_names(node.left) + class_names(node.right)
+        return class_nodes(node.left) + class_nodes(node.right)
     if isinstance(node, ast.Starred):
-        return class_names(node.value)
-    return [getattr(node, 'attr', getattr(node, 'id', None))]
+        return class_nodes(node.value)
+    return [node] if isinstance(node, (ast.Name, ast.Attribute)) else []
 
 
 def is_type_of(node):
@@ -175,16 +222,23 @@ def is_type_of(node):
         isinstance(node, ast.Attribute) and node.attr == '__class__')
 
 
-def discovery_findings(source, classes):
+def discovery_findings(source, classes, module='brainscore.example', tables=None):
     """Rule 2.2 findings of one file: a private read by text, a class check of a part
-    (``isinstance``, ``issubclass``, ``type(x)`` or ``x.__class__`` compared with a class)."""
+    (``isinstance``, ``issubclass``, ``type(x)`` or ``x.__class__`` compared with a class).
+    ``classes`` are qualified names; a class argument is resolved through the file's imports."""
+    tree = ast.parse(source)
+    names, own = file_names(tree, module)
+
+    def checked(node):
+        return {f"class check {name.rpartition('.')[2]}" for kind in class_nodes(node)
+                if (name := qualified(kind, names, own, tables or {})) in classes}
+
     found = set()
-    for node in ast.walk(ast.parse(source)):
+    for node in ast.walk(tree):
         if isinstance(node, ast.Compare):
             operands = [node.left, *node.comparators]
             if any(is_type_of(operand) for operand in operands):
-                found.update(f'class check {name}' for operand in operands
-                             for name in class_names(operand) if name in classes)
+                found.update(*(checked(operand) for operand in operands))
             continue
         if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                 and len(node.args) >= 2):
@@ -195,7 +249,7 @@ def discovery_findings(source, classes):
                 and not (isinstance(target, ast.Name) and target.id in ('self', 'cls')):
             found.add(f'{node.func.id} {ast.unparse(target)}.{what.value}')
         if node.func.id in ('isinstance', 'issubclass'):
-            found.update(f'class check {name}' for name in class_names(what) if name in classes)
+            found |= checked(what)
     return found
 
 
@@ -214,22 +268,23 @@ def discovery_places(package, root):
     return places
 
 
-def discovery_violations(roots, classes):
+def discovery_violations(roots, classes, tables=None):
     return {(f'{package}/{path}', finding)
             for package, root in roots.items()
             for path, source in python_files(root, discovery_places(package, root))
-            for finding in discovery_findings(source, classes)}
+            for finding in discovery_findings(source, classes, module_name(package, path),
+                                              tables)}
 
 
 def test_no_ability_is_discovered_by_private_read_or_class_check_in_core_and_helpers():
     """Rule 2.2 in core and in the unified library code.
 
-    Limit: a source scan cannot be complete, and this one does not see an imported class
-    under another name, ``getattr`` or ``hasattr`` with a name held in a variable, a private
-    attribute read with a dot, signature inspection, or a class of vision or language.
+    Limit: a source scan cannot be complete, and this one does not see a class held in a
+    variable, ``getattr`` or ``hasattr`` with a name held in a variable, a private attribute
+    read with a dot, signature inspection, or a class of vision or language.
     """
     roots = {package: package_root(package) for package in DISCOVERY_PACKAGES}
-    compare(discovery_violations(roots, part_classes(roots.values())), DISCOVERY_ALLOWED,
+    compare(discovery_violations(roots, *part_classes(roots)), DISCOVERY_ALLOWED,
             'discovery by private read or class check (rule 2.2)')
 
 
@@ -257,7 +312,11 @@ def test_check_fails_on_a_stale_entry(tmp_path):
                 'private model access')
 
 
-CLASSES = {'BrainScoreModel', 'CachingExtractor', 'TextWrapper'}
+IMPORTS = ('from brainscore import BrainScoreModel\n'
+           'from brainscore.model_helpers import wrappers\n'
+           'from brainscore.model_helpers.extractors import CachingExtractor\n')
+CLASSES = {'brainscore.BrainScoreModel', 'brainscore.model_helpers.wrappers.TextWrapper',
+           'brainscore.model_helpers.extractors.CachingExtractor'}
 
 
 @pytest.mark.parametrize('source', [
@@ -274,7 +333,7 @@ CLASSES = {'BrainScoreModel', 'CachingExtractor', 'TextWrapper'}
     'type(part) in (str, wrappers.TextWrapper)',
 ])
 def test_discovery_signal_catches(source):
-    assert discovery_findings(source, CLASSES)
+    assert discovery_findings(IMPORTS + source, CLASSES)
 
 
 @pytest.mark.parametrize('source', [
@@ -287,22 +346,40 @@ def test_discovery_signal_catches(source):
     'subject.identifier == BrainScoreModel',
 ])
 def test_discovery_signal_allows(source):
-    assert not discovery_findings(source, CLASSES)
+    assert not discovery_findings(IMPORTS + source, CLASSES)
 
 
 def test_part_classes_follow_subclasses(tmp_path):
-    _tree(tmp_path, {'a.py': 'class Wrap(CachingExtractor): pass\nclass Deep(Wrap): pass\n'
-                             'class Agent(Subject): pass\nclass Other: pass\n'})
-    assert {'Wrap', 'Deep', 'Agent'} <= part_classes([tmp_path])
-    assert not {'Other', 'Subject'} & part_classes([tmp_path])
+    _tree(tmp_path, {'a.py': 'from brainscore_core.contract import Subject as S\n'
+                             'from .model_helpers.extractors import CachingExtractor\n'
+                             'class Wrap(CachingExtractor): pass\nclass Deep(Wrap): pass\n'
+                             'class Agent(S): pass\nclass Other: pass\n'})
+    classes, _ = part_classes({'brainscore': tmp_path})
+    assert {'brainscore.a.Wrap', 'brainscore.a.Deep', 'brainscore.a.Agent'} <= classes
+    assert not {'brainscore.a.Other', 'brainscore_core.contract.Subject'} & classes
+
+
+def test_a_plugin_class_with_the_name_of_a_core_class_does_not_fail(tmp_path):
+    roots = {'brainscore_core': tmp_path / 'brainscore_core', 'brainscore': tmp_path / 'brainscore'}
+    _tree(tmp_path, {
+        'brainscore_core/contract.py': 'class Subject: pass\n',
+        'brainscore_core/streaming.py': 'class Session: pass\n',
+        'brainscore_core/check.py': 'from .streaming import Session\nok = isinstance(x, Session)\n',
+        'brainscore/models/plug/model.py': ('from brainscore_core.contract import Subject\n'
+                                            'class Session(Subject): pass\n'),
+        'brainscore/tool.py': ('from brainscore.models.plug.model import Session as Plug\n'
+                               'ok = isinstance(x, Plug)\n')})
+    assert discovery_violations(roots, *part_classes(roots)) == {
+        ('brainscore/tool.py', 'class check Session')}
 
 
 def test_discovery_reads_library_folders_and_not_plugin_folders(tmp_path):
-    root = _tree(tmp_path, {'harnesses/new.py': 'ok = isinstance(subject, BrainScoreModel)\n',
+    root = _tree(tmp_path, {'harnesses/new.py': IMPORTS + 'isinstance(subject, BrainScoreModel)\n',
                             'validation/check.py': "getattr(config, '_marker', [])\n",
                             'top.py': "hasattr(benchmark, '_assembly')\n",
                             'benchmarks/_score.py': "getattr(model, '_extractors')\n",
-                            'benchmarks/plugin/__init__.py': 'isinstance(subject, BrainScoreModel)\n'})
+                            'benchmarks/plugin/__init__.py':
+                                IMPORTS + 'isinstance(subject, BrainScoreModel)\n'})
     found = {path for path, _ in discovery_violations({'brainscore': root}, CLASSES)}
     assert {'brainscore/harnesses/new.py', 'brainscore/validation/check.py',
             'brainscore/top.py', 'brainscore/benchmarks/_score.py'} <= found
@@ -310,7 +387,7 @@ def test_discovery_reads_library_folders_and_not_plugin_folders(tmp_path):
 
 
 def test_discovery_check_fails_on_a_new_place(tmp_path):
-    root = _tree(tmp_path, {'new.py': 'ok = isinstance(subject, BrainScoreModel)\n'})
+    root = _tree(tmp_path, {'new.py': IMPORTS + 'isinstance(subject, BrainScoreModel)\n'})
     with pytest.raises(AssertionError, match='new discovery'):
         compare(discovery_violations({'brainscore_core': root}, CLASSES), {}, 'discovery')
 
