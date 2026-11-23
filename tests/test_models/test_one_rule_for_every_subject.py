@@ -31,8 +31,7 @@ from brainscore_core.responses import Choice, Text
 from brainscore_core.streaming import Session, StreamEvent, begin_event, end_event, respond_event
 from brainscore_core.streaming_helpers import (
     drive_behavior_session, drive_behavior_session_streaming, drive_environment_session,
-    drive_neural_session, drive_neural_session_streaming, environment_session, run_environment,
-    stimulus_session)
+    drive_neural_session, drive_neural_session_streaming, run_environment, stimulus_session)
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     BehavioralAssembly, NeuroidAssembly)
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
@@ -426,12 +425,13 @@ def test_the_harness_entry_points_keep_a_none_step():
 # ---------------------------------------------------------------- the lists are complete
 
 def _subject_classes():
-    """The names of the Subject classes defined in the four packages."""
+    """The names of the Subject classes defined in the four packages, outside the model plugin
+    folders (a plugin may define its own class)."""
     roots = [Path(module.__file__).parent for module in _packages()]
     found, sources = {'Subject'}, []
     for root in roots:
         for path in root.rglob('*.py'):
-            if 'test' not in path.name:
+            if 'test' not in path.name and path.relative_to(root).parts[0] != 'models':
                 sources += re.findall(r'^class (\w+)\(([^)]*)\)', path.read_text(), flags=re.M)
     while True:
         new = {name for name, bases in sources if name not in found
@@ -459,6 +459,19 @@ def test_every_subject_class_and_driver_has_an_entry():
     missing = drivers - set(DRIVERS) - set(STATED_DRIVERS)
     assert not missing, (f'Core drivers {sorted(missing)} have no entry: add one to DRIVERS in {here} '
                          f'(or, with the reason, to STATED_DRIVERS).')
+
+
+def test_a_new_model_plugin_class_needs_no_entry(tmp_path, monkeypatch):
+    """A model plugin may define its own subject class; the entry list names library classes only."""
+    import sys
+    import types
+    for path, text in {'models/plug/model.py': 'class Plug(Subject): pass\n',
+                       'harnesses/rig.py': 'class Rig(Subject): pass\n'}.items():
+        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / path).write_text(text)
+    package = types.SimpleNamespace(__file__=str(tmp_path / '__init__.py'))
+    monkeypatch.setattr(sys.modules[__name__], '_packages', lambda: (package,))
+    assert _subject_classes() == {'Rig'}
 
 
 # ---------------------------------------------------------------- the adapters' time
