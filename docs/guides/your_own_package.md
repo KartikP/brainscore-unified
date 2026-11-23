@@ -22,7 +22,7 @@ You write your own package, `mylab_ext`, outside the Brain-Score repositories: o
 import numpy as np
 import brainscore
 from brainscore_core import Subject
-from brainscore_core.extensions import CatalogEntry, register_channel
+from brainscore_core.io_catalog import CatalogEntry, register_channel
 from brainscore_core.streaming import StreamEvent
 from brainscore.experiments import Tool
 from brainscore.tools import register_tool

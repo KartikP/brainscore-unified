@@ -261,7 +261,7 @@ class BrainScoreModel(Subject):
                     in (io_catalog.OUTPUT, io_catalog.BOTH)):
                 raise ValueError(
                     f"policy_out_channels names {channel!r}, which is not a registered output "
-                    f"channel. Register it with register_channel (from brainscore_core.extensions) "
+                    f"channel. Register it with register_channel (from brainscore_core.io_catalog) "
                     f"before the model is built, or answer on a registered output such as 'motor'.")
             problem = io_catalog.form_problem(channel)
             if problem:

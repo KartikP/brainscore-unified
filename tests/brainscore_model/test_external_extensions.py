@@ -2,7 +2,8 @@ import pytest
 from brainscore_core import io_catalog
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore.capabilities import Capability, capability_registry, register_capability
-from brainscore_core.extensions import CatalogEntry, StreamEvent, register_channel
+from brainscore_core.io_catalog import CatalogEntry, register_channel
+from brainscore_core.streaming import StreamEvent
 from brainscore import BrainScoreModel
 from brainscore_core.streaming import Session
 

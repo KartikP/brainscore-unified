@@ -11,7 +11,7 @@ import pytest
 from brainscore import BrainScoreModel, LayerSelector
 from brainscore.capabilities import Capability, capability_registry, register_capability
 from brainscore_core.compatibility import CompatibilityError, check_compatibility
-from brainscore_core.extensions import StreamEvent
+from brainscore_core.streaming import StreamEvent
 from brainscore_core.streaming import Session
 
 

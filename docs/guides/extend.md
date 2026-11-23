@@ -5,7 +5,7 @@ You can add channels, tools and capabilities from your own package, without edit
 ## A new channel
 
 ```python
-from brainscore_core.extensions import CatalogEntry, register_channel
+from brainscore_core.io_catalog import CatalogEntry, register_channel
 
 register_channel(CatalogEntry(
     name='eye_position',

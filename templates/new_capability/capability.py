@@ -20,7 +20,8 @@ every other model is unchanged.
 from dataclasses import dataclass
 
 from brainscore.capabilities import Capability, register_capability
-from brainscore_core.extensions import CatalogEntry, StreamEvent, register_channel
+from brainscore_core.io_catalog import CatalogEntry, register_channel
+from brainscore_core.streaming import StreamEvent
 from brainscore import BrainScoreModel
 
 IDENTIFIER = 'example-word-count'   # TODO: your capability's name

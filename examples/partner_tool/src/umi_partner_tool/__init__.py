@@ -5,7 +5,8 @@ import time
 import numpy as np
 
 from brainscore.capabilities import Capability, register_capability
-from brainscore_core.extensions import CatalogEntry, StreamEvent, register_channel
+from brainscore_core.io_catalog import CatalogEntry, register_channel
+from brainscore_core.streaming import StreamEvent
 
 
 @dataclass
