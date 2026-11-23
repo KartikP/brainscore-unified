@@ -14,7 +14,7 @@ from contextlib import ExitStack
 import pandas as pd
 
 from .base import Capability
-from .._model.behavioral import _declared_formats
+from .._model.owners import _declared_formats
 from .._model.dispatch import act
 from ..model_helpers.intervention import INTERVENTION_CHANNELS
 from .._model.recording import (open_recordings, planned_recordings, records_while_answering,

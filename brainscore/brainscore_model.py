@@ -5,8 +5,9 @@ from types import MappingProxyType
 from collections.abc import Mapping
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
 
-from ._model import behavioral
-from ._model.behavioral import BehavioralReadout, statement_hint
+from ._model import owners
+from ._model.behavioral import BehavioralReadout
+from ._model.owners import statement_hint
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import Subject, TaskContext
 from ._model import dispatch
@@ -241,7 +242,7 @@ class BrainScoreModel(Subject):
 
         self._recording_request = RecordingRequest(self)
         self._behavioral = BehavioralReadout(self)
-        self._behavioral.owners = behavioral.answer_owners(self, answer_owners)
+        self._behavioral.owners = owners.answer_owners(self, answer_owners)
         self._interventions = Interventions(self)
         self._shared_calls = None       # set by dispatch.one_call_per_extractor
         self._session_plan = None       # the running session's plan (_model/plan.py), set in participate
