@@ -126,7 +126,7 @@ def _facts(obj, settings) -> dict:
     A caching wrapper states the settings fingerprints of its calls (``settings``), where
     its network's parameters are, their dtypes, its batch size and, for a text wrapper, the
     token limit it cut each text at (``max_length``, also when the store is off). A network recorded by
-    forward hooks states where its parameters are and their dtypes. An answer or reply part
+    forward hooks states where its parameters are and their dtypes. An answer, reply or policy part
     of a hosted model API states its provider, model and generation settings (``settings``).
     Any other part (a plain function, the legacy ``PytorchWrapper``, another answer, reply,
     likelihood or policy callable, a readout classifier) states none of these. The device the inputs are sent

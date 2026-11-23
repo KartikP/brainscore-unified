@@ -669,3 +669,21 @@ def test_an_api_part_states_its_provider_snapshot_and_generation_settings(part, 
     for fact in ('"provider": "stand_in_client"', '"model": "snapshot-2026-01-01"', '"temperature": 0',
                  '"max_tokens": 16'):
         assert fact in item['settings']
+
+
+def test_an_api_policy_states_its_provider_snapshot_and_generation_settings(tmp_path):
+    # The policy part of the same clients: a closed-loop score names its settings too.
+    from brainscore.benchmarks.grid_game.benchmark import GridGameBenchmark, policy_model
+    from brainscore.model_helpers.api_behavioral import api_policy
+
+    def stand_in_client(model, system, messages, settings):
+        return 'Action: 0'
+    policy = api_policy(stand_in_client, 'snapshot-2026-01-01', obs_mode='ascii', max_tokens=16,
+                        cache_dir=tmp_path / 'store')
+    score = _score(policy_model(policy, 'api-policy'), GridGameBenchmark(size=5, n_episodes=1, max_steps=2))
+    (entry,) = [entry for entry in score.attrs['provenance'] if entry['subject'] == 'api-policy']
+    (item,) = entry['parts']
+    assert item['part'] == 'policy'
+    for fact in ('"provider": "stand_in_client"', '"model": "snapshot-2026-01-01"', '"temperature": 0',
+                 '"max_tokens": 16'):
+        assert fact in item['settings']
