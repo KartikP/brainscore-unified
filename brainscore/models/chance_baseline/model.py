@@ -61,13 +61,14 @@ class ChanceBaseline(Subject):
         return {'behavior', 'behavior:choice', 'behavior:probabilities'}
 
     def participate(self, session) -> None:
-        from brainscore_core.streaming_helpers import drain_session_inputs, drive_typed_session
+        from brainscore_core.streaming_helpers import drain_session_inputs, drive_typed_session, refuse_variance
         outputs = set(session.outputs or ())
         if not outputs or not outputs <= {'behavior:choice', 'behavior:probabilities'}:
             try:        # the task the session sets holds for this call only
                 return drive_typed_session(self, session)
             finally:
                 self.reset()
+        refuse_variance(self, session)   # identical rows are no variance: refused before the inputs are read
         # Each requested format from the same inputs: one request for both gives both.
         events = drain_session_inputs(session)
         if 'behavior:probabilities' in outputs:
