@@ -242,6 +242,25 @@ class TestGameActionFn:
         act(s), act(s)
         assert len(calls) == 2                                 # re-run replays from cache
 
+    def test_an_anthropic_policy_reply_is_never_stored(self, monkeypatch, tmp_path):
+        """The Anthropic client samples with no seed: each tick asks the provider again."""
+        import sys
+        import types
+        from brainscore.model_helpers.api_behavioral import api_policy
+        requests = []
+
+        class Messages:
+            def create(self, **kwargs):
+                requests.append(kwargs)
+                return types.SimpleNamespace(content=[types.SimpleNamespace(type='text', text='Action: 0')])
+        monkeypatch.setitem(sys.modules, 'anthropic', types.SimpleNamespace(
+            Anthropic=lambda: types.SimpleNamespace(messages=Messages())))
+        act = api_policy('anthropic', 'claude-x', cache_dir=str(tmp_path))
+        for _ in range(2):
+            act.reset()
+            act(self._env_step())
+        assert len(requests) == 2
+
     def test_missing_frame_raises(self):
         from brainscore.model_helpers.api_behavioral import api_policy
         act = api_policy(self._mock(), 'mock')
