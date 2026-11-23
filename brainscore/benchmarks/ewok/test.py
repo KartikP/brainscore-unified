@@ -376,7 +376,7 @@ class _ParticipateOnlyReader(Subject):
         from brainscore_core.response_formats import response_record
         from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
         self.sessions += 1
-        from brainscore._model.behavioral import VERBATIM_LOG_PROBABILITIES
+        from brainscore._model.answers import VERBATIM_LOG_PROBABILITIES
         assert tuple(session.outputs) == ('behavior:log_probabilities',)
         segment = self.layout == 'segment'
         parameters = {**VERBATIM_LOG_PROBABILITIES, 'layout': self.layout,
@@ -892,7 +892,7 @@ def test_stated_change_a_finite_choice_row_marked_invalid_loses_credit(prepared,
 def test_stated_change_a_finite_log_probability_row_with_no_raw_answer_raises(prepared, tmp_path):
     """M9-03, stated change: core stores a row with no raw answer as missing; the
     log-probability form now raises for it (before: its finite values were scored)."""
-    from brainscore._model.behavioral import VERBATIM_LOG_PROBABILITIES
+    from brainscore._model.answers import VERBATIM_LOG_PROBABILITIES
     from brainscore_core.response_formats import response_record
     from brainscore_core.streaming import StreamEvent
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly

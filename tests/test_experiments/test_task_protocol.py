@@ -755,7 +755,7 @@ def test_options_that_differ_for_each_row_reach_each_part():
     np.testing.assert_array_equal(scores.values, [[-0.25, 0.5], [0.5, -0.25]])
     assert list(scores['response_state'].values) == ['invalid', 'invalid']
     assert list(scores['choice'].values) == [0, 1]
-    from brainscore._model.behavioral import VERBATIM_LOG_PROBABILITIES
+    from brainscore._model.answers import VERBATIM_LOG_PROBABILITIES
     from brainscore_core.response_formats import response_record
     assert scores.attrs['response'] == response_record(
         'behavior:log_probabilities', 'likelihood', category='model-derived',

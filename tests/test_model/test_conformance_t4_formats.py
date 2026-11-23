@@ -408,7 +408,7 @@ def test_a_constant_readout_rating_lands_on_the_grid(label, scale, stored, state
 
 
 def test_a_tie_goes_to_the_higher_step():
-    from brainscore._model.behavioral import _on_scale_steps
+    from brainscore._model.answers import _on_scale_steps
     assert _on_scale_steps([2.5, 1.25, 6.75, 0.5, float('nan')], Scale(1, 7, 0.5))[0][:3] == [2.5, 1.5, 7.0]
     rated, parameters = _on_scale_steps([2.5, 3.5, 0.5], Scale(1, 7, 1))
     assert rated == [3.0, 4.0, 0.5] and parameters == {'rounding': 'nearest step, ties to the higher step'}
@@ -483,7 +483,7 @@ def test_a_pseudo_ewok_runs_the_real_benchmark_on_made_up_items(tmp_path):
                          ids=str)
 def test_every_rounded_readout_rating_is_on_core_s_grid(scale):
     """One grid for the readout and core: each stored value inside the bounds is on the step."""
-    from brainscore._model.behavioral import _on_scale_steps
+    from brainscore._model.answers import _on_scale_steps
     from brainscore_core.responses import _on_step
     rng = np.random.default_rng(0)
     raw = list(rng.uniform(scale.low, scale.high, 500)) + [scale.low, scale.high]

@@ -9,7 +9,6 @@ format. The packaging is in ``answers``; the recording during the answering
 pass is in ``recording``; the owner of each answer format is in ``owners``.
 """
 
-import math
 from contextlib import contextmanager, nullcontext
 from dataclasses import replace
 from typing import Any, Dict, Optional, Tuple
@@ -22,6 +21,7 @@ import numpy as np
 
 from . import answers, parts
 from .dispatch import detect_modalities, extract_for_modality, pick_modality, record
+from .answers import VERBATIM_IN_TEMPLATE, VERBATIM_LOG_PROBABILITIES, _on_scale_steps
 from .owners import LOG_PROBABILITIES, _formats_by_part, statement_hint
 from .recording import gather_region, openable_paths, per_stimulus, region_modality, region_selector
 
@@ -984,53 +984,6 @@ def trial_prompts(task, stimuli, compare_options: bool = True):
                                  f'{response.labels!r}; got {sorted(counts)}')
             axis = list(range(counts.pop())) if counts else []
     return prompts, row_labels, axis
-
-
-RATING_ROUNDING = 'nearest step, ties to the higher step'
-# The schema of the log probabilities a likelihood part gives under a verbatim Choice:
-# f"{text} {option}" as plain text, no special tokens, no template, summed natural logs.
-VERBATIM_LOG_PROBABILITIES = {
-    'layout': 'continuation', 'context': 'shared', 'aggregation': 'sum', 'units': 'nats',
-    'tokenization': {'join': 'space', 'special_tokens': 'none', 'template': 'none',
-                     'truncation': 'none'}}
-# A verbatim trial text reaches a reply part as given; the part may wrap it in its own chat
-# template. The record says only that: a reply part is any callable.
-VERBATIM_IN_TEMPLATE = {'template': "the reply part's own, if it has one"}
-
-
-def _on_scale_steps(values, scale) -> Tuple[list, dict]:
-    """Each value on the nearest step of ``scale``, and the record parameters that say so.
-
-    The grid of a scale is decimal: the points Decimal(repr(low)) + n * Decimal(repr(step)).
-    The step index is read from the raw value in decimal; an index within 1e-9 of a half is a
-    tie and goes to the higher step. The stored value is the float of that grid point, the
-    value core's step rule accepts, kept inside the bounds: the index never passes the last
-    point inside them, and a point one float rounding beyond ``high`` (or ``low``) is
-    stored as that bound. A raw value outside the bounds, or not finite,
-    is not rounded and not clipped (core marks it invalid). A scale with no step leaves every
-    value unchanged and records no rounding.
-    """
-    if scale.step is None:
-        return list(values), {}
-    return [_grid_point(v, scale) for v in values], {'rounding': RATING_ROUNDING}
-
-
-def _grid_point(value, scale):
-    from decimal import Decimal, ROUND_FLOOR, localcontext
-    if not (math.isfinite(value) and scale.low <= value <= scale.high):
-        return value
-    with localcontext() as context:
-        context.prec = 50
-        low, step = Decimal(repr(float(scale.low))), Decimal(repr(float(scale.step)))
-        last = int(((Decimal(repr(float(scale.high))) - low) / step + Decimal('1e-9'))
-                   .to_integral_value(ROUND_FLOOR))
-        index = (Decimal(repr(float(value))) - low) / step
-        below = int(index.to_integral_value(ROUND_FLOOR))
-        n = below + 1 if index - below > Decimal('0.5') - Decimal('1e-9') else below
-        point = float(low + min(n, last) * step)
-    # A high (or low) one float rounding off a grid point: the stored value stays inside the
-    # bounds; it moves by at most 1e-9 of a step, which core's step rule accepts.
-    return min(max(point, float(scale.low)), float(scale.high))
 
 
 def _fitted_intact(task) -> bool:
