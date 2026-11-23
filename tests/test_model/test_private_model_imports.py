@@ -24,7 +24,7 @@ Reads (with ``ast``, never imported) every file under ``brainscore/`` folders
   object (the typed calling convention, House Style pattern 2).
 
 Rule 2.2 in core and in the library code of unified (all of ``brainscore_core``; in
-``brainscore``, every file and folder but the benchmark and model plugin folders): no ability is
+``brainscore``, every file and folder but the model plugin folders): no ability is
 discovered by a read of a private name with ``getattr`` or ``hasattr`` and a text
 argument on another object than ``self`` or ``cls``, or by ``isinstance`` against a
 subject class or a part class (a subclass of ``Subject``, ``CachingExtractor`` or
@@ -59,9 +59,9 @@ ALLOWED = {}
 
 IMPORT_ONLY_FOLDERS = ('models', 'validation')
 
-# Rule 2.2 places: all of core; all of unified but the plugin folders below.
+# Rule 2.2 places: all of core; all of unified but the model plugin folders.
 DISCOVERY_PACKAGES = ('brainscore_core', 'brainscore')
-PLUGIN_FOLDERS = ('benchmarks', 'models')
+PLUGIN_FOLDERS = ('models',)
 PART_BASES = {'brainscore_core.contract.Subject',
               'brainscore.model_helpers.extractors.CachingExtractor',
               'brainscore.capabilities.base.Capability'}
@@ -251,9 +251,9 @@ def discovery_findings(source, classes, module='brainscore.example', tables=None
 
 
 def discovery_places(package, root):
-    """Folders and files read for rule 2.2. A benchmark or model plugin folder stays out: it is
-    an author's plugin, read by the import signal above; the files beside the plugin folders
-    (``benchmarks/_score.py``, ``models/_shared.py``) are library code and are read."""
+    """Folders and files read for rule 2.2. A model plugin folder stays out: it is an author's
+    plugin, read by the import signal above; the files beside the plugin folders
+    (``models/_shared.py``) are library code and are read. A benchmark plugin is read."""
     if package != 'brainscore':
         return ('',)
     places = []
@@ -375,12 +375,15 @@ def test_discovery_reads_library_folders_and_not_plugin_folders(tmp_path):
                             'validation/check.py': "getattr(config, '_marker', [])\n",
                             'top.py': "hasattr(benchmark, '_assembly')\n",
                             'benchmarks/_score.py': "getattr(model, '_extractors')\n",
-                            'benchmarks/plugin/__init__.py':
+                            'benchmarks/plugin/benchmark.py':
+                                IMPORTS + 'isinstance(subject, BrainScoreModel)\n',
+                            'models/plugin/model.py':
                                 IMPORTS + 'isinstance(subject, BrainScoreModel)\n'})
     found = {path for path, _ in discovery_violations({'brainscore': root}, CLASSES)}
     assert {'brainscore/harnesses/new.py', 'brainscore/validation/check.py',
-            'brainscore/top.py', 'brainscore/benchmarks/_score.py'} <= found
-    assert 'brainscore/benchmarks/plugin/__init__.py' not in found
+            'brainscore/top.py', 'brainscore/benchmarks/_score.py',
+            'brainscore/benchmarks/plugin/benchmark.py'} <= found
+    assert 'brainscore/models/plugin/model.py' not in found
 
 
 def test_discovery_check_fails_on_a_new_place(tmp_path):
