@@ -652,3 +652,20 @@ def test_the_facts_of_a_part_are_read_once_per_session(monkeypatch):
     score = _score(model, _Neural(_sentences(), {'neural:IT', 'neural:V4'}))
     assert len(_entry(score)['parts']) == 2
     assert counts == [1]
+
+
+@pytest.mark.parametrize('part', ['answer', 'reply'])
+def test_an_api_part_states_its_provider_snapshot_and_generation_settings(part, tmp_path):
+    # A stand-in client: no network. The provider of a callable client is its name.
+    from brainscore.model_helpers.api_behavioral import api_answer, build_api_reply
+
+    def stand_in_client(model, system, messages, settings):
+        return pseudo.OPTIONS[0]
+    build = api_answer if part == 'answer' else build_api_reply
+    function = build(stand_in_client, 'snapshot-2026-01-01', max_tokens=16, cache_dir=tmp_path / 'store')
+    subject = BrainScoreModel(f'api-{part}', in_channels={'text'}, **{part: function})
+    (item,) = _entry(_score(subject, pseudo.PseudoChoice()))['parts']
+    assert item['part'] == part
+    for fact in ('"provider": "stand_in_client"', '"model": "snapshot-2026-01-01"', '"temperature": 0',
+                 '"max_tokens": 16'):
+        assert fact in item['settings']

@@ -126,9 +126,10 @@ def _facts(obj, settings) -> dict:
     A caching wrapper states the settings fingerprints of its calls (``settings``), where
     its network's parameters are, their dtypes, its batch size and, for a text wrapper, the
     token limit it cut each text at (``max_length``, also when the store is off). A network recorded by
-    forward hooks states where its parameters are and their dtypes. Any other part (a
-    plain function, the legacy ``PytorchWrapper``, an answer, reply, likelihood or policy
-    callable, a readout classifier) states none of these. The device the inputs are sent
+    forward hooks states where its parameters are and their dtypes. An answer or reply part
+    of a hosted model API states its provider, model and generation settings (``settings``).
+    Any other part (a plain function, the legacy ``PytorchWrapper``, another answer, reply,
+    likelihood or policy callable, a readout classifier) states none of these. The device the inputs are sent
     to is not a fact of the part and is not recorded.
     """
     from brainscore.model_helpers.extractors import CachingExtractor
@@ -144,6 +145,8 @@ def _facts(obj, settings) -> dict:
         facts.update(settings=_one(settings or ()),
                      batch_size=batch_size if batch_size is not None else NOT_STATED,
                      max_length=max_length if max_length is not None else NOT_STATED)
+    elif settings:
+        facts.update(settings=_one(settings))    # an API part: provider, model, generation settings
     return facts
 
 
