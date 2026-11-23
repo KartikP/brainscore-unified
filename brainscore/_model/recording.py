@@ -398,9 +398,17 @@ def declared_layers(owner, modality: Optional[str] = None):
 
 def unknown_layer_message(owner, path: str, modality: Optional[str] = None) -> Optional[str]:
     """Why ``path`` is not a layer of the routed extractor, or None if it is
-    (or cannot be checked). A site (``':input'``, ``'-t<n>'``) checks its module path."""
+    (or cannot be checked). A site (``':input'``, ``'-t<n>'``) checks its module path,
+    and needs an extractor with ``record`` (one that records through ``LiveRecording``)."""
     names = declared_layers(owner, modality)
     base = split_site(path)[0]
+    wanted = canonical_modality(modality) if modality else None
+    if base != path and any(record_part(e) is None for key, e in owner._extractors.items()
+                            if wanted is None or canonical_modality(key) == wanted):
+        return (f'{path!r} names a call or an input of a module, and an extractor without '
+                f'record(layers, stimuli) (such as the vision PytorchWrapper) records one value for each '
+                f'module and does not take a pass name. Name {base!r}, or use a wrapper of '
+                f'brainscore.model_helpers.')
     if names is None or base in names:
         return None
     import difflib

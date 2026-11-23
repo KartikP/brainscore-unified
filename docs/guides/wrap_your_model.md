@@ -72,6 +72,8 @@ vision = PytorchWrapper(identifier='my-cnn', model=net, preprocessing=preprocess
 
 `preprocess` takes a list of image paths and returns the batch the network expects. Use the same preprocessing the model was trained with.
 
+Limit: `PytorchWrapper` keeps one value for each module, so for a module that runs more than once for one input it keeps only the last call, without an error, and it refuses a `<layer>-t<n>` or `:input` name when you build the model. For such a module, use a wrapper of `brainscore.model_helpers`, or name a module that runs once.
+
 **3. Propose a region-to-layer map.** Each region becomes a `neural:<region>` output.
 
 ```python

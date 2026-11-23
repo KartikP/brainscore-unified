@@ -140,3 +140,13 @@ def test_a_once_run_module_takes_t0_as_its_one_call_and_refuses_t1():
     assert (_recorded(once, ['block-t0'], 'once-t0')[0] == _recorded(once, ['block'], 'once-plain')[0]).all()
     with pytest.raises(ValueError, match='block-t1'):
         _recorded(once, ['block-t1'], 'once-t1')
+
+
+@pytest.mark.parametrize('layer', ['block-t1', 'block:input'])
+def test_an_extractor_without_record_refuses_a_call_or_input_name_at_construction(layer):
+    """The vision PytorchWrapper keeps one value for each module and reads no site."""
+    from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
+    wrapper = PytorchWrapper(identifier='looped-vision', model=_Looped(2), preprocessing=lambda paths: paths)
+    with pytest.raises(ValueError, match='one value for each module') as error:
+        BrainScoreModel('looped-vision', extractor={'vision': wrapper}, region_layer_map={'R': layer})
+    assert layer in str(error.value)
