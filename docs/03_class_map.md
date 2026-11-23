@@ -10,9 +10,9 @@ This page connects the [core concepts](02_core_concepts.md) to the classes you w
 | Run your own session on a subject | `subject.participate(session)` |
 | Run a study with conditions, repetitions and tools | `Experiment(...).run()` |
 | Record a region of a subject on some stimuli | `neural_response(subject, stimuli, ['neural:IT'])` |
-| Try something quickly in a notebook on a `BrainScoreModel` | `model.process(...)` after `start_recording(...)` |
+| Answer one step of a loop that a simulator owns | `model.process(row)` |
 
-`participate(session)` is the only method the contract requires, and the only one benchmarks and experiments call. `process(...)` is a convenience that exists on `BrainScoreModel` and the legacy adapters; it does the same computation without a session. Use it interactively, but do not write benchmarks against it.
+`participate(session)` is the only method the contract requires, and the only one benchmarks and experiments call. `BrainScoreModel.process(row)` has one job: a loop that a simulator owns calls the model one step at a time. Do not write benchmarks against it.
 
 ## Subjects
 

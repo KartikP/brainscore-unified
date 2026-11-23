@@ -104,7 +104,7 @@ print(sorted(model.out_channels))                # the declared outputs
 
 Pass the same `net` object to the extractor and to `model=`, so recording and interventions act on the same network.
 
-Layer paths are relative to the module the extractor wraps (`extractor.layer_names()` lists them). A path the extractor does not have fails when you build the model, and `start_recording` rejects a name that is neither a mapped region nor a layer; both errors list close matches.
+Layer paths are relative to the module the extractor wraps (`extractor.layer_names()` lists them). A path the extractor does not have fails when you build the model, with close matches; a session that requests a region the map does not name is refused before any compute.
 
 A session that requests several regions gives each `neural:<region>` channel the same payload as a session for that region alone. When the regions are recorded by one extractor that declares `independent_layers = True`, the extractor runs once for all of them (once per row in a streamed session), and each channel gets its own layers. Every wrapper in `brainscore.model_helpers` declares it (`TextWrapper`, `VLMVisionWrapper`, `VLMVideoWrapper`, `VideoWrapper`, `AudioWrapper`). Any other extractor runs once per region. Declare it on your own extractor only if its output for some layers, cut to one layer, is exactly its output for that layer alone (values, coordinates, attributes): for example, number the units of each layer from zero (`neuroid_num`). The environment variable `BRAINSCORE_REGIONS_PER_PASS=one` gives every region its own pass (see `EXTENDING.md`).
 
@@ -132,9 +132,7 @@ activations = neural_response(model, stimuli, ['neural:IT'])
 print(activations.dims, activations.shape)   # ('presentation', 'neuroid') (2, 8)
 ```
 
-`neural_response` runs a session through `model.participate`, as a benchmark does. In a
-notebook, `model.start_recording('IT')` followed by `model.process(stimuli)` gives the same
-assembly; `process` is a convenience of `BrainScoreModel`, not part of the contract.
+`neural_response` runs a session through `model.participate`, as a benchmark does.
 
 The column name tells the model what kind of input each row holds (`sentence` for text, `audio_path` for audio). A `stimulus_paths` dictionary alone is not enough. A wrapper takes only the column names that the core catalog binds to its input (`brainscore_core.io_catalog.stimulus_columns`), tried in the catalog's order: `audio_path`, `audio_file_name`, `audio_file`, `audio` for sound; `video_path`, `video_file_name`, `video` for clips; `image_file_name`, `image_path`, `filename`, `image`, `vision` for images.
 

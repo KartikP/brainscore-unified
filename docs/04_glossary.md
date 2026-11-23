@@ -44,7 +44,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **`participate(session)`** | The one evaluation method every subject implements. |
 | **`Perturbation`** | How an intervention changes selected units: `zero`, `scale` or `drive` for activity; `replace` only for weights and attention heads. |
 | **`policy`** | A `BrainScoreModel` part, in one form: `row -> {output channel: payload}`. `policy_in_channels` (default `('observation',)`) names the row keys it reads; `policy_out_channels` (default `('motor',)`) the outputs it answers on. A policy that keeps history clears it in `reset()`. |
-| **`process(...)`** | A convenience method on `BrainScoreModel` and adapters for interactive use. Not part of the contract. It records activity; a behavioral answer comes only from a session. |
+| **`process(row)`** | The one-row call of `BrainScoreModel`: a loop that a simulator owns calls the model one step at a time, and the model may record its regions during that step. Not part of the contract. |
 | **Prompt** | One trial as a replying model sees it, in order: the instruction, the stimulus parts (in `present` order), then the response's directive. |
 | **Protocol** | The procedure of an experiment: which conditions, how many repetitions, where sessions begin and end, and when the subject is reset. |
 | **Readout** | A classifier fitted on one layer's activity (`behavioral_readout_layer`). It gives probabilities; its choice is the most probable option, which the registration names with `answer_owners={'behavior:choice': ('readout', 'argmax')}`. |

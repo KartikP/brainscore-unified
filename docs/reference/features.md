@@ -65,4 +65,4 @@ Each part has one name. The older names in the right column were removed without
 | `region_layer_map` values with `modality=` | `region_modality_map=` |
 | none: the activation cache key holds the weights | `backbone_id=` on `BrainScoreModel` and on the wrappers of `brainscore.model_helpers` (the legacy vision `PytorchWrapper` keeps its own `backbone_id`: it names the path of its stored activations, and that path does not change here) |
 
-`process(...)` is not deprecated, but it is a convenience on `BrainScoreModel` and the adapters, not part of the contract. Benchmarks call `participate`.
+`BrainScoreModel.process(row)` has one job: a loop that a simulator owns calls the model one step at a time. It is not part of the contract. `BrainScoreModel.start_recording` and `start_task` were removed: record a region with `neural_response`, answer a task with `behavioral_response`, and send a `StateChange` with `apply_state_change`. Benchmarks call `participate`.

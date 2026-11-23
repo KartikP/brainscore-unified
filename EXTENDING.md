@@ -71,7 +71,7 @@ The model template builds a `BrainScoreModel`; the benchmark template scores any
 
 | Seam | Lives in | Implements | Contract | Template |
 |------|----------|---------------|----------|----------|
-| **Model** | `brainscore/models/<name>/` | `get_model() -> BrainScoreModel` | `Subject.participate(session)`; `BrainScoreModel.process(input_event)` is a typed convenience, not the contract | `templates/new_model/` |
+| **Model** | `brainscore/models/<name>/` | `get_model() -> BrainScoreModel` | `Subject.participate(session)`; `BrainScoreModel.process(row)` answers one step of a loop that a simulator owns, not the contract | `templates/new_model/` |
 | **Benchmark** | `brainscore/benchmarks/<name>/` | a `BenchmarkBase` subclass | `__call__(subject) -> Score` | `templates/new_benchmark/` |
 | **Metric** | `brainscore/metrics/<name>/` | a `Metric` subclass | `__call__(assembly1, assembly2) -> Score` | `templates/new_metric/` |
 | **Data / Stimulus set** | `brainscore/data/<name>/` | loaders registered in `data_registry` / `stimulus_set_registry` | return a `StimulusSet` and a `DataAssembly` | `templates/new_data/` |
