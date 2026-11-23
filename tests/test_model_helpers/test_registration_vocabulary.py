@@ -24,14 +24,13 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-import xarray as xr
 from PIL import Image
 
 from brainscore_core.contract import TaskContext
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.responses import Choice
-from brainscore_core.streaming_helpers import behavioral_response, neural_response, stimulus_session
+from brainscore_core.streaming_helpers import behavioral_response, stimulus_session
 
 pytestmark = pytest.mark.unit
 
@@ -255,15 +254,6 @@ def _sentences():
     return stimuli
 
 
-def _assert_same(old, new):
-    assert type(old) is type(new)
-    xr.testing.assert_identical(old, new)
-    assert old.dtype == new.dtype
-    assert list(old.coords) == list(new.coords)
-    for name in old.coords:
-        assert old[name].dtype == new[name].dtype, name
-        np.testing.assert_array_equal(old[name].values, new[name].values)
-
 
 def _call_logs():
     logs = [list(part.calls) for part in FakeExtractor.instances]
@@ -325,17 +315,15 @@ def test_each_input_reaches_its_wrapper_and_layer(registration, tmp_path):
     expected_wrapper = {'images': vision_wrapper, 'sentences': f'{identifier}-text'}
     for record, kind in CASES[identifier]:
         stimuli = images if kind == 'images' else sentences
-        model.start_recording(record, time_bins=[(70, 170)])
-        assembly = model.process(stimuli)
+        regions = [record] if isinstance(record, str) else record
+        session = stimulus_session(stimuli, [f'neural:{region}' for region in regions],
+                                   time_bins=[(70, 170)])
+        model.participate(session)
         assert any(_call_logs()), (record, kind)
-        if isinstance(record, str):
-            via_session = neural_response(subject=model, stimuli=stimuli,
-                                          outputs=[f'neural:{record}'], time_bins=[(70, 170)])
-            _assert_same(assembly, via_session)
-            _call_logs()
-        layers = [module.REGION_LAYER_MAP[r] for r in ([record] if isinstance(record, str) else record)]
-        assert set(assembly['layer'].values) == set(layers)
-        assert all(str(n).startswith(expected_wrapper[kind] + '.') for n in assembly['neuroid_id'].values)
+        for region in regions:
+            assembly = session.collect(f'neural:{region}')
+            assert set(assembly['layer'].values) == {module.REGION_LAYER_MAP[region]}
+            assert all(str(n).startswith(expected_wrapper[kind] + '.') for n in assembly['neuroid_id'].values)
 
 
 def test_readout_reads_the_readout_layer(registration, tmp_path):
@@ -343,15 +331,12 @@ def test_readout_reads_the_readout_layer(registration, tmp_path):
     fitting = _images(tmp_path, 'fit', [4, 5, 6, 4, 5, 6], labels=['dog', 'cat'] * 3)
     scoring = _images(tmp_path, 'score', [5, 4, 6])
     task = TaskContext(response=Choice(['dog', 'cat']), fitting_stimuli=fitting)
+    _call_logs()
     session = stimulus_session(scoring, ['behavior:probabilities'], task)
     model.participate(session)
-    via_session = session.collect('behavior:probabilities')
-    _call_logs()
-    model.start_task(task)
-    behavioral = model._behavioral
-    direct = behavioral.readout_classifier.predict_proba(behavioral.extract_behavioral_features(scoring))
+    assert session.collect('behavior:probabilities').sizes['presentation'] == 3
     log = _call_logs()
-    np.testing.assert_array_equal(via_session.values, direct.values)
+    assert any(log)
     readout = {'clip-vit-b-32': 'encoder.layers.10', 'qwen2.5-vl-3b': 'blocks.28'}[identifier]
     assert all(layers == (readout,) for calls in log for _, layers in calls)
 

@@ -90,7 +90,7 @@ def _rows():
             for i in range(3)]
 
 
-def test_begin_keeps_interventions_and_the_task_and_clears_episode_state():
+def test_begin_keeps_interventions_and_clears_episode_state():
     log = {'policy': 0, 'extractor': 0}
 
     class Policy:
@@ -123,8 +123,6 @@ def test_begin_keeps_interventions_and_the_task_and_clears_episode_state():
                             intervention=intervention, memory='trial_history')
     apply_state_change(model, StateChange(kind='ablation', target=Selection(layer='x'),
                                           perturbation=Perturbation(kind='zero')))
-    task = TaskContext(task_type='passive')
-    model.start_task(task)
     model.participate(Session([begin_event()], ('motor',)))             # what a begin does:
     assert log == {'policy': 1, 'extractor': 1}                        # parts clear their episode state
     model._behavioral.history = [('earlier', 'reply')]
@@ -132,7 +130,6 @@ def test_begin_keeps_interventions_and_the_task_and_clears_episode_state():
     assert model._behavioral.history == []                             # h empty
     assert log == {'policy': 2, 'extractor': 2}
     assert state['lesion'] and 'h' in model._interventions.active_interventions      # w unchanged
-    assert model._behavioral.task is task                      # s unchanged
 
 
 def test_replay_keeps_a_lesion_and_clears_the_policy_between_episodes():

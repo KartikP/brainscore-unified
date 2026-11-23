@@ -335,13 +335,14 @@ def test_benchmark_keeps_its_identity_and_scores_a_participate_only_subject(benc
 
 
 def test_benchmark_scores_a_model_as_the_earlier_template_did(benchmark):
-    """Same stimuli, region, time bins, metric and ceiling as start_recording + process."""
+    """Same stimuli, region, time bins, metric and ceiling as one session for the region."""
     def subject(extractor):
         return BrainScoreModel(identifier='template-fixture', region_layer_map={'IT': 'layer2'},
                                extractor={'vision': extractor})
-    earlier = subject(StimulusExtractor())
-    earlier.start_recording('IT', time_bins=[(70, 170)])
-    expected = benchmark._metric(earlier.process(benchmark.stimulus_set), benchmark._assembly)
+    from brainscore_core.streaming_helpers import neural_response
+    earlier = neural_response(subject(StimulusExtractor()), benchmark.stimulus_set, ['neural:IT'],
+                              time_bins=[(70, 170)])
+    expected = benchmark._metric(earlier, benchmark._assembly)
 
     extractor = StimulusExtractor()
     current = subject(extractor)

@@ -145,14 +145,6 @@ def test_a_known_table_of_a_stream_is_checked_before_any_set_up(task, outputs, m
     assert calls == []
 
 
-def test_a_direct_answer_call_with_history_and_only_an_answer_part_is_refused():
-    """With no session plan, respond keeps the refusal it had before the plan."""
-    model = BrainScoreModel('answers', in_channels={'text'}, memory='trial_history',
-                            answer=lambda stimulus_row, instruction, label_set: label_set[0])
-    model.start_task(TaskContext(instruction='Which?', response=Choice(['cat', 'dog'])))
-    with pytest.raises(ValueError, match="memory='trial_history' needs reply="):
-        model._behavioral.respond(STIMULI, ['behavior:choice'])
-
 
 def test_trial_history_without_a_part_that_sees_it_is_refused_before_the_readout_fit():
     calls = []

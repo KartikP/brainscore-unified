@@ -3,17 +3,16 @@
 import inspect
 from types import MappingProxyType
 from collections.abc import Mapping
-from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, Optional, Set, Tuple, Union
 
 from ._model import owners
 from ._model.behavioral import BehavioralReadout
 from ._model.owners import statement_hint
 from brainscore_core.compatibility import ExecutionNotFeasibleError
-from brainscore_core.contract import Subject, TaskContext
+from brainscore_core.contract import Subject
 from ._model import dispatch
 from brainscore_core import io_catalog
 from brainscore_core.io_catalog import MODALITY_TO_INPUT_CHANNEL, canonical_modality
-from brainscore_core.events import InputEvent, OutputEvent, StateChange
 from ._model.intervention import Interventions
 from ._model.recording import RecordingRequest
 from .selection import UnitSelector, _promote_to_selector, _with_modality
@@ -452,29 +451,18 @@ class BrainScoreModel(Subject):
     def region_layer_selectors(self) -> Dict[str, "UnitSelector"]:
         return dict(self._region_layer_selectors)
 
-    def process(self, input_event: InputEvent,
-                multi_modality: bool = False) -> OutputEvent:
-        """Run one input on the part that takes it; a convenience outside the contract.
+    def process(self, row: Mapping[str, Any]) -> Mapping[str, Any]:
+        """Answer one step of a loop that a simulator owns: ``row`` maps each input channel
+        to its payload, and the policy's outputs come back as a mapping of output channel to payload.
 
-        ``participate`` does not call it. A ``StimulusSet`` gives the activity
-        of the regions ``start_recording`` set (a ``NeuroidAssembly``); a row
-        (a mapping of channel -> payload) gives the policy's outputs; a
-        ``StateChange`` is applied or undone by the intervention part (in an
-        experiment, send it with ``apply_state_change`` or the ``Intervene`` tool).
-
-        :param input_event: the stimuli, the row or the change.
-        :param multi_modality: if True, extract from every detected-and-supported
-            modality and concat along the neuroid axis; default routes a single
-            modality by ``MODALITY_PRIORITY``.
+        The model may record its regions during that step, with the tools of an experiment.
         """
-        if isinstance(input_event, StateChange):
-            return self._interventions.process(input_event)
-        if isinstance(input_event, Mapping):
-            return dispatch.act(self, input_event)
-        if hasattr(input_event, 'columns'):
-            return dispatch.record(self, input_event, multi_modality)
-        raise TypeError(f"Subject '{self.identifier}' takes a stimulus table, a row or a "
-                        f"StateChange; got {type(input_event).__name__}.")
+        if not isinstance(row, Mapping):
+            raise TypeError(
+                f"Subject '{self.identifier}' process() takes one row, a mapping of channel -> "
+                f"payload; got {type(row).__name__}. Present stimuli with neural_response or "
+                f"behavioral_response, and send a StateChange with apply_state_change.")
+        return dispatch.act(self, row)
 
     def participate(self, session) -> None:
         """Run a session through the one capability that claims it.
@@ -516,62 +504,6 @@ class BrainScoreModel(Subject):
     def detect_modalities(self, stimuli) -> Set[str]:
         """Declared input modalities whose columns appear in ``stimuli``."""
         return dispatch.detect_modalities(self, stimuli)
-
-    def start_recording(self,
-                        recording_target: Union[str, List[str]],
-                        time_bins: Optional[List[Tuple[int, int]]] = None,
-                        recording_type: Optional[str] = None) -> None:
-        """Configure neural recording for subsequent ``process`` calls.
-
-        ``recording_target`` is a mapped region name, a list of
-        mapped regions, or a raw layer path. Multiple regions are extracted in
-        one call and returned with per-neuroid ``layer`` and ``region``
-        provenance. See :class:`RecordingRequest` for validation details.
-        """
-        self._recording_request.start_recording(recording_target, time_bins,
-                                       recording_type)
-
-    def start_task(self, task, fitting_stimuli=None,
-                   **kwargs) -> None:
-        """Configure the behavioral task.
-
-        Fitting stimuli reach the readout with only the input modalities this
-        model declares (rule 5.5); the caller's table is never changed. The
-        same TaskContext object sent again, as a facade session does for every
-        measurement, keeps the fitted readout; a new task, an edited one,
-        or any task after an intervention or reset, fits anew. The last
-        configuration that completed is recalled for the same unchanged
-        task after a session gave the caller's task back.
-        """
-        from dataclasses import replace
-        from brainscore_core.streaming_helpers import declared_only
-        if isinstance(task, TaskContext):
-            if (self._behavioral.is_configured_for(task)
-                    or self._behavioral.recall(task)):
-                # A session that requests a format the readout serves fits it now, once.
-                if self._behavioral.fit_for(kwargs.get('formats')):
-                    self._behavioral.mark_configured(self._behavioral.configured_from or task)
-                return
-            fitting = task.fitting_stimuli
-            projected = declared_only(fitting, self.in_channels)
-            declared = (task if projected is fitting
-                        else replace(task, fitting_stimuli=projected))
-            try:
-                self._behavioral.start_task(declared, **kwargs)
-            except BaseException:
-                self._behavioral.abandon()   # a half-built task is never reused
-                raise
-            self._behavioral.mark_configured(task)
-            return
-        try:
-            self._behavioral.start_task(task,
-                                        declared_only(fitting_stimuli, self.in_channels),
-                                        **kwargs)
-        except BaseException:
-            self._behavioral.abandon()
-            raise
-        # The task built from (task type, fitting) is what a facade sends back.
-        self._behavioral.mark_configured(self._behavioral.task)
 
     def reset(self) -> None:
         # Inside intact() the reset refuses before any part changes.

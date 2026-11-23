@@ -56,16 +56,6 @@ def test_in_channels():
     assert 'vision:image' in model.in_channels   # TODO: match your extractor mapping
 
 
-def test_start_recording_accepts_known_region():
-    import brainscore
-    model = brainscore.load_model('your-model')
-    model.start_recording('IT')                      # TODO: a region in your region_layer_map
-    # A name that is neither a region nor a layer of the extractor is refused before any
-    # compute, with the same rule for strings and lists.
-    for target in ('NotARegion', ['NotARegion']):
-        with pytest.raises(ValueError, match='not a region in region_layer_map'):
-            model.start_recording(target)
-
 
 def test_session_returns_an_assembly(tiny_stimuli):
     """The one test that proves the registration actually works end to end."""

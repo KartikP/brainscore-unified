@@ -1,6 +1,5 @@
 """A learned selection must address the same units when recording and intervening."""
 from contextlib import contextmanager, nullcontext
-import warnings
 from types import SimpleNamespace
 import numpy as np
 import pytest
@@ -10,6 +9,7 @@ from brainscore.experiments import SessionProtocol, Repetition, TorchInstrumenta
 from brainscore import FunctionalSelection
 from brainscore_core.events import Selection
 from brainscore_core.streaming import Session
+from brainscore_core.streaming_helpers import neural_response
 
 
 @pytest.mark.parametrize('axis,expected_count', [(None, 1), (-1, 6), (1, 12)])
@@ -187,13 +187,14 @@ def test_real_vision_extraction_localizer_and_ablation_share_one_feature(tmp_pat
     assert selected.axis is None
     assert selected.expected_shape == (2, 2, 2)
     assert selected.indices[0] in (1, 5)
-    baseline = subject.process(stimuli)
+    record = lambda: neural_response(subject, stimuli, ['neural:IT'])
+    baseline = record()
     provider = TorchInstrumentation(network)
     with provider.ablate([selected]):
-        changed = subject.process(stimuli)
+        changed = record()
     assert np.count_nonzero(changed.values == 0) == len(stimuli)
     assert np.flatnonzero(changed.values[0] == 0).tolist() == selected.indices
-    restored = subject.process(stimuli)
+    restored = record()
     np.testing.assert_array_equal(restored.values, baseline.values)
     assert not network[0]._forward_hooks
 
@@ -336,13 +337,6 @@ def test_new_model_template_supports_public_recording_workflow(tmp_path):
     stimuli.identifier = 'template-smoke'
     stimuli.stimulus_paths = {'s0': image}
     assert subject.in_channels == {'vision:image', 'control'}
-    subject.start_recording('IT')
-    result = subject.process(stimuli)
+    result = neural_response(subject, stimuli, ['neural:IT'])
     assert result.sizes['presentation'] == 1 and result.sizes['neuroid'] > 0
-    # A raw layer path the extractor declares records without a warning.
-    for target in ('2', ['2']):
-        with warnings.catch_warnings():
-            warnings.simplefilter('error', UserWarning)
-            subject.start_recording(target)
-        np.testing.assert_array_equal(subject.process(stimuli).values, result.values)
     subject.reset()

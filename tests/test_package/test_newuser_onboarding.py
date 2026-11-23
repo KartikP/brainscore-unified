@@ -42,8 +42,8 @@ def test_own_images_need_only_an_image_path_column(tmp_path):
     model = BrainScoreModel('mine', extractor={'vision': wrapper}, region_layer_map={'IT': 'conv'})
     stimuli = StimulusSet(pd.DataFrame({'stimulus_id': ['a', 'b', 'c'], 'image_path': _images(tmp_path)}))
     stimuli.identifier = 'own-images'
-    model.start_recording('IT')
-    assert model.process(stimuli).shape == (3, 2 * 6 * 6)
+    from brainscore_core.streaming_helpers import neural_response
+    assert neural_response(model, stimuli, ['neural:IT']).shape == (3, 2 * 6 * 6)
     assert not hasattr(stimuli, 'stimulus_paths')
 
 

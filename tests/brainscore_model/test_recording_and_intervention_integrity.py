@@ -644,8 +644,6 @@ def test_a_reset_refused_inside_intact_leaves_every_state_as_it_was():
                               extractor={'vision': _forms_extractor(1.0)}, region_layer_map={'IT': 'x'},
                               answer=owner.answer)
     handle = _edit(subject, scale=2)
-    subject.start_recording('IT')
-    subject.start_task(TaskContext(instruction='i', response=Choice(['a', 'b'])))
     subject._behavioral.history = ['earlier trial']
 
     def state():

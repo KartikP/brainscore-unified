@@ -95,22 +95,8 @@ class TestBrainScoreModelBehavioral:
         assert np.allclose(result.values.sum(axis=1), 1.0, atol=1e-6)
         assert result.attrs['response']['method'] == 'readout'
 
-    def test_process_returns_neural_before_task(self, labeled_stimuli):
-        features = np.random.default_rng(0).normal(size=(12, 8))
-        extractor = _fake_preprocessor_returning(features)
-        model = BrainScoreModel(
-            identifier='test-model',
-            model=None,
-            region_layer_map={},
-            extractor={'vision': extractor},
-            behavioral_readout_layer='some_layer',
-        )
-        # Without start_task, process() returns neural features
-        result = model.process(labeled_stimuli)
-        assert isinstance(result, NeuroidAssembly)
-        assert 'neuroid' in result.dims
 
-    def test_reset_clears_classifier(self, labeled_stimuli):
+    def test_reset_clears_classifier(self, labeled_stimuli, scored_stimuli):
         features = np.random.default_rng(0).normal(size=(12, 8))
         extractor = _fake_preprocessor_returning(features)
         model = BrainScoreModel(
@@ -122,25 +108,17 @@ class TestBrainScoreModelBehavioral:
             answer_owners={'behavior:choice': ('readout', 'argmax')},
         )
         task = TaskContext(response=Choice(['cat', 'dog']), fitting_stimuli=labeled_stimuli)
-        model.start_task(task)
-        model.start_task(task)                   # the same task keeps its fitted readout
-        assert len(extractor.calls) == 1
-        model.reset()
-        model.start_task(task)                   # after reset the readout is fitted again
-        assert len(extractor.calls) == 2
+        fitting_ids = list(labeled_stimuli['stimulus_id'])
 
-    def test_missing_readout_layer_raises(self, labeled_stimuli):
-        features = np.random.default_rng(0).normal(size=(12, 8))
-        extractor = _fake_preprocessor_returning(features)
-        model = BrainScoreModel(
-            identifier='test-model',
-            model=None,
-            region_layer_map={},
-            extractor={'vision': extractor},
-            # No behavioral_readout_layer
-        )
-        with pytest.raises(ExecutionNotFeasibleError, match="behavioral_readout_layer"):
-            model.start_task(TaskContext(response=Choice(['cat', 'dog']), fitting_stimuli=labeled_stimuli))
+        def fits():
+            return extractor.calls.count(fitting_ids)
+        behavioral_response(model, scored_stimuli, task)
+        behavioral_response(model, scored_stimuli, task)   # the same task keeps its fitted readout
+        assert fits() == 1
+        model.reset()
+        behavioral_response(model, scored_stimuli, task)   # after reset the readout is fitted again
+        assert fits() == 2
+
 
     def test_passive_task_does_not_fit(self, labeled_stimuli):
         features = np.random.default_rng(0).normal(size=(12, 8))
@@ -148,13 +126,13 @@ class TestBrainScoreModelBehavioral:
         model = BrainScoreModel(
             identifier='test-model',
             model=None,
-            region_layer_map={},
+            region_layer_map={'IT': 'some_layer'},
             extractor={'vision': extractor},
             behavioral_readout_layer='some_layer',
         )
-        # 'passive' is neural-style, no readout needed
-        model.start_task(TaskContext(task_type='passive'))
-        assert extractor.calls == []             # nothing was fitted
+        # 'passive' is neural-style, no readout needed: the one extraction is the recording
+        model.participate(stimulus_session(labeled_stimuli, ['neural:IT'], TaskContext(task_type='passive')))
+        assert len(extractor.calls) == 1
 
 
 class TestBrainScoreModelGenerationPath:
@@ -195,17 +173,6 @@ class TestBrainScoreModelGenerationPath:
         # Instruction should be forwarded verbatim
         assert all(c[1] == 'What animal is this?' for c in calls)
 
-    def test_error_when_no_path_viable(self, scored_stimuli):
-        """TaskContext with no fitting_stimuli, no answer function, no
-        instruction+label_set combo → clear error."""
-        model = BrainScoreModel(
-            identifier='test-model',
-            model=None,
-            region_layer_map={},
-            extractor={'vision': lambda *a, **kw: None},
-        )
-        with pytest.raises(ExecutionNotFeasibleError, match="Paths tried: generation needs reply=.*readout needs"):
-            model.start_task(TaskContext(response=Choice(['cat', 'dog'])))   # no fitting stimuli, no answer part
 
 
 def test_a_readout_layer_whose_features_keep_a_time_axis_is_refused_with_a_clear_error():

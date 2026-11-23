@@ -25,14 +25,31 @@ class Extractor:
         )
 
 
+def _record(model, columns, *regions):
+    """The payload of each requested region, from one session on a one-row table."""
+    stimuli = StimulusSet({'stimulus_id': ['s0'], **{column: ['input'] for column in columns}})
+    stimuli.identifier = 'api-cohesion-' + '-'.join(columns)
+    session = stimulus_session(stimuli, [f'neural:{region}' for region in regions])
+    model.participate(session)
+    return [session.collect(f'neural:{region}') for region in regions]
+
+
+def _answer(model, task):
+    """The behavior:choice answer of one session on a one-sentence table."""
+    stimuli = StimulusSet({'stimulus_id': ['s0'], 'sentence': ['hello']})
+    stimuli.identifier = 'api-cohesion-answer'
+    session = stimulus_session(stimuli, ['behavior:choice'], task)
+    model.participate(session)
+    return session.collect('behavior:choice')
+
+
 def test_composite_mapping_round_trip_preserves_units_and_routing():
     selector = CompositeSelector(layers=(('first', (1,)), ('second', (2,))), modality='text')
     model = BrainScoreModel(identifier='roundtrip', region_layer_map={'language': selector},
                             extractor={'text': Extractor()})
     model.region_layer_map = model.region_layer_map
     assert model.region_layer_map['language'] == selector
-    model.start_recording('language')
-    result = model.process(StimulusSet({'sentence': ['hello']}))
+    result, = _record(model, ['sentence'], 'language')
     assert result.sizes['neuroid'] == 2
     assert result.layer.values.tolist() == ['first', 'second']
     assert result.unit_index.values.tolist() == [1, 2]
@@ -57,8 +74,8 @@ def test_every_modality_uses_same_extractor_signature(modality, column):
     extractor = Extractor()
     model = BrainScoreModel(identifier='same-api', region_layer_map={'region': 'layer'},
                             extractor={modality: extractor})
-    model.start_recording('region')
-    assert model.process(StimulusSet({column: ['input']})).sizes['neuroid'] == 4
+    result, = _record(model, [column], 'region')
+    assert result.sizes['neuroid'] == 4
     assert extractor.calls == [['layer']]
 
 
@@ -67,18 +84,10 @@ def test_two_towers_with_same_relative_layer_route_by_selector():
         'IT': LayerSelector(name='encoder.1', modality='vision'),
         'language': LayerSelector(name='encoder.1', modality='text'),
     }, extractor={'vision': Extractor(1), 'text': Extractor(2)})
-    model.start_recording(['IT', 'language'])
-    result = model.process(StimulusSet({'image_path': ['image'], 'sentence': ['text']}), multi_modality=True)
-    assert result.sel(neuroid=result.region == 'IT').values.tolist() == [[1] * 4]
-    assert result.sel(neuroid=result.region == 'language').values.tolist() == [[2] * 4]
+    it, language = _record(model, ['image_path', 'sentence'], 'IT', 'language')
+    assert it.values.tolist() == [[1] * 4]
+    assert language.values.tolist() == [[2] * 4]
 
-
-@pytest.mark.parametrize('target', ['raw', ['raw']])
-def test_raw_layer_has_same_meaning_alone_or_in_list(target):
-    model = BrainScoreModel(identifier='raw', extractor={'text': Extractor()})
-    with pytest.warns(UserWarning, match='raw layer'):
-        model.start_recording(target)
-    assert model.process(StimulusSet({'sentence': ['x']})).layer.values.tolist() == ['raw'] * 4
 
 
 def test_common_session_collects_neural_output_without_helper_class():
@@ -134,8 +143,8 @@ def test_variadic_legacy_wrapper_is_normalized_without_identifier_discovery():
             return Extractor()(*args, **kwargs)
     model = BrainScoreModel(identifier='compatibility', extractor={'vision': Wrapper()},
                             region_layer_map={'IT': 'layer'})
-    model.start_recording('IT')
-    assert model.process(StimulusSet({'image_path': ['x']})).shape == (1, 4)
+    result, = _record(model, ['image_path'], 'IT')
+    assert result.shape == (1, 4)
 
 
 def test_neural_events_work_without_a_stimulus_table():
@@ -180,8 +189,8 @@ def test_external_selector_routing_does_not_require_a_dataclass():
     model.region_layer_map = model.region_layer_map
     assert model.region_layer_selectors['region'].modality == 'text'
     assert model.output_inputs == {'neural:region': frozenset({'text'})}
-    model.start_recording('region')
-    assert model.process(StimulusSet({'sentence': ['x']})).shape == (1, 4)
+    result, = _record(model, ['sentence'], 'region')
+    assert result.shape == (1, 4)
 
 
 def test_generation_inputs_need_no_placeholder_extractors():
@@ -199,13 +208,10 @@ def test_generation_inputs_need_no_placeholder_extractors():
     result = behavioral_response(model, stimuli, TaskContext(instruction='Choose yes.',
                                                              response=Choice(['yes', 'no'])))
     assert result.values.tolist() == [[1.0, 0.0]]
-    # Without a session, process() has no extractor to answer with.
-    with pytest.raises(NotImplementedError, match='no activation extractor'):
-        model.process(StimulusSet({'stimulus_id': ['s0'], 'sentence': ['hello']}))
 
 
 @pytest.mark.parametrize('parts', ['answer and readout', 'readout'])
-def test_the_model_parts_choose_the_behavioral_path(monkeypatch, parts):
+def test_the_model_parts_choose_the_behavioral_path(parts):
     """The path is a property of the model: a model built without answer= uses its readout."""
     import warnings
     from brainscore_core.contract import TaskContext
@@ -217,16 +223,15 @@ def test_the_model_parts_choose_the_behavioral_path(monkeypatch, parts):
         answer_owners={} if answer
                            else {'behavior:choice': ('readout', 'argmax')},
     )
-    fitted = []
-    monkeypatch.setattr(model._behavioral, 'fit_behavioral_readout', lambda stimuli: fitted.append(stimuli))
-    stimuli = StimulusSet({'sentence': ['hello']})
+    fitting = StimulusSet({'stimulus_id': ['a', 'b'], 'sentence': ['hello', 'bye'],
+                           'label': ['yes', 'no']})
+    fitting.identifier = 'dual-path-fitting'
     with warnings.catch_warnings(record=True) as notices:
         warnings.simplefilter('always')
-        model.start_task(TaskContext(instruction='Choose yes.', response=Choice(['yes', 'no']),
-                                     fitting_stimuli=stimuli))
-    assert not notices   # the stated owner answers; no warning (rule 4.11)
-    assert fitted        # a direct start_task fits the readout, which gives the probabilities in both
-    assert model._behavioral.response_path == ('generation' if answer else 'readout')
+        result = _answer(model, TaskContext(instruction='Choose yes.', response=Choice(['yes', 'no']),
+                                            fitting_stimuli=fitting))
+    assert not [notice for notice in notices if issubclass(notice.category, UserWarning)]
+    assert result.attrs['response']['method'] == ('generation' if answer else 'readout')
 
 
 def test_named_readout_layer_without_extractor_is_not_a_second_path():
@@ -237,11 +242,13 @@ def test_named_readout_layer_without_extractor_is_not_a_second_path():
         identifier='answer-only', in_channels={'text'},
         answer=lambda **kwargs: 'yes', behavioral_readout_layer='features',
     )
+    fitting = StimulusSet({'stimulus_id': ['a'], 'sentence': ['hello'], 'label': ['yes']})
+    fitting.identifier = 'answer-only-fitting'
     with warnings.catch_warnings():
         warnings.simplefilter('error', UserWarning)
-        model.start_task(TaskContext(instruction='Choose yes.', response=Choice(['yes', 'no']),
-                                     fitting_stimuli=StimulusSet({'sentence': ['hello']})))
-    assert model._behavioral.response_path == 'generation'
+        result = _answer(model, TaskContext(instruction='Choose yes.', response=Choice(['yes', 'no']),
+                                            fitting_stimuli=fitting))
+    assert result.attrs['response']['method'] == 'generation'
 
 
 def test_channel_registration_policy_differs_only_for_exploration():

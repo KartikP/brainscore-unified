@@ -57,15 +57,21 @@ def test_external_input_output_state_reset_and_session():
 
 
 def test_external_modality_routes_without_host_modification():
+    from brainscore_core.streaming_helpers import neural_response
+    from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
     from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
     register_channel(CatalogEntry('depth_sensor', 'input', 'StimulusSet', 'depth', 'test'),
                      columns=['depth_sample'])
     calls = []
     def extract(stimuli, layers=None, **kwargs):
         calls.append(stimuli)
-        return 'measured'
-    model = BrainScoreModel('depth', extractor={'depth_sensor': extract})
-    assert model.process(StimulusSet({'depth_sample': ['fixture']})) == 'measured'
+        return NeuroidAssembly([[1.0]], dims=['presentation', 'neuroid'], coords={
+            'stimulus_id': ('presentation', list(stimuli['stimulus_id'])),
+            'neuroid_id': ('neuroid', ['d0']), 'layer': ('neuroid', list(layers))})
+    model = BrainScoreModel('depth', extractor={'depth_sensor': extract}, region_layer_map={'R': 'layer'})
+    stimuli = StimulusSet({'stimulus_id': ['s0'], 'depth_sample': ['fixture']})
+    stimuli.identifier = 'depth-fixture'
+    assert neural_response(model, stimuli, ['neural:R']).values.tolist() == [[1.0]]
     assert len(calls) == 1
     with pytest.raises(ValueError, match='already belongs'):
         register_channel(CatalogEntry('another_sensor', 'input', 'StimulusSet', 'depth', 'test'),

@@ -37,9 +37,9 @@ def test_invalid_answers_count_as_wrong():
     assert score.attrs['accuracy_real'] == pytest.approx(.5)
 
 
-def test_session_reading_matches_the_configured_readout():
-    """ROAR reads through behavioral_response; on a BrainScoreModel the answers
-    are the ones the readout configured by start_task gives."""
+def test_session_reading_matches_the_benchmark_score():
+    """ROAR reads through behavioral_response; on a BrainScoreModel the score is
+    the accuracy of the readout's answers in a session on the same task."""
     import numpy as np
     from brainscore_core.contract import TaskContext
     from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
@@ -74,26 +74,18 @@ def test_session_reading_matches_the_configured_readout():
     from brainscore_core.responses import Choice
     task = TaskContext(response=Choice(['real', 'pseudo']), fitting_stimuli=benchmark._train_stimuli,
                        instruction='Is this a real word or a pseudo word?')
-    legacy = model()
-    legacy.start_task(task)
-    behavioral = legacy._behavioral
-    expected = behavioral.readout_classifier.predict_proba(
-        behavioral.extract_behavioral_features(benchmark.stimulus_set))
-    choices = list(expected['choice'].values)
-    expected_correct = [choices[int(i)] == label for i, label in
-                        zip(expected.values.argmax(axis=1), benchmark.stimulus_set['image_label'])]
-
     from brainscore_core.streaming_helpers import stimulus_session
     session = stimulus_session(benchmark.stimulus_set, ['behavior:probabilities'], task)
     model().participate(session)
     answered = session.collect('behavior:probabilities')
-    np.testing.assert_array_equal(answered.values, expected.values)
-    assert list(answered['stimulus_id'].values) == list(expected['stimulus_id'].values)
-    assert list(answered['choice'].values) == choices
+    assert list(answered['stimulus_id'].values) == list(benchmark.stimulus_set['stimulus_id'])
+    choices = list(answered['choice'].values)
+    expected_correct = [choices[int(i)] == label for i, label in
+                        zip(answered.values.argmax(axis=1), benchmark.stimulus_set['image_label'])]
 
     score = benchmark(model())
     assert float(score.attrs['raw']) == np.mean(expected_correct)
-    assert score.attrs['n_trials'] == len(expected)
+    assert score.attrs['n_trials'] == len(answered)
 
 
 def test_a_missing_answer_counts_as_wrong_and_is_counted_apart():

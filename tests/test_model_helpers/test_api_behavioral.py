@@ -430,9 +430,13 @@ class TestRegistration:
         from brainscore.models.api_closed.model import get_model
         m = get_model('claude-opus-behavioral')
         from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-        # A behavioral-only model declares its inputs without pretending to extract activity.
-        with pytest.raises(NotImplementedError, match='no activation extractor'):
-            m.process(StimulusSet({'image_path': ['unused.png'], 'stimulus_id': ['s0']}))
+        from brainscore_core.compatibility import ExecutionNotFeasibleError
+        from brainscore_core.streaming_helpers import neural_response
+        stimuli = StimulusSet({'image_path': ['unused.png'], 'stimulus_id': ['s0']})
+        stimuli.identifier = 'behavioral-only'
+        # A behavioral-only model declares no neural output: a session for one is refused.
+        with pytest.raises(ExecutionNotFeasibleError, match="does not produce \\['neural:IT'\\]"):
+            neural_response(m, stimuli, ['neural:IT'])
 
     def test_unknown_identifier_raises(self):
         from brainscore.models.api_closed.model import get_model

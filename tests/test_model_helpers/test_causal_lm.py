@@ -8,7 +8,7 @@ pytestmark = pytest.mark.unit
 
 torch = pytest.importorskip('torch')
 
-from brainscore_core.streaming_helpers import apply_state_change
+from brainscore_core.streaming_helpers import apply_state_change, neural_response
 from brainscore_core.events import Perturbation, Selection, StateChange
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.model_helpers.causal_lm import build_causal_lm_subject
@@ -132,18 +132,17 @@ def test_reply_obeys_the_task_settings(subject, monkeypatch):
 
 def test_recording_input_site_sees_the_steered_neuron(subject):
     model, net, _ = subject
-    model.start_recording('mlp_in')
-    base = model.process(_stimuli())
+    record = lambda: neural_response(model, _stimuli(), ['neural:mlp_in'])
+    base = record()
     assert base.sizes['neuroid'] == 24  # the MLP's intermediate units, not the hidden size
     apply_state_change(model, StateChange(kind='steer', perturbation=Perturbation(kind='drive', amount=5.0),
                                           target=Selection(layer=NEURON_IN, indices=[4])))
-    steered = model.process(_stimuli())
+    steered = record()
     diff = np.nan_to_num(steered.values - base.values)
     assert np.allclose(diff[..., 4][~np.isnan(base.values[..., 4])], 5.0, atol=1e-5)
     assert np.abs(np.delete(diff, 4, axis=-1)).max() == 0
-    model.reset()  # also clears the recording setup
-    model.start_recording('mlp_in')
-    np.testing.assert_array_equal(model.process(_stimuli()).values, base.values)
+    model.reset()  # also undoes the steering
+    np.testing.assert_array_equal(record().values, base.values)
 
 
 def test_intervention_changes_scores_and_reset_restores_them(subject):
@@ -248,8 +247,6 @@ def test_neural_responses_carry_a_copy_of_the_provenance(subject):
     assert event.payload.attrs['provenance'] == expected
     event.payload.attrs['provenance']['revision'] = 'edited'  # a copy per response
     assert neural_response(model, _stimuli(), ['neural:mlp_in']).attrs['provenance'] == expected
-    model.start_recording('mlp_in')
-    assert model.process(_stimuli()).attrs['provenance'] == expected
 
 
 def test_caller_provenance_is_copied_at_registration(subject):

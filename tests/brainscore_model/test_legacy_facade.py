@@ -17,6 +17,7 @@ from brainscore_core.legacy_facade import (
 )
 from brainscore import BrainScoreModel
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+from brainscore_core.streaming_helpers import behavioral_response, neural_response
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
@@ -63,14 +64,13 @@ def _images(n=2):
     return stimuli
 
 
-def test_look_at_matches_process():
+def test_look_at_matches_a_session():
     model, _ = _model()
     facade = _facade(model)
     facade.start_recording('IT', time_bins=[(70, 170)])
     via_legacy = facade.look_at(_images())
-    model.start_recording('IT', time_bins=[(70, 170)])
-    via_process = model.process(_images())
-    np.testing.assert_array_equal(via_legacy.values, via_process.values)
+    via_session = neural_response(model, _images(), ['neural:IT'], time_bins=[(70, 170)])
+    np.testing.assert_array_equal(via_legacy.values, via_session.values)
     assert 'time_bin' not in via_legacy.dims  # one bin: unchanged, as in legacy
 
 
@@ -138,8 +138,7 @@ def test_facade_wraps_a_subject_directly():
 
 def test_repeat_over_time_bins_keeps_existing_time_axis():
     model, _ = _model()
-    model.start_recording('IT', time_bins=[(0, 10), (10, 20)])
-    timed = model.process(_images())
+    timed = neural_response(model, _images(), ['neural:IT'], time_bins=[(0, 10), (10, 20)])
     assert repeat_over_time_bins(timed, [(0, 10), (10, 20)]) is timed
 
 
@@ -152,8 +151,7 @@ def test_repeat_over_time_bins_keeps_existing_time_axis():
 ])
 def test_single_time_bin_in_any_benchmark_form_leaves_response_unchanged(time_bins):
     model, _ = _model()
-    model.start_recording('IT', time_bins=time_bins)
-    assert 'time_bin' not in model.process(_images()).dims
+    assert 'time_bin' not in neural_response(model, _images(), ['neural:IT'], time_bins=time_bins).dims
 
 
 # --- the facade runs any subject through participate ------------------------
@@ -201,8 +199,9 @@ def test_typed_look_at_runs_through_participate():
     via_legacy = facade.look_at(_images())
     assert len(sessions) == 1
     assert sessions[0].outputs == ('neural:IT',)
-    model.start_recording('IT', time_bins=[(70, 170)])
-    np.testing.assert_array_equal(via_legacy.values, model.process(_images()).values)
+    model.participate = original
+    via_session = neural_response(model, _images(), ['neural:IT'], time_bins=[(70, 170)])
+    np.testing.assert_array_equal(via_legacy.values, via_session.values)
 
 
 def test_typed_behavioral_look_at_matches_a_behavior_session():
@@ -308,8 +307,8 @@ def test_repeated_task_refits_after_a_state_change():
 def test_fitting_stimuli_reach_the_readout_with_declared_inputs_only():
     model, extractor = _readout_model()
     fitting = _labelled_images(with_text=True)
-    model.start_task(TaskContext(response=CHOICE, fitting_stimuli=fitting))
-    seen = extractor.seen[-1]
+    behavioral_response(model, _images(), TaskContext(response=CHOICE, fitting_stimuli=fitting))
+    seen = next(table for table in extractor.seen if 'image_label' in table.columns)
     assert 'sentence' not in seen.columns
     assert list(seen['image_label']) == list(fitting['image_label'])
     assert 'sentence' in fitting.columns  # the benchmark's table is untouched
@@ -327,20 +326,19 @@ def test_typed_behavioral_variance_request_fails_before_compute():
 
 
 def test_changed_fitting_data_in_the_same_task_object_refits():
-    """TaskContext is mutable: an explicit start_task after a change fits again."""
+    """TaskContext is mutable: a measurement after a change fits again."""
     model, extractor = _readout_model()
     task = TaskContext(response=CHOICE, fitting_stimuli=_labelled_images())
-    model.start_task(task)
-    model.start_task(task)
+    behavioral_response(model, _images(), task)
+    behavioral_response(model, _images(), task)
     assert _fits(extractor) == 1  # unchanged task sent again: no refit
     task.fitting_stimuli = _labelled_images()  # a new table
     task.fitting_stimuli['image_label'] = ['dog', 'cat', 'dog', 'cat']
-    model.start_task(task)
+    behavioral_response(model, _images(), task)
     assert _fits(extractor) == 2
     task.fitting_stimuli['image_label'] = ['cat', 'cat', 'dog', 'dog']  # relabelled in place
-    model.start_task(task)
+    behavioral_response(model, _images(), task)
     assert _fits(extractor) == 3
-    from brainscore_core.streaming_helpers import behavioral_response
     behavioral_response(model, _images(), task)  # a measurement on the unchanged task: no refit
     assert _fits(extractor) == 3
 

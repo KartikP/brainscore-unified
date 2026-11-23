@@ -449,19 +449,15 @@ class RecordingRequest:
 
     def start_recording(self,
                         recording_target: Union[str, List[str]],
-                        time_bins: Optional[List[Tuple[int, int]]] = None,
-                        recording_type: Optional[str] = None) -> None:
-        """Configure the layers extracted by subsequent ``process`` calls.
+                        time_bins: Optional[List[Tuple[int, int]]] = None) -> None:
+        """Configure the layers extracted by subsequent ``record`` calls.
 
         A string names one region, and a list records several targets in one
         extraction. A name that is not a region is read as a layer path: when
         the extractor lists its layers, a name that is not one of them raises
         ``ValueError`` (with close matches); when it lists none, the name is
         used as given, with a warning. Strings and lists follow the same rule.
-        ``recording_type`` is accepted for legacy adapter compatibility and is
-        otherwise ignored by ``BrainScoreModel``.
         """
-        del recording_type
         owner = self.owner
 
         targets = ([recording_target] if isinstance(recording_target, str)

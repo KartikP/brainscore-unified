@@ -16,6 +16,7 @@ from PIL import Image
 pytestmark = pytest.mark.slow  # loads real Qwen2.5-VL-3B weights — run on demand
 
 from brainscore import BrainScoreModel
+from brainscore_core.streaming_helpers import neural_response
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from tests.vlm_same_image import assert_same_image
 
@@ -167,16 +168,14 @@ class TestCaching:
 
 class TestVLMVisionWrapperIntegration:
     def test_works_as_brainscore_model_preprocessor(self, qwen_vision_wrapper, image_stimuli):
-        """The public model call preserves the wrapper's per-image features."""
+        """A session preserves the wrapper's per-image features."""
         model = BrainScoreModel(
             identifier='qwen2.5-vl-3b-test',
             model=None,
             region_layer_map={'IT': 'blocks.28'},
             extractor={'vision': qwen_vision_wrapper},
         )
-        model.start_recording('IT')
-
-        result = model.process(image_stimuli)
+        result = neural_response(model, image_stimuli, ['neural:IT'])
         direct = qwen_vision_wrapper(image_stimuli, layers=['blocks.28'])
         np.testing.assert_array_equal(result.values, direct.values)
         assert list(result['stimulus_id'].values) == list(direct['stimulus_id'].values)

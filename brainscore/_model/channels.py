@@ -249,7 +249,4 @@ def check_layer_provenance(model, output, region: str) -> None:
 
 
 def _start(model, target, time_bins) -> None:
-    if time_bins is None:
-        model.start_recording(target)
-    else:
-        model.start_recording(target, time_bins=time_bins)
+    model._recording_request.start_recording(target, time_bins)

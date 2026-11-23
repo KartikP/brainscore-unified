@@ -60,47 +60,18 @@ def _task(labels=('cat', 'dog')):
     return TaskContext(response=Choice(list(labels)), fitting_stimuli=_labelled(labels=labels))
 
 
-def _read_out(model, stimuli):
-    """The configured readout's probabilities for ``stimuli``."""
-    behavioral = model._behavioral
-    return behavioral.readout_classifier.predict_proba(behavioral.extract_behavioral_features(stimuli))
-
 
 def _fits(extractor):
     return sum(1 for ids in extractor.calls if ids and str(ids[0]).startswith('f'))
 
 
-def test_process_records_activity_again_after_a_behavior_session():
+def test_a_neural_session_records_activity_again_after_a_behavior_session():
     model, _ = _model()
-    model.start_recording('IT')
     assert isinstance(behavioral_response(model, _images(), _task()), BehavioralAssembly)
-    after = model.process(_images())
+    after = neural_response(model, _images(), ['neural:IT'])
     assert isinstance(after, NeuroidAssembly) and not isinstance(after, BehavioralAssembly)
-    assert model._behavioral.task is None and model._behavioral.readout_classifier is None
 
 
-def test_the_callers_task_survives_a_behavior_session():
-    model, _ = _model()
-    prior = _task(labels=('bird', 'fish'))
-    model.start_task(prior)
-    classifier = model._behavioral.readout_classifier
-    behavioral_response(model, _images(), _task())
-    assert model._behavioral.task is prior
-    assert model._behavioral.readout_classifier is classifier
-    output = _read_out(model, _images())
-    assert sorted(output['choice'].values) == ['bird', 'fish']
-
-
-def test_the_callers_task_returns_when_the_session_fails():
-    model, extractor = _model()
-    prior = _task(labels=('bird', 'fish'))
-    model.start_task(prior)
-    classifier = model._behavioral.readout_classifier
-    extractor.fail_on_scoring = True
-    with pytest.raises(RuntimeError, match='extraction failed'):
-        behavioral_response(model, _images(), _task())
-    assert model._behavioral.task is prior
-    assert model._behavioral.readout_classifier is classifier
 
 
 def test_the_same_task_in_a_later_session_keeps_its_fitted_readout():
@@ -108,14 +79,10 @@ def test_the_same_task_in_a_later_session_keeps_its_fitted_readout():
     task = _task()
     first = behavioral_response(model, _images(), task)
     assert _fits(extractor) == 1
-    model.start_recording('IT')
     neural_response(model, _images(), ['neural:IT'])   # a session in between
     second = behavioral_response(model, _images(), task)
     assert _fits(extractor) == 1
     np.testing.assert_array_equal(first.values, second.values)
-    model.start_task(task)                           # the caller sends the same task
-    assert _fits(extractor) == 1
-    assert isinstance(_read_out(model, _images()), BehavioralAssembly)
 
 
 def test_a_new_task_in_a_later_session_fits_again():
@@ -146,47 +113,28 @@ def test_an_edited_task_in_a_later_session_fits_again():
 
 def test_a_failed_task_setup_never_leaves_a_half_built_readout():
     """A fit that fails part way is not remembered or reused."""
-    model, _ = _model()
+    model, extractor = _model()
     a = _task(labels=('bird', 'fish'))
-    model.start_task(a)
+    before = behavioral_response(model, _images(), a)
     one_class = _task(labels=('cat', 'cat'))
     with pytest.raises(ValueError):
         behavioral_response(model, _images(), one_class)        # the classifier cannot fit one class
-    assert model._behavioral.task is a
     with pytest.raises(ValueError):
-        model.start_task(one_class)                  # the same failure, outside a session
-    model.start_task(_task(labels=('cat', 'dog')))   # another task, configured directly
-    model.start_task(a)
-    assert sorted(_read_out(model, _images())['choice'].values) == ['bird', 'fish']
+        behavioral_response(model, _images(), one_class)        # the same failure again: nothing kept
+    after = behavioral_response(model, _images(), a)
+    np.testing.assert_array_equal(before.values, after.values)
 
 
 def test_a_neutral_session_keeps_the_remembered_readout():
     """A session that configures no task does not cost a refit."""
     model, extractor = _model()
-    model.start_task(_task(labels=('bird', 'fish')))  # the caller's task A
-    model.start_recording('IT')
     b = _task()
     behavioral_response(model, _images(), b)
-    assert _fits(extractor) == 2
+    assert _fits(extractor) == 1
     neural_response(model, _images(), ['neural:IT'])
     behavioral_response(model, _images(), b)
-    assert _fits(extractor) == 2
-    assert sorted(_read_out(model, _images())['choice'].values) == ['bird', 'fish']
+    assert _fits(extractor) == 1
 
-
-def test_a_reset_inside_a_session_stands(monkeypatch):
-    """The scope does not bring back a task that reset() cleared."""
-    from brainscore.capabilities.built_in import NeuralSessions
-    from brainscore_core.streaming_helpers import stimulus_session
-    model, _ = _model()
-    model.start_task(_task(labels=('bird', 'fish')))
-    monkeypatch.setattr(NeuralSessions, 'participate',
-                        lambda self, subject, session: subject.reset())
-    model.participate(stimulus_session(_images(), ['neural:IT']))
-    assert model._behavioral.task is None
-    assert model._behavioral.readout_classifier is None
-    model.start_recording('IT')
-    assert not isinstance(model.process(_images()), BehavioralAssembly)
 
 
 def test_an_unhashable_fitting_table_fits_no_more_often_than_before():

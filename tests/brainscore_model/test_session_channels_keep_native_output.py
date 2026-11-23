@@ -184,25 +184,6 @@ def test_streaming_session_records_each_extractor_separately():
         assert event.payload.indexes['time_bin'].equals(native.indexes['time_bin'])
 
 
-@pytest.mark.parametrize('case', ['video+audio', 'still+audio', 'video+text-per-token',
-                                  'video+audio-without-bounds'])
-def test_direct_merge_of_different_time_axes_is_refused(case):
-    make, regions = CASES[case]
-    model = subject(make(), regions, [])
-    model.start_recording(list(regions))
-    with pytest.raises(ValueError, match='different time axes'):
-        model.process(stimuli(), multi_modality=True)
-
-
-def test_direct_merge_of_one_shared_time_axis_still_works():
-    shared = audio(n=4, step=750.0)
-    other = shared.copy(deep=True)
-    regions = {'IT': ('encoder.layers.6', 'video'), 'A1': ('encoder.layers.6', 'audio')}
-    model = subject({'video': other, 'audio': shared}, regions, [])
-    model.start_recording(list(regions))
-    combined = model.process(stimuli(), multi_modality=True)
-    assert combined.sizes['time_bin'] == 4
-    assert combined.sizes['neuroid'] == 4
 
 
 def test_missing_input_is_refused_before_any_extractor_runs():
@@ -393,37 +374,6 @@ def test_duplicate_channels_are_refused_before_compute(channels):
     assert calls == []
 
 
-def unindexed(offset, per_presentation):
-    assembly = NeuroidAssembly(np.arange(8, dtype='float32').reshape(2, 2, 2),
-        dims=['presentation', 'time_bin', 'neuroid'], coords={
-            'stimulus_id': ('presentation', IDS),
-            'neuroid_id': ('neuroid', [f'unit-{offset}-{i}' for i in range(2)]),
-            'layer': ('neuroid', ['layer'] * 2)})
-    if per_presentation:
-        starts = np.array([[0., 10.], [0., 10.]]) + offset
-        return assembly.assign_coords(time_bin_start_ms=(('presentation', 'time_bin'), starts),
-                                      time_bin_end_ms=(('presentation', 'time_bin'), starts + 10))
-    starts = np.array([0., 10.]) + offset
-    assembly = assembly.assign_coords(time_bin_start_ms=('time_bin', starts),
-                                      time_bin_end_ms=('time_bin', starts + 10))
-    return assembly.reset_index('time_bin') if 'time_bin' in assembly.indexes else assembly
-
-
-@pytest.mark.parametrize('per_presentation', [True, False])
-@pytest.mark.parametrize('offset', [100, 0])
-def test_direct_merge_compares_time_bounds_not_only_lengths(per_presentation, offset):
-    model = BrainScoreModel('bounds', extractor={
-        'text': lambda stimuli, layers: unindexed(0, per_presentation),
-        'audio': lambda stimuli, layers: unindexed(offset, per_presentation)},
-        region_layer_map={'language': LayerSelector('layer', modality='text'),
-                          'A1': LayerSelector('layer', modality='audio')})
-    model.start_recording(['language', 'A1'])
-    table = StimulusSet({'stimulus_id': IDS, 'sentence': ['x', 'y'], 'audio_path': ['a', 'b']})
-    if offset:
-        with pytest.raises(ValueError, match='different time axes'):
-            model.process(table, multi_modality=True)
-    else:
-        assert model.process(table, multi_modality=True).sizes['time_bin'] == 2
 
 
 # --- metadata, capabilities, composites, time axes --------------------------

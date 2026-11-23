@@ -141,7 +141,7 @@ class BehavioralReadout:
         this component holds (the same task after input projection), as long
         as every field in ``_fingerprint`` is the one fitted. TaskContext is
         mutable: a caller that swaps or edits the fitting table, relabels it
-        or changes a setting and calls start_task again gets a new fit.
+        or changes a setting and sends the task again gets a new fit.
         """
         if self._stale or self.task is None or not self._configured_as:
             return False
@@ -163,7 +163,7 @@ class BehavioralReadout:
                             if task is not None else None)
 
     def abandon(self) -> None:
-        """A start_task failed part way: no task counts as configured, so the next one fits."""
+        """A task failed to configure part way: no task counts as configured, so the next one fits."""
         self.configured_from = None
         self._configured_as = None
 
@@ -219,35 +219,43 @@ class BehavioralReadout:
         self._restore(current)
         return False
 
-    def start_task(self, task_or_type, fitting_stimuli=None, formats=None,
-                   **kwargs) -> None:
+    def start_task(self, task: TaskContext, formats) -> None:
         """Configure ``task``; fit the readout when it serves the requested ``formats``.
 
-        ``formats`` are the outputs a session requests (``None``: every format
-        of the task, as for a direct call). A later session that requests a
-        format the readout serves fits it then (``fit_for``).
+        ``formats`` are the outputs a session requests; a later session that
+        requests a format the readout serves fits it then (``fit_for``).
+        Fitting stimuli reach the readout with only the input modalities the
+        model declares (rule 5.5); the caller's table is never changed. The
+        same TaskContext object sent again, as a facade session does for every
+        measurement, keeps the fitted readout; a new task, an edited one,
+        or any task after an intervention or reset, fits anew. The last
+        configuration that completed is recalled for the same unchanged
+        task after a session gave the caller's task back.
         """
-        del kwargs
-        if isinstance(task_or_type, TaskContext):
-            task = task_or_type
-        else:
-            task = TaskContext(
-                task_type=task_or_type,
-                fitting_stimuli=fitting_stimuli,
-            )
-        self.task = task
-        self.validate_task(task)
-        if task.response is None and task.task_type == 'passive':
-            self.response_path = self.probability_source = None
-            self.readout_classifier = None
+        if self.is_configured_for(task) or self.recall(task):
+            if self.fit_for(formats):
+                self.mark_configured(self.configured_from or task)
             return
-        # A session chose the answering part once, in its plan; a direct call chooses here.
-        planned = self._planned(task, formats)
-        picks = [planned] if planned is not None else self._eligible_picks(task)
-        self.response_path = picks[0][0]
-        self.probability_source = next((source for _, source in picks if source), None)
-        self.readout_classifier = None
-        self.fit_for(formats, picks)
+        from dataclasses import replace
+        from brainscore_core.streaming_helpers import declared_only
+        projected = declared_only(task.fitting_stimuli, self.owner.in_channels)
+        declared = (task if projected is task.fitting_stimuli
+                    else replace(task, fitting_stimuli=projected))
+        try:
+            self.task = declared
+            self.validate_task(declared)
+            self.response_path = self.probability_source = self.readout_classifier = None
+            if declared.response is not None or declared.task_type != 'passive':
+                # A session chose the answering part once, in its plan.
+                planned = self._planned(declared, formats)
+                picks = [planned] if planned is not None else self._eligible_picks(declared)
+                self.response_path = picks[0][0]
+                self.probability_source = next((source for _, source in picks if source), None)
+                self.fit_for(formats, picks)
+        except BaseException:
+            self.abandon()   # a half-built task is never reused
+            raise
+        self.mark_configured(task)
 
     def validate_task(self, task) -> None:
         """Refuse a malformed task: an unknown ``readout_fit``, or a task with no response

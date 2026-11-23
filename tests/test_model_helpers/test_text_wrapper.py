@@ -7,6 +7,7 @@ import pytest
 pytestmark = pytest.mark.slow  # loads real CLIP / GPT-2 weights — run on demand
 
 from brainscore import BrainScoreModel
+from brainscore_core.streaming_helpers import neural_response
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
@@ -121,9 +122,8 @@ class TestTextWrapperIntegration:
                 'text': clip_text_wrapper,
             },
         )
-        model.start_recording('language_system')
-        # The public model call must preserve the wrapper's features and stimulus order.
-        result = model.process(text_stimuli)
+        # A session must preserve the wrapper's features and stimulus order.
+        result = neural_response(model, text_stimuli, ['neural:language_system'])
         direct = clip_text_wrapper(text_stimuli, layers=['encoder.layers.10'])
         np.testing.assert_array_equal(result.values, direct.values)
         assert list(result['stimulus_id'].values) == list(direct['stimulus_id'].values)
@@ -162,14 +162,13 @@ def gpt2_text_wrapper(request):
 class TestTextWrapperCausalMode:
     """Validate last_token aggregation path using GPT-2."""
 
-    def test_process_matches_wrapper(self, gpt2_text_wrapper, text_stimuli):
+    def test_a_session_matches_wrapper(self, gpt2_text_wrapper, text_stimuli):
         model = BrainScoreModel(
             identifier='gpt2-dispatch',
             extractor={'text': gpt2_text_wrapper},
             region_layer_map={'language_system': 'h.11'},
         )
-        model.start_recording('language_system')
-        result = model.process(text_stimuli)
+        result = neural_response(model, text_stimuli, ['neural:language_system'])
         direct = gpt2_text_wrapper(text_stimuli, layers=['h.11'])
         np.testing.assert_array_equal(result.values, direct.values)
         assert list(result['stimulus_id'].values) == list(direct['stimulus_id'].values)

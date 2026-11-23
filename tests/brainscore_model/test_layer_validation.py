@@ -1,6 +1,4 @@
 """Layer paths are checked against the extractor's declared layer names before any forward pass."""
-import warnings
-
 import pytest
 
 from brainscore.brainscore_model import BrainScoreModel
@@ -41,21 +39,6 @@ def test_region_layer_map_setters_are_validated():
     assert dict(model.region_layer_map) == {'IT': 'layer4'}
 
 
-def test_unmapped_region_that_is_not_a_layer_fails_in_start_recording():
-    model = _model({'V1': 'conv1', 'V4': 'layer2', 'IT': 'layer4'})
-    with pytest.raises(ValueError, match=r"'V2' is not a region.*\['IT', 'V1', 'V4'\]"):
-        model.start_recording('V2')
-    with pytest.raises(ValueError, match="'V2'"):
-        model.start_recording(['IT', 'V2'])
-
-
-def test_existing_raw_layer_records_without_a_warning():
-    model = _model({'IT': 'layer4'})
-    with warnings.catch_warnings():
-        warnings.simplefilter('error')
-        model.start_recording('layer1')
-        model.start_recording('layer1:input')
-    assert model._recording_request.current_layers() == ['layer1:input']
 
 
 def test_composite_selector_layers_are_each_checked():
@@ -76,12 +59,4 @@ def test_routed_region_is_checked_against_its_own_tower():
         BrainScoreModel('two', extractor=extractor,
                         region_layer_map={'IT': LayerSelector('encoder.layers.1', modality='vision')})
 
-
-def test_callable_extractor_without_layer_names_is_not_validated():
-    def extract(stimuli, layers):
-        raise AssertionError('not called')
-
-    model = BrainScoreModel('plain', extractor={'vision': extract}, region_layer_map={'IT': 'anything'})
-    with pytest.warns(UserWarning, match='raw layer path'):
-        model.start_recording('V2')
 

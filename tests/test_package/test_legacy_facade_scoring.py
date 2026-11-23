@@ -4,6 +4,7 @@ import pandas as pd
 
 import brainscore
 from brainscore_core.metrics import Score
+from brainscore_core.streaming_helpers import neural_response
 from brainscore import BrainScoreModel
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
@@ -44,8 +45,7 @@ class _UnmarkedBenchmark(_LegacyBenchmark):
     subject_api = None  # not marked legacy: the benchmark receives the subject itself
 
     def __call__(self, candidate):
-        candidate.start_recording('IT', time_bins=[(70, 170)])
-        output = candidate.process(self.stimuli)
+        output = neural_response(candidate, self.stimuli, ['neural:IT'], time_bins=[(70, 170)])
         score = Score([1.0], coords={'aggregation': ['center']}, dims=['aggregation'])
         score.attrs.update(candidate=type(candidate).__name__, output=output)
         return score
@@ -70,7 +70,7 @@ class _VisionNeuralBenchmark(_LegacyBenchmark):
         pass
 
 
-def test_typed_model_scores_identically_to_process(monkeypatch):
+def test_typed_model_scores_identically_to_a_session(monkeypatch):
     import brainscore_vision
 
     model = BrainScoreModel('typed', region_layer_map={'IT': 'layer'},
@@ -82,8 +82,8 @@ def test_typed_model_scores_identically_to_process(monkeypatch):
     score = brainscore_vision._run_score('m', 'legacy-test', check_mem=False)
     assert score.attrs['candidate'] == 'LegacyBenchmarkFacade'
     assert score.attrs['degrees'] == 8
-    model.start_recording('IT', time_bins=[(70, 170)])
-    np.testing.assert_array_equal(score.attrs['output'].values, model.process(benchmark.stimuli).values)
+    session_output = neural_response(model, benchmark.stimuli, ['neural:IT'], time_bins=[(70, 170)])
+    np.testing.assert_array_equal(score.attrs['output'].values, session_output.values)
 
 
 # --- a refusal of an old benchmark's task: N/A before any input, an error after one ---

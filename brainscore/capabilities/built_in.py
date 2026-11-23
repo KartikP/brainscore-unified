@@ -239,7 +239,7 @@ def drive_behavior_and_neural_session(subject, session, driver: str = "interact"
     task = session.task
     regions, answers = list(plan.regions), list(plan.answers)
     # The plan chose the answering part for the requested formats. The requested outputs decide whether the readout is fitted (as they decide the parts).
-    subject.start_task(task, formats=answers)
+    subject._behavioral.start_task(task, answers)
     # A trial is read, answered and its outputs sent before the next is read. A
     # subject without the trait keeps no history, so a listed session can be answered
     # as one whole table ('table'); otherwise a begin can fall between trials.

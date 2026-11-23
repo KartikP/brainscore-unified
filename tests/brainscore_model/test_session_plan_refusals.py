@@ -37,19 +37,17 @@ CLASS = {
     'R10 owner cannot serve': ENFE, 'R10 settings': ENFE, 'R10 no part': ENFE, 'R10 log probabilities need verbatim': ENFE, 'R10 crossed parts': ENFE,
     'R11 readout_fit': ValueError, 'R11 task_type': ENFE,
     'R12': ENFE, 'R13': ValueError,
-    'R14 plan': ENFE, 'R14 direct call': ValueError,
+    'R14 plan': ENFE,
     'R15 table': ValueError,
     'R16 table': ValueError, 'R16 stream with a table': ValueError, 'R16 no table, one at a time': ValueError,
     'R17 table': ENFE, 'R17 stream with a table': ENFE, 'R17 no table': ENFE,
     'R18 table': ENFE, 'R18 no table': ENFE, 'R18 policy step': ENFE,
-    'R19': ValueError, 'R20': ENFE, 'R20 direct call': ValueError, 'R21': ValueError, 'R22 process': ValueError,
-    'R23 process': ValueError, 'R24 layers': ENFE, 'R24 no extractor': ENFE,
-    'R24 layers direct call': ValueError, 'R24 no extractor direct call': NotImplementedError,
-    'R24 readout': ENFE, 'R24 readout direct call': ValueError,
+    'R19': ValueError, 'R20': ENFE, 'R21': ValueError, 'R24 layers': ENFE, 'R24 no extractor': ENFE,
+    'R24 readout': ENFE,
     'R25': ValueError, 'R26': ValueError, 'R27': ValueError,
     'R28 parts': ENFE, 'R28 history': ENFE,
     'R29 reset without handle': ValueError, 'R29 unknown handle': KeyError,
-    'R29 no part': NotImplementedError, 'R29 bad return': TypeError,
+    'R29 no part': ENFE, 'R29 bad return': TypeError,
     'R30 facade': CompatibilityError, 'R30 Lahner': ENFE,
 }
 
@@ -258,12 +256,6 @@ def _r14_plan(log, monkeypatch, tmp_path):
         stimulus_session(STIMULI, ['behavior:choice', 'behavior:probabilities'], CHOICE))
 
 
-@row('R14 direct call', r"memory='trial_history' needs reply= or likelihood=; answer= cannot see earlier")
-def _r14_direct(log, monkeypatch, tmp_path):
-    model = _subject(log, parts=('answer',), memory='trial_history')
-    model.start_task(TaskContext(instruction='Which?', response=Choice(['cat', 'dog'])))
-    model._behavioral.respond(STIMULI, ['behavior:choice'])
-
 
 def _options(counts):
     ids = [f'o{i}' for i in range(len(counts))]
@@ -376,13 +368,6 @@ def _r20(log, monkeypatch, tmp_path):
     model.participate(stimulus_session(STIMULI, ['neural:A1']))
 
 
-@row('R20 direct call', r"Recording targets require missing input modalities: \['audio'\]")
-def _r20_direct(log, monkeypatch, tmp_path):
-    from brainscore.selection import LayerSelector
-    model = _subject(log, extractors=('text', 'audio'), regions={'A1': LayerSelector('late', modality='audio')})
-    model.start_recording('A1')
-    model.process(STIMULI)
-
 
 @row('R21', r'No column in this stimulus set says what kind of input it holds')
 def _r21(log, monkeypatch, tmp_path):
@@ -391,20 +376,6 @@ def _r21(log, monkeypatch, tmp_path):
     _subject(log, regions={'IT': 'late'}).participate(stimulus_session(table, ['neural:IT']))
 
 
-@row('R22 process', r'Recording targets span modalities; pass multi_modality=True\.')
-def _r22(log, monkeypatch, tmp_path):
-    from brainscore.selection import LayerSelector
-    model = _subject(log, extractors=('text', 'audio'), regions={
-        'IT': LayerSelector('late', modality='text'), 'A1': LayerSelector('late', modality='audio')})
-    table = StimulusSet({'stimulus_id': ['s0'], 'sentence': ['real a'], 'audio_path': ['a.wav']})
-    table.identifier = 'refusals-two-inputs'
-    model.start_recording(['IT', 'A1'])
-    model.process(table)
-
-
-@row('R23 process', r"Subject 'logged' records no region")
-def _r23(log, monkeypatch, tmp_path):
-    _subject(log, regions={'IT': 'late'}).process(STIMULI)
 
 
 class _Layered:
@@ -437,23 +408,6 @@ def _r24_none(log, monkeypatch, tmp_path):
         stimulus_session(STIMULI, ['neural:IT']))
 
 
-@row('R24 layers direct call', r"Subject 'two-forms' has no 'vision' extractor for the inputs in this stimulus "
-                              r"set that has all of the layers \['early'\]")
-def _r24_layers_direct(log, monkeypatch, tmp_path):
-    model = BrainScoreModel('two-forms', extractor={'vision': _Layered(['late'], log),
-                                                    'video': _Layered(['early'], log)},
-                            region_layer_map={'IT': 'late', 'V4': 'early'})
-    table = StimulusSet({'stimulus_id': ['p0'], 'image_path': ['p0.png']})
-    table.identifier = 'refusals-pictures-direct'
-    model.start_recording('V4')
-    model.process(table)
-
-
-@row('R24 no extractor direct call', r"Subject 'logged' declares 'text' input but has no activation extractor for it")
-def _r24_none_direct(log, monkeypatch, tmp_path):
-    model = _subject(log, extractors=('vision',), regions={'IT': 'late'})
-    model.start_recording('IT')
-    model.process(STIMULI)
 
 
 def _readout_two_forms(log):
@@ -489,16 +443,10 @@ _READOUT_R24 = (r"Subject 'readout-missing' has no 'vision' extractor for the in
 
 @row('R24 readout', _READOUT_R24)
 def _r24_readout(log, monkeypatch, tmp_path):
-    """Before SP-21: one fitting extraction, then the direct-call class."""
+    """Before SP-21: one fitting extraction, then a ValueError."""
     model, task, stimuli = _readout_two_forms(log)
     model.participate(stimulus_session(stimuli, ['behavior:choice', 'neural:V4'], task))
 
-
-@row('R24 readout direct call', _READOUT_R24, ['fit', 'extract'])
-def _r24_readout_direct(log, monkeypatch, tmp_path):
-    model, task, stimuli = _readout_two_forms(log)
-    model.start_task(task)                       # fits the readout: one extraction
-    model._behavioral._read_out_and_record(stimuli, {'V4': ['early']})
 
 
 @row('R25', r"Neural output for region 'IT' has no 'neuroid' dimension\.", ['extract'])
@@ -582,10 +530,10 @@ def _r29_unknown(log, monkeypatch, tmp_path):
     apply_state_change(_intervened(log), StateChange(kind='reset', handle_id='nope'))
 
 
-@row('R29 no part', r"Subject 'logged' has no intervention part")
+@row('R29 no part', r"Subject 'logged' cannot answer \['perturbation'\].*It has no intervention part")
 def _r29_no_part(log, monkeypatch, tmp_path):
-    _subject(log).process(StateChange(kind='ablation', target=Selection(layer='late'),
-                                      perturbation=Perturbation(kind='zero')))
+    apply_state_change(_subject(log), StateChange(kind='ablation', target=Selection(layer='late'),
+                                                  perturbation=Perturbation(kind='zero')))
 
 
 @row('R29 bad return', r"Subject 'logged' intervention must return a \(PerturbationApplied, cleanup_callable\) "
@@ -630,20 +578,3 @@ def test_options_per_row_are_not_compared_across_trials_one_at_a_time(log):
     model.participate(stimulus_session(_options([2, 3, 2]), ['behavior:choice'], task))
     assert log == ['reply'] * 3
 
-
-@pytest.mark.parametrize('change', [StateChange(kind='reset'), StateChange(kind='reset', handle_id='nope')],
-                         ids=['reset without handle', 'unknown handle'])
-def test_a_refused_intervention_event_keeps_the_fitted_readout(change, log):
-    """R29: the readout fits again only when the model changes, not when an event is refused (O5)."""
-    model = _subject(log, parts=('behavioral_readout_layer',), owners={'behavior:choice': ('readout', 'argmax')},
-                     intervention=lambda c: (PerturbationApplied(handle_id='h', target=c.target,
-                                                                 perturbation=c.perturbation, applied_at=0),
-                                             lambda: None))
-    model.start_task(CHOICE)
-    assert model._behavioral.is_configured_for(CHOICE)
-    with pytest.raises((ValueError, KeyError)):
-        apply_state_change(model, change)
-    assert model._behavioral.is_configured_for(CHOICE)            # before O5: the refused event invalidated it
-    apply_state_change(model, StateChange(kind='ablation', target=Selection(layer='late'),
-                                          perturbation=Perturbation(kind='zero')))
-    assert not model._behavioral.is_configured_for(CHOICE)        # an applied change still invalidates
