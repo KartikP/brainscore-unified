@@ -26,7 +26,7 @@ def examples_on_path(monkeypatch):
 def _optimized(code: str, *args: str) -> subprocess.CompletedProcess:
     """Run code with python -O, where assert statements are removed."""
     env = dict(os.environ)
-    paths = [str(EXAMPLES), str(Path(__file__).resolve().parents[1]), env.get('PYTHONPATH')]
+    paths = [str(EXAMPLES), str(Path(__file__).resolve().parent), env.get('PYTHONPATH')]
     env['PYTHONPATH'] = os.pathsep.join(filter(None, paths))
     return subprocess.run([sys.executable, '-O', *(['-c', code] if code else []), *args],
                           capture_output=True, text=True, env=env, timeout=110)
