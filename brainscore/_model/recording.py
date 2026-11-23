@@ -9,8 +9,8 @@ from typing import Dict, List, Optional, Tuple, Union
 
 from brainscore_core.io_catalog import canonical_modality
 from ..selection import LayerSelector, UnitSelector
+from brainscore.model_helpers.selection import split_site
 
-INPUT_SITE = ':input'
 
 
 def region_selector(owner, region: str) -> UnitSelector:
@@ -398,9 +398,9 @@ def declared_layers(owner, modality: Optional[str] = None):
 
 def unknown_layer_message(owner, path: str, modality: Optional[str] = None) -> Optional[str]:
     """Why ``path`` is not a layer of the routed extractor, or None if it is
-    (or cannot be checked). ``':input'`` sites check their module path."""
+    (or cannot be checked). A site (``':input'``, ``'-t<n>'``) checks its module path."""
     names = declared_layers(owner, modality)
-    base = path[:-len(INPUT_SITE)] if path.endswith(INPUT_SITE) else path
+    base = split_site(path)[0]
     if names is None or base in names:
         return None
     import difflib

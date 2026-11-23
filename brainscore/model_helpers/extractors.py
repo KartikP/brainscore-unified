@@ -112,7 +112,9 @@ class LiveRecording:
     fail here, before any compute. Each layer keeps its value, through
     ``convert``, from the first pass since the previous take; later passes
     (generated tokens) are not kept. A layer whose module runs more than once in
-    that pass (a shared or recurrent block) is refused at ``take``.
+    that pass (a shared or recurrent block) is refused at ``take``, unless its
+    name ends in ``-t<n>``: that layer keeps call ``n`` of the pass, counted
+    from 0 (see ``split_site``), and a pass with fewer calls is refused at ``take``.
 
     ``inputs(args, kwargs)`` runs in the forward pre-hook of that first pass;
     ``kwargs`` also holds the positional arguments, named by ``forward``. Its
@@ -142,6 +144,7 @@ class LiveRecording:
         self._package = package or (lambda activity, read, _row: (activity, read))
         self._inputs, self._one_input, self._reads = inputs or (lambda args, kwargs: None), one_input, bool(inputs)
         self._modules = {layer: get_layer(root, layer) for layer in self.layers}
+        self._call = {layer: split_site(layer)[2] for layer in self.layers}
         self._names = [p.name for p in inspect.signature(model.forward).parameters.values()
                        if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
         self._handles = []
@@ -192,20 +195,28 @@ class LiveRecording:
 
     def _keep(self, layer, value):
         if self._passes == 0:
-            self._calls[layer] += 1
-            self._activity[layer] = _copy(self._convert(value))     # the network may reuse the buffer
+            call, self._calls[layer] = self._calls[layer], self._calls[layer] + 1
+            if self._call[layer] in (None, call):
+                self._activity[layer] = _copy(self._convert(value))     # the network may reuse the buffer
 
     def take(self, row=None):
         """The first forward pass since the last take, packaged by the extractor."""
+        short = {layer: self._calls[layer] for layer, call in self._call.items()
+                 if call is not None and 0 < self._calls[layer] <= call}
+        if short:
+            raise ValueError(
+                f'Layers name a call that the forward pass did not make ({short} calls, counted '
+                f'from 0). Name a call from -t0 to one below the count.')
         missing = [layer for layer in self.layers if layer not in self._activity]
         if missing:
             raise ValueError(f'No forward pass reached {missing} since the last presentation.')
-        repeated = {layer: count for layer, count in self._calls.items() if count > 1}
+        repeated = {layer: count for layer, count in self._calls.items()
+                    if count > 1 and self._call[layer] is None}
         if repeated:
             raise ValueError(
                 f'Layers ran more than once in one forward pass ({repeated} calls), and a recording '
-                f'keeps one value for each layer. Name a module that runs once for each input, or '
-                f'write an extractor in the plugin folder that reads the pass it wants.')
+                f'keeps one value for each layer. Name one call as <layer>-t<n>, counted from 0 '
+                f'(layers.6-t1 is the second call), or name a module that runs once for each input.')
         activity, read = self._activity, self._read
         self._clear()
         return self._package(activity, read, row)

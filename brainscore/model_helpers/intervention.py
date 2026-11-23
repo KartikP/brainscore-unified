@@ -359,7 +359,11 @@ def pytorch_intervention(model: Any) -> Callable:
             return _change_weights(state_change)
         if state_change.kind == 'attention_heads':
             return _change_heads(state_change)
-        path, site = split_site(state_change.target.layer)
+        path, site, call = split_site(state_change.target.layer)
+        if call is not None:
+            raise ValueError(
+                f"An intervention on {state_change.target.layer!r} acts on every call of the module, "
+                f"and a layer name with '-t<n>' names one call; name the module as {path!r}.")
         if state_change.perturbation.kind not in _ACTIVATION_KINDS:
             raise ValueError(
                 f"Perturbation(kind={state_change.perturbation.kind!r}) cannot change the activity of "

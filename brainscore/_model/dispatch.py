@@ -16,7 +16,7 @@ from typing import List, Set
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.extraction_cache import activation_cache_disabled
 from brainscore_core.io_catalog import canonical_modality
-from .recording import INPUT_SITE
+from brainscore.model_helpers.selection import split_site
 
 
 def fused_for(owner, detected):
@@ -63,8 +63,7 @@ def extractor_keys(owner, modality, layers=(), channels=None) -> List[str]:
     from brainscore_core.io_catalog import MODALITY_TO_INPUT_CHANNEL
     family = [key for key in owner._extractors if modality is None
               or canonical_modality(key) == canonical_modality(modality)]
-    bases = {path[:-len(INPUT_SITE)] if path.endswith(INPUT_SITE) else path
-             for path in layers}
+    bases = {split_site(path)[0] for path in layers}
 
     def has_layers(extractor):
         try:
