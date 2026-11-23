@@ -20,7 +20,6 @@ import pytest
 
 from brainscore import BrainScoreModel, LayerSelector
 from brainscore_core._sessions.payloads import _stimulus_events, _table_row_position
-from brainscore_core._sessions.perception import windowed_stream
 from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
@@ -371,8 +370,12 @@ def test_stream_windows_are_unchanged():
     model = BrainScoreModel('windows', extractor={'vision': extract},
                             region_layer_map={'IT': LayerSelector('late', modality='vision')})
     # No ``streaming=True``: a session without a stimulus table is answered one event at a time.
-    session = Session(windowed_stream([f'f{i}.png' for i in range(6)], fps=10.0, window_ms=200.0),
-                      ['neural:IT'])
+    # Each event carries one window of two frames.
+    windows = [StreamEvent('vision:image', StimulusSet(pd.DataFrame({
+        'stimulus_id': [f'w{start}_f0', f'w{start}_f1'],
+        'image_file_name': [f'f{start}a.png', f'f{start}b.png']})), float(start))
+        for start in (0, 200, 400)]
+    session = Session(iter(windows), ['neural:IT'])
     model.participate(session)
     assert calls == [['w0_f0', 'w0_f1'], ['w200_f0', 'w200_f1'], ['w400_f0', 'w400_f1']]
     assert [event.meta['stream_index'] for event in session.emitted] == [0, 1, 2]

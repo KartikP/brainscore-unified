@@ -31,7 +31,7 @@ Features are grouped by how much you need to know to use them, and by how settle
 | Recorders: `RecordNeural`, `RecordBehavior` (one presentation for both); `Intervene` | same |
 | Tools: `RecordInputsOutputs`, `RecordActivity`, `Ablate`, `ScaleActivity`, `PatchActivity` | same |
 | `TorchInstrumentation`, `RunRecord`, `replay_sessions`, `compare_outputs` | same |
-| Timed delivery: `windowed_stream`, `stimulus_session(..., streaming=True)` | [Core concepts 4](../02_core_concepts.md#4-session) |
+| Timed delivery: `stimulus_session(..., streaming=True)`, a `Session` over any event source | [Core concepts 4](../02_core_concepts.md#4-session) |
 | Temporal helpers: `temporal_bin`, HRF convolution, contiguous-block cross-validation | `brainscore.temporal`, [Experiment 10](../../notebooks/experiments/10_story_listening_fmri.ipynb) |
 | Score provenance and status (`score.attrs`, N/A scores) | [Score a model](../guides/score_a_model.md) |
 | Activation caching keyed by weights, settings and inputs | [Perturb and select units](../guides/perturb_and_select_units.md#interventions) |

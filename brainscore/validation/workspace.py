@@ -60,7 +60,6 @@ SUITES = {
         'tests/test_score_status.py',
         'tests/test_stimulus_session.py',
         'tests/test_streaming_perception.py',
-        'tests/test_streaming_windowed.py',
         'tests/test_stream_rows_once.py',
         'tests/test_text_settings.py',
     ],
