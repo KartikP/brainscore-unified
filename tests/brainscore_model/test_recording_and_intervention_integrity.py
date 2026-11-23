@@ -651,8 +651,7 @@ def test_a_reset_refused_inside_intact_leaves_every_state_as_it_was():
     def state():
         return (net.weight.item(), list(subject._interventions.active_interventions), subject._behavioral.task,
                 subject._behavioral.response_path, list(subject._behavioral.history),
-                subject._recording_request.snapshot(), dict(subject._capability_state),
-                set(subject._capability_setup_done), owner.resets)
+                subject._recording_request.snapshot(), owner.resets)
     with subject._interventions.intact():
         before = state()
         with pytest.raises(RuntimeError, match='inside intact'):

@@ -17,7 +17,7 @@ A channel names *what* flows in a session and what its payload looks like. A cap
 | | Channel | Capability |
 | --- | --- | --- |
 | Says | what a payload is | how `BrainScoreModel` produces it |
-| Registered with | `register_channel` (core) | `register_capability` (unified) |
+| Added with | `register_channel` (core) | `BrainScoreModel(capabilities=[...])` (unified) |
 | Needed by | every subject that sends the output | `BrainScoreModel` only |
 
 A new kind of output needs a new capability only when no part of `BrainScoreModel` can produce it. A policy can return any registered output channel in its `policy_out_channels` (the model refuses another name when it is built), so an action or a per-step measurement needs no capability. A subject that is not a `BrainScoreModel` implements `participate(session)` and needs no capability at all.

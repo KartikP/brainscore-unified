@@ -3,7 +3,6 @@ and ``process`` as a convenience that is not on the path of ``participate``."""
 
 import pytest
 
-from brainscore.capabilities import capability_registry
 from brainscore import BrainScoreModel
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice
@@ -45,7 +44,6 @@ def test_process_after_a_task_still_records():
     stimuli = StubStimulusSet(columns=['image_file_name', 'stimulus_id'])
 
     assert model.process(stimuli) == 'vision_assembly'
-    assert not {'behavioral-generation', 'behavioral-readout'} & set(capability_registry)
 
 
 def test_process_gives_a_row_to_the_policy():
@@ -125,24 +123,15 @@ def test_process_applies_and_undoes_a_state_change():
         model.process(StateChange(kind='reset', handle_id='capability-handle'))
 
 
-# --- one registry, one selection: an added capability is tried before a built-in one ---
-
-def _added(capability):
-    from brainscore.capabilities import register_capability
-    register_capability(capability)
-    return capability
-
+# --- one selection: an added capability is tried before a built-in one ---
 
 def test_an_added_session_capability_runs_a_session_a_built_in_one_also_claims():
-    """Added capabilities default to order 1000; the built-in session ones are 10000."""
+    """A capability given to the model runs a session its built-in part also claims."""
     from brainscore.capabilities import Capability
     from brainscore_core.streaming import Session, StreamEvent
 
     class Recorder(Capability):
         identifier = 'test-added-neural-session'
-
-        def enabled_for(self, subject):
-            return subject.identifier == 'added-session'
 
         def supports_session(self, subject, channels):
             return set(channels) == {'neural:IT'}
@@ -152,16 +141,12 @@ def test_an_added_session_capability_runs_a_session_a_built_in_one_also_claims()
                 pass
             session.respond(StreamEvent('neural:IT', 'from-added', 0.0))
 
-    _added(Recorder())
-    try:
-        model = BrainScoreModel(identifier='added-session', region_layer_map={'IT': 'layer4'},
-                                extractor={'vision': StubActivationsModel()})
-        assert model.check_session_support({'neural:IT'}).identifier == 'test-added-neural-session'
-        other = BrainScoreModel(identifier='other', region_layer_map={'IT': 'layer4'},
-                                extractor={'vision': StubActivationsModel()})
-        assert other.check_session_support({'neural:IT'}).identifier == 'neural-sessions'
-    finally:
-        capability_registry.pop('test-added-neural-session', None)
+    model = BrainScoreModel(identifier='added-session', region_layer_map={'IT': 'layer4'},
+                            extractor={'vision': StubActivationsModel()}, capabilities=[Recorder()])
+    assert model.check_session_support({'neural:IT'}).identifier == 'test-added-neural-session'
+    other = BrainScoreModel(identifier='other', region_layer_map={'IT': 'layer4'},
+                            extractor={'vision': StubActivationsModel()})
+    assert other.check_session_support({'neural:IT'}).identifier == 'neural-sessions'
 
 
 def test_participate_selects_the_part_once_and_never_calls_process():

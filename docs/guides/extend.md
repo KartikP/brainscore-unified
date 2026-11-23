@@ -92,10 +92,10 @@ To let `RecordActivity` and `Ablate` reach a framework other than PyTorch, imple
 
 ## A new capability
 
-A `Capability` adds a new kind of input handling to `BrainScoreModel` itself, with its own channels. Subclass `Capability` and register it with `register_capability`, both from `brainscore.capabilities`. Use this only when the behavior belongs inside the subject; for observing or changing runs, write a tool. A new output often needs no capability: see [A new kind of output](new_output.md#a-channel-or-a-capability).
+A `Capability` adds a new kind of input handling to `BrainScoreModel` itself, with its own channels. Subclass `Capability` (from `brainscore.capabilities`) and give an instance to the model: `BrainScoreModel(..., capabilities=[MyCapability()])`. Use this only when the behavior belongs inside the subject; for observing or changing runs, write a tool. A new output often needs no capability: see [A new kind of output](new_output.md#a-channel-or-a-capability).
 
 A capability runs sessions. It claims the outputs a session requests (`supports_session(subject, channels)`) and runs it (`participate(subject, session)`); `subject.participate(session)` selects it.
 
-Every method takes the model first, named `subject`. Per-model state comes from `setup(subject)` and is read back with `subject.capability_state(identifier)`; settings come from `subject.capability_config`, which holds what the registration passes as `capability_config={identifier: settings}`.
+Every method takes the model first, named `subject`. Settings go to the capability's constructor. A capability keeps its state on itself, so give each model its own instance; `reset(subject)` runs when the model resets.
 
-One registry holds every capability. For each session the model selects the claimant with the lowest `order`; two claimants at that order are an error. Added capabilities default to 1000 and the built-in ones are 10000, so an added capability runs a session that a built-in one also claims. See `templates/new_capability/`.
+For each session the model selects one claimant: an added capability runs a session that a built-in one also claims; two added claimants, or two built-in ones, are an error. See `templates/new_capability/`.

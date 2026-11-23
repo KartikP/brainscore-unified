@@ -362,10 +362,6 @@ STATED_EXCEPTIONS = {
     ('R20 registry assignment', 'unified:tools/_registry.py'):
         'Ownership Map R20: a tool is registered with register_tool(identifier, factory); '
         'a built-in tool is a lazy import path in _TOOLS, which a dict entry cannot hold',
-    ('R20 registry assignment', 'unified:capabilities/registry.py'):
-        'Ownership Map R20: a capability carries its own identifier and registers with '
-        'register_capability(capability), so the identifier is written once; a factory '
-        '(model, benchmark, data, metric) registers by a registry line',
 }
 
 

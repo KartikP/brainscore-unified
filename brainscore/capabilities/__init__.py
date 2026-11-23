@@ -1,7 +1,3 @@
-"""BrainScoreModel capability registry."""
+"""The base class of a BrainScoreModel capability; a model gets one by ``capabilities=[...]``."""
 
 from .base import Capability
-from .registry import capability_registry, register_capability
-
-# Import the built-in capabilities so they register.
-from . import built_in as _built_in  # noqa: F401

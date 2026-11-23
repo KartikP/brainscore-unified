@@ -41,7 +41,7 @@ Features are grouped by how much you need to know to use them, and by how settle
 | Feature | Notes |
 | --- | --- |
 | `VLMVisionWrapper`, `VideoWrapper` and other large-model wrappers | Tested on specific registrations (Qwen-VL, BLIP-2, V-JEPA, VideoMAE). |
-| Custom channels, tools and capabilities (`register_channel`, `register_tool`, `register_capability`) | [Extend UMI](../guides/extend.md). Long-term structure still under discussion. |
+| Custom channels, tools and capabilities (`register_channel`, `register_tool`, `BrainScoreModel(capabilities=[...])`) | [Extend UMI](../guides/extend.md). Long-term structure still under discussion. |
 | Robotics harnesses: DROID, LIBERO, OpenPI instrumentation | `brainscore.harnesses`, `examples/libero/`. No guide in this manual. |
 | Game and multi-agent harnesses: Gymnasium, grid games, `multi_agent_rollout` (one session per subject for the whole conversation; answers on `behavior:text`, heard on `text`) | [Experiment 8](../../notebooks/experiments/08_learning_in_a_closed_loop.ipynb), [Experiment 13](../../notebooks/experiments/13_passing_outputs_between_subjects.ipynb) |
 | Attribution and activation patching | `brainscore.experiments.attribution` |

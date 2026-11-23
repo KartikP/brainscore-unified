@@ -10,8 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from brainscore import capabilities
-from brainscore.capabilities import Capability, register_capability
+from brainscore.capabilities import Capability
 from brainscore import BrainScoreModel
 from brainscore_core.streaming import StreamEvent
 from brainscore_core.streaming_helpers import (
@@ -44,15 +43,7 @@ def test_concrete_subject_has_no_second_evaluation_method():
         assert not hasattr(cls, 'interact'), cls
 
 
-@pytest.fixture
-def registry(monkeypatch):
-    saved = dict(capabilities.capability_registry)
-    yield
-    capabilities.capability_registry.clear()
-    capabilities.capability_registry.update(saved)
-
-
-def test_added_capability_takes_precedence_over_the_built_in_part(registry):
+def test_added_capability_takes_precedence_over_the_built_in_part():
     calls = []
 
     class Custom(Capability):
@@ -71,9 +62,8 @@ def test_added_capability_takes_precedence_over_the_built_in_part(registry):
     def extractor(stimuli, layers=None, **kwargs):
         pytest.fail('built-in neural part ran instead of the added capability')
 
-    register_capability(Custom())
     model = BrainScoreModel('precedence', region_layer_map={'IT': 'layer'},
-                            extractor={'vision': extractor})
+                            extractor={'vision': extractor}, capabilities=[Custom()])
     assert model.check_session_support({'neural:IT'}).identifier == Custom.identifier
     out = neural_response(model, _images(2), ['neural:IT'])
     assert calls == ['precedence'] and out.sizes['presentation'] == 2

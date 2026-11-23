@@ -4,7 +4,7 @@ from brainscore.instrumentation import observed
 from brainscore.run_record import RunRecorder, RunRecord
 from brainscore import BrainScoreModel
 from brainscore_core.streaming import Session, StreamEvent
-from . import register, LatencyObserver
+from . import Amplitude, register, LatencyObserver
 
 
 def amplitude(subject, signal, t_ms, *sinks):
@@ -29,7 +29,8 @@ parser = argparse.ArgumentParser(description='Run an independently installed UMI
 parser.add_argument('--out', required=True)
 args = parser.parse_args()
 register()
-model = BrainScoreModel('external-demo', capability_config={'partner-amplitude': True})
+capability = Amplitude()
+model = BrainScoreModel('external-demo', capabilities=[capability])
 tool = LatencyObserver()
 with RunRecorder(args.out, metadata={'model': model.identifier, 'fixture': True}) as record:
     result = amplitude(model, np.array([3., 4., 0.]), 25., tool, record)
@@ -38,5 +39,5 @@ assert len(tool.seconds) == 1
 assert list(RunRecord(args.out).outputs())[0].payload == 5.
 model.reset()
 assert amplitude(model, np.array([0., 0., 1.]), 50.).payload == 1.
-assert model.capability_state('partner-amplitude')['calls'] == 1
+assert capability.calls == 1
 print('External capability, observer, record/replay and reset: PASS')

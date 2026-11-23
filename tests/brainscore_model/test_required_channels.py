@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from brainscore import BrainScoreModel, LayerSelector
-from brainscore.capabilities import Capability, capability_registry, register_capability
+from brainscore.capabilities import Capability
 from brainscore_core.compatibility import CompatibilityError, check_compatibility
 from brainscore_core.streaming import StreamEvent
 from brainscore_core.streaming import Session
@@ -91,16 +91,11 @@ def test_a_joint_extractor_requires_all_its_inputs_and_preflight_needs_them():
 
 @pytest.fixture
 def reader_capability():
-    previous = dict(capability_registry)
-
     class Reader(Capability):
         """Reads text and pictures of each trial; answers on behavior."""
         identifier = 'test-reader'
         input_channels = {'text', 'vision:image'}
         output_channels = {'behavior'}
-
-        def enabled_for(self, subject):
-            return bool(subject.capability_config.get(self.identifier))
 
         def supports_session(self, subject, channels):
             return set(channels) == {'behavior'}
@@ -109,16 +104,13 @@ def reader_capability():
             while (event := session.next_input()) is not None:
                 session.respond(StreamEvent('behavior', np.array([1.0, 0.0]), event.t_ms))
 
-    register_capability(Reader())
-    yield
-    capability_registry.clear()
-    capability_registry.update(previous)
+    return Reader()
 
 
 def test_a_capability_that_takes_several_inputs_can_require_one_and_runs(reader_capability):
     model = BrainScoreModel('reader', in_channels={'text', 'vision:image'},
                             required_channels={'text'},
-                            capability_config={'test-reader': True})
+                            capabilities=[reader_capability])
     assert model.required_channels == {'text'}
     session = Session([StreamEvent('text', 'a word', 0)], ('behavior',))
     model.participate(session)

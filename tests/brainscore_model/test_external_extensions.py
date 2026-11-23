@@ -1,7 +1,7 @@
 import pytest
 from brainscore_core import io_catalog
 from brainscore_core.compatibility import ExecutionNotFeasibleError
-from brainscore.capabilities import Capability, capability_registry, register_capability
+from brainscore.capabilities import Capability
 from brainscore_core.io_catalog import CatalogEntry, register_channel
 from brainscore_core.streaming import StreamEvent
 from brainscore import BrainScoreModel
@@ -12,37 +12,32 @@ from brainscore_core.streaming import Session
 def registries(monkeypatch):
     monkeypatch.setattr(io_catalog, '_CATALOG', dict(io_catalog._CATALOG))
     monkeypatch.setattr(io_catalog, '_STIMULUS_COLUMNS', dict(io_catalog._STIMULUS_COLUMNS))
-    previous = dict(capability_registry)
     yield
-    capability_registry.clear()
-    capability_registry.update(previous)
 
 
 def test_external_input_output_state_reset_and_session():
     for name, direction in (('test_request', 'input'), ('test_result', 'output')):
         register_channel(CatalogEntry(name, direction, 'StreamEvent', 'int', 'test',
                                      shape_validator=lambda x: isinstance(x, int)))
-    setups = []
+    resets = []
     class Tool(Capability):
         """A session capability: it runs the session and answers each request."""
         identifier = 'external-test'
         input_channels = {'test_request'}
         output_channels = {'test_result'}
-        def enabled_for(self, subject):
-            return bool(subject.capability_config.get(self.identifier))
-        def setup(self, subject):
-            setups.append(subject.identifier)
-            return {'calls': 0}
+        def __init__(self):
+            self.calls = 0
+        def reset(self, subject):
+            resets.append(subject.identifier)
+            self.calls = 0
         def supports_session(self, subject, channels):
             return set(channels) == {'test_result'}
         def participate(self, subject, session):
-            state = subject.capability_state(self.identifier)
             while (event := session.next_input()) is not None:
-                state['calls'] += 1
-                session.respond(StreamEvent('test_result', state['calls'] + event.payload,
+                self.calls += 1
+                session.respond(StreamEvent('test_result', self.calls + event.payload,
                                             event.t_ms))
-    register_capability(Tool())
-    model = BrainScoreModel('external', capability_config={'external-test': True})
+    model = BrainScoreModel('external', capabilities=[Tool()])
 
     def run(payload):
         session = Session([StreamEvent('test_request', payload, 5)], ('test_result',))
@@ -50,10 +45,11 @@ def test_external_input_output_state_reset_and_session():
         return session.collect('test_result')[0].payload
 
     assert run(10) == 11
-    assert len(setups) == 1
     model.reset()
+    assert resets == ['external']
     assert run(10) == 11
-    assert len(setups) == 2 and 'test_result' in model.out_channels
+    assert 'test_result' in model.out_channels
+    assert 'test_result' not in BrainScoreModel('other').out_channels
     with pytest.raises(ValueError):
         Session([StreamEvent('test_request', 'bad', 5)], ('test_result',))
     with pytest.raises(ExecutionNotFeasibleError, match='cannot answer'):

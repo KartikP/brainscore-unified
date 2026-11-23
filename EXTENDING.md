@@ -310,15 +310,14 @@ separate.
 There are two related extension levels:
 
 1. **Configure an existing capability for a model.** Pass a function into a
-   `BrainScoreModel` constructor slot; the already-registered capability
-   reaches it.
+   `BrainScoreModel` constructor slot; the built-in capability reaches it.
 2. **Add a new capability.** In your own package, define typed payloads,
    register their channels with `register_channel`, subclass
-   `brainscore.capabilities.Capability` and register it once with
-   `register_capability`. A capability runs sessions: `supports_session`
-   claims the outputs a session requests and `participate` runs it. Every
-   method takes the model first, named `subject`. Models opt in through
-   `capability_config`. No core edit is needed.
+   `brainscore.capabilities.Capability` and give an instance to each model
+   that uses it: `BrainScoreModel(..., capabilities=[...])`. A capability runs
+   sessions: `supports_session` claims the outputs a session requests and
+   `participate` runs it. Every method takes the model first, named
+   `subject`. No core edit is needed.
 
 The constructor slots available to model authors are:
 

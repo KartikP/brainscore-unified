@@ -46,15 +46,17 @@ dataclass payloads, two catalog entries whose validators reject bad payloads
 before any model sees them, and a `Capability` subclass. A capability runs
 sessions. Its `supports_session` claims the output channel;
 its `participate` answers each request and sends the answer back with
-`session.respond`; its `setup` checks the model's settings before the first
-request. Every method takes the model as its first argument, named `subject`.
+`session.respond`; its constructor checks its settings, and `reset` clears its
+state when the model resets. Every method takes the model as its first
+argument, named `subject`.
 
 1. Rename the identifier, channels and dataclasses; replace the counting in
    `_count` and the field checks in the two validators.
 2. Call `register()` once from your package. A second call raises an error
    rather than replacing a registered name.
-3. Opt a model in through `capability_config={IDENTIFIER: settings}`. Other
-   models do not gain the channels.
+3. Give a model its own instance: `BrainScoreModel(...,
+   capabilities=[WordCountCapability(min_length=2)])`. Other models do not
+   gain the channels.
 4. Adapt `test_capability.py` and run it. It runs a `Session` through
    `subject.participate(session)`.
 

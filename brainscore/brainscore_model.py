@@ -59,6 +59,7 @@ class BrainScoreModel(Subject):
         policy_in_channels: Iterable[str] = ('observation',),
         policy_out_channels: Iterable[str] = ('motor',),
         intervention: Optional[Callable] = None,
+        capabilities: Iterable[Any] = (),
         memory: Optional[str] = None,
         in_channels: Optional[Iterable[str]] = None,
         required_channels: Optional[Iterable[str]] = None,
@@ -167,6 +168,10 @@ class BrainScoreModel(Subject):
             extractors requires nothing, because each one runs alone. The
             constructor checks only that each listed channel is declared, not
             this claim.
+        :param capabilities: added capabilities (``brainscore.capabilities.Capability``
+            instances), each with its own settings; give each model its own
+            instances. An added capability runs a session that a built-in part
+            also claims.
         :param visual_degrees: the visual field legacy vision benchmarks place
             stimuli in; ignored by other benchmarks.
         :param capability_config: settings for capabilities, keyed by the
@@ -235,6 +240,7 @@ class BrainScoreModel(Subject):
         self._policy_in_channels = frozenset(policy_in_channels)
         self._policy_out_channels = frozenset(policy_out_channels)
         self._intervention = intervention
+        self._capabilities = tuple(capabilities)
 
         self._recording_request = RecordingRequest(self)
         self._behavioral = BehavioralReadout(self)
@@ -243,8 +249,6 @@ class BrainScoreModel(Subject):
         self._interventions = Interventions(self)
         self._shared_calls = None       # set by dispatch.one_call_per_extractor
         self._session_plan = None       # the running session's plan (_model/plan.py), set in participate
-        self._capability_state: Dict[str, Any] = {}
-        self._capability_setup_done: Set[str] = set()
 
         required = _channels(required_channels)
         declared_channels = self._input_channels(self._input_keys)
@@ -281,13 +285,9 @@ class BrainScoreModel(Subject):
         """
         return MappingProxyType(self._extractors)
 
-    def capability_state(self, identifier):
-        """Per-model state of a capability, from its ``setup`` before it first ran."""
-        return self._capability_state[identifier]
-
     def _declared_capabilities(self):
-        from .capabilities import capability_registry
-        return [c for c in capability_registry.values() if c.enabled_for(self)]
+        from .capabilities.built_in import built_in_capabilities
+        return [*self._capabilities, *built_in_capabilities(self)]
 
     @property
     def in_channels(self):
@@ -351,7 +351,7 @@ class BrainScoreModel(Subject):
         is consumed: ``ExecutionNotFeasibleError`` when no capability claims the
         combination, naming the outputs the subject does not produce (an error
         of the run: the declarations did not express the limit); ``ValueError``
-        when more than one claims it at the same priority.
+        when two added capabilities, or two built-in ones, claim it.
         """
         channels = frozenset(channels)
         if not channels:
@@ -373,13 +373,12 @@ class BrainScoreModel(Subject):
                 ' expressed in the declarations of the subject or the benchmark; the session'
                 ' was refused and there is no result.',
                 channels=missing or channels)
-        first = min(c.order for c in claims)
-        winners = [c for c in claims if c.order == first]
+        # An added capability that claims the session runs it, before a built-in one.
+        winners = [c for c in claims if c in self._capabilities] or claims
         if len(winners) > 1:
             raise ValueError(
                 f'Ambiguous capabilities: {[c.identifier for c in winners]} both claim '
-                f'{sorted(channels)} at order {first}. Narrow the claims of one capability '
-                '(supports_session), or give one capability a lower order.')
+                f'{sorted(channels)}. Narrow the claims of one capability (supports_session).')
         return winners[0]
 
     @property
@@ -486,7 +485,7 @@ class BrainScoreModel(Subject):
                         f"StateChange; got {type(input_event).__name__}.")
 
     def participate(self, session) -> None:
-        """Run a session through the one registered capability that claims it.
+        """Run a session through the one capability that claims it.
 
         The capability sees only the streams this model declares in
         ``in_channels``: the ``Subject`` base narrows the session before this
@@ -509,10 +508,8 @@ class BrainScoreModel(Subject):
         passes = regions_per_pass()
         self._session_plan = plan_session(self, session, passes)
         try:
-            from .capabilities.registry import _setup_once
             # Every part notes its calls in the session's log, from set-up (a readout fit) on.
             with parts.session_log() as log:
-                _setup_once(self, self._session_plan.capability)
                 # A task the session configures ends with the session (rule 4.5).
                 # Weights are hashed once per session for the activation cache key;
                 # inside score() the run's scope is reused.
@@ -593,15 +590,11 @@ class BrainScoreModel(Subject):
                 component.reset()
             except Exception as error:
                 failures.append(error)
-        for identifier, state in self._capability_state.items():
-            from .capabilities import capability_registry
-            capability = capability_registry.get(identifier)
-            if capability is not None:
-                try:
-                    capability.reset(self, state)
-                    self._capability_setup_done.discard(identifier)
-                except Exception as error:
-                    failures.append(error)
+        for capability in self._capabilities:
+            try:
+                capability.reset(self)
+            except Exception as error:
+                failures.append(error)
         failures.extend(self._reset_parts())
         if failures:
             raise RuntimeError('A model part failed to reset; the model is not clean: '
