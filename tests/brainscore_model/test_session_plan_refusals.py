@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 
 from brainscore import BrainScoreModel
-from brainscore_core.compatibility import ExecutionNotFeasibleError
+from brainscore_core.compatibility import CompatibilityError, ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
 from brainscore_core.responses import Choice
@@ -35,7 +35,7 @@ CLASS = {
     'R1': RuntimeError, 'R2': ValueError, 'R3': ValueError, 'R4': ENFE, 'R5': ValueError,
     'R6': ENFE, 'R7': ENFE, 'R8': ENFE, 'R9 table': ENFE, 'R9 stream': ENFE,
     'R10 owner cannot serve': ENFE, 'R10 settings': ENFE, 'R10 no part': ENFE, 'R10 log probabilities need verbatim': ENFE, 'R10 crossed parts': ENFE,
-    'R11 readout_fit': ValueError, 'R11 task_type': ValueError,
+    'R11 readout_fit': ValueError, 'R11 task_type': ENFE,
     'R12': ENFE, 'R13': ValueError,
     'R14 plan': ENFE, 'R14 direct call': ValueError,
     'R15 table': ValueError,
@@ -50,7 +50,7 @@ CLASS = {
     'R28 parts': ENFE, 'R28 history': ENFE,
     'R29 reset without handle': ValueError, 'R29 unknown handle': KeyError,
     'R29 no part': NotImplementedError, 'R29 bad return': TypeError,
-    'R30 facade': ENFE, 'R30 Lahner': ENFE,
+    'R30 facade': CompatibilityError, 'R30 Lahner': ENFE,
 }
 
 CHOICE = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)

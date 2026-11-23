@@ -65,6 +65,9 @@ class ChanceBaseline(Subject):
         outputs = set(session.outputs or ())
         if not outputs or not outputs <= {'behavior:choice', 'behavior:probabilities'}:
             try:        # the task the session sets holds for this call only
+                if outputs == {'behavior'}:
+                    self._task = session.task
+                    self._label_set()       # a task with no chance answer: refused before the inputs are read
                 return drive_typed_session(self, session)
             finally:
                 self.reset()
