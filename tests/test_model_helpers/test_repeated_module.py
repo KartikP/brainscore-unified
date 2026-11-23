@@ -150,3 +150,12 @@ def test_an_extractor_without_record_refuses_a_call_or_input_name_at_constructio
     with pytest.raises(ValueError, match='one value for each module') as error:
         BrainScoreModel('looped-vision', extractor={'vision': wrapper}, region_layer_map={'R': layer})
     assert layer in str(error.value)
+
+
+def test_a_wrapper_refuses_a_plain_data_frame():
+    # A plain DataFrame iterates over its column names: 20 rows would give 2 stimuli.
+    import pandas as pd
+    wrapper = TextWrapper(_Looped(1), _tokenizer(), identifier='plain-frame', device='cpu')
+    table = pd.DataFrame({'stimulus_id': [f's{i}' for i in range(20)], 'text': ['the cat sat'] * 20})
+    with pytest.raises(TypeError, match='StimulusSet'):
+        wrapper(table, ['block'])

@@ -21,6 +21,7 @@ from collections import Counter, OrderedDict
 from typing import Callable, List
 
 import numpy as np
+import pandas as pd
 from tqdm.auto import tqdm
 
 from brainscore_core.assembly_builder import make_assembly, make_layer_neuroid_coords, make_neuroid_ids
@@ -411,6 +412,10 @@ class CachingExtractor:
                 stimuli_identifier = stimuli.identifier
             assembly = self._cached(self._table_inputs(stimuli), layers, stimuli_identifier)
             assembly = self._columns(assembly, stimuli)
+        elif isinstance(stimuli, pd.DataFrame):
+            # list() of a DataFrame gives its column names, one false input for each column.
+            raise TypeError('A table of stimuli is a StimulusSet: wrap it as StimulusSet(table) '
+                            'and set its identifier. A plain pandas DataFrame is not read.')
         else:
             assembly = self._cached(list(stimuli), layers, stimuli_identifier)
         return self._finish(assembly)
