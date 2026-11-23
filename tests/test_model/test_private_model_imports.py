@@ -23,8 +23,8 @@ Reads (with ``ast``, never imported) every file under ``brainscore/`` folders
 - a call of ``.process``, ``.start_recording`` or ``.start_task`` on any
   object (the typed calling convention, House Style pattern 2).
 
-Rule 2.2 in core and in the model helpers (``brainscore_core`` and, in
-``brainscore``, the folder ``model_helpers`` and ``__init__.py``): no ability is
+Rule 2.2 in core and in the library code of unified (all of ``brainscore_core``; in
+``brainscore``, every file and folder but the benchmark and model plugin folders): no ability is
 discovered by a read of a private name with ``getattr`` or ``hasattr`` and a text
 argument on another object than ``self`` or ``cls``, or by ``isinstance`` against a
 subject class or a part class (a subclass of ``Subject``, ``CachingExtractor`` or
@@ -41,6 +41,7 @@ allow-listed is not reported (findings are per file).
 The allow-list may only shrink: an entry that no longer violates fails.
 """
 import ast
+from pathlib import Path
 
 import pytest
 
@@ -58,8 +59,9 @@ ALLOWED = {}
 
 IMPORT_ONLY_FOLDERS = ('models', 'validation')
 
-# Rule 2.2 places: package -> folders or files read for the discovery signal.
-DISCOVERY_PLACES = {'brainscore_core': ('',), 'brainscore': ('model_helpers', '__init__.py')}
+# Rule 2.2 places: all of core; all of unified but the plugin folders below.
+DISCOVERY_PACKAGES = ('brainscore_core', 'brainscore')
+PLUGIN_FOLDERS = ('benchmarks', 'models')
 PART_BASES = {'Subject', 'CachingExtractor', 'Capability'}
 
 # (package/path, finding): reason. Each is a stated place; a new place fails.
@@ -69,6 +71,11 @@ _FACTS = ('provenance facts of a caching wrapper (network, batch size, token lim
           'names would be new (open, finding 29); no ability is chosen by it')
 _DEVICE = ('the cache key reads the input device of a wrapper (unified wrappers and the vision '
            'PytorchWrapper); a public name would be new on both (open, finding 29)')
+_HF_ATTENTION = ('a fact for the parity record from a Hugging Face config; transformers has no '
+                 'public name for the attention implementation; no subject is read')
+_PLACEMENTS = ('the integration runner keeps its own record on the pytest config and reads it '
+               'back; the config of the offline test is a SimpleNamespace (no weak key, no '
+               'stash), so a move needs a new public name or a private read in the test')
 DISCOVERY_ALLOWED = {
     ('brainscore/__init__.py', 'class check BrainScoreModel'): _HINT,
     ('brainscore/model_helpers/provenance.py', 'class check CachingExtractor'): _FACTS,
@@ -80,6 +87,15 @@ DISCOVERY_ALLOWED = {
     ('brainscore_core/extraction_cache.py', 'getattr wrapper._device'): _DEVICE,
     ('brainscore_core/_evaluation/measures.py', 'getattr session._measure_key'):
         'the module writes this marker on the session itself and reads it back',
+    ('brainscore/validation/benchmark_parity.py', 'class check BrainScoreModel'):
+        'the parity tool refuses a subject that does not match its route (native means the '
+        'model class); it chooses no ability',
+    ('brainscore/validation/benchmark_parity.py',
+     "getattr getattr(net, 'config', None)._attn_implementation"): _HF_ATTENTION,
+    ('brainscore/validation/integration_checks.py', 'getattr self.config._umi_model_placements'):
+        _PLACEMENTS,
+    ('brainscore/validation/integration_checks.py', 'getattr config._umi_model_placements'):
+        _PLACEMENTS,
     ('brainscore_core/memory.py', 'hasattr benchmark._assembly'):
         'stated exception in the module docstring: Brain-Score 2.0 benchmarks keep sizes there',
 }
@@ -162,15 +178,30 @@ def discovery_findings(source, classes):
     return found
 
 
+def discovery_places(package, root):
+    """Folders and files read for rule 2.2. A benchmark or model plugin folder stays out: it is
+    an author's plugin, read by the import signal above; the files beside the plugin folders
+    (``benchmarks/_score.py``, ``models/_shared.py``) are library code and are read."""
+    if package != 'brainscore':
+        return ('',)
+    places = []
+    for path in sorted(Path(root).iterdir()):
+        if path.name in PLUGIN_FOLDERS:
+            places += [f'{path.name}/{file.name}' for file in sorted(path.glob('*.py'))]
+        elif path.suffix == '.py' or (path.is_dir() and path.name != '__pycache__'):
+            places.append(path.name)
+    return places
+
+
 def discovery_violations(roots, classes):
     return {(f'{package}/{path}', finding)
             for package, root in roots.items()
-            for path, source in python_files(root, DISCOVERY_PLACES[package])
+            for path, source in python_files(root, discovery_places(package, root))
             for finding in discovery_findings(source, classes)}
 
 
 def test_no_ability_is_discovered_by_private_read_or_class_check_in_core_and_helpers():
-    roots = {package: package_root(package) for package in DISCOVERY_PLACES}
+    roots = {package: package_root(package) for package in DISCOVERY_PACKAGES}
     compare(discovery_violations(roots, part_classes(roots.values())), DISCOVERY_ALLOWED,
             'discovery by private read or class check (rule 2.2)')
 
@@ -229,6 +260,18 @@ def test_part_classes_follow_subclasses(tmp_path):
                              'class Agent(Subject): pass\nclass Other: pass\n'})
     assert {'Wrap', 'Deep', 'Agent'} <= part_classes([tmp_path])
     assert not {'Other', 'Subject'} & part_classes([tmp_path])
+
+
+def test_discovery_reads_library_folders_and_not_plugin_folders(tmp_path):
+    root = _tree(tmp_path, {'harnesses/new.py': 'ok = isinstance(subject, BrainScoreModel)\n',
+                            'validation/check.py': "getattr(config, '_marker', [])\n",
+                            'top.py': "hasattr(benchmark, '_assembly')\n",
+                            'benchmarks/_score.py': "getattr(model, '_extractors')\n",
+                            'benchmarks/plugin/__init__.py': 'isinstance(subject, BrainScoreModel)\n'})
+    found = {path for path, _ in discovery_violations({'brainscore': root}, CLASSES)}
+    assert {'brainscore/harnesses/new.py', 'brainscore/validation/check.py',
+            'brainscore/top.py', 'brainscore/benchmarks/_score.py'} <= found
+    assert 'brainscore/benchmarks/plugin/__init__.py' not in found
 
 
 def test_discovery_check_fails_on_a_new_place(tmp_path):

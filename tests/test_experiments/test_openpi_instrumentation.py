@@ -272,7 +272,8 @@ def test_wrong_thread_cannot_attach_or_infer(policy, observation):
     with instrumentation.ablate(['action_out_proj']), ThreadPoolExecutor(1) as executor:
         with pytest.raises(RuntimeError, match='scope thread'):
             executor.submit(policy.infer, observation).result()
-    assert not hasattr(policy, '_umi_instrumentation_owner')
+    with provider(policy).ablate(['action_out_proj']):  # the scope released the policy
+        pass
 
 
 def test_bfloat16_measurements_keep_original_dtype(observation):

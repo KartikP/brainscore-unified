@@ -12,9 +12,12 @@ import numbers
 import textwrap
 import threading
 from types import MethodType
+import weakref
 
 from brainscore_core.events import Selection
 
+# policy -> the instrumentation attached to it; one at a time, the policy keeps no marker.
+_OWNERS = weakref.WeakKeyDictionary()
 OPENPI_REVISION = '215abfb217dbac7d5f1273282331b9b1866c0479'
 # SHA256 of dedented inspect.getsource(Pi0.sample_actions), including decorators.
 SAMPLER_SHA256 = 'da5a021ff1e58d893428c4c4915348a112668e65403ac3f9bf73c8b3265574fe'
@@ -144,9 +147,9 @@ class OpenPIInstrumentation:
         if self._in_call or (self._owner is not None and self._owner != owner):
             raise RuntimeError('OpenPI instrumentation requires serial scopes and inference')
         if not self._scopes:
-            if getattr(self.policy, '_umi_instrumentation_owner', None) is not None:
+            if self.policy in _OWNERS:
                 raise RuntimeError('This policy already has an instrumentation attached')
-            self.policy._umi_instrumentation_owner = self
+            _OWNERS[self.policy] = self
             self._owner = owner
             self._original = self.policy._sample_actions
             self.policy._sample_actions = self._sample_actions
@@ -161,7 +164,7 @@ class OpenPIInstrumentation:
             self._scopes.pop()
             if not self._scopes:
                 self.policy._sample_actions = self._original
-                del self.policy._umi_instrumentation_owner
+                del _OWNERS[self.policy]
                 self._original = self._owner = None
 
     def _sample_actions(self, *args, **kwargs):
