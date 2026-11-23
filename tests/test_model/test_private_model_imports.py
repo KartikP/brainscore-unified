@@ -31,10 +31,9 @@ subject class or a part class (a subclass of ``Subject``, ``CachingExtractor`` o
 ``Capability`` defined in core or unified; ``Subject`` itself is the contract type and
 is allowed). These places have their own short list, ``DISCOVERY_ALLOWED``.
 
-Cannot detect: private access through ``getattr`` with a name held in a variable,
-``type(x) is``, ``issubclass``, signature inspection, a class of vision or language,
-through a variable with another name than the three listed, or through a public helper
-that forwards to private code; imports through ``importlib``. A second call of
+Cannot detect: private access through a variable with another name than the three
+listed, or through a public helper that forwards to private code; imports through
+``importlib``. A second call of
 the same method on the same receiver inside a file that is already
 allow-listed is not reported (findings are per file).
 
@@ -158,10 +157,35 @@ def part_classes(roots):
     return found - {'Subject'}
 
 
+def class_names(node):
+    """Class names in a class argument: a name, a dotted name, a tuple or a ``|`` of them."""
+    if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+        return [name for element in node.elts for name in class_names(element)]
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        return class_names(node.left) + class_names(node.right)
+    if isinstance(node, ast.Starred):
+        return class_names(node.value)
+    return [getattr(node, 'attr', getattr(node, 'id', None))]
+
+
+def is_type_of(node):
+    """``type(x)`` or ``x.__class__``."""
+    return (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            and node.func.id == 'type' and len(node.args) == 1) or (
+        isinstance(node, ast.Attribute) and node.attr == '__class__')
+
+
 def discovery_findings(source, classes):
-    """Rule 2.2 findings of one file: a private read by text, a class check of a part."""
+    """Rule 2.2 findings of one file: a private read by text, a class check of a part
+    (``isinstance``, ``issubclass``, ``type(x)`` or ``x.__class__`` compared with a class)."""
     found = set()
     for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Compare):
+            operands = [node.left, *node.comparators]
+            if any(is_type_of(operand) for operand in operands):
+                found.update(f'class check {name}' for operand in operands
+                             for name in class_names(operand) if name in classes)
+            continue
         if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                 and len(node.args) >= 2):
             continue
@@ -170,11 +194,8 @@ def discovery_findings(source, classes):
                 and isinstance(what.value, str) and is_private(what.value) \
                 and not (isinstance(target, ast.Name) and target.id in ('self', 'cls')):
             found.add(f'{node.func.id} {ast.unparse(target)}.{what.value}')
-        if node.func.id == 'isinstance':
-            for kind in (what.elts if isinstance(what, ast.Tuple) else [what]):
-                name = getattr(kind, 'attr', getattr(kind, 'id', None))
-                if name in classes:
-                    found.add(f'class check {name}')
+        if node.func.id in ('isinstance', 'issubclass'):
+            found.update(f'class check {name}' for name in class_names(what) if name in classes)
     return found
 
 
@@ -201,6 +222,12 @@ def discovery_violations(roots, classes):
 
 
 def test_no_ability_is_discovered_by_private_read_or_class_check_in_core_and_helpers():
+    """Rule 2.2 in core and in the unified library code.
+
+    Limit: a source scan cannot be complete, and this one does not see an imported class
+    under another name, ``getattr`` or ``hasattr`` with a name held in a variable, a private
+    attribute read with a dot, signature inspection, or a class of vision or language.
+    """
     roots = {package: package_root(package) for package in DISCOVERY_PACKAGES}
     compare(discovery_violations(roots, part_classes(roots.values())), DISCOVERY_ALLOWED,
             'discovery by private read or class check (rule 2.2)')
@@ -239,6 +266,12 @@ CLASSES = {'BrainScoreModel', 'CachingExtractor', 'TextWrapper'}
     "getattr(self.extractor, '_model')",
     'isinstance(subject, BrainScoreModel)',
     'isinstance(part, (str, wrappers.TextWrapper))',
+    'isinstance(subject, BrainScoreModel | str)',
+    'issubclass(type(part), CachingExtractor)',
+    'type(subject) is BrainScoreModel',
+    'type(subject) != BrainScoreModel',
+    'subject.__class__ is BrainScoreModel',
+    'type(part) in (str, wrappers.TextWrapper)',
 ])
 def test_discovery_signal_catches(source):
     assert discovery_findings(source, CLASSES)
@@ -250,6 +283,8 @@ def test_discovery_signal_catches(source):
     "getattr(module, '__name__')",
     'isinstance(event, StreamEvent)',
     'isinstance(subject, Subject)',
+    'type(event) is StreamEvent',
+    'subject.identifier == BrainScoreModel',
 ])
 def test_discovery_signal_allows(source):
     assert not discovery_findings(source, CLASSES)
