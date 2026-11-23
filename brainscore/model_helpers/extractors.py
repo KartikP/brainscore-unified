@@ -17,7 +17,7 @@ under an unchanged ``_VERSION``.
 """
 import inspect
 import warnings
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from typing import Callable, List
 
 import numpy as np
@@ -110,8 +110,9 @@ class LiveRecording:
     inside one, and ``record(layers, stimuli)`` returns one while another part
     (``reply``, ``answer``, ``likelihood``, ``policy``) runs it. Unknown layers
     fail here, before any compute. Each layer keeps its value, through
-    ``convert``, from the first pass since the previous take (the last value of
-    a module that runs twice in it); later passes (generated tokens) are not kept.
+    ``convert``, from the first pass since the previous take; later passes
+    (generated tokens) are not kept. A layer whose module runs more than once in
+    that pass (a shared or recurrent block) is refused at ``take``.
 
     ``inputs(args, kwargs)`` runs in the forward pre-hook of that first pass;
     ``kwargs`` also holds the positional arguments, named by ``forward``. Its
@@ -148,6 +149,7 @@ class LiveRecording:
 
     def _clear(self):
         self._activity, self._read, self._shown, self._passes = OrderedDict(), None, None, 0
+        self._calls = Counter()
 
     def __enter__(self):
         try:
@@ -190,6 +192,7 @@ class LiveRecording:
 
     def _keep(self, layer, value):
         if self._passes == 0:
+            self._calls[layer] += 1
             self._activity[layer] = _copy(self._convert(value))     # the network may reuse the buffer
 
     def take(self, row=None):
@@ -197,6 +200,12 @@ class LiveRecording:
         missing = [layer for layer in self.layers if layer not in self._activity]
         if missing:
             raise ValueError(f'No forward pass reached {missing} since the last presentation.')
+        repeated = {layer: count for layer, count in self._calls.items() if count > 1}
+        if repeated:
+            raise ValueError(
+                f'Layers ran more than once in one forward pass ({repeated} calls), and a recording '
+                f'keeps one value for each layer. Name a module that runs once for each input, or '
+                f'write an extractor in the plugin folder that reads the pass it wants.')
         activity, read = self._activity, self._read
         self._clear()
         return self._package(activity, read, row)
