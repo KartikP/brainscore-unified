@@ -32,7 +32,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **`intervention`** | A change to a subject while it runs (a lesion, a stimulation, a drug), and the `BrainScoreModel` part that applies it: `StateChange -> (PerturbationApplied, undo_function)`. The channel name (`lesion`, `stimulation`, `pharmacological`) says the kind. |
 | **Layer path** | A module's name in the network, such as `layer3.0.conv1`; list them with `named_modules()`. |
 | **`LayerSelector`** | One layer as a region; `modality=` picks the extractor when the layer name alone does not: in a model with several extractor objects, the name is found in extractors of two input families (an extractor that cannot list its layers counts as having every layer). A tuple, such as `('text', 'vision')`, names the recording extractor first and then the other inputs that reach the layer. |
-| **`likelihood`** | A `BrainScoreModel` part: `(prompt, candidates) -> {candidate: log probability}`. Scores each option as the reply, without generating; gives choices and implied probabilities. |
+| **`likelihood`** | A `BrainScoreModel` part: `(prompt, candidates) -> {candidate: log probability}`. Scores each option as the reply, without generating; gives `behavior:log_probabilities`, and `behavior:probabilities` (`softmax`) and `behavior:choice` (`softmax_argmax`) when `answer_owners` names them. |
 | **Metric** | The calculation that compares model outputs with measured data. |
 | **Modality** | A kind of sensory input: `vision` (pictures), `video`, `text`, `audio`. A modality is not a channel. Pictures arrive on `vision:image` and video on `vision:video`. |
 | **N/A** | Not applicable: the pair was not run because declarations do not fit. Never the same as a zero score. |

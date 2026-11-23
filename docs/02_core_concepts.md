@@ -155,7 +155,7 @@ Writing `participate` by hand works for anything. For neural networks, `BrainSco
 | `behavioral_readout_layer` | Fits a classifier on one layer. It gives probabilities; its choice is the most probable option, a conversion the registration names with `answer_owners={'behavior:choice': ('readout', 'argmax')}`. | `behavior`, `behavior:probabilities`, `behavior:rating`, `behavior:rt`, and `behavior:choice` when the registration names it |
 | `answer` | Your function that words a prompt for one stimulus and returns the generated text; `BrainScoreModel` parses it. Answers a plain choice. | `behavior`, `behavior:choice` |
 | `reply` | Your function that returns the model's raw reply to one trial's prompt; the task parses it. | `behavior:choice`, `behavior:rating`, `behavior:text` |
-| `likelihood` | Your function that scores each option as the reply, without generating. | `behavior:choice`, `behavior:probabilities` |
+| `likelihood` | Your function that scores each option as the reply, without generating. It gives each option's log probability; the probabilities and the choice are conversions the registration names, for example `answer_owners={'behavior:probabilities': ('likelihood', 'softmax')}`. | `behavior:log_probabilities`; `behavior:probabilities` (with `behavior:rt`) and `behavior:choice` when the registration names them |
 | `policy` | Your function that maps an environment observation to an action. | `observation` in, `motor` out |
 | `intervention` | Your function that applies an intervention and returns how to undo it. Send changes with `apply_state_change` or the `Intervene` tool. | `lesion`, `stimulation`, `pharmacological` in; `perturbation` out |
 
