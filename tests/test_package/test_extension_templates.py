@@ -171,8 +171,10 @@ def test_capability_readme_example_runs():
     namespace = {}
     for block in blocks:
         exec(compile(block, 'new_capability/README.md', 'exec'), namespace)
-    response = namespace['model'].process({'observation': {}})
-    assert response == {'motor': 0}
+    from brainscore_core.streaming import respond_event
+    session = Session([StreamEvent('observation', {}, None), respond_event()], ['motor'])
+    namespace['model'].participate(session)
+    assert [event.payload for event in session.emitted] == [0]
 
 
 # --- every code block of the user documents ----------------------------------------
