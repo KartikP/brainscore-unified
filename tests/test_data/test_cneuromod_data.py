@@ -147,3 +147,47 @@ def test_an_assembly_has_the_same_bytes_under_any_hash_seed(tmp_path):
                        env={**os.environ, 'PYTHONHASHSEED': seed}, capture_output=True)
         digests.add(hashlib.sha1(path.read_bytes()).hexdigest())
     assert len(digests) == 1
+
+
+def _repeated_trials(n_images=200, seed=0):
+    """Each image 3 times, trials shuffled in time; voxel 0 all signal, voxel 1 all noise, voxel 2 equal parts."""
+    rng = np.random.default_rng(seed)
+    image = np.repeat([f'img{i:03d}' for i in range(n_images)], 3)
+    rng.shuffle(image)
+    signal = pd.Series(rng.standard_normal(n_images), index=[f'img{i:03d}' for i in range(n_images)])[image].to_numpy()
+    noise = rng.standard_normal((len(image), 2))
+    return np.column_stack([signal, noise[:, 0], signal + noise[:, 1]]), image
+
+
+def test_the_noise_ceiling_follows_the_signal_share_and_ignores_a_shift_and_scale_per_voxel():
+    from brainscore.data.cneuromod.validation.fig2a_noise_ceiling import noise_ceiling
+    responses, image = _repeated_trials()
+    ceiling, used = noise_ceiling(responses, image, np.ones(len(image), bool))
+    assert used == 200
+    assert ceiling[0] == pytest.approx(100) and ceiling[1] < 5
+    assert ceiling[2] == pytest.approx(75, abs=10)          # ncsnr 1: 100 * 1 / (1 + 1/3)
+    moved, _ = noise_ceiling(responses * [2, 3, 4] + [5, -1, 7], image, np.ones(len(image), bool))
+    assert moved == pytest.approx(ceiling)
+
+
+def test_the_noise_ceiling_leaves_out_an_image_with_a_trial_without_response():
+    from brainscore.data.cneuromod.validation.fig2a_noise_ceiling import noise_ceiling
+    responses, image = _repeated_trials()
+    answered = np.ones(len(image), bool)
+    answered[0] = False
+    _, used = noise_ceiling(responses, image, answered)
+    assert used == 199
+
+
+def test_the_noise_ceiling_takes_the_answered_trials_of_an_image_shown_more_than_3_times():
+    from brainscore.data.cneuromod.validation.fig2a_noise_ceiling import noise_ceiling
+    responses, image = _repeated_trials()
+    shown_again = image == image[0]
+    extra = np.where(shown_again)[0][0]
+    responses = np.vstack([responses[:extra], [[99.0, 99.0, 99.0]], responses[extra:]])   # a 4th trial, no response
+    image = np.insert(image, extra, image[0])
+    answered = np.ones(len(image), bool)
+    answered[extra] = False
+    ceiling, used = noise_ceiling(responses, image, answered)
+    assert used == 200
+    assert ceiling[0] == pytest.approx(100)

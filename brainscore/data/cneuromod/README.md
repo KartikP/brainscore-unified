@@ -60,6 +60,15 @@ file's sha1 is in `data_packaging/expected.json`; the command compares each writ
 Time and size: 11.32 GB downloaded (one trial-response file per participant holds all 36
 sessions), 403 s for the first build, 3 s for a rebuild from the kept download; 16 MB written.
 
+## Validation: the paper's noise ceiling (Fig. 2a)
+
+`validation/fig2a_noise_ceiling.py` computes the voxelwise noise ceiling of St-Laurent et al.
+(2026, p.5-6) from the packaged `trials.nc` files only and draws it per region and participant.
+On the full packaging (2026-11-24) it equals the released noise-ceiling map on every region
+voxel (largest difference 0.0011 percentage points; the betas are stored as float32) and gives
+the paper's image counts and maxima for sub-01, 02 and 03. sub-06 has no pRF masks; its FFA,
+EBA and PPA are the Kanwisher group parcels. The figure and tables are in `validation/`.
+
 ## Stimuli and terms
 
 - THINGS images: https://osf.io/jum2f, academic use only (a password zip); get them there and
