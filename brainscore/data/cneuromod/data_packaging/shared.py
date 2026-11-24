@@ -21,7 +21,7 @@ ATLASES = 'anat.atlases'
 LABELS = ('tpl-MNI152NLin2009cAsym/tpl-MNI152NLin2009cAsym_atlas-Schaefer2018TianS3NettekovenAsym_'
           'desc-1000Parcels7Networks50Subcort128Cereb.tsv')
 # Measured on a cloud machine (us-east-2) on 2026-11-24 for the THINGS files; see the README.
-MEASURED_MB_PER_SECOND = None
+MEASURED_MB_PER_SECOND = 24
 _ANNEX_SIZE = re.compile(r'-s(\d+)--')
 _PREFIXES = ('face', 'body', 'scene')     # fLoc mask labels: faceFFA -> FFA
 

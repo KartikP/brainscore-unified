@@ -19,16 +19,17 @@ _LAYOUT = ('none: the script clones the repositories with DataLad (https, no rec
            'A folder of earlier clones (`{repositories}`) given as the source is read where it is')
 _PART = ('A part: `sub-XX` (one participant) or `sub-XX/ses-NN` (one session); sub-04 is restricted and '
          'never packaged.')
-_FILES = ('per participant: `masks/` and `atlas/` (copies of the source masks and the cneuromod2026 atlas, '
-          'with `atlas/parcels.csv`, the parcels present); per session `ses-NN/`: ')
+_FILES = ('`atlas/` (a copy of the group cneuromod2026 atlas and its labels, with `parcels.csv`, the parcels '
+          'present); per participant `masks/` (copies of the region masks); per session `ses-NN/`: ')
 
 data_builder_registry['cneuromod-things'] = lambda: DataBuilder(
     source=_SOURCE + ' THINGS: St-Laurent et al. 2026, Scientific Data 13:141. The images are not included.',
     access='public, no account: masks, atlas, event files and GLMsingle outputs of sub-01, 02, 03 and 06.',
     layout=_LAYOUT.format(repositories='things/`, `things.glmsingle/`, `anat.atlases/') + '.',
-    needs='DataLad and git-annex; h5py, nibabel, nilearn; per participant about 11.3 GB to download (the '
-          'trial-response file holds every session, also for a one-session part); time and disk as the README '
-          'states (measured once).',
+    needs='DataLad and git-annex 10.20230126 or later; h5py, nibabel, nilearn; per participant 11.32 GB to '
+          'download (the trial-response file holds every session, also for a one-session part) and about 12 GB '
+          'of disk; measured for sub-01 on a cloud machine: 403 s, mostly the download (24 MB/s); a '
+          'rebuild from the kept download: 3 s per session.',
     writes=_FILES + '`trials.nc` (GLMsingle trial responses, region voxels from the masks), `events.csv` (the '
            'event files, each trial with its stimulus identifier), `stimuli.csv` (identifiers only); and '
            '`glmsingle/` (the released noise-ceiling map). ' + _PART,
@@ -47,7 +48,7 @@ for _dataset, _participants in (('things', 'sub-01, 02, 03 and 06'), ('movie10',
               'participant (from the annex keys); time not measured.',
         writes=_FILES + '`timeseries_cneuromod2026.nc` (one row per TR: participant, session, task, run, tr, '
                'time, the event and stimulus identifier of the TR), `events.csv`, `stimuli.csv` (identifiers '
-               'only). ' + _PART,
+               'only), and `sub-XX/atlas/parcels.csv` (the parcels of the participant\'s own atlas). ' + _PART,
         build=_COMMAND.format(dataset=dataset, form='cneuromod2026'),
         fetches=True,
     )

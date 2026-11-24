@@ -16,7 +16,9 @@ pytestmark = pytest.mark.unit
 
 @pytest.fixture
 def source(tmp_path, monkeypatch):
+    from brainscore.data import packaging
     monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path / 'home'))
+    monkeypatch.setattr(packaging, '_expected', lambda name, builder: {})   # made-up data: no recorded sums
     return make_source(tmp_path / 'clones')
 
 

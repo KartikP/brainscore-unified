@@ -1,0 +1,286 @@
+{
+  "cneuromod-things": {
+    "atlas/parcels.csv": {
+      "bytes": 32302,
+      "counts": "rows 1134",
+      "digest": "51acefe3e3943b9d3707d983671fb869f309b407",
+      "sha1": "73255080a671a6d875a7808ac0c2ce43ee1e824e"
+    },
+    "atlas/tpl-MNI152NLin2009cAsym_atlas-Schaefer2018TianS3NettekovenAsym_desc-1000Parcels7Networks50Subcort128Cereb.tsv": {
+      "bytes": 33057,
+      "counts": "",
+      "digest": null,
+      "sha1": "d85b7b2919b5ed3bbc071fcf5e031862e093b530"
+    },
+    "atlas/tpl-MNI152NLin2009cAsym_res-01_atlas-Schaefer2018TianS3NettekovenAsym_desc-1000Parcels7Networks50Subcort128Cereb_dseg.nii.gz": {
+      "bytes": 1153723,
+      "counts": "",
+      "digest": null,
+      "sha1": "97f005c0cb0e9611981b4986e00effedd19437b8"
+    },
+    "sub-01/glmsingle/sub-01_task-things_space-T1w_model-fitHrfGLMdenoiseRR_stat-noiseCeilings_statmap.nii.gz": {
+      "bytes": 522135,
+      "counts": "",
+      "digest": null,
+      "sha1": "3a594dac2e0bbf370708a8cc4009377594288b64"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-fLocVisionKanwisher_label-bodyEBA_mask.nii.gz": {
+      "bytes": 3480,
+      "counts": "",
+      "digest": null,
+      "sha1": "11a4cecc24640b7c692352d432a3e77a48cdcd86"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-fLocVisionKanwisher_label-faceFFA_mask.nii.gz": {
+      "bytes": 2345,
+      "counts": "",
+      "digest": null,
+      "sha1": "3cd38e588fec9c4d0f0ba47daea4623d810b9f58"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-fLocVisionKanwisher_label-faceOFA_mask.nii.gz": {
+      "bytes": 2300,
+      "counts": "",
+      "digest": null,
+      "sha1": "c0596d63886471b9580f836f3a52edbfd6f055c5"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-fLocVisionKanwisher_label-facepSTS_mask.nii.gz": {
+      "bytes": 2599,
+      "counts": "",
+      "digest": null,
+      "sha1": "dcdc76c6f19a5b6bded300ec957fff37c1432758"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-fLocVisionKanwisher_label-sceneMPA_mask.nii.gz": {
+      "bytes": 2583,
+      "counts": "",
+      "digest": null,
+      "sha1": "dd1a60a48f6c59dba93212a911b8831772506642"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-fLocVisionKanwisher_label-sceneOPA_mask.nii.gz": {
+      "bytes": 2358,
+      "counts": "",
+      "digest": null,
+      "sha1": "42c8c3636a28060fc3b115d030d55552461b16ab"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-fLocVisionKanwisher_label-scenePPA_mask.nii.gz": {
+      "bytes": 2462,
+      "counts": "",
+      "digest": null,
+      "sha1": "766012d6ff435bad8db955946d3962c6747dbc91"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-fLocVisionTask_label-bodyEBA_mask.nii.gz": {
+      "bytes": 3853,
+      "counts": "",
+      "digest": null,
+      "sha1": "3a04eadecf7442916c4216361d2c6e5cc5d86bd2"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-fLocVisionTask_label-faceFFA_mask.nii.gz": {
+      "bytes": 2904,
+      "counts": "",
+      "digest": null,
+      "sha1": "74ba4e2e5c3e0e8ef2cb6af28e5eaaff03d557f5"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-fLocVisionTask_label-faceOFA_mask.nii.gz": {
+      "bytes": 2747,
+      "counts": "",
+      "digest": null,
+      "sha1": "58ef151a248e6e28542ed1dcc5dc17a766d27095"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-fLocVisionTask_label-facepSTS_mask.nii.gz": {
+      "bytes": 2563,
+      "counts": "",
+      "digest": null,
+      "sha1": "f1f6ba66943e612d008440d1472e2529415120ab"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-fLocVisionTask_label-sceneMPA_mask.nii.gz": {
+      "bytes": 2791,
+      "counts": "",
+      "digest": null,
+      "sha1": "c5d8a888e1ab1d47c08f704191f7484265f8a64c"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-fLocVisionTask_label-sceneOPA_mask.nii.gz": {
+      "bytes": 2529,
+      "counts": "",
+      "digest": null,
+      "sha1": "97221f889251690a2beff4dde86d2752f119c163"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-fLocVisionTask_label-scenePPA_mask.nii.gz": {
+      "bytes": 2959,
+      "counts": "",
+      "digest": null,
+      "sha1": "5a61d4d6c7ff6b0ff7a705b2cf49426809361c41"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-langToneva_label-AngularG_mask.nii.gz": {
+      "bytes": 18459,
+      "counts": "",
+      "digest": null,
+      "sha1": "0db28b91e2c8cfd79e66fce5e17a097e3fa544ec"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-langToneva_label-AntTemp_mask.nii.gz": {
+      "bytes": 20831,
+      "counts": "",
+      "digest": null,
+      "sha1": "8b0fba69957ed6843bc5e80226b7c4ae25023dae"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-langToneva_label-IFG_mask.nii.gz": {
+      "bytes": 18436,
+      "counts": "",
+      "digest": null,
+      "sha1": "1e70e7ee5dd02bb6a31d871e75d34454c64e9ecb"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-langToneva_label-IFGorb_mask.nii.gz": {
+      "bytes": 17939,
+      "counts": "",
+      "digest": null,
+      "sha1": "46a591d3a9a7dff1f36eb6d3f587a953a46df0a6"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-langToneva_label-MFG_mask.nii.gz": {
+      "bytes": 18088,
+      "counts": "",
+      "digest": null,
+      "sha1": "b5ee0353b965925d35d28d5550924735e804f343"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-langToneva_label-PostTemp_mask.nii.gz": {
+      "bytes": 20616,
+      "counts": "",
+      "digest": null,
+      "sha1": "924afef1fbb038c672127bbccf9d35a276c72e7a"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-langToneva_label-dmpfc_mask.nii.gz": {
+      "bytes": 18591,
+      "counts": "",
+      "digest": null,
+      "sha1": "95589069f3589d95442e3bd196a9dd55a890f4ea"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-langToneva_label-pCingulate_mask.nii.gz": {
+      "bytes": 19282,
+      "counts": "",
+      "digest": null,
+      "sha1": "013b8f8c2853e01208f5aebefbaa7d89f44549c7"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-retinoVisionNpythy_label-LO1_mask.nii.gz": {
+      "bytes": 18023,
+      "counts": "",
+      "digest": null,
+      "sha1": "02792fa2fcc693d755a2a58065b8a7de6ea484e6"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-retinoVisionNpythy_label-LO2_mask.nii.gz": {
+      "bytes": 17984,
+      "counts": "",
+      "digest": null,
+      "sha1": "85ad8d88ca08bf892bcd8cc44073fd09c68472db"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-retinoVisionNpythy_label-TO1_mask.nii.gz": {
+      "bytes": 17831,
+      "counts": "",
+      "digest": null,
+      "sha1": "bb3202c6723dc04dbc909083e459aaf1ebefd399"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-retinoVisionNpythy_label-TO2_mask.nii.gz": {
+      "bytes": 17797,
+      "counts": "",
+      "digest": null,
+      "sha1": "2aa9506f7924a258cf1927b2e16ecfa38dc94c3d"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-retinoVisionNpythy_label-V1_mask.nii.gz": {
+      "bytes": 20657,
+      "counts": "",
+      "digest": null,
+      "sha1": "46af16b25097ff03ff468705479540bcb423640f"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-retinoVisionNpythy_label-V2_mask.nii.gz": {
+      "bytes": 20674,
+      "counts": "",
+      "digest": null,
+      "sha1": "4c105fe4cbd23691a9fa331243bb8d08c6656fb0"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-retinoVisionNpythy_label-V3_mask.nii.gz": {
+      "bytes": 19708,
+      "counts": "",
+      "digest": null,
+      "sha1": "d4e85a0d5395301465dfd16622c433c57ec54e8c"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-retinoVisionNpythy_label-V3a_mask.nii.gz": {
+      "bytes": 18581,
+      "counts": "",
+      "digest": null,
+      "sha1": "7d4b3d141b2e7fb5d822c02bdd286fd8f155f9ae"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-retinoVisionNpythy_label-V3b_mask.nii.gz": {
+      "bytes": 17796,
+      "counts": "",
+      "digest": null,
+      "sha1": "b7b65734d4aa427757f5b5c925fd843cdac60954"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-retinoVisionNpythy_label-VO1_mask.nii.gz": {
+      "bytes": 17801,
+      "counts": "",
+      "digest": null,
+      "sha1": "ee8571f161c10275b19ad0cb4545b3b57040bb58"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-retinoVisionNpythy_label-VO2_mask.nii.gz": {
+      "bytes": 17735,
+      "counts": "",
+      "digest": null,
+      "sha1": "99c038799f29d5a7683d70797120d244d9a8c48f"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-retinoVisionNpythy_label-hV4_mask.nii.gz": {
+      "bytes": 18523,
+      "counts": "",
+      "digest": null,
+      "sha1": "c9019e18e29c3051ff9b9081e74ad7765b085796"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-yeo7networks_label-defaultMode_mask.nii.gz": {
+      "bytes": 16598,
+      "counts": "",
+      "digest": null,
+      "sha1": "f3b56bdda0fcbf23e2fc03576eb26425634f3555"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-yeo7networks_label-dorsalAttention_mask.nii.gz": {
+      "bytes": 16574,
+      "counts": "",
+      "digest": null,
+      "sha1": "ef9c629621b584d0d624fdce96f089fb46a756df"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-yeo7networks_label-frontoParietal_mask.nii.gz": {
+      "bytes": 19202,
+      "counts": "",
+      "digest": null,
+      "sha1": "e6271dff41af9f2bfe4680ac2a6ef0fda487dea3"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-yeo7networks_label-sensorimotor_mask.nii.gz": {
+      "bytes": 15157,
+      "counts": "",
+      "digest": null,
+      "sha1": "64020fb032c8c6f521daebe1b92b9feb2afabb2e"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-yeo7networks_label-ventralAttention_mask.nii.gz": {
+      "bytes": 17242,
+      "counts": "",
+      "digest": null,
+      "sha1": "87b3c75f117f1467331e0501642b3de51d3ae00b"
+    },
+    "sub-01/masks/tpl-sub01T1w_res-func_atlas-yeo7networks_label-visual_mask.nii.gz": {
+      "bytes": 13681,
+      "counts": "",
+      "digest": null,
+      "sha1": "b02a910f3ba9f3c2076ebe1e685c3ae0850f207c"
+    },
+    "sub-01/ses-01/events.csv": {
+      "bytes": 131595,
+      "counts": "rows 180",
+      "digest": "9bebaa5588940a04a2e76c1eafb07471919ba52a",
+      "sha1": "6ccb86ffc4ba1808b15e0c19e104b47e4bb6fbf0"
+    },
+    "sub-01/ses-01/stimuli.csv": {
+      "bytes": 29773,
+      "counts": "rows 120",
+      "digest": "21f14fa904cdfb92ba7871d7edf8476bc0c55ce8",
+      "sha1": "82bac6c9402245711e4a5c838fd24e6c694c56dd"
+    },
+    "sub-01/ses-01/trials.nc": {
+      "bytes": 13676196,
+      "counts": "neuroid 17290, presentation 180",
+      "digest": "a47c5aba04a95eda855d65ff4d4e7ed9cc351a94",
+      "sha1": "20f7fd2cf977fc24cde56f878750d60380069e0e"
+    }
+  }
+}
