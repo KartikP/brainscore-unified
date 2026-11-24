@@ -7,7 +7,7 @@ import pytest
 import torch
 from torch import nn
 
-from brainscore_core.streaming_helpers import apply_state_change
+from brainscore_core.streaming_helpers import apply_state_change, neural_response, stimulus_session
 from brainscore import BrainScoreModel, CompositeSelector, LayerSelector, RandomSelection
 from brainscore_core.contract import TaskContext
 from brainscore_core.events import StateChange, Perturbation
@@ -170,9 +170,8 @@ def test_text_context_and_metadata_match_across_wrappers(language_pair, groups):
     stimuli = _stimuli()
     if groups is not None:
         stimuli['context_id'] = groups
-    for model in (native, adapter):
-        model.start_recording('language_system')
-    expected, actual = native.process(stimuli), adapter.process(stimuli)
+    expected, actual = (neural_response(model, stimuli, ['neural:language_system'])
+                        for model in (native, adapter))
     np.testing.assert_allclose(actual.values, expected.values, atol=1e-6)
     for column in stimuli.columns:
         assert list(actual[column].values) == list(stimuli[column])
@@ -184,12 +183,11 @@ def test_text_context_and_metadata_match_across_wrappers(language_pair, groups):
 def test_explicit_passage_changes_context_and_legacy_digest_is_preserved(language_pair):
     native, adapter = language_pair
     stimuli = _stimuli().iloc[:2].copy()
-    for model in (native, adapter):
-        model.start_recording('language_system')
-    independent = native.process(stimuli)
+    independent = neural_response(native, stimuli, ['neural:language_system'])
     stimuli['context_id'] = 'passage'
-    passage = native.process(stimuli)
+    passage = neural_response(native, stimuli, ['neural:language_system'])
     assert not np.allclose(passage.values[1], independent.values[1])
+    adapter.start_recording('language_system')
     np.testing.assert_allclose(adapter.digest_text(list(stimuli.sentence))['neural'].values,
                                passage.values, atol=1e-6)
     from brainscore_core.legacy_facade import LegacyBenchmarkFacade
@@ -222,22 +220,15 @@ def test_shared_layer_names_keep_towers_and_regions_separate(composite):
                    'text': _Extractor(np.full((4, 2), 9.0))})
     stimuli = _stimuli()
     stimuli['image_path'] = ['unused.png'] * 4
-    model.start_recording(['IT', 'language_system'])
-    actual = model.process(stimuli, multi_modality=True)
+    session = stimulus_session(stimuli, ['neural:IT', 'neural:language_system'])
+    model.participate(session)
+    it, language = session.collect('neural:IT'), session.collect('neural:language_system')
     width = 1 if composite else 2
-    assert actual.shape == (4, 2 * width)
-    assert list(actual.region.values) == ['IT'] * width + ['language_system'] * width
-    np.testing.assert_array_equal(actual.values[:, :width], 1)
-    np.testing.assert_array_equal(actual.values[:, width:], 9)
-    # Single-region recording chooses its declared tower even with both inputs.
-    model.start_recording('language_system')
-    with pytest.warns(UserWarning, match='multiple supported modalities'):
-        np.testing.assert_array_equal(model.process(stimuli).values, 9)
-    model.start_recording(['IT', 'language_system'])
-    with pytest.raises(ValueError, match='multi_modality=True'):
-        model.process(stimuli)
-    with pytest.raises(ValueError, match='missing input modalities'):
-        model.process(stimuli.drop(columns='sentence'), multi_modality=True)
+    assert it.shape == language.shape == (4, width)
+    np.testing.assert_array_equal(it.values, 1)
+    np.testing.assert_array_equal(language.values, 9)
+    # One region alone reads its declared tower even with both inputs.
+    np.testing.assert_array_equal(neural_response(model, stimuli, ['neural:language_system']).values, 9)
 
 
 @pytest.mark.parametrize('layers', [('L',), ('L', 'M')])
@@ -274,23 +265,20 @@ def test_localized_and_random_lesions_use_original_subset_indices(layers):
 
 
 def test_reset_and_readout_clear_composite_recording():
+    from brainscore_core.responses import Choice
     model = BrainScoreModel('composite-reset',
         region_layer_map={'IT': CompositeSelector((('L', (0,)),))},
         extractor={'text': _Extractor(np.ones((4, 2)))}, behavioral_readout_layer='L',
-        capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
-    model.start_recording('IT', time_bins=[(0, 1)])
-    # Readout extraction must also work while composite recording is configured.
-    from brainscore_core.responses import Choice
+        answer_owners={'behavior:choice': ('readout', 'argmax')})
     task = TaskContext(response=Choice(['real', 'pseudo']), fitting_stimuli=_stimuli())
 
     def read_out():
-        behavioral = model._behavioral
-        return behavioral.readout_classifier.predict_proba(behavioral.extract_behavioral_features(_stimuli()))
-    model.start_task(task)
+        # The readout extracts while the session records the composite region.
+        session = stimulus_session(_stimuli(), ['behavior:choice', 'neural:IT'], task, time_bins=[(0, 1)])
+        model.participate(session)
+        return session.collect('behavior:choice')
     assert isinstance(read_out(), BehavioralAssembly)
     model.reset()
-    assert not model._recording_request.composite_recording and model._recording_request.time_bins is None
-    model.start_task(task)
     assert isinstance(read_out(), BehavioralAssembly)
 
 

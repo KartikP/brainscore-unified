@@ -40,7 +40,7 @@ def subject(calls, statement, likelihood=False):
         return {'cat': -1.0, 'dog': -2.0}
     parts = {'answer': answer, **({'likelihood': score} if likelihood else {})}
     return BrainScoreModel('passes', extractor={'text': features}, behavioral_readout_layer='late',
-                           capability_config={'behavior-sessions': statement}, **parts)
+                           answer_owners=statement, **parts)
 
 
 @pytest.mark.parametrize('statement, likelihood, owner', [
@@ -78,8 +78,8 @@ def test_with_trial_history_the_reply_still_runs_and_later_trials_read_it():
             earlier = [answered for _, answered in prompt.history]
             return {'cat': -1.0, 'dog': -1.0 - 0.5 * earlier.count('cat') + 0.5 * earlier.count('dog')}
         return BrainScoreModel('history', extractor={'text': features}, reply=reply, likelihood=score,
-                               memory='trial_history', capability_config={'behavior-sessions': {
-                                   'behavior:probabilities': ('likelihood', 'softmax')}})
+                               memory='trial_history', answer_owners={
+                                   'behavior:probabilities': ('likelihood', 'softmax')})
     task = TaskContext(response=Choice(['cat', 'dog']), trial_memory='history')
     rows = {}
     for outputs in (['behavior:probabilities'], ['behavior:choice', 'behavior:probabilities']):
@@ -122,7 +122,7 @@ def _log_probability_subject(memory=None, refused=False):
     return BrainScoreModel('log-probabilities-alone', extractor={'text': _RecordingExtractor()},
                            region_layer_map={'IT': 'mid'}, behavioral_readout_layer='late',
                            likelihood=score, memory=memory,
-                           capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
+                           answer_owners={'behavior:choice': ('readout', 'argmax')})
 
 
 def test_log_probabilities_alone_need_no_part_that_gives_the_choice():

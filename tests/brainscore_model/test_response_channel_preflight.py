@@ -47,9 +47,8 @@ def _likelihood_model():
         return {c: float(i) for i, c in enumerate(candidates)}
 
     # The likelihood derives both formats; the statements declare them (rule 4.11).
-    return BrainScoreModel(identifier='toy-likelihood', likelihood=likelihood, capability_config={
-        'behavior-sessions': {'behavior:choice': ('likelihood', 'softmax_argmax'),
-                              'behavior:probabilities': ('likelihood', 'softmax')}}), calls
+    return BrainScoreModel(identifier='toy-likelihood', likelihood=likelihood, answer_owners={'behavior:choice': ('likelihood', 'softmax_argmax'),
+                              'behavior:probabilities': ('likelihood', 'softmax')}), calls
 
 
 def _ask(model, task, channels):
@@ -111,7 +110,7 @@ def test_a_likelihood_alone_does_not_declare_bare_behavior():
 def test_the_plan_refuses_addressed_channels_without_a_response_before_task_setup(monkeypatch):
     model, _ = _readout_model()
     setup = []
-    monkeypatch.setattr(model, 'start_task', lambda *a, **k: setup.append('start_task'))
+    monkeypatch.setattr(model._behavioral, 'start_task', lambda *a, **k: setup.append('start_task'))
     session = stimulus_session(STIMULI, ['behavior:probabilities'], task=TaskContext(task_type='probabilities'))
     with pytest.raises(ExecutionNotFeasibleError, match='TaskContext'):
         model.participate(session)

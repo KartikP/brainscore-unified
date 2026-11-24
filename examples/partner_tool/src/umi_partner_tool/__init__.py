@@ -4,8 +4,9 @@ import time
 
 import numpy as np
 
-from brainscore.capabilities import Capability, register_capability
-from brainscore_core.extensions import CatalogEntry, StreamEvent, register_channel
+from brainscore.capabilities import Capability
+from brainscore_core.io_catalog import CatalogEntry, register_channel
+from brainscore_core.streaming import StreamEvent
 
 
 @dataclass
@@ -27,27 +28,26 @@ class Amplitude(Capability):
     input_channels = {'partner_signal'}
     output_channels = {'partner_amplitude'}
 
-    def enabled_for(self, subject):
-        return bool(subject.capability_config.get(self.identifier))
+    def __init__(self):
+        self.calls = 0          # this instance's state: give each model its own instance
 
-    def setup(self, subject):
-        return {'calls': 0}
+    def reset(self, subject):
+        self.calls = 0
 
     def supports_session(self, subject, channels):
         return set(channels) == self.output_channels
 
     def participate(self, subject, session):
         # The session checks each signal and each answer against the catalog.
-        state = subject.capability_state(self.identifier)
         while (event := session.next_input()) is not None:
             if event.channel == 'partner_signal':
-                state['calls'] += 1
+                self.calls += 1
                 session.respond(StreamEvent('partner_amplitude',
                                             float(np.linalg.norm(event.payload)), event.t_ms))
 
 
 def register():
-    """Call once at process initialization, before constructing models."""
+    """Add the two channels. Call once at process initialization, before constructing models."""
     register_channel(CatalogEntry('partner_signal', 'input', 'StreamEvent',
         'Three finite components in normalized fixture units', 'umi_partner_tool',
         owner='partner-example', shape_validator=lambda x: (
@@ -55,4 +55,3 @@ def register():
     register_channel(CatalogEntry('partner_amplitude', 'output', 'StreamEvent',
         'Euclidean amplitude in normalized fixture units', 'umi_partner_tool',
         owner='partner-example', shape_validator=lambda x: isinstance(x, float) and bool(np.isfinite(x))))
-    register_capability(Amplitude())

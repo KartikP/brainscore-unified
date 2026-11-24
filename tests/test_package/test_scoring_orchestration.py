@@ -2,7 +2,7 @@
 
 Exercises the full pipeline glue with a SYNTHETIC model + benchmark:
     score() -> load_model -> load_benchmark -> benchmark(model)
-              -> model.start_recording -> model.process(StimulusSet)
+              -> neural_response(model, StimulusSet, ['neural:IT']) -> participate
               -> NeuroidAssembly -> metric -> Score (+ runtime_sec/identifiers).
 
 This is the production-blocking gap the coverage audit flagged: components were
@@ -17,6 +17,7 @@ import pytest
 import brainscore
 from brainscore import BrainScoreModel
 from brainscore_core.metrics import Score
+from brainscore_core.streaming_helpers import neural_response
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
@@ -25,7 +26,7 @@ N_FEATURES = 8
 
 class _SyntheticExtractor:
     """Duck-typed extractor: deterministic random features per stimulus.
-    Has `.identifier` so BrainScoreModel.process() calls it as a full
+    Has `.identifier` so BrainScoreModel calls it as a full
     extractor — (stimuli, layers=[...]) -> NeuroidAssembly."""
     def __init__(self, identifier='synthetic-extractor'):
         self.identifier = identifier
@@ -56,8 +57,7 @@ class _SyntheticExtractor:
 
 
 class _SyntheticBenchmark:
-    """Minimal benchmark: records a region, processes the stimuli through the
-    model, and scores assembly-variance as a trivial deterministic metric."""
+    """Minimal benchmark: records a region through a session, and scores assembly-variance as a trivial deterministic metric."""
     identifier = 'synthetic-benchmark'
     required_modalities = {'text'}
 
@@ -65,8 +65,7 @@ class _SyntheticBenchmark:
         self._stimuli = stimuli
 
     def __call__(self, model):
-        model.start_recording('IT')
-        assembly = model.process(self._stimuli)
+        assembly = neural_response(model, self._stimuli, ['neural:IT'])
         assert assembly.dims == ('presentation', 'neuroid')
         # trivial, deterministic "alignment" metric in [0,1]
         value = float(np.tanh(np.abs(assembly.values).mean()))
@@ -94,9 +93,8 @@ def model():
 
 @pytest.mark.integration
 class TestScoringOrchestration:
-    def test_process_dispatches_to_preprocessor(self, model, stimuli):
-        model.start_recording('IT')
-        asm = model.process(stimuli)
+    def test_a_session_dispatches_to_the_extractor(self, model, stimuli):
+        asm = neural_response(model, stimuli, ['neural:IT'])
         assert asm.dims == ('presentation', 'neuroid')
         assert asm.shape == (4, N_FEATURES)
         assert set(str(s) for s in asm['stimulus_id'].values) == {'s0', 's1', 's2', 's3'}
@@ -120,7 +118,6 @@ class TestScoringOrchestration:
 
     def test_reproducible_across_runs(self, model, stimuli):
         """Deterministic extractor -> identical score on re-run (no flakiness)."""
-        model.start_recording('IT')
-        a = model.process(stimuli).values
-        b = model.process(stimuli).values
+        a = neural_response(model, stimuli, ['neural:IT']).values
+        b = neural_response(model, stimuli, ['neural:IT']).values
         assert np.allclose(a, b)

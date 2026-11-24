@@ -186,21 +186,22 @@ def test_real_text_cache_preserves_values_and_pereira_context(language_pair, iso
     monkeypatch.setattr(wrapper, '_from_texts', counted)
     stimuli = _stimuli()
     stimuli['context_id'] = 'passage'
-    native.start_recording('language_system')
-    first = native.process(stimuli)
-    np.testing.assert_array_equal(native.process(stimuli), first)
+    from brainscore_core.streaming_helpers import neural_response
+    record = lambda: neural_response(native, stimuli, ['neural:language_system'])
+    first = record()
+    np.testing.assert_array_equal(record(), first)
     assert len(calls) == 1  # tokenizer backend runtime padding cannot alter key
     # Compare against direct cold extraction, not another cache read.
     cold = extract(wrapper._table_inputs(stimuli), ['transformer.h.0'])
     np.testing.assert_array_equal(first, cold)
     wrapper._max_length = 3
-    shortened = native.process(stimuli)
+    shortened = record()
     assert len(calls) == 2 and not np.allclose(shortened, first)
     wrapper._tokenizer.truncation_side = 'right'
-    right = native.process(stimuli)
+    right = record()
     assert len(calls) == 3 and not np.allclose(right, shortened)
     stimuli['context_id'] = ['a', 'a', 'b', 'b']
-    native.process(stimuli)
+    record()
     assert len(calls) == 4
 
 

@@ -242,6 +242,25 @@ class TestGameActionFn:
         act(s), act(s)
         assert len(calls) == 2                                 # re-run replays from cache
 
+    def test_an_anthropic_policy_reply_is_never_stored(self, monkeypatch, tmp_path):
+        """The Anthropic client samples with no seed: each tick asks the provider again."""
+        import sys
+        import types
+        from brainscore.model_helpers.api_behavioral import api_policy
+        requests = []
+
+        class Messages:
+            def create(self, **kwargs):
+                requests.append(kwargs)
+                return types.SimpleNamespace(content=[types.SimpleNamespace(type='text', text='Action: 0')])
+        monkeypatch.setitem(sys.modules, 'anthropic', types.SimpleNamespace(
+            Anthropic=lambda: types.SimpleNamespace(messages=Messages())))
+        act = api_policy('anthropic', 'claude-x', cache_dir=str(tmp_path))
+        for _ in range(2):
+            act.reset()
+            act(self._env_step())
+        assert len(requests) == 2
+
     def test_missing_frame_raises(self):
         from brainscore.model_helpers.api_behavioral import api_policy
         act = api_policy(self._mock(), 'mock')
@@ -411,9 +430,13 @@ class TestRegistration:
         from brainscore.models.api_closed.model import get_model
         m = get_model('claude-opus-behavioral')
         from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-        # A behavioral-only model declares its inputs without pretending to extract activity.
-        with pytest.raises(NotImplementedError, match='no activation extractor'):
-            m.process(StimulusSet({'image_path': ['unused.png'], 'stimulus_id': ['s0']}))
+        from brainscore_core.compatibility import ExecutionNotFeasibleError
+        from brainscore_core.streaming_helpers import neural_response
+        stimuli = StimulusSet({'image_path': ['unused.png'], 'stimulus_id': ['s0']})
+        stimuli.identifier = 'behavioral-only'
+        # A behavioral-only model declares no neural output: a session for one is refused.
+        with pytest.raises(ExecutionNotFeasibleError, match="does not produce \\['neural:IT'\\]"):
+            neural_response(m, stimuli, ['neural:IT'])
 
     def test_unknown_identifier_raises(self):
         from brainscore.models.api_closed.model import get_model

@@ -2,10 +2,9 @@
 
 Each part of a BrainScoreModel (region map, answer or readout, policy,
 intervention) answers some channels. These capabilities declare those
-channels and run the matching sessions; they are registered the same way as
-any added capability, so ``participate``, ``check_session_support`` and the
-declared channels all read one registry. They sort after added capabilities
-(``order`` 10000), so an added capability that claims the same outputs wins.
+channels and run the matching sessions. ``built_in_capabilities`` lists the
+ones whose part the model wires; the model reads them after its added
+capabilities, so an added capability that claims the same outputs wins.
 Each one calls its part directly: ``record`` for activity, ``respond`` for a
 task, ``act`` for a policy step, ``Interventions.process`` for a change.
 """
@@ -15,28 +14,16 @@ from contextlib import ExitStack
 import pandas as pd
 
 from .base import Capability
-from .._model.behavioral import _declared_formats
+from .._model.owners import _declared_formats
 from .._model.dispatch import act
 from ..model_helpers.intervention import INTERVENTION_CHANNELS
 from .._model.recording import (open_recordings, planned_recordings, records_while_answering,
                                 region_selector, trial_regions)
-from .registry import register_capability
 from brainscore_core import streaming_helpers as _drivers
 from brainscore_core.streaming import CONTROL_CHANNEL, RESPOND, StreamEvent, parse_channel
 
-# After every added capability (default order 1000), so an added one that
-# claims the same outputs runs the session.
-_SESSION_ORDER = 10000
-
-
 class NeuralSessions(Capability):
-    order = _SESSION_ORDER
     identifier = 'neural-sessions'
-
-    def enabled_for(self, subject) -> bool:
-        # A region map names where to record; only a wired extractor can
-        # record there, so a map without one declares nothing (rule 2.4).
-        return bool(subject.region_layer_map) and bool(subject._extractors)
 
     def declared_output_channels(self, subject):
         return {f'neural:{region}' for region in subject.region_layer_map}
@@ -78,13 +65,7 @@ class NeuralSessions(Capability):
 
 
 class BehaviorSessions(Capability):
-    order = _SESSION_ORDER
     identifier = 'behavior-sessions'
-
-    def enabled_for(self, subject) -> bool:
-        return (subject._behavioral_readout_layer is not None
-                or subject._answer is not None
-                or subject._reply is not None or subject._likelihood is not None)
 
     def declared_input_channels(self, subject):
         # An answer chosen by similarity reads no instruction, so it does not declare one.
@@ -121,10 +102,6 @@ class MotorSessions(Capability):
     """
 
     identifier = 'motor-sessions'
-    order = _SESSION_ORDER
-
-    def enabled_for(self, subject) -> bool:
-        return subject._policy is not None
 
     def declared_input_channels(self, subject):
         return set(subject._policy_in_channels)
@@ -136,12 +113,19 @@ class MotorSessions(Capability):
         channels = set(channels)
         recorded = ({f'neural:{region}' for region in subject.region_layer_map
                      if records_while_answering(subject, region)}
-                    if _NEURAL.enabled_for(subject) else set())
+                    if _records(subject) else set())
         outputs = set(subject._policy_out_channels)
         return bool(channels & outputs) and channels <= outputs | recorded
 
     def participate(self, subject, session) -> None:
         requested = _drivers.session_outputs(session)
+        if session.presents_table:
+            # A table sends no 'respond' signal: the policy would never be called.
+            from brainscore_core.compatibility import ExecutionNotFeasibleError
+            raise ExecutionNotFeasibleError(
+                f"Subject '{subject.identifier}' answers with a policy, once per closed-loop step; a "
+                "table session has no steps. Run the policy in environment_session(environment, "
+                "outputs, task).", channels=set(requested))
         regions = [parse_channel(c)[1] for c in requested if parse_channel(c)[0] == 'neural']
         with _PolicySteps(subject, session, regions) as steps:
             _drivers.drive_environment_session(steps, session, on_begin=steps.begin)
@@ -211,10 +195,6 @@ class InterventionSessions(Capability):
     """
 
     identifier = 'intervention-sessions'
-    order = _SESSION_ORDER
-
-    def enabled_for(self, subject) -> bool:
-        return subject._intervention is not None
 
     def declared_input_channels(self, subject):
         return set(INTERVENTION_CHANNELS)
@@ -230,8 +210,24 @@ class InterventionSessions(Capability):
 
 
 _NEURAL, _BEHAVIOR, _MOTOR = NeuralSessions(), BehaviorSessions(), MotorSessions()
-for _capability in (_NEURAL, _BEHAVIOR, _MOTOR, InterventionSessions()):
-    register_capability(_capability)
+_INTERVENTION = InterventionSessions()
+
+
+def _records(subject) -> bool:
+    # A region map names where to record; only a wired extractor can
+    # record there, so a map without one declares nothing (rule 2.4).
+    return bool(subject.region_layer_map) and bool(subject._extractors)
+
+
+def built_in_capabilities(subject) -> list:
+    """The built-in capabilities whose part ``subject`` wires."""
+    wired = {_NEURAL: _records(subject),
+             _BEHAVIOR: (subject._behavioral_readout_layer is not None
+                         or subject._answer is not None
+                         or subject._reply is not None or subject._likelihood is not None),
+             _MOTOR: subject._policy is not None,
+             _INTERVENTION: subject._intervention is not None}
+    return [capability for capability, on in wired.items() if on]
 
 
 def drive_behavior_and_neural_session(subject, session, driver: str = "interact") -> None:
@@ -250,7 +246,7 @@ def drive_behavior_and_neural_session(subject, session, driver: str = "interact"
     task = session.task
     regions, answers = list(plan.regions), list(plan.answers)
     # The plan chose the answering part for the requested formats. The requested outputs decide whether the readout is fitted (as they decide the parts).
-    subject.start_task(task, formats=answers)
+    subject._behavioral.start_task(task, answers)
     # A trial is read, answered and its outputs sent before the next is read. A
     # subject without the trait keeps no history, so a listed session can be answered
     # as one whole table ('table'); otherwise a begin can fall between trials.

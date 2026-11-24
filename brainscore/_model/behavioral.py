@@ -6,10 +6,9 @@ One entry (``respond``) answers the stimuli and records regions during the
 same presentation. A task states its ``response`` (Choice, Scale, Text); the
 bare ``behavior`` channel carries the same answer as the response's first
 format. The packaging is in ``answers``; the recording during the answering
-pass is in ``recording``.
+pass is in ``recording``; the owner of each answer format is in ``owners``.
 """
 
-import math
 from contextlib import contextmanager, nullcontext
 from dataclasses import replace
 from typing import Any, Dict, Optional, Tuple
@@ -22,12 +21,9 @@ import numpy as np
 
 from . import answers, parts
 from .dispatch import detect_modalities, extract_for_modality, pick_modality, record
+from .answers import VERBATIM_IN_TEMPLATE, VERBATIM_LOG_PROBABILITIES, _on_scale_steps
+from .owners import LOG_PROBABILITIES, _formats_by_part, statement_hint
 from .recording import gather_region, openable_paths, per_stimulus, region_modality, region_selector
-
-
-# A likelihood part gives each option's summed log probability: the continuation
-# log-probability format (Response Format Standard, F6; no channel yet).
-LOG_PROBABILITIES = 'behavior:log_probabilities'
 
 
 def _softmax_record():
@@ -145,7 +141,7 @@ class BehavioralReadout:
         this component holds (the same task after input projection), as long
         as every field in ``_fingerprint`` is the one fitted. TaskContext is
         mutable: a caller that swaps or edits the fitting table, relabels it
-        or changes a setting and calls start_task again gets a new fit.
+        or changes a setting and sends the task again gets a new fit.
         """
         if self._stale or self.task is None or not self._configured_as:
             return False
@@ -167,7 +163,7 @@ class BehavioralReadout:
                             if task is not None else None)
 
     def abandon(self) -> None:
-        """A start_task failed part way: no task counts as configured, so the next one fits."""
+        """A task failed to configure part way: no task counts as configured, so the next one fits."""
         self.configured_from = None
         self._configured_as = None
 
@@ -223,35 +219,43 @@ class BehavioralReadout:
         self._restore(current)
         return False
 
-    def start_task(self, task_or_type, fitting_stimuli=None, formats=None,
-                   **kwargs) -> None:
+    def start_task(self, task: TaskContext, formats) -> None:
         """Configure ``task``; fit the readout when it serves the requested ``formats``.
 
-        ``formats`` are the outputs a session requests (``None``: every format
-        of the task, as for a direct call). A later session that requests a
-        format the readout serves fits it then (``fit_for``).
+        ``formats`` are the outputs a session requests; a later session that
+        requests a format the readout serves fits it then (``fit_for``).
+        Fitting stimuli reach the readout with only the input modalities the
+        model declares (rule 5.5); the caller's table is never changed. The
+        same TaskContext object sent again, as a facade session does for every
+        measurement, keeps the fitted readout; a new task, an edited one,
+        or any task after an intervention or reset, fits anew. The last
+        configuration that completed is recalled for the same unchanged
+        task after a session gave the caller's task back.
         """
-        del kwargs
-        if isinstance(task_or_type, TaskContext):
-            task = task_or_type
-        else:
-            task = TaskContext(
-                task_type=task_or_type,
-                fitting_stimuli=fitting_stimuli,
-            )
-        self.task = task
-        self.validate_task(task)
-        if task.response is None and task.task_type == 'passive':
-            self.response_path = self.probability_source = None
-            self.readout_classifier = None
+        if self.is_configured_for(task) or self.recall(task):
+            if self.fit_for(formats):
+                self.mark_configured(self.configured_from or task)
             return
-        # A session chose the answering part once, in its plan; a direct call chooses here.
-        planned = self._planned(task, formats)
-        picks = [planned] if planned is not None else self._eligible_picks(task)
-        self.response_path = picks[0][0]
-        self.probability_source = next((source for _, source in picks if source), None)
-        self.readout_classifier = None
-        self.fit_for(formats, picks)
+        from dataclasses import replace
+        from brainscore_core.streaming_helpers import declared_only
+        projected = declared_only(task.fitting_stimuli, self.owner.in_channels)
+        declared = (task if projected is task.fitting_stimuli
+                    else replace(task, fitting_stimuli=projected))
+        try:
+            self.task = declared
+            self.validate_task(declared)
+            self.response_path = self.probability_source = self.readout_classifier = None
+            if declared.response is not None or declared.task_type != 'passive':
+                # A session chose the answering part once, in its plan.
+                planned = self._planned(declared, formats)
+                picks = [planned] if planned is not None else self._eligible_picks(declared)
+                self.response_path = picks[0][0]
+                self.probability_source = next((source for _, source in picks if source), None)
+                self.fit_for(formats, picks)
+        except BaseException:
+            self.abandon()   # a half-built task is never reused
+            raise
+        self.mark_configured(task)
 
     def validate_task(self, task) -> None:
         """Refuse a malformed task: an unknown ``readout_fit``, or a task with no response
@@ -341,7 +345,7 @@ class BehavioralReadout:
 
     def fit_behavioral_readout(self, fitting_stimuli) -> None:
         """Extract readout-layer features and fit a probabilities classifier."""
-        from brainscore._model.behavior import ProbabilitiesClassifier
+        from brainscore._model.fitted_readout import ProbabilitiesClassifier
 
         owner = self.owner
         task_type = (
@@ -364,7 +368,7 @@ class BehavioralReadout:
         from brainscore_core.responses import Scale
         response = self.task.response if self.task is not None else None
         if isinstance(response, Scale):
-            from brainscore._model.behavior import RatingRegressor
+            from brainscore._model.fitted_readout import RatingRegressor
             self.readout_classifier = RatingRegressor().fit(features, labels)
         else:
             self.readout_classifier = ProbabilitiesClassifier()
@@ -988,213 +992,6 @@ def trial_prompts(task, stimuli, compare_options: bool = True):
                                  f'{response.labels!r}; got {sorted(counts)}')
             axis = list(range(counts.pop())) if counts else []
     return prompts, row_labels, axis
-
-
-# The answer formats of each part kind (Response Format Standard 4.2; rule
-# 4.11): format -> None when the part gives it natively, else the conversion
-# that derives it. ``answer`` and ``reply`` are the two kinds of the part
-# ``generation``. The likelihood gives the log probabilities natively. ``'link'``:
-# ``behavior:rt`` follows the owner of ``behavior:probabilities`` and is
-# never stated. Bare ``behavior`` is no part's format: it carries the answer of a response
-# task under its first format, given by that format's owner (``_declared_formats``).
-_PART_FORMATS = {
-    'answer': {'behavior:choice': None},
-    'reply': {'behavior:choice': None, 'behavior:rating': None, 'behavior:text': None},
-    'likelihood': {LOG_PROBABILITIES: None, 'behavior:probabilities': 'softmax',
-                   'behavior:choice': 'softmax_argmax', 'behavior:rt': 'link'},
-    'readout': {'behavior:probabilities': None, 'behavior:rating': None,
-                'behavior:choice': 'argmax', 'behavior:rt': 'link'},
-}
-
-
-def _formats_by_part(subject) -> Dict[str, Dict[str, Optional[str]]]:
-    """The answer formats of each wired part, read from ``_PART_FORMATS``.
-
-    Per part, format -> ``None`` (native) or the conversion that derives it.
-    """
-    wired = {'answer': subject._answer, 'reply': subject._reply,
-             'likelihood': subject._likelihood, 'readout': subject._behavioral_readout_layer}
-    parts: Dict[str, Dict[str, Optional[str]]] = {}
-    for kind, formats in _PART_FORMATS.items():
-        if wired[kind] is not None:
-            part = 'generation' if kind in ('answer', 'reply') else kind
-            parts.setdefault(part, {}).update(formats)
-    return parts
-
-
-def _declared_formats(subject) -> set:
-    """The answer formats the subject declares (rules 2.4, 4.11): each format with an owner.
-
-    A format has an owner when a statement names it or exactly one part gives it
-    natively (``answer_owners``); a derived format with no statement has none, so
-    it is not declared. Bare ``behavior`` is declared when ``answer=`` or a readout
-    with an extractor is wired. A ``'link'`` format (``behavior:rt``) is declared with
-    ``behavior:probabilities``, whose owner gives it.
-    """
-    declared = set(subject._behavioral.owners)
-    if subject._answer is not None or (subject._behavioral_readout_layer is not None
-                                       and subject._extractors):
-        declared.add('behavior')
-    if 'behavior:probabilities' in declared:
-        declared |= {f for formats in _PART_FORMATS.values() for f, how in formats.items()
-                     if how == 'link'}
-    return declared
-
-
-def statement_hint(subject, missing) -> str:
-    """The statement that would declare each missing format a wired part only derives.
-
-    A refusal names the exact line to write, for example
-    ``capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}``.
-    With two candidate parts it names each line and asks for one. Empty when no wired
-    part derives a missing format.
-    """
-    parts = _formats_by_part(subject)
-    if not subject._extractors:
-        parts.pop('readout', None)
-    lines = []
-    for channel in sorted(missing):
-        candidates = [(part, formats[channel]) for part, formats in sorted(parts.items())
-                      if formats.get(channel) not in (None, 'link')]
-        written = [f"capability_config={{'behavior-sessions': {{{channel!r}: ({part!r}, {how!r})}}}}"
-                   for part, how in candidates]
-        if len(written) == 1:
-            lines.append(f' {channel!r} is derived by a wired part; state it: {written[0]}.')
-        elif written:
-            lines.append(f' {channel!r} is derived by {len(written)} wired parts; state one: '
-                         + ' or '.join(written) + '.')
-    return ''.join(lines)
-
-
-# The methods a part states (the record's ``method``) and the argument that wires each.
-# ``similarity``: an answer chosen by the similarity of an input to each option (rule
-# 4.11); the ``answer=`` part states it in place of ``generation``, and reads no instruction.
-_ARGUMENTS = {'generation': 'answer= or reply=', 'likelihood': 'likelihood=',
-              'readout': 'behavioral_readout_layer= (with an extractor)',
-              'similarity': 'answer='}
-
-
-def answer_owners(subject, stated) -> Dict[str, str]:
-    """Check the owner statements at construction; return the owner part of each format (rule 4.11).
-
-    ``stated`` is ``capability_config['behavior-sessions']``: format ->
-    a part (``'generation'``, ``'likelihood'``, ``'readout'``, or ``'similarity'`` for an
-    ``answer=`` part that chooses by similarity) for a format the part gives natively, or ``(part, conversion)`` for a format it derives
-    (``_PART_FORMATS``). A format with exactly one native part is owned by that
-    part without a statement; a format with two or more native parts needs a
-    statement. A wrong statement fails with a message that says what to write.
-    """
-    who = f"Subject '{subject.identifier}': "
-    prefix = who + "capability_config['behavior-sessions'] "
-    parts = _formats_by_part(subject)
-    if not subject._extractors:
-        parts.pop('readout', None)   # a readout layer without an extractor never answers
-    followers = {f for formats in _PART_FORMATS.values() for f, how in formats.items()
-                 if how == 'link'}
-    formats = sorted({f for kinds in _PART_FORMATS.values() for f in kinds} - followers)
-    stated_parts = dict(parts)
-    if subject._answer is not None:
-        stated_parts['similarity'] = dict(_PART_FORMATS['answer'])
-    owners: Dict[str, str] = {}
-    for key, value in (stated or {}).items():
-        if key == 'behavior':
-            raise ValueError(f"{prefix}names 'behavior'. Delete this line: bare 'behavior' "
-                             f"carries the answer of a response task under its first format, "
-                             f"given by the owner of that format; it takes no statement.")
-        if key in followers:
-            raise ValueError(f"{prefix}names {key!r}: {key!r} follows the owner of "
-                             f"'behavior:probabilities'; state that owner instead.")
-        if key not in formats:
-            raise ValueError(f"{prefix}names {key!r}, which is not a response format. "
-                             f"Formats: {formats}.")
-        if not (isinstance(value, str) or (type(value) is tuple and len(value) == 2
-                                           and all(isinstance(v, str) for v in value))):
-            raise ValueError(f"{prefix}gives {value!r} for {key!r}; a statement is a part "
-                             f"('readout') or a tuple of a part and a conversion "
-                             f"(('readout', 'argmax')).")
-        part, conversion = (value, None) if isinstance(value, str) else value
-        if part not in _ARGUMENTS:
-            raise ValueError(f"{prefix}names the part {part!r} for {key!r}; parts are "
-                             + ', '.join(map(repr, _ARGUMENTS)) + '.')
-        if conversion is not None and conversion not in ('argmax', 'softmax', 'softmax_argmax'):
-            raise ValueError(f"{prefix}names the conversion {conversion!r} for {key!r}; "
-                             f"conversions are 'argmax', 'softmax', 'softmax_argmax'.")
-        if part not in stated_parts:
-            raise ValueError(f"{prefix}names {part!r} for {key!r}, but no {_ARGUMENTS[part]} "
-                             f"part is wired.")
-        if key not in stated_parts[part]:
-            givers = sorted(p for p, given in stated_parts.items() if key in given)
-            raise ValueError(f"{prefix}names {part!r} for {key!r}, but {part!r} does not give "
-                             f"{key!r}. Parts of this subject that give it: {givers}.")
-        given = stated_parts[part][key]
-        if conversion is None and given is not None:
-            raise ValueError(f"{prefix}{part!r} gives {key!r} only by a conversion. "
-                             f"Write {key!r}: ({part!r}, {given!r}).")
-        if conversion is not None and given is None:
-            raise ValueError(f"{prefix}{part!r} gives {key!r} natively. Write {key!r}: {part!r}.")
-        if conversion != given:
-            raise ValueError(f"{prefix}{part!r} gives {key!r} by {given!r}, not by "
-                             f"{conversion!r}. Write ({part!r}, {given!r}).")
-        owners[key] = part
-    for output in formats:
-        native = sorted(p for p, given in parts.items()
-                        if output in given and given[output] is None)
-        if output in owners or not native:
-            continue
-        if len(native) > 1:
-            raise ValueError(
-                f"{who}the parts {native} give {output!r} natively. State the owner: "
-                f"capability_config={{'behavior-sessions': {{{output!r}: {native[0]!r}}}}} (or "
-                + ' or '.join(repr(p) for p in native[1:]) + ').')
-        owners[output] = native[0]
-    return owners
-
-
-RATING_ROUNDING = 'nearest step, ties to the higher step'
-# The schema of the log probabilities a likelihood part gives under a verbatim Choice:
-# f"{text} {option}" as plain text, no special tokens, no template, summed natural logs.
-VERBATIM_LOG_PROBABILITIES = {
-    'layout': 'continuation', 'context': 'shared', 'aggregation': 'sum', 'units': 'nats',
-    'tokenization': {'join': 'space', 'special_tokens': 'none', 'template': 'none',
-                     'truncation': 'none'}}
-# A verbatim trial text reaches a reply part as given; the part may wrap it in its own chat
-# template. The record says only that: a reply part is any callable.
-VERBATIM_IN_TEMPLATE = {'template': "the reply part's own, if it has one"}
-
-
-def _on_scale_steps(values, scale) -> Tuple[list, dict]:
-    """Each value on the nearest step of ``scale``, and the record parameters that say so.
-
-    The grid of a scale is decimal: the points Decimal(repr(low)) + n * Decimal(repr(step)).
-    The step index is read from the raw value in decimal; an index within 1e-9 of a half is a
-    tie and goes to the higher step. The stored value is the float of that grid point, the
-    value core's step rule accepts, kept inside the bounds: the index never passes the last
-    point inside them, and a point one float rounding beyond ``high`` (or ``low``) is
-    stored as that bound. A raw value outside the bounds, or not finite,
-    is not rounded and not clipped (core marks it invalid). A scale with no step leaves every
-    value unchanged and records no rounding.
-    """
-    if scale.step is None:
-        return list(values), {}
-    return [_grid_point(v, scale) for v in values], {'rounding': RATING_ROUNDING}
-
-
-def _grid_point(value, scale):
-    from decimal import Decimal, ROUND_FLOOR, localcontext
-    if not (math.isfinite(value) and scale.low <= value <= scale.high):
-        return value
-    with localcontext() as context:
-        context.prec = 50
-        low, step = Decimal(repr(float(scale.low))), Decimal(repr(float(scale.step)))
-        last = int(((Decimal(repr(float(scale.high))) - low) / step + Decimal('1e-9'))
-                   .to_integral_value(ROUND_FLOOR))
-        index = (Decimal(repr(float(value))) - low) / step
-        below = int(index.to_integral_value(ROUND_FLOOR))
-        n = below + 1 if index - below > Decimal('0.5') - Decimal('1e-9') else below
-        point = float(low + min(n, last) * step)
-    # A high (or low) one float rounding off a grid point: the stored value stays inside the
-    # bounds; it moves by at most 1e-9 of a step, which core's step rule accepts.
-    return min(max(point, float(scale.low)), float(scale.high))
 
 
 def _fitted_intact(task) -> bool:

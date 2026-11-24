@@ -29,9 +29,9 @@ LABELS = ['real', 'pseudo', 'real', 'pseudo', 'real', 'pseudo', 'real', 'pseudo'
 
 def _reference_functional_resolve(model, region, stimuli, contrast, contrast_column,
                                   n_units, threshold, sign):
-    """FunctionalSelection.resolve at f6e2a59: records with start_recording + process."""
-    model.start_recording(region)
-    asm = model.process(stimuli)
+    """FunctionalSelection.resolve at f6e2a59; the recording goes through one session."""
+    from brainscore_core.streaming_helpers import neural_response
+    asm = neural_response(model, stimuli, [f'neural:{region}'])
     extra = [d for d in asm.dims if d not in ('presentation', 'neuroid')]
     if extra:
         asm = asm.mean(extra)

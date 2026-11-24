@@ -71,7 +71,7 @@ The model template builds a `BrainScoreModel`; the benchmark template scores any
 
 | Seam | Lives in | Implements | Contract | Template |
 |------|----------|---------------|----------|----------|
-| **Model** | `brainscore/models/<name>/` | `get_model() -> BrainScoreModel` | `Subject.participate(session)`; `BrainScoreModel.process(input_event)` is a typed convenience, not the contract | `templates/new_model/` |
+| **Model** | `brainscore/models/<name>/` | `get_model() -> BrainScoreModel` | `Subject.participate(session)`; `BrainScoreModel.process(row)` answers one step of a loop that a simulator owns, not the contract | `templates/new_model/` |
 | **Benchmark** | `brainscore/benchmarks/<name>/` | a `BenchmarkBase` subclass | `__call__(subject) -> Score` | `templates/new_benchmark/` |
 | **Metric** | `brainscore/metrics/<name>/` | a `Metric` subclass | `__call__(assembly1, assembly2) -> Score` | `templates/new_metric/` |
 | **Data / Stimulus set** | `brainscore/data/<name>/` | loaders registered in `data_registry` / `stimulus_set_registry` | return a `StimulusSet` and a `DataAssembly` | `templates/new_data/` |
@@ -167,8 +167,7 @@ class TurnWhenBlocked:
 
 
 # Subject with the history-keeping policy
-subject = BrainScoreModel(identifier='turn-when-blocked', policy=TurnWhenBlocked(),
-                        policy_in_channels=('observation',))
+subject = BrainScoreModel(identifier='turn-when-blocked', policy=TurnWhenBlocked())
 score = brainscore.score(subject, 'GridGame-reach-5x5')   # 15 episodes, so 15 resets
 ```
 
@@ -310,15 +309,14 @@ separate.
 There are two related extension levels:
 
 1. **Configure an existing capability for a model.** Pass a function into a
-   `BrainScoreModel` constructor slot; the already-registered capability
-   reaches it.
+   `BrainScoreModel` constructor slot; the built-in capability reaches it.
 2. **Add a new capability.** In your own package, define typed payloads,
    register their channels with `register_channel`, subclass
-   `brainscore.capabilities.Capability` and register it once with
-   `register_capability`. A capability runs sessions: `supports_session`
-   claims the outputs a session requests and `participate` runs it. Every
-   method takes the model first, named `subject`. Models opt in through
-   `capability_config`. No core edit is needed.
+   `brainscore.capabilities.Capability` and give an instance to each model
+   that uses it: `BrainScoreModel(..., capabilities=[...])`. A capability runs
+   sessions: `supports_session` claims the outputs a session requests and
+   `participate` runs it. Every method takes the model first, named
+   `subject`. No core edit is needed.
 
 The constructor slots available to model authors are:
 

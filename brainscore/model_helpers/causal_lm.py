@@ -154,5 +154,5 @@ def build_causal_lm_subject(identifier: str, model: Any, tokenizer: Any, *,
         reply=parts.reply,
         likelihood=parts.likelihood,
         # The reply gives the choice natively; the likelihood derives the probabilities.
-        capability_config={'behavior-sessions': {'behavior:probabilities': ('likelihood', 'softmax')}},
+        answer_owners={'behavior:probabilities': ('likelihood', 'softmax')},
     )

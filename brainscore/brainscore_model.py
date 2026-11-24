@@ -3,15 +3,16 @@
 import inspect
 from types import MappingProxyType
 from collections.abc import Mapping
-from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, Optional, Set, Tuple, Union
 
-from ._model.behavioral import BehavioralReadout, answer_owners, statement_hint
+from ._model import owners
+from ._model.behavioral import BehavioralReadout
+from ._model.owners import statement_hint
 from brainscore_core.compatibility import ExecutionNotFeasibleError
-from brainscore_core.contract import Subject, TaskContext
+from brainscore_core.contract import Subject
 from ._model import dispatch
 from brainscore_core import io_catalog
 from brainscore_core.io_catalog import MODALITY_TO_INPUT_CHANNEL, canonical_modality
-from brainscore_core.events import InputEvent, OutputEvent, StateChange
 from ._model.intervention import Interventions
 from ._model.recording import RecordingRequest
 from .selection import UnitSelector, _promote_to_selector, _with_modality
@@ -59,11 +60,12 @@ class BrainScoreModel(Subject):
         policy_in_channels: Iterable[str] = ('observation',),
         policy_out_channels: Iterable[str] = ('motor',),
         intervention: Optional[Callable] = None,
+        capabilities: Iterable[Any] = (),
         memory: Optional[str] = None,
         in_channels: Optional[Iterable[str]] = None,
         required_channels: Optional[Iterable[str]] = None,
         visual_degrees: int = 8,
-        capability_config: Optional[Dict[str, Any]] = None,
+        answer_owners: Optional[Mapping[str, Any]] = None,
         output_inputs: Optional[Mapping[str, Iterable[str]]] = None,
     ) -> None:
         """A model (or, in principle, a human) evaluated through the unified interface.
@@ -167,12 +169,13 @@ class BrainScoreModel(Subject):
             extractors requires nothing, because each one runs alone. The
             constructor checks only that each listed channel is declared, not
             this claim.
+        :param capabilities: added capabilities (``brainscore.capabilities.Capability``
+            instances), each with its own settings; give each model its own
+            instances. An added capability runs a session that a built-in part
+            also claims.
         :param visual_degrees: the visual field legacy vision benchmarks place
             stimuli in; ignored by other benchmarks.
-        :param capability_config: settings for capabilities, keyed by the
-            capability identifier; a capability reads it as
-            ``subject.capability_config``. Under ``'behavior-sessions'``: the
-            owner of answer formats, for example ``{'behavior:rating':
+        :param answer_owners: the owner of answer formats, for example ``{'behavior:rating':
             'generation', 'behavior:probabilities': ('likelihood', 'softmax')}``. A part (``'generation'``, which is
             ``answer``/``reply``; ``'likelihood'``; ``'readout'``; ``'similarity'``,
             an ``answer`` that chooses by the similarity of an input to each
@@ -220,7 +223,6 @@ class BrainScoreModel(Subject):
             _KEY_FOR_CHANNEL.get(channel, channel) for channel in _channels(in_channels)}
         self._install_region_layer_map(region_layer_map or {})
         self._visual_degrees = visual_degrees
-        self._capability_config = dict(capability_config or {})
         regions = sorted(output for output in (output_inputs or {}) if output.startswith('neural:'))
         if regions:
             raise ValueError(f"output_inputs names {regions}: a region states its inputs in "
@@ -235,16 +237,14 @@ class BrainScoreModel(Subject):
         self._policy_in_channels = frozenset(policy_in_channels)
         self._policy_out_channels = frozenset(policy_out_channels)
         self._intervention = intervention
+        self._capabilities = tuple(capabilities)
 
         self._recording_request = RecordingRequest(self)
         self._behavioral = BehavioralReadout(self)
-        self._behavioral.owners = answer_owners(
-            self, self._capability_config.get('behavior-sessions'))
+        self._behavioral.owners = owners.answer_owners(self, answer_owners)
         self._interventions = Interventions(self)
         self._shared_calls = None       # set by dispatch.one_call_per_extractor
         self._session_plan = None       # the running session's plan (_model/plan.py), set in participate
-        self._capability_state: Dict[str, Any] = {}
-        self._capability_setup_done: Set[str] = set()
 
         required = _channels(required_channels)
         declared_channels = self._input_channels(self._input_keys)
@@ -261,16 +261,11 @@ class BrainScoreModel(Subject):
                     in (io_catalog.OUTPUT, io_catalog.BOTH)):
                 raise ValueError(
                     f"policy_out_channels names {channel!r}, which is not a registered output "
-                    f"channel. Register it with register_channel (from brainscore_core.extensions) "
+                    f"channel. Register it with register_channel (from brainscore_core.io_catalog) "
                     f"before the model is built, or answer on a registered output such as 'motor'.")
             problem = io_catalog.form_problem(channel)
             if problem:
                 raise ValueError(f"policy_out_channels: {problem}")
-
-    @property
-    def capability_config(self):
-        """Read-only registration configuration for external capability authors."""
-        return MappingProxyType(self._capability_config)
 
     @property
     def extractor(self) -> Mapping[str, Callable]:
@@ -281,13 +276,9 @@ class BrainScoreModel(Subject):
         """
         return MappingProxyType(self._extractors)
 
-    def capability_state(self, identifier):
-        """Per-model state of a capability, from its ``setup`` before it first ran."""
-        return self._capability_state[identifier]
-
     def _declared_capabilities(self):
-        from .capabilities import capability_registry
-        return [c for c in capability_registry.values() if c.enabled_for(self)]
+        from .capabilities.built_in import built_in_capabilities
+        return [*self._capabilities, *built_in_capabilities(self)]
 
     @property
     def in_channels(self):
@@ -351,7 +342,7 @@ class BrainScoreModel(Subject):
         is consumed: ``ExecutionNotFeasibleError`` when no capability claims the
         combination, naming the outputs the subject does not produce (an error
         of the run: the declarations did not express the limit); ``ValueError``
-        when more than one claims it at the same priority.
+        when two added capabilities, or two built-in ones, claim it.
         """
         channels = frozenset(channels)
         if not channels:
@@ -373,13 +364,12 @@ class BrainScoreModel(Subject):
                 ' expressed in the declarations of the subject or the benchmark; the session'
                 ' was refused and there is no result.',
                 channels=missing or channels)
-        first = min(c.order for c in claims)
-        winners = [c for c in claims if c.order == first]
+        # An added capability that claims the session runs it, before a built-in one.
+        winners = [c for c in claims if c in self._capabilities] or claims
         if len(winners) > 1:
             raise ValueError(
                 f'Ambiguous capabilities: {[c.identifier for c in winners]} both claim '
-                f'{sorted(channels)} at order {first}. Narrow the claims of one capability '
-                '(supports_session), or give one capability a lower order.')
+                f'{sorted(channels)}. Narrow the claims of one capability (supports_session).')
         return winners[0]
 
     @property
@@ -461,32 +451,21 @@ class BrainScoreModel(Subject):
     def region_layer_selectors(self) -> Dict[str, "UnitSelector"]:
         return dict(self._region_layer_selectors)
 
-    def process(self, input_event: InputEvent,
-                multi_modality: bool = False) -> OutputEvent:
-        """Run one input on the part that takes it; a convenience outside the contract.
+    def process(self, row: Mapping[str, Any]) -> Mapping[str, Any]:
+        """Answer one step of a loop that a simulator owns: ``row`` maps each input channel
+        to its payload, and the policy's outputs come back as a mapping of output channel to payload.
 
-        ``participate`` does not call it. A ``StimulusSet`` gives the activity
-        of the regions ``start_recording`` set (a ``NeuroidAssembly``); a row
-        (a mapping of channel -> payload) gives the policy's outputs; a
-        ``StateChange`` is applied or undone by the intervention part (in an
-        experiment, send it with ``apply_state_change`` or the ``Intervene`` tool).
-
-        :param input_event: the stimuli, the row or the change.
-        :param multi_modality: if True, extract from every detected-and-supported
-            modality and concat along the neuroid axis; default routes a single
-            modality by ``MODALITY_PRIORITY``.
+        The model may record its regions during that step, with the tools of an experiment.
         """
-        if isinstance(input_event, StateChange):
-            return self._interventions.process(input_event)
-        if isinstance(input_event, Mapping):
-            return dispatch.act(self, input_event)
-        if hasattr(input_event, 'columns'):
-            return dispatch.record(self, input_event, multi_modality)
-        raise TypeError(f"Subject '{self.identifier}' takes a stimulus table, a row or a "
-                        f"StateChange; got {type(input_event).__name__}.")
+        if not isinstance(row, Mapping):
+            raise TypeError(
+                f"Subject '{self.identifier}' process() takes one row, a mapping of channel -> "
+                f"payload; got {type(row).__name__}. Present stimuli with neural_response or "
+                f"behavioral_response, and send a StateChange with apply_state_change.")
+        return dispatch.act(self, row)
 
     def participate(self, session) -> None:
-        """Run a session through the one registered capability that claims it.
+        """Run a session through the one capability that claims it.
 
         The capability sees only the streams this model declares in
         ``in_channels``: the ``Subject`` base narrows the session before this
@@ -509,10 +488,8 @@ class BrainScoreModel(Subject):
         passes = regions_per_pass()
         self._session_plan = plan_session(self, session, passes)
         try:
-            from .capabilities.registry import _setup_once
             # Every part notes its calls in the session's log, from set-up (a readout fit) on.
             with parts.session_log() as log:
-                _setup_once(self, self._session_plan.capability)
                 # A task the session configures ends with the session (rule 4.5).
                 # Weights are hashed once per session for the activation cache key;
                 # inside score() the run's scope is reused.
@@ -528,62 +505,6 @@ class BrainScoreModel(Subject):
         """Declared input modalities whose columns appear in ``stimuli``."""
         return dispatch.detect_modalities(self, stimuli)
 
-    def start_recording(self,
-                        recording_target: Union[str, List[str]],
-                        time_bins: Optional[List[Tuple[int, int]]] = None,
-                        recording_type: Optional[str] = None) -> None:
-        """Configure neural recording for subsequent ``process`` calls.
-
-        ``recording_target`` is a mapped region name, a list of
-        mapped regions, or a raw layer path. Multiple regions are extracted in
-        one call and returned with per-neuroid ``layer`` and ``region``
-        provenance. See :class:`RecordingRequest` for validation details.
-        """
-        self._recording_request.start_recording(recording_target, time_bins,
-                                       recording_type)
-
-    def start_task(self, task, fitting_stimuli=None,
-                   **kwargs) -> None:
-        """Configure the behavioral task.
-
-        Fitting stimuli reach the readout with only the input modalities this
-        model declares (rule 5.5); the caller's table is never changed. The
-        same TaskContext object sent again, as a facade session does for every
-        measurement, keeps the fitted readout; a new task, an edited one,
-        or any task after an intervention or reset, fits anew. The last
-        configuration that completed is recalled for the same unchanged
-        task after a session gave the caller's task back.
-        """
-        from dataclasses import replace
-        from brainscore_core.streaming_helpers import declared_only
-        if isinstance(task, TaskContext):
-            if (self._behavioral.is_configured_for(task)
-                    or self._behavioral.recall(task)):
-                # A session that requests a format the readout serves fits it now, once.
-                if self._behavioral.fit_for(kwargs.get('formats')):
-                    self._behavioral.mark_configured(self._behavioral.configured_from or task)
-                return
-            fitting = task.fitting_stimuli
-            projected = declared_only(fitting, self.in_channels)
-            declared = (task if projected is fitting
-                        else replace(task, fitting_stimuli=projected))
-            try:
-                self._behavioral.start_task(declared, **kwargs)
-            except BaseException:
-                self._behavioral.abandon()   # a half-built task is never reused
-                raise
-            self._behavioral.mark_configured(task)
-            return
-        try:
-            self._behavioral.start_task(task,
-                                        declared_only(fitting_stimuli, self.in_channels),
-                                        **kwargs)
-        except BaseException:
-            self._behavioral.abandon()
-            raise
-        # The task built from (task type, fitting) is what a facade sends back.
-        self._behavioral.mark_configured(self._behavioral.task)
-
     def reset(self) -> None:
         # Inside intact() the reset refuses before any part changes.
         self._interventions._refuse_while_intact('reset')
@@ -593,15 +514,11 @@ class BrainScoreModel(Subject):
                 component.reset()
             except Exception as error:
                 failures.append(error)
-        for identifier, state in self._capability_state.items():
-            from .capabilities import capability_registry
-            capability = capability_registry.get(identifier)
-            if capability is not None:
-                try:
-                    capability.reset(self, state)
-                    self._capability_setup_done.discard(identifier)
-                except Exception as error:
-                    failures.append(error)
+        for capability in self._capabilities:
+            try:
+                capability.reset(self)
+            except Exception as error:
+                failures.append(error)
         failures.extend(self._reset_parts())
         if failures:
             raise RuntimeError('A model part failed to reset; the model is not clean: '

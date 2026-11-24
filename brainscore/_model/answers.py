@@ -2,12 +2,16 @@
 
 ``BehavioralReadout.respond`` gets the answers (replies, likelihood scores,
 readout values); the functions here package them: one-hot choices, ratings,
-texts, implied probabilities and reaction times. An answer that cannot be read is kept with
+texts, implied probabilities and reaction times, and ratings put on the steps of a
+scale. An answer that cannot be read is kept with
 ``answer_valid=False`` (a NaN row for a choice or a number, rule 6.2); a trial
 with no reply keeps ``raw_answer`` None. Every answer carries its response
 record in ``attrs['response']`` (``brainscore_core.response_formats``); the
 session then gives each trial its state.
 """
+
+import math
+from typing import Tuple
 
 import numpy as np
 
@@ -198,3 +202,50 @@ def in_order(assembly, labels):
 def with_record(assembly, record):
     """``assembly`` with ``record`` as its response record."""
     return assembly.assign_attrs(response=record)
+
+
+RATING_ROUNDING = 'nearest step, ties to the higher step'
+# The schema of the log probabilities a likelihood part gives under a verbatim Choice:
+# f"{text} {option}" as plain text, no special tokens, no template, summed natural logs.
+VERBATIM_LOG_PROBABILITIES = {
+    'layout': 'continuation', 'context': 'shared', 'aggregation': 'sum', 'units': 'nats',
+    'tokenization': {'join': 'space', 'special_tokens': 'none', 'template': 'none',
+                     'truncation': 'none'}}
+# A verbatim trial text reaches a reply part as given; the part may wrap it in its own chat
+# template. The record says only that: a reply part is any callable.
+VERBATIM_IN_TEMPLATE = {'template': "the reply part's own, if it has one"}
+
+
+def _on_scale_steps(values, scale) -> Tuple[list, dict]:
+    """Each value on the nearest step of ``scale``, and the record parameters that say so.
+
+    The grid of a scale is decimal: the points Decimal(repr(low)) + n * Decimal(repr(step)).
+    The step index is read from the raw value in decimal; an index within 1e-9 of a half is a
+    tie and goes to the higher step. The stored value is the float of that grid point, the
+    value core's step rule accepts, kept inside the bounds: the index never passes the last
+    point inside them, and a point one float rounding beyond ``high`` (or ``low``) is
+    stored as that bound. A raw value outside the bounds, or not finite,
+    is not rounded and not clipped (core marks it invalid). A scale with no step leaves every
+    value unchanged and records no rounding.
+    """
+    if scale.step is None:
+        return list(values), {}
+    return [_grid_point(v, scale) for v in values], {'rounding': RATING_ROUNDING}
+
+
+def _grid_point(value, scale):
+    from decimal import Decimal, ROUND_FLOOR, localcontext
+    if not (math.isfinite(value) and scale.low <= value <= scale.high):
+        return value
+    with localcontext() as context:
+        context.prec = 50
+        low, step = Decimal(repr(float(scale.low))), Decimal(repr(float(scale.step)))
+        last = int(((Decimal(repr(float(scale.high))) - low) / step + Decimal('1e-9'))
+                   .to_integral_value(ROUND_FLOOR))
+        index = (Decimal(repr(float(value))) - low) / step
+        below = int(index.to_integral_value(ROUND_FLOOR))
+        n = below + 1 if index - below > Decimal('0.5') - Decimal('1e-9') else below
+        point = float(low + min(n, last) * step)
+    # A high (or low) one float rounding off a grid point: the stored value stays inside the
+    # bounds; it moves by at most 1e-9 of a step, which core's step rule accepts.
+    return min(max(point, float(scale.low)), float(scale.high))

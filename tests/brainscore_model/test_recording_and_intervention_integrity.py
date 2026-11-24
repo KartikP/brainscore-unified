@@ -411,7 +411,7 @@ def test_a_readout_task_honors_regions_per_pass(plan, expected, monkeypatch):
     stimuli.identifier = 'readout-plan'
     subject = BrainScoreModel('m', extractor={'text': extract}, behavioral_readout_layer='r',
                               region_layer_map={'IT': 'x', 'V4': 'y'},
-                              capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
+                              answer_owners={'behavior:choice': ('readout', 'argmax')})
     task = TaskContext(response=Choice(['cat', 'dog']), fitting_stimuli=stimuli)
     monkeypatch.setenv(PLAN, plan)
     session = stimulus_session(stimuli, ['behavior', 'neural:IT', 'neural:V4'], task=task)
@@ -644,15 +644,12 @@ def test_a_reset_refused_inside_intact_leaves_every_state_as_it_was():
                               extractor={'vision': _forms_extractor(1.0)}, region_layer_map={'IT': 'x'},
                               answer=owner.answer)
     handle = _edit(subject, scale=2)
-    subject.start_recording('IT')
-    subject.start_task(TaskContext(instruction='i', response=Choice(['a', 'b'])))
     subject._behavioral.history = ['earlier trial']
 
     def state():
         return (net.weight.item(), list(subject._interventions.active_interventions), subject._behavioral.task,
                 subject._behavioral.response_path, list(subject._behavioral.history),
-                subject._recording_request.snapshot(), dict(subject._capability_state),
-                set(subject._capability_setup_done), owner.resets)
+                subject._recording_request.snapshot(), owner.resets)
     with subject._interventions.intact():
         before = state()
         with pytest.raises(RuntimeError, match='inside intact'):
@@ -672,8 +669,7 @@ _TASKS = {
 }
 _PARTS = {
     'none': {},
-    'readout without fitting': {'behavioral_readout_layer': 'x', 'capability_config': {
-        'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}},
+    'readout without fitting': {'behavioral_readout_layer': 'x', 'answer_owners': {'behavior:choice': ('readout', 'argmax')}},
     'answer': {'answer': lambda row, instruction, labels: labels[0]},
     'likelihood': {'likelihood': lambda prompt, labels: {label: 0.0 for label in labels}},
     'reply': {'reply': lambda prompt: 'a'},

@@ -19,7 +19,6 @@ import numpy as np
 import pytest
 
 from brainscore_core import io_catalog
-from brainscore.capabilities import capability_registry
 from brainscore_core.compatibility import check_compatibility, ExecutionNotFeasibleError
 from brainscore import BrainScoreModel
 from brainscore_core.contract import Subject
@@ -71,14 +70,10 @@ def test_templates_teach_only_public_slot_names():
 def capability(monkeypatch):
     monkeypatch.setattr(io_catalog, '_CATALOG', dict(io_catalog._CATALOG))
     monkeypatch.setattr(io_catalog, '_STIMULUS_COLUMNS', dict(io_catalog._STIMULUS_COLUMNS))
-    previous = dict(capability_registry)
     module = _load('new_capability/capability.py', 'umi_template_capability')
-    assert module.IDENTIFIER not in capability_registry      # importing registers nothing
-    assert not io_catalog.has(module.REQUEST)
+    assert not io_catalog.has(module.REQUEST)                # importing registers nothing
     module.register()
     yield module
-    capability_registry.clear()
-    capability_registry.update(previous)
 
 
 def _requests(module, *texts):
@@ -89,7 +84,7 @@ def _requests(module, *texts):
 
 def test_capability_runs_through_participate_with_state_and_reset(capability):
     subject = capability.build_model(min_length=3)
-    assert subject.check_session_support({capability.RESULT}) is capability_registry[capability.IDENTIFIER]
+    assert subject.check_session_support({capability.RESULT}).identifier == capability.IDENTIFIER
     for _ in range(2):   # the second round reuses the same subject after reset
         session = Session(_requests(capability, 'a red ball rolls', 'two cats'), [capability.RESULT])
         subject.participate(session)
@@ -132,26 +127,16 @@ def test_capability_result_validator_rejects_invalid_counts(capability, words, w
 def test_capability_model_refuses_an_invalid_result(capability):
     for valid in (capability.WordCount(words=0, words_so_far=0), capability.WordCount(words=2, words_so_far=5)):
         assert not io_catalog.validate(capability.RESULT, valid, io_catalog.OUTPUT)
-    subject = capability.build_model()
+    counter = capability.WordCountCapability()
+    subject = BrainScoreModel(identifier='direct', capabilities=[counter])
     subject.participate(Session(_requests(capability, 'a b'), [capability.RESULT]))
-    subject.capability_state(capability.IDENTIFIER)['words_so_far'] = -10   # corrupt the running total
+    counter.words_so_far = -10   # corrupt the running total
     with pytest.raises(ValueError, match='shape_validator'):   # the session checks each answer
         subject.participate(Session(_requests(capability, 'a b'), [capability.RESULT]))
 
 
-@pytest.mark.parametrize('settings', [{'min_length': True}, {'min_length': False}, {'min_length': None},
-                                      {'min_length': 0}, {'min_length': -1}, {'min_length': 1.5},
-                                      {'min_length': '2'}, {}, None, False])
-def test_capability_checks_settings_in_setup_before_compute(capability, settings):
-    subject = BrainScoreModel(identifier='direct', capability_config={capability.IDENTIFIER: settings})
-    session = Session(_requests(capability, 'one two'), [capability.RESULT])
-    with pytest.raises(ValueError, match='min_length'):
-        subject.participate(session)
-    assert session.next_input() is not None and session.emitted == []   # nothing consumed or answered
-
-
-@pytest.mark.parametrize('min_length', [True, 0, None, 2.0])
-def test_capability_builder_checks_settings(capability, min_length):
+@pytest.mark.parametrize('min_length', [True, False, None, 0, -1, 1.5, '2', 2.0])
+def test_capability_checks_settings_when_built(capability, min_length):
     with pytest.raises(ValueError, match='min_length'):
         capability.build_model(min_length=min_length)
 
@@ -159,9 +144,6 @@ def test_capability_builder_checks_settings(capability, min_length):
 def test_capability_registers_once(capability):
     with pytest.raises(ValueError, match='already registered'):
         capability.register()
-    with pytest.raises(ValueError, match='already registered'):
-        from brainscore.capabilities import register_capability
-        register_capability(capability.WordCountCapability())
 
 
 def test_capability_readme_example_runs():
@@ -171,8 +153,10 @@ def test_capability_readme_example_runs():
     namespace = {}
     for block in blocks:
         exec(compile(block, 'new_capability/README.md', 'exec'), namespace)
-    response = namespace['model'].process({'observation': {}})
-    assert response == {'motor': 0}
+    from brainscore_core.streaming import respond_event
+    session = Session([StreamEvent('observation', {}, None), respond_event()], ['motor'])
+    namespace['model'].participate(session)
+    assert [event.payload for event in session.emitted] == [0]
 
 
 # --- every code block of the user documents ----------------------------------------
@@ -351,13 +335,14 @@ def test_benchmark_keeps_its_identity_and_scores_a_participate_only_subject(benc
 
 
 def test_benchmark_scores_a_model_as_the_earlier_template_did(benchmark):
-    """Same stimuli, region, time bins, metric and ceiling as start_recording + process."""
+    """Same stimuli, region, time bins, metric and ceiling as one session for the region."""
     def subject(extractor):
         return BrainScoreModel(identifier='template-fixture', region_layer_map={'IT': 'layer2'},
                                extractor={'vision': extractor})
-    earlier = subject(StimulusExtractor())
-    earlier.start_recording('IT', time_bins=[(70, 170)])
-    expected = benchmark._metric(earlier.process(benchmark.stimulus_set), benchmark._assembly)
+    from brainscore_core.streaming_helpers import neural_response
+    earlier = neural_response(subject(StimulusExtractor()), benchmark.stimulus_set, ['neural:IT'],
+                              time_bins=[(70, 170)])
+    expected = benchmark._metric(earlier, benchmark._assembly)
 
     extractor = StimulusExtractor()
     current = subject(extractor)

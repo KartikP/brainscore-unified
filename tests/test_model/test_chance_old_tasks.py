@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from brainscore.models.chance_baseline.model import ChanceBaseline
-from brainscore_core.compatibility import ExecutionNotFeasibleError
+from brainscore_core.compatibility import CompatibilityError, ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.legacy_facade import LegacyBenchmarkFacade
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
@@ -33,7 +33,7 @@ def test_an_old_probabilities_task_with_fitting_stimuli_is_answered_uniformly():
 
 
 def test_the_label_order_is_the_order_of_the_readout_classifier():
-    from brainscore._model.behavior import ProbabilitiesClassifier
+    from brainscore._model.fitted_readout import ProbabilitiesClassifier
     from brainscore._model.behavioral import BehavioralReadout
     fitting = _stimuli(['a', 'b', 'c', 'd', 'e'], ['z', 'y', 'z', 'x', 'y'], 'chance-order')
     classifier = ProbabilitiesClassifier()
@@ -55,7 +55,7 @@ def test_a_task_with_a_label_set_is_answered_as_before():
 def test_a_task_without_a_chance_answer_is_refused_by_name(task):
     facade = LegacyBenchmarkFacade(ChanceBaseline(), visual_degrees=8)
     facade.start_task(task)
-    with pytest.raises(ExecutionNotFeasibleError, match=task):
+    with pytest.raises(CompatibilityError, match=task):     # before any input: N/A
         facade.look_at(_stimuli(['t1', 't2', 't3'], identifier='chance-refused'))
 
 
@@ -69,3 +69,13 @@ def test_a_state_change_is_refused_with_what_to_ask_for():
     from brainscore_core.events import StateChange
     with pytest.raises(ExecutionNotFeasibleError, match='behavior'):
         ChanceBaseline().process(StateChange(kind='lesion', target='IT'))
+
+
+def test_a_request_for_trial_to_trial_variance_is_refused():
+    """Identical rows are no variance (Contract Rules 6.2): the request is refused, not answered."""
+    fitting = _stimuli(['f1', 'f2'], ['dog', 'cat'], 'chance-variance-fit')
+    facade = LegacyBenchmarkFacade(ChanceBaseline(), visual_degrees=8)
+    facade.start_task('probabilities', fitting_stimuli=fitting)
+    with pytest.raises(CompatibilityError, match='trial-to-trial variance'):  # before any input: N/A
+        facade.look_at(_stimuli(['t1', 't2'], identifier='chance-variance'), number_of_trials=3,
+                       require_variance=True)

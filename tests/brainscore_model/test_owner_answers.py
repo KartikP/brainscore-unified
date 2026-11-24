@@ -282,7 +282,7 @@ def _pass_model(net, parts, owners):
     return BrainScoreModel('pass-net', extractor={'text': _PassExtractor(net)}, in_channels={'text'},
                            region_layer_map={'A': LayerSelector('early', modality='text')},
                            **{part: every[part] for part in parts},
-                           capability_config={'behavior-sessions': owners})
+                           answer_owners=owners)
 
 
 PASS_STIMULI = StimulusSet({'stimulus_id': ['a', 'b', 'c'], 'sentence': ['x', 'y', 'z']})

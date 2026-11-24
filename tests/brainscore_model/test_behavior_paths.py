@@ -65,7 +65,7 @@ def _model(calls, **parts):
     chosen = {'answer': answer, 'reply': reply, 'likelihood': likelihood}
     return BrainScoreModel('paths', extractor={'text': _features}, behavioral_readout_layer='late',
                            **{name: chosen[name] for name in parts},
-                           capability_config={'behavior-sessions': STATEMENTS[frozenset(parts)]})
+                           answer_owners=STATEMENTS[frozenset(parts)])
 
 
 def _run(model, outputs, task):
@@ -131,13 +131,6 @@ def test_text_settings_reach_the_reply_part_and_extra_data_reaches_the_event():
     (event,) = session.emitted
     assert event.meta['reasoning'] == ['r', 'r', 'r']
 
-
-def test_the_one_chooser_names_every_path_it_tried():
-    model = BrainScoreModel('none', in_channels={'text'})
-    with pytest.raises(ValueError, match='states no response'):
-        model.start_task(TaskContext(task_type='probabilities', label_set=['cat', 'dog']))
-    with pytest.raises(ExecutionNotFeasibleError, match='cannot give a Choice answer. Paths tried'):
-        model.start_task(TaskContext(response=Choice(['cat', 'dog'])))
 
 
 @pytest.mark.parametrize('provider, image_first, settings', [

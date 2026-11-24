@@ -72,6 +72,10 @@ vision = PytorchWrapper(identifier='my-cnn', model=net, preprocessing=preprocess
 
 `preprocess` takes a list of image paths and returns the batch the network expects. Use the same preprocessing the model was trained with.
 
+Limit: `PytorchWrapper` keeps one value for each module, so for a module that runs more than once for one input it keeps only the last call, without an error, and it refuses a `<layer>-t<n>` or `:input` name when you build the model. For such a module, use a wrapper of `brainscore.model_helpers`, or name a module that runs once.
+
+For a Hugging Face vision model, use `VLMVisionWrapper(model=<hf vision model>, processor=<image processor>)` from `brainscore.model_helpers.vlm_vision_wrapper`. `PytorchWrapper` reads float32 outputs only (a bfloat16 model fails) and keeps the last call of a repeated layer; `VLMVisionWrapper` reads bfloat16 and float16 outputs, and for a repeated layer it records the call you name as `<layer>-t<n>`. Load the image processor with `use_fast=False`; for a processor that holds an image processor, `pin_image_processor(processor, model_id)` (from `brainscore_core.hf_compat`) does this, so the preprocessed pixels do not change with the transformers version.
+
 **3. Propose a region-to-layer map.** Each region becomes a `neural:<region>` output.
 
 ```python
@@ -93,7 +97,7 @@ model = BrainScoreModel(
     behavioral_readout_layer='layer4',           # optional: behavior by readout
     # The readout gives probabilities; its choice is the most probable option.
     # State that conversion for a model that must answer a choice task:
-    capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}},
+    answer_owners={'behavior:choice': ('readout', 'argmax')},
 )
 print(sorted(model.out_channels))                # the declared outputs
 # ['behavior', 'behavior:choice', 'behavior:probabilities', 'behavior:rating', 'behavior:rt',
@@ -104,7 +108,9 @@ print(sorted(model.out_channels))                # the declared outputs
 
 Pass the same `net` object to the extractor and to `model=`, so recording and interventions act on the same network.
 
-Layer paths are relative to the module the extractor wraps (`extractor.layer_names()` lists them). A path the extractor does not have fails when you build the model, and `start_recording` rejects a name that is neither a mapped region nor a layer; both errors list close matches.
+Layer paths are relative to the module the extractor wraps (`extractor.layer_names()` lists them). A path the extractor does not have fails when you build the model, with close matches; a session that requests a region the map does not name is refused before any compute.
+
+When a module runs more than once for one input (a looped block), name one of its calls as `<layer>-t<n>`, counted from 0, as the old vision time steps: `'layers.6-t1'` is the second call of `layers.6`. The wrappers in `brainscore.model_helpers` read this form; they refuse the plain name of such a module and a call number at or above the count.
 
 A session that requests several regions gives each `neural:<region>` channel the same payload as a session for that region alone. When the regions are recorded by one extractor that declares `independent_layers = True`, the extractor runs once for all of them (once per row in a streamed session), and each channel gets its own layers. Every wrapper in `brainscore.model_helpers` declares it (`TextWrapper`, `VLMVisionWrapper`, `VLMVideoWrapper`, `VideoWrapper`, `AudioWrapper`). Any other extractor runs once per region. Declare it on your own extractor only if its output for some layers, cut to one layer, is exactly its output for that layer alone (values, coordinates, attributes): for example, number the units of each layer from zero (`neuroid_num`). The environment variable `BRAINSCORE_REGIONS_PER_PASS=one` gives every region its own pass (see `EXTENDING.md`).
 
@@ -132,9 +138,7 @@ activations = neural_response(model, stimuli, ['neural:IT'])
 print(activations.dims, activations.shape)   # ('presentation', 'neuroid') (2, 8)
 ```
 
-`neural_response` runs a session through `model.participate`, as a benchmark does. In a
-notebook, `model.start_recording('IT')` followed by `model.process(stimuli)` gives the same
-assembly; `process` is a convenience of `BrainScoreModel`, not part of the contract.
+`neural_response` runs a session through `model.participate`, as a benchmark does.
 
 The column name tells the model what kind of input each row holds (`sentence` for text, `audio_path` for audio). A `stimulus_paths` dictionary alone is not enough. A wrapper takes only the column names that the core catalog binds to its input (`brainscore_core.io_catalog.stimulus_columns`), tried in the catalog's order: `audio_path`, `audio_file_name`, `audio_file`, `audio` for sound; `video_path`, `video_file_name`, `video` for clips; `image_file_name`, `image_path`, `filename`, `image`, `vision` for images.
 

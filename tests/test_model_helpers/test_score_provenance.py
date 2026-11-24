@@ -150,7 +150,12 @@ def _qualified(function):
     return f'{function.__module__}.{function.__qualname__}'
 
 
-READOUT = 'brainscore._model.behavior.ProbabilitiesClassifier'
+def _readout_kind():
+    from brainscore._model.fitted_readout import ProbabilitiesClassifier
+    return _qualified(ProbabilitiesClassifier)
+
+
+READOUT = _readout_kind()
 
 
 def _answer_model():
@@ -470,7 +475,7 @@ def test_a_readout_that_owns_the_probabilities_is_named_for_them_beside_the_repl
     reply = pseudo.reply_model()._reply
     model = BrainScoreModel('reply-and-readout', extractor={'text': reading._extractors['text']},
                             in_channels={'text'}, reply=reply, behavioral_readout_layer='late',
-                            capability_config={'behavior-sessions': {'behavior:rating': 'generation'}})
+                            answer_owners={'behavior:rating': 'generation'})
     outputs = ['behavior:choice', 'behavior:probabilities']
     task = TaskContext(instruction='Is this a real word?', response=Choice(pseudo.OPTIONS),
                        fitting_stimuli=pseudo.FITTING)
@@ -647,3 +652,38 @@ def test_the_facts_of_a_part_are_read_once_per_session(monkeypatch):
     score = _score(model, _Neural(_sentences(), {'neural:IT', 'neural:V4'}))
     assert len(_entry(score)['parts']) == 2
     assert counts == [1]
+
+
+@pytest.mark.parametrize('part', ['answer', 'reply'])
+def test_an_api_part_states_its_provider_snapshot_and_generation_settings(part, tmp_path):
+    # A stand-in client: no network. The provider of a callable client is its name.
+    from brainscore.model_helpers.api_behavioral import api_answer, build_api_reply
+
+    def stand_in_client(model, system, messages, settings):
+        return pseudo.OPTIONS[0]
+    build = api_answer if part == 'answer' else build_api_reply
+    function = build(stand_in_client, 'snapshot-2026-01-01', max_tokens=16, cache_dir=tmp_path / 'store')
+    subject = BrainScoreModel(f'api-{part}', in_channels={'text'}, **{part: function})
+    (item,) = _entry(_score(subject, pseudo.PseudoChoice()))['parts']
+    assert item['part'] == part
+    for fact in ('"provider": "stand_in_client"', '"model": "snapshot-2026-01-01"', '"temperature": 0',
+                 '"max_tokens": 16'):
+        assert fact in item['settings']
+
+
+def test_an_api_policy_states_its_provider_snapshot_and_generation_settings(tmp_path):
+    # The policy part of the same clients: a closed-loop score names its settings too.
+    from brainscore.benchmarks.grid_game.benchmark import GridGameBenchmark, policy_model
+    from brainscore.model_helpers.api_behavioral import api_policy
+
+    def stand_in_client(model, system, messages, settings):
+        return 'Action: 0'
+    policy = api_policy(stand_in_client, 'snapshot-2026-01-01', obs_mode='ascii', max_tokens=16,
+                        cache_dir=tmp_path / 'store')
+    score = _score(policy_model(policy, 'api-policy'), GridGameBenchmark(size=5, n_episodes=1, max_steps=2))
+    (entry,) = [entry for entry in score.attrs['provenance'] if entry['subject'] == 'api-policy']
+    (item,) = entry['parts']
+    assert item['part'] == 'policy'
+    for fact in ('"provider": "stand_in_client"', '"model": "snapshot-2026-01-01"', '"temperature": 0',
+                 '"max_tokens": 16'):
+        assert fact in item['settings']

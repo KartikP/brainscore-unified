@@ -1,6 +1,6 @@
 """Model-side unit-coordinate support for the topographic-alignment axis.
 
-The topographic metric (``metrics/topographic/``) reads per-unit positions from
+The topographic metric (``metric.py`` in this folder) reads per-unit positions from
 ``tissue_x``/``tissue_y`` (or ``x``/``y``/``z``) neuroid coords. This module is the bridge:
 it lets a model or benchmark ATTACH those coords, and stages the NSD fsaverage-surface target.
 

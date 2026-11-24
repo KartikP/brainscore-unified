@@ -283,5 +283,5 @@ def get_model(identifier: str) -> BrainScoreModel:
         # with the readout, the part that gave them before the reply.
         # Bare behavior is declared because an answer part is wired; it carries the requested
         # format's answer (the answer part's choice, the readout's probabilities).
-        capability_config={'behavior-sessions': {'behavior:rating': 'readout'}},
+        answer_owners={'behavior:rating': 'readout'},
     )

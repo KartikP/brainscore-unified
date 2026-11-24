@@ -25,7 +25,10 @@ Neither scores anything. A benchmark loads both and compares a model against the
 ## Install
 
 Copy this folder to `brainscore/data/<your_name>/` and move `test_data.py` to
-`tests/test_data/test_<your_name>.py`. Nothing else to edit: the folder registers by its presence.
+`tests/test_data/test_<your_name>.py`. The folder registers by its presence. If your plugin
+registers a builder with `build=`, also add a tiny made-up source for it to the `SOURCES` mapping
+in `tests/test_data/test_data_packaging.py`; `test_every_builder_has_a_made_up_source_here`
+fails until you do.
 
 Then, typically from inside a benchmark (here from the `templates/` folder, where
 importing the template registers it):

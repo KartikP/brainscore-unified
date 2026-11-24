@@ -105,3 +105,18 @@ class TestMultiStepRollout:
                      for i in range(5)]
         assert len(responses) == 5
         assert all('motor' in r for r in responses)
+
+
+def test_a_policy_refuses_a_table_session_before_any_step():
+    # A table session sends no 'respond' signal, so a policy would never be called
+    # and the output would stay empty without an error.
+    from brainscore_core.compatibility import ExecutionNotFeasibleError
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    from brainscore_core.streaming_helpers import stimulus_session
+    calls = []
+    model = BrainScoreModel(identifier='table-policy', policy=lambda row: calls.append(row) or {'motor': 0},
+                            policy_in_channels=('sentence',))
+    stimuli = StimulusSet({'stimulus_id': ['a', 'b'], 'sentence': ['one', 'two']})
+    with pytest.raises(ExecutionNotFeasibleError, match='environment_session'):
+        model.participate(stimulus_session(stimuli, ['motor']))
+    assert calls == []

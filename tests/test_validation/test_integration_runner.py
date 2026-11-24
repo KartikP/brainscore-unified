@@ -210,7 +210,7 @@ def test_native_profile_dispatch_assertions_with_small_assemblies(kind):
     if kind == 'clip':
         test_text_wrapper.TestTextWrapperIntegration().test_works_as_brainscore_model_preprocessor(wrapper, stimuli)
     elif kind == 'gpt2':
-        test_text_wrapper.TestTextWrapperCausalMode().test_process_matches_wrapper(wrapper, stimuli)
+        test_text_wrapper.TestTextWrapperCausalMode().test_a_session_matches_wrapper(wrapper, stimuli)
     else:
         stimuli = StimulusSet({'stimulus_id': ['a', 'b', 'c'],
                               'image_file_name': ['a.png', 'b.png', 'c.png']})

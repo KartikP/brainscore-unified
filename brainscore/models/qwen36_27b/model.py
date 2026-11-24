@@ -164,8 +164,8 @@ def get_model(identifier: str) -> BrainScoreModel:
         # Generation answers the rating (reply and readout both give it natively). Bare
         # behavior carries the requested format's answer and takes no statement. The readout
         # gives the probabilities natively (fitted on the task's fitting stimuli).
-        capability_config={'behavior-sessions': {
+        answer_owners={
             'behavior:rating': 'generation',
-            'behavior:probabilities': 'readout'}},
+            'behavior:probabilities': 'readout'},
         intervention=pytorch_intervention(_tower_root(visual, language_model)),
     )

@@ -66,7 +66,7 @@ brainscore/data/<name>/
     data_packaging/      the script that builds the plugin's files from the source data
 ```
 
-The folder registers by its presence: every subpackage of `brainscore/data/` is imported with `brainscore`, so no other file changes. A plugin in another package (another repository) registers when you import that package before you load it.
+The folder registers by its presence: every subpackage of `brainscore/data/` is imported with `brainscore`. One exception: a plugin whose builder states `build=` (see below) also adds a tiny made-up source to the `SOURCES` mapping in `tests/test_data/test_data_packaging.py`, so that the packaging test runs the build; `test_every_builder_has_a_made_up_source_here` fails until you add it. A plugin in another package (another repository) registers when you import that package before you load it.
 
 Register a loader for each assembly and each stimulus set:
 

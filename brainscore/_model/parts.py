@@ -31,7 +31,7 @@ class PartLog:
     def __init__(self) -> None:
         self.records: Dict[tuple, dict] = {}
         self.objects: Dict[int, object] = {}   # keeps each noted object for the facts at the end
-        self.settings: Dict[int, set] = {}     # a caching wrapper's settings fingerprints, per call
+        self.settings: Dict[int, set] = {}     # a part's stated settings, per call (a caching wrapper, an API part)
 
     def note(self, part: str, obj, layers: Iterable[str] = (), serves: Optional[Iterable[str]] = None) -> None:
         serves = tuple(sorted(set(_serving.get() if serves is None else serves)))

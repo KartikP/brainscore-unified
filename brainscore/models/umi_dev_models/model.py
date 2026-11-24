@@ -334,7 +334,7 @@ def get_model(identifier: str):
         identifier, model, region_layer_map, extractor=extractor, reply=reply, likelihood=likelihood,
         behavioral_readout_layer=region_layer_map['IT'],
         policy=api_policy(_reply_client(reply), identifier), policy_in_channels=('observation', 'instruction', 'reward'),
-        capability_config={'behavior-sessions': {'behavior:rating': 'generation', 'behavior:probabilities': 'readout'}},
+        answer_owners={'behavior:rating': 'generation', 'behavior:probabilities': 'readout'},
         **parts)
     depths = ', '.join(f'{region} {f:.2f}' for table in DEPTH_TABLE.values() for region, f in table.items())
     return _StudySubject(subject, {

@@ -1,4 +1,4 @@
-"""Tests for the NSD-surface staging in brainscore.topographic_support.
+"""Tests for the NSD-surface staging in brainscore.metrics.topographic.topographic_support.
 
 Uses a synthetic surface assembly + a mock vertex->xyz function, so the
 selection / reliability-filter / coord-attach logic is exercised without
@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
-from brainscore.topographic_support import stage_nsd_surface_target, has_tissue_coords
+from brainscore.metrics.topographic.topographic_support import stage_nsd_surface_target, has_tissue_coords
 
 
 def _mock_xyz(vertex_index, hemisphere, surf='infl', rh_offset=200.0):

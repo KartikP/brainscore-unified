@@ -42,7 +42,7 @@ def _readout_model():
         identifier='test-readout', model=None, region_layer_map={},
         extractor={'vision': _fake_preprocessor_returning(features)},
         behavioral_readout_layer='some_layer',
-        capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
+        answer_owners={'behavior:choice': ('readout', 'argmax')})
 
 
 _GENERATION_TASK = dict(response=Choice(['cat', 'dog']), instruction='What animal is this?')

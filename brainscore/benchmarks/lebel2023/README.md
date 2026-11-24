@@ -85,7 +85,7 @@ distribution a whole-brain benchmark exists to show.
 ### Depth
 
 Both models swept on all 20484 vertices, every layer recorded in one pass
-(`start_recording([...])`) and scored from the shared recording.
+(one recording of every layer) and scored from the shared recording.
 
 | Qwen3.6-27B | 0 | 5 | 10 | 15 | 20 | 25 | 30 | 35 | 40 | 45 | 50 | 55 | 60 | 63 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|

@@ -9,8 +9,8 @@ from typing import Dict, List, Optional, Tuple, Union
 
 from brainscore_core.io_catalog import canonical_modality
 from ..selection import LayerSelector, UnitSelector
+from brainscore.model_helpers.selection import split_site
 
-INPUT_SITE = ':input'
 
 
 def region_selector(owner, region: str) -> UnitSelector:
@@ -398,9 +398,17 @@ def declared_layers(owner, modality: Optional[str] = None):
 
 def unknown_layer_message(owner, path: str, modality: Optional[str] = None) -> Optional[str]:
     """Why ``path`` is not a layer of the routed extractor, or None if it is
-    (or cannot be checked). ``':input'`` sites check their module path."""
+    (or cannot be checked). A site (``':input'``, ``'-t<n>'``) checks its module path,
+    and needs an extractor with ``record`` (one that records through ``LiveRecording``)."""
     names = declared_layers(owner, modality)
-    base = path[:-len(INPUT_SITE)] if path.endswith(INPUT_SITE) else path
+    base = split_site(path)[0]
+    wanted = canonical_modality(modality) if modality else None
+    if base != path and any(record_part(e) is None for key, e in owner._extractors.items()
+                            if wanted is None or canonical_modality(key) == wanted):
+        return (f'{path!r} names a call or an input of a module, and an extractor without '
+                f'record(layers, stimuli) (such as the vision PytorchWrapper) records one value for each '
+                f'module and does not take a pass name. Name {base!r}, or use a wrapper of '
+                f'brainscore.model_helpers.')
     if names is None or base in names:
         return None
     import difflib
@@ -449,19 +457,15 @@ class RecordingRequest:
 
     def start_recording(self,
                         recording_target: Union[str, List[str]],
-                        time_bins: Optional[List[Tuple[int, int]]] = None,
-                        recording_type: Optional[str] = None) -> None:
-        """Configure the layers extracted by subsequent ``process`` calls.
+                        time_bins: Optional[List[Tuple[int, int]]] = None) -> None:
+        """Configure the layers extracted by subsequent ``record`` calls.
 
         A string names one region, and a list records several targets in one
         extraction. A name that is not a region is read as a layer path: when
         the extractor lists its layers, a name that is not one of them raises
         ``ValueError`` (with close matches); when it lists none, the name is
         used as given, with a warning. Strings and lists follow the same rule.
-        ``recording_type`` is accepted for legacy adapter compatibility and is
-        otherwise ignored by ``BrainScoreModel``.
         """
-        del recording_type
         owner = self.owner
 
         targets = ([recording_target] if isinstance(recording_target, str)

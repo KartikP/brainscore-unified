@@ -11,7 +11,8 @@ What it handles (the "graceful" parts):
   - lazy SDK import + env-var API keys (no hard dependency, no key in code);
   - per-stimulus on-disk response cache keyed by (provider, model, instruction,
     label_set, stimulus) — re-runs don't re-bill AND the scored result reproduces
-    even though the live model may change behind the API;
+    even though the live model may change behind the API; an Anthropic reply is
+    a sample with no seed and is never stored;
   - the directive of core's ``Choice`` (one text); the reply text is returned
     exactly and ``BrainScoreModel`` parses it with ``Choice.parse``;
   - multimodal (base64 image) and text dispatch from the stimulus row.
@@ -234,12 +235,26 @@ def _one_turn(call, model, system, text, image, max_tokens) -> str:
     text_part = [{'type': 'text', 'text': text}]
     image_part = ([] if image is None
                   else [{'type': 'image', 'media_type': image[0], 'data': image[1]}])
-    if call is _call_anthropic:
-        content, settings = image_part + text_part, {'max_tokens': max_tokens}
-    else:
-        content, settings = text_part + image_part, {'max_tokens': max_tokens, 'temperature': 0}
+    settings = _one_turn_settings(call, max_tokens)
+    content = image_part + text_part if call is _call_anthropic else text_part + image_part
     reply = call(model, system, [{'role': 'user', 'content': content}], settings)
     return reply.payload if isinstance(reply, StreamEvent) else reply
+
+
+def _one_turn_settings(call, max_tokens) -> dict:
+    """The generation settings of ``_one_turn``: no temperature for Anthropic, else 0."""
+    return ({'max_tokens': max_tokens} if call is _call_anthropic
+            else {'max_tokens': max_tokens, 'temperature': 0})
+
+
+def _state_settings(part, provider_name, model, settings) -> None:
+    """State the provider, the model and the generation settings of ``part`` in the running
+    session's part log, as a caching wrapper states its settings (the score's provenance)."""
+    from brainscore._model import parts
+    log = parts.active()
+    if log is not None:
+        log.settings.setdefault(id(part), set()).add(
+            json.dumps({'provider': provider_name, 'model': model, **settings}, sort_keys=True))
 
 
 # The form of a cached text, part of every cache key. Before it, the clients stored
@@ -288,6 +303,7 @@ def api_answer(
         offers one so scores are reproducible.
     :param cache_dir: if set, responses are cached here per stimulus so re-runs
         don't re-bill and the scored result reproduces. Strongly recommended.
+        An Anthropic reply is a sample with no seed and is never stored.
     """
     call = provider if callable(provider) else PROVIDERS[provider]
     provider_name = getattr(provider, '__name__', str(provider))
@@ -321,6 +337,7 @@ def api_answer(
         payload_hash = hashlib.sha256(payload.encode('utf-8')).hexdigest()[:16]
 
         key = _key(prompt, label_set, stim_key, payload_hash)
+        _state_settings(generate, provider_name, model, _one_turn_settings(call, max_tokens))
         # Anthropic gets no temperature and no seed: its reply is a sample, never stored.
         use_cache = cache is not None and call is not _call_anthropic
         response = cache.get(key) if use_cache else None
@@ -423,6 +440,7 @@ def build_api_reply(
                             if call is _call_anthropic else 0)
         if call is _call_anthropic:
             _anthropic_settings(settings)   # fail before the cache or a request
+        _state_settings(reply, provider_name, model, settings)
         system, messages = _reply_messages(prompt)
         key = hashlib.sha256(json.dumps([provider_name, model, system, messages, settings,
                                          _CACHE_FORM], sort_keys=True).encode('utf-8')).hexdigest()
@@ -516,7 +534,7 @@ def api_policy(
         notice it's stuck and break the loop.
 
     Reuses the same provider adapters and response cache as the behavioral
-    generation path. Each ``motor`` event carries the catalog's response meta
+    generation path; an Anthropic reply is a sample with no seed and is never stored. Each ``motor`` event carries the catalog's response meta
     (``RESPONSE_META_KEYS``): the raw reply (``answer``), ``valid``, ``parse_error``
     and ``provenance`` (provider and model). A reply with no readable action gives
     no move: the payload is None and ``valid`` is False (Contract Rules 6.2); the
@@ -610,9 +628,11 @@ def api_policy(
                 f"Available actions (reply with the NUMBER):\n{menu}"
                 f"{_history_block(legal, payload)}\n\n{tail}")
 
+        _state_settings(act, provider_name, model, _one_turn_settings(call, max_tokens))
         response = None
         key = None
-        if cache is not None:
+        use_cache = cache is not None and call is not _call_anthropic
+        if use_cache:
             # Include the policy's own step count (reset with its episode state)
             # so a stuck state (unchanged observation) at different ticks does
             # NOT collapse to one cached action; that would freeze the agent in
@@ -627,7 +647,7 @@ def api_policy(
             response = cache.get(key)
         if response is None:
             response = _one_turn(call, model, system_prompt, prompt, image, max_tokens)
-            if cache is not None:
+            if use_cache:
                 cache.set(key, response)
 
         parsed = _parse_action_index(response, n, legal)

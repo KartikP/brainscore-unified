@@ -174,7 +174,9 @@ def _shared_layers(model, stimuli, regions: List[str]) -> List[Tuple[object, Lis
     extractor that wraps another store (the study models around the vision
     activations store), a prefix that names the inner store is not seen, and a
     prefix that names only the outer class turns the shared pass off although
-    the inner store is on. The cost is time and memory, no value.
+    the inner store is on. A switch value that names a stored method of the
+    extractor (``<kind>._from_paths_stored``, ``<kind>._from_texts_stored``) is not
+    seen either. The cost is time and memory, no value.
     """
     from brainscore.model_helpers.extractors import kind
     from brainscore_core.extraction_cache import store_enabled
@@ -247,7 +249,4 @@ def check_layer_provenance(model, output, region: str) -> None:
 
 
 def _start(model, target, time_bins) -> None:
-    if time_bins is None:
-        model.start_recording(target)
-    else:
-        model.start_recording(target, time_bins=time_bins)
+    model._recording_request.start_recording(target, time_bins)

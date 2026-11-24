@@ -54,7 +54,7 @@ def _model(replies=None, scores=None, readout=False):
                             reply=reply if replies else None,
                             likelihood=likelihood if scores else None,
                             behavioral_readout_layer='late' if readout else None,
-                            capability_config={'behavior-sessions': stated})
+                            answer_owners=stated)
     return model, prompts
 
 

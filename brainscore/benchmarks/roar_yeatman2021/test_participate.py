@@ -33,7 +33,7 @@ def _noisy_readout_model():
             'neuroid_id': ('neuroid', [f'n{i}' for i in range(4)]), 'layer': ('neuroid', [layers[0]] * 4)})
     return BrainScoreModel('noisy-readout', extractor={'text': extract}, in_channels={'text'},
                            behavioral_readout_layer='late',
-                           capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
+                           answer_owners={'behavior:choice': ('readout', 'argmax')})
 
 
 def test_the_choice_request_scores_what_the_legacy_request_scored(synthetic_roar):

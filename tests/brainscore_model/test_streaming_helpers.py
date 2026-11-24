@@ -187,11 +187,7 @@ class _TrackingTemporalBrainScoreModel(_TemporalBrainScoreModel):
 
 def test_neural_response_uses_native_participate_and_preserves_metadata_exactly():
     stimuli = _metadata_stimulus_set()
-
-    legacy_extractor = _MetadataPreservingExtractor()
-    legacy = _native_neural_model(legacy_extractor)
-    legacy.start_recording("IT")
-    expected = legacy.process(stimuli)
+    expected = _MetadataPreservingExtractor()(stimuli, layers=["layer4"])
 
     native_extractor = _MetadataPreservingExtractor()
     subject = _native_neural_model(
@@ -206,13 +202,8 @@ def test_neural_response_uses_native_participate_and_preserves_metadata_exactly(
     xr.testing.assert_identical(scored, expected)
 
 
-def test_neural_response_native_participate_matches_multimodal_process_exactly():
+def test_neural_response_native_participate_records_only_the_region_tower():
     stimuli = _multimodal_stimulus_set()
-
-    legacy, _, _ = _native_multimodal_model()
-    legacy.start_recording("IT")
-    expected = legacy.process(stimuli, multi_modality=True)
-
     subject, activations, text = _native_multimodal_model(
         model_cls=_ParticipateTrackingBrainScoreModel
     )
@@ -223,16 +214,12 @@ def test_neural_response_native_participate_matches_multimodal_process_exactly()
     # IT is on the vision tower; the text tower records nothing.
     assert activations.call_args is not None
     assert text.call_args is None
-    xr.testing.assert_identical(scored, expected)
+    assert set(scored['modality'].values) == {'vision'}
 
 
 def test_neural_response_native_participate_threads_time_bins_exactly():
     stimuli = _metadata_stimulus_set()
     time_bins = [(70, 170), (170, 270)]
-
-    legacy = _TemporalBrainScoreModel()
-    legacy.start_recording("IT", time_bins=time_bins)
-    expected = legacy.process(stimuli)
 
     subject = _TrackingTemporalBrainScoreModel()
     scored = neural_response(subject, stimuli, ['neural:IT'], time_bins=time_bins)
@@ -242,15 +229,10 @@ def test_neural_response_native_participate_threads_time_bins_exactly():
     assert set(scored.dims) == {"presentation", "time_bin", "neuroid"}
     assert list(scored["time_bin_start"].values) == [70, 170]
     assert list(scored["time_bin_end"].values) == [170, 270]
-    xr.testing.assert_identical(scored, expected)
 
 
 def test_neural_response_without_time_bins_keeps_2d_output():
     stimuli = _metadata_stimulus_set()
-
-    legacy = _TemporalBrainScoreModel()
-    legacy.start_recording("IT")
-    expected = legacy.process(stimuli)
 
     subject = _TrackingTemporalBrainScoreModel()
     scored = neural_response(subject, stimuli, ['neural:IT'])
@@ -259,7 +241,6 @@ def test_neural_response_without_time_bins_keeps_2d_output():
     assert subject.participate_outputs == ("neural:IT",)
     assert scored.dims == ("presentation", "neuroid")
     assert "time_bin" not in scored.dims
-    xr.testing.assert_identical(scored, expected)
 
 
 def _behavior_model(features, model_cls=BrainScoreModel):
@@ -269,7 +250,7 @@ def _behavior_model(features, model_cls=BrainScoreModel):
         region_layer_map={},
         extractor={"vision": _fake_preprocessor_returning(features)},
         behavioral_readout_layer="some_layer",
-        capability_config={"behavior-sessions": {"behavior:choice": ("readout", "argmax")}},
+        answer_owners={"behavior:choice": ("readout", "argmax")},
     )
 
 
@@ -290,12 +271,9 @@ def test_behavioral_response_matches_the_configured_readout_exactly():
     features[:6, 0] += 3.0
     features[6:, 0] -= 3.0
 
-    legacy = _behavior_model(features)
-    legacy_context = _behavior_context(fitting)
-    legacy.start_task(legacy_context)
-    bare = legacy._behavioral.respond(scoring, ['behavior'])[0]['behavior']
-    session = stimulus_session(scoring, ['behavior:choice'], legacy_context)
-    legacy.participate(session)
+    direct = _behavior_model(features)
+    session = stimulus_session(scoring, ['behavior:choice'], _behavior_context(fitting))
+    direct.participate(session)
     expected = session.collect('behavior:choice')
 
     helper_subject = _behavior_model(
@@ -308,9 +286,6 @@ def test_behavioral_response_matches_the_configured_readout_exactly():
     assert helper_subject.participate_outputs == ("behavior:choice",)
     assert isinstance(scored, BehavioralAssembly)
     xr.testing.assert_identical(scored, expected)
-    # The addressed format must not change the answers of the old bare request.
-    assert list(scored['stimulus_id'].values) == list(bare['stimulus_id'].values)
-    np.testing.assert_array_equal(scored.values, bare.values)
 
 
 def _generation_model(calls, model_cls=BrainScoreModel):
@@ -339,13 +314,10 @@ def test_behavioral_response_matches_the_configured_answer_exactly():
         ["cat"] * 3 + ["dog"] * 3, identifier="gen_test"
     )
 
-    legacy_calls = []
-    legacy = _generation_model(legacy_calls)
-    legacy_context = _generation_context()
-    legacy.start_task(legacy_context)
-    bare = legacy._behavioral.respond(scoring, ['behavior'])[0]['behavior']
-    session = stimulus_session(scoring, ['behavior:choice'], legacy_context)
-    legacy.participate(session)
+    direct_calls = []
+    direct = _generation_model(direct_calls)
+    session = stimulus_session(scoring, ['behavior:choice'], _generation_context())
+    direct.participate(session)
     expected = session.collect('behavior:choice')
 
     helper_calls = []
@@ -359,10 +331,7 @@ def test_behavioral_response_matches_the_configured_answer_exactly():
     assert helper_subject.participate_outputs == ("behavior:choice",)
     assert isinstance(scored, BehavioralAssembly)
     xr.testing.assert_identical(scored, expected)
-    # The addressed format must not change the answers of the old bare request.
-    assert list(scored['stimulus_id'].values) == list(bare['stimulus_id'].values)
-    np.testing.assert_array_equal(scored.values, bare.values)
-    assert helper_calls == legacy_calls[-len(helper_calls):]   # the bare run and the format run asked the same
+    assert helper_calls == direct_calls   # the session and the helper asked the same
 
 
 class _SyntheticEnvironment:
@@ -534,15 +503,13 @@ def test_environment_session_emits_motor_events_for_multistep_rollout():
     assert [event.meta["step_num"] for event in session.emitted] == [0, 1]
 
 
-def test_apply_state_change_produces_handle_and_ack_event():
+def test_a_state_change_session_produces_handle_and_ack_event():
     fn, state = _counting_state_change_fn()
     model = _make_state_change_model(intervention=fn)
     state_change = _ablation_state_change()
 
     session = _state_change_session(state_change)
-    _ = session.next_input()
-    from brainscore_core.streaming_helpers import drive_state_change_session
-    drive_state_change_session(model, session, state_change=state_change, driver="process")
+    model.participate(session)
 
     applied = session.collect("perturbation")
 

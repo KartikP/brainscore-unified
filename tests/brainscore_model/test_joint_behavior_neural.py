@@ -104,9 +104,9 @@ def _model(net, extractor_type=ToyExtractor, **kwargs):
                            region_layer_map={'A': LayerSelector('early', modality='text'),
                                              'B': LayerSelector('late', modality='text')},
                            answer=answer, intervention=intervention, **kwargs,
-                           capability_config={'behavior-sessions': (
+                           answer_owners=(
                                {'behavior:choice': ('readout', 'argmax')}
-                               if 'behavioral_readout_layer' in kwargs else {})})
+                               if 'behavioral_readout_layer' in kwargs else {}))
 
 
 def _run(model, task, channels):
@@ -139,7 +139,7 @@ def test_readout_records_in_the_same_extraction():
     net = ToyNet()
     model = _model(net, behavioral_readout_layer='late')
     task = TaskContext(response=Choice(['cat', 'dog']), fitting_stimuli=STIMULI)
-    model.start_task(task)
+    _run(model, task, ['behavior'])                         # fits the readout
     fitted = net.passes
     session = _run(model, task, ['behavior', 'neural:A'])
     assert net.passes - fitted == len(STIMULI)              # one extraction for both
@@ -201,7 +201,7 @@ def test_undeclared_region_is_refused():
 
 def test_neural_session_after_a_task_returns_activity():
     model = _model(ToyNet())
-    model.start_task(GENERATE)
+    _run(model, GENERATE, ['behavior:choice'])
     session = stimulus_session(STIMULI, ['neural:A'])
     model.participate(session)
     assert isinstance(session.collect('neural:A'), NeuroidAssembly)

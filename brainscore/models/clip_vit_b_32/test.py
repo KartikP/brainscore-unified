@@ -9,6 +9,7 @@ from PIL import Image
 from brainscore import BrainScoreModel
 from brainscore_core.legacy_facade import LegacyBenchmarkFacade
 from brainscore_core.contract import Subject
+from brainscore_core.streaming_helpers import neural_response
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
@@ -128,11 +129,10 @@ class TestVisionPath:
             import shutil
             shutil.rmtree(tmpdir)
 
-    def test_process_detects_vision(self, model):
+    def test_a_session_detects_vision(self, model):
         stimuli, tmpdir = _make_image_stimuli(2)
         try:
-            model.start_recording('IT', time_bins=[(70, 170)])
-            result = model.process(stimuli)
+            result = neural_response(model, stimuli, ['neural:IT'], time_bins=[(70, 170)])
             assert result.dims == ('presentation', 'neuroid')
             assert result.shape[0] == 2
         finally:
@@ -141,9 +141,8 @@ class TestVisionPath:
 
 
 class TestTextPath:
-    def test_process_detects_text(self, model, text_stimuli):
-        model.start_recording('language_system', time_bins=[(70, 170)])
-        result = model.process(text_stimuli)
+    def test_a_session_detects_text(self, model, text_stimuli):
+        result = neural_response(model, text_stimuli, ['neural:language_system'], time_bins=[(70, 170)])
         assert result.dims == ('presentation', 'neuroid')
         assert result.shape[0] == 3
 
@@ -160,11 +159,9 @@ class TestModalities:
     def test_vision_and_text_different_features(self, model, text_stimuli):
         stimuli, tmpdir = _make_image_stimuli(3)
         try:
-            model.start_recording('IT', time_bins=[(70, 170)])
-            vision_result = model.process(stimuli)
+            vision_result = neural_response(model, stimuli, ['neural:IT'], time_bins=[(70, 170)])
 
-            model.start_recording('language_system', time_bins=[(70, 170)])
-            text_result = model.process(text_stimuli)
+            text_result = neural_response(model, text_stimuli, ['neural:language_system'], time_bins=[(70, 170)])
 
             # Vision and text produce different feature dimensions
             assert vision_result.shape[1] != text_result.shape[1]

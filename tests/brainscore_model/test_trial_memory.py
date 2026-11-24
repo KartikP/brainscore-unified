@@ -90,7 +90,7 @@ def _rows():
             for i in range(3)]
 
 
-def test_begin_keeps_interventions_and_the_task_and_clears_episode_state():
+def test_begin_keeps_interventions_and_clears_episode_state():
     log = {'policy': 0, 'extractor': 0}
 
     class Policy:
@@ -123,8 +123,6 @@ def test_begin_keeps_interventions_and_the_task_and_clears_episode_state():
                             intervention=intervention, memory='trial_history')
     apply_state_change(model, StateChange(kind='ablation', target=Selection(layer='x'),
                                           perturbation=Perturbation(kind='zero')))
-    task = TaskContext(task_type='passive')
-    model.start_task(task)
     model.participate(Session([begin_event()], ('motor',)))             # what a begin does:
     assert log == {'policy': 1, 'extractor': 1}                        # parts clear their episode state
     model._behavioral.history = [('earlier', 'reply')]
@@ -132,7 +130,35 @@ def test_begin_keeps_interventions_and_the_task_and_clears_episode_state():
     assert model._behavioral.history == []                             # h empty
     assert log == {'policy': 2, 'extractor': 2}
     assert state['lesion'] and 'h' in model._interventions.active_interventions      # w unchanged
-    assert model._behavioral.task is task                      # s unchanged
+
+
+def test_begin_keeps_the_task_setup_in_a_session():
+    """Each trial starts with a begin event; the fitted readout set up for the task stays."""
+    from brainscore_core.responses import Choice
+    from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+    fits = []
+
+    def extract(stimuli, layers, **kwargs):
+        ids = list(stimuli['stimulus_id'])
+        if 'label' in stimuli.columns:
+            fits.append(ids)
+        values = np.array([[1.0, 0.0] if 'real' in str(text) else [0.0, 1.0] for text in stimuli['sentence']])
+        return NeuroidAssembly(values, dims=['presentation', 'neuroid'], coords={
+            'stimulus_id': ('presentation', ids), 'neuroid_id': ('neuroid', [0, 1]),
+            'layer': ('neuroid', [layers[0]] * 2)})
+    model = BrainScoreModel('kept-setup', extractor={'text': extract}, behavioral_readout_layer='L',
+                            answer_owners={'behavior:choice': ('readout', 'argmax')})
+    fitting = StimulusSet({'stimulus_id': ['f0', 'f1', 'f2', 'f3'], 'sentence': ['real a', 'fake b'] * 2,
+                           'label': ['real', 'fake'] * 2})
+    fitting.identifier = 'kept-setup-fitting'
+    task = TaskContext(response=Choice(['real', 'fake']), fitting_stimuli=fitting, trial_memory='none')
+    stimuli = StimulusSet({'stimulus_id': ['s0', 's1', 's2'], 'sentence': ['real x', 'fake y', 'real z']})
+    stimuli.identifier = 'kept-setup'
+    session = stimulus_session(stimuli, ['behavior:probabilities'], task, streaming=True)   # one trial at a time
+    model.participate(session)
+    answers = [e for e in session.emitted if e.channel == 'behavior:probabilities']
+    assert len(answers) == 3                         # one answer per trial, each after its begin
+    assert len(fits) == 1                            # the readout was fitted once, before the first trial
 
 
 def test_replay_keeps_a_lesion_and_clears_the_policy_between_episodes():

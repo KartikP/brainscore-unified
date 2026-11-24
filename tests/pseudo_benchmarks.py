@@ -329,9 +329,9 @@ def likelihood_model(calls=None):
         return {label: float(np.log(sure if label == _truth(prompt.stimulus_id) else 1 - sure))
                 for label in labels}
     return BrainScoreModel('pseudo-likelihood', in_channels={'text'}, likelihood=likelihood,
-                           capability_config={'behavior-sessions': {
+                           answer_owners={
                                'behavior:choice': ('likelihood', 'softmax_argmax'),
-                               'behavior:probabilities': ('likelihood', 'softmax')}})
+                               'behavior:probabilities': ('likelihood', 'softmax')})
 
 
 def readout_model(calls=None):
@@ -343,8 +343,8 @@ def readout_model(calls=None):
         return _features(stimuli, layers, **kwargs)
     return BrainScoreModel('pseudo-readout', extractor={'text': extract}, in_channels={'text'},
                            behavioral_readout_layer='late',
-                           capability_config={'behavior-sessions': {
-                               'behavior:choice': ('readout', 'argmax')}})
+                           answer_owners={
+                               'behavior:choice': ('readout', 'argmax')})
 
 
 ALL_FORMATS = frozenset(BENCHMARKS)

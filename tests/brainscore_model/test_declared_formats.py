@@ -95,7 +95,7 @@ def _stand_in(wired, stated, calls=None):
              if callable(PARTS[name]) else PARTS[name] for name in wired}
     return BrainScoreModel('stand-in', extractor={'text': extract, 'vision': extract},
                            region_layer_map={'VWFA': 'late'}, intervention=lambda *a, **k: None,
-                           capability_config={'behavior-sessions': stated}, **parts)
+                           answer_owners=stated, **parts)
 
 
 def _behavior(model):

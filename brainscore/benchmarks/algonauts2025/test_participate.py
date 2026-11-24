@@ -104,9 +104,10 @@ class _Extractor:
 
 
 def _old_features(subject, stimuli, region, *, time_bins):
-    """What the benchmark did before it ran through participate."""
-    subject.start_recording(region, time_bins=time_bins)
-    return algonauts_module._as_features(subject.process(stimuli))
+    """What the benchmark did before it recorded every region in one session: one region alone."""
+    from brainscore_core.streaming_helpers import neural_response
+    return algonauts_module._as_features(
+        neural_response(subject, stimuli, [f'neural:{region}'], time_bins=time_bins))
 
 
 REGION_MAPS = {

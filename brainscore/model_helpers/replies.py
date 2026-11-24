@@ -2,8 +2,8 @@
 
     reply, likelihood = chat_parts(model, processor, chat_template_kwargs={'enable_thinking': False})
     BrainScoreModel(..., reply=reply, likelihood=likelihood,
-                    capability_config={'behavior-sessions': {
-                        'behavior:probabilities': ('likelihood', 'softmax')}})
+                    answer_owners={
+                        'behavior:probabilities': ('likelihood', 'softmax')})
 
 Both receive a ``brainscore_core.responses.Prompt``: the trial's parts in order
 (instruction, stimulus parts, the response's directive). The task's instruction,

@@ -9,18 +9,19 @@ three pieces, none of which edit Brain-Score's core:
 1. Typed payloads: small dataclasses for what goes in and what comes out.
 2. Catalog entries: register each channel name with its payload type, so a
    wrong payload is rejected before any model sees it.
-3. A ``Capability`` subclass: which models use it, which sessions it runs
-   (``supports_session``), and how it answers each request (``participate``).
+3. A ``Capability`` subclass: which sessions it runs (``supports_session``)
+   and how it answers each request (``participate``).
 
 Call ``register()`` once from your package's setup code. A second call raises
 ``ValueError`` instead of silently replacing a registered name. Only a model
-whose registration opts in through ``capability_config`` gains the channels;
-every other model is unchanged.
+built with the capability (``BrainScoreModel(capabilities=[...])``) gains the
+channels; every other model is unchanged.
 """
 from dataclasses import dataclass
 
-from brainscore.capabilities import Capability, register_capability
-from brainscore_core.extensions import CatalogEntry, StreamEvent, register_channel
+from brainscore.capabilities import Capability
+from brainscore_core.io_catalog import CatalogEntry, register_channel
+from brainscore_core.streaming import StreamEvent
 from brainscore import BrainScoreModel
 
 IDENTIFIER = 'example-word-count'   # TODO: your capability's name
@@ -66,16 +67,15 @@ class WordCountCapability(Capability):
     input_channels = frozenset({REQUEST})
     output_channels = frozenset({RESULT})
 
-    def enabled_for(self, subject) -> bool:
-        # Only models whose registration asks for this capability get it.
-        return IDENTIFIER in subject.capability_config
+    def __init__(self, min_length: int = 1) -> None:
+        # Settings are checked here, so bad settings fail before anything is counted.
+        # The running total is this instance's state: give each model its own instance.
+        self.min_length = _check_min_length(min_length)
+        self.words_so_far = 0
 
-    def setup(self, subject) -> dict:
-        # Fresh per-model state. Runs before the first request and again after
-        # subject.reset(), so bad settings fail before anything is counted.
-        settings = subject.capability_config[IDENTIFIER]
-        min_length = settings.get('min_length') if isinstance(settings, dict) else None
-        return {'min_length': _check_min_length(min_length), 'words_so_far': 0}
+    def reset(self, subject) -> None:
+        # subject.reset() starts the count again; the settings stay.
+        self.words_so_far = 0
 
     def supports_session(self, subject, channels) -> bool:
         # Claim sessions that ask for exactly our output channel.
@@ -84,28 +84,26 @@ class WordCountCapability(Capability):
     def participate(self, subject, session) -> None:
         # Read each request the session delivers and send one answer back.
         # The session checks both payloads against the catalog entries.
-        state = subject.capability_state(IDENTIFIER)
         event = session.next_input()
         while event is not None:
-            session.respond(self._count(state, event))
+            session.respond(self._count(event))
             event = session.next_input()
 
-    @staticmethod
-    def _count(state, event) -> StreamEvent:
+    def _count(self, event) -> StreamEvent:
         # Answer one request. TODO: replace the counting with your behavior.
         words = [word for word in event.payload.text.split()
-                 if len(word) >= state['min_length']]
-        state['words_so_far'] += len(words)
+                 if len(word) >= self.min_length]
+        self.words_so_far += len(words)
         return StreamEvent(
             channel=RESULT,
-            payload=WordCount(words=len(words), words_so_far=state['words_so_far']),
+            payload=WordCount(words=len(words), words_so_far=self.words_so_far),
             t_ms=event.t_ms,
             meta=dict(event.meta),
         )
 
 
 def register() -> None:
-    """Add the two channels and the capability. Call once."""
+    """Add the two channels. Call once."""
     register_channel(CatalogEntry(
         name=REQUEST,
         direction='input',
@@ -126,7 +124,6 @@ def register() -> None:
         payload_type=WordCount,
         shape_validator=_valid_count,
     ))
-    register_capability(WordCountCapability())
 
 
 def build_model(identifier: str = 'example-word-counter',
@@ -134,6 +131,6 @@ def build_model(identifier: str = 'example-word-counter',
     """A model that answers word-count requests; it needs no feature extractor."""
     return BrainScoreModel(
         identifier=identifier,
-        # Opt this model in and give the capability its settings.
-        capability_config={IDENTIFIER: {'min_length': _check_min_length(min_length)}},
+        # This model gets its own capability, with its settings.
+        capabilities=[WordCountCapability(min_length)],
     )

@@ -43,7 +43,7 @@ def likelihood_subject(likelihood):
     """A normal model with a ``likelihood`` part: it runs both modes."""
     # The likelihood derives the probabilities; the statement declares them (rule 4.11).
     return BrainScoreModel('fixture', in_channels={'text'}, likelihood=likelihood,
-                           capability_config={'behavior-sessions': {'behavior:probabilities': ('likelihood', 'softmax')}})
+                           answer_owners={'behavior:probabilities': ('likelihood', 'softmax')})
 
 
 def scenario(prompt):
@@ -251,8 +251,8 @@ def test_a_likelihood_part_also_runs_choice(prepared, tmp_path, parts={'likeliho
         return '1' if ' A ' in stimulus_row['text'].split('# TEST EXAMPLE')[1].split('## Scenario')[1] else '2'
     # The likelihood derives the choice by softmax_argmax; the statement declares it (rule 4.11).
     model=BrainScoreModel('fixture', in_channels={'text'},
-                          **({'likelihood':likelihood, 'capability_config': {'behavior-sessions': {
-                              'behavior:choice': ('likelihood', 'softmax_argmax')}}}
+                          **({'likelihood':likelihood, 'answer_owners': {
+                              'behavior:choice': ('likelihood', 'softmax_argmax')}}
                              if 'likelihood' in parts else {'answer':answer}))
     b=brainscore.load_benchmark('EWoK-core-1.0-choice',root=prepared,output_dir=tmp_path/'run')
     assert float(b(model))==1
@@ -376,7 +376,7 @@ class _ParticipateOnlyReader(Subject):
         from brainscore_core.response_formats import response_record
         from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
         self.sessions += 1
-        from brainscore._model.behavioral import VERBATIM_LOG_PROBABILITIES
+        from brainscore._model.answers import VERBATIM_LOG_PROBABILITIES
         assert tuple(session.outputs) == ('behavior:log_probabilities',)
         segment = self.layout == 'segment'
         parameters = {**VERBATIM_LOG_PROBABILITIES, 'layout': self.layout,
@@ -693,7 +693,7 @@ def _stateful_intervened_subject():
 
     model = BrainScoreModel('stateful-fixture', in_channels={'text'},
                             likelihood=likelihood, intervention=intervention,
-                            capability_config={'behavior-sessions': {'behavior:probabilities': ('likelihood', 'softmax')}})
+                            answer_owners={'behavior:probabilities': ('likelihood', 'softmax')})
     return model, state
 
 
@@ -892,7 +892,7 @@ def test_stated_change_a_finite_choice_row_marked_invalid_loses_credit(prepared,
 def test_stated_change_a_finite_log_probability_row_with_no_raw_answer_raises(prepared, tmp_path):
     """M9-03, stated change: core stores a row with no raw answer as missing; the
     log-probability form now raises for it (before: its finite values were scored)."""
-    from brainscore._model.behavioral import VERBATIM_LOG_PROBABILITIES
+    from brainscore._model.answers import VERBATIM_LOG_PROBABILITIES
     from brainscore_core.response_formats import response_record
     from brainscore_core.streaming import StreamEvent
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly

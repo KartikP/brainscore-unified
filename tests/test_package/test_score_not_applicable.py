@@ -239,7 +239,7 @@ def test_an_inconsistent_output_inputs_raises():
 
 # ── Refusals of the legacy paths during the run are errors ───────────────────
 
-def test_a_neural_only_subject_on_a_legacy_behavioral_task_is_an_error():
+def test_a_neural_only_subject_on_a_legacy_behavioral_task_is_not_applicable():
     from brainscore_core.legacy_facade import mark_legacy_benchmark
     subject = _Recorder({'text'}, {'neural:language_network'})
 
@@ -250,9 +250,11 @@ def test_a_neural_only_subject_on_a_legacy_behavioral_task_is_an_error():
         def __call__(self, candidate):
             candidate.start_behavioral_task('reading_times')
             candidate.digest_text(['the', 'cat'])
-    with pytest.raises(ExecutionNotFeasibleError, match="declares no 'behavior' output") as caught:
-        brainscore.score(subject, mark_legacy_benchmark(_Legacy()), check_mem=False)
-    assert caught.value.channels == {'behavior'}
+    # Refused before any input reached the subject: N/A with the refusal as the reason.
+    result = brainscore.score(subject, mark_legacy_benchmark(_Legacy()), check_mem=False)
+    assert result.attrs['status'] == 'N/A'
+    assert "declares no 'behavior' output" in result.attrs['reason']
+    assert result.attrs['missing_channels'] == ['behavior']
     assert subject.calls == []
 
 
@@ -373,8 +375,8 @@ def test_the_na_reason_names_the_statement_a_readout_needs():
                               region_layer_map={}, behavioral_readout_layer='late')
     result = brainscore.score(subject, _ChoiceBenchmark(), check_mem=False)
     assert result.attrs['status'] == 'N/A' and result.attrs['missing_channels'] == ['behavior:choice']
-    assert ("'behavior:choice' is derived by a wired part; state it: capability_config="
-            "{'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}.") in result.attrs['reason']
+    assert ("'behavior:choice' is derived by a wired part; state it: answer_owners="
+            "{'behavior:choice': ('readout', 'argmax')}.") in result.attrs['reason']
     assert extractor.calls == 0
 
 

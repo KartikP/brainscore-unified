@@ -2,16 +2,10 @@
 the v1.5 CompositeSelector (units gathered across multiple layers as one region).
 """
 import numpy as np
-import xarray as xr
 
 from brainscore import BrainScoreModel, CompositeSelector
+from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 
-
-class StubStimulusSet:
-    """Minimal stand-in for StimulusSet with column names."""
-
-    def __init__(self, columns):
-        self.columns = columns
 
 
 class _MultiUnitActivations:
@@ -28,7 +22,7 @@ class _MultiUnitActivations:
         k = self.units_per_layer
         layer_coord = [L for L in layers for _ in range(k)]
         n = len(layer_coord)
-        return xr.DataArray(
+        return NeuroidAssembly(
             np.zeros((2, n)),
             dims=('presentation', 'neuroid'),
             coords={'layer': ('neuroid', np.array(layer_coord)),
@@ -44,66 +38,57 @@ def _model(region_layer_map, units_per_layer=4):
     )
 
 
-def _stim():
-    return StubStimulusSet(columns=['image_file_name'])
+def _images_record(model, *regions):
+    """The payload of each requested region, from one session on two images."""
+    from brainscore_core.streaming_helpers import stimulus_session
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    stimuli = StimulusSet({'stimulus_id': ['a', 'b'], 'image_file_name': ['a.png', 'b.png']})
+    stimuli.identifier = 'composite-test'
+    session = stimulus_session(stimuli, [f'neural:{region}' for region in regions])
+    model.participate(session)
+    return [session.collect(f'neural:{region}') for region in regions]
 
 
 class TestStandardMapping:
     def test_single_region_one_layer(self):
         m = _model({'IT': 'layer.10'})
-        m.start_recording('IT')
-        a = m.process(_stim())
-        assert 'region' not in a.coords            # single-region keeps legacy shape
+        a, = _images_record(m, 'IT')
         assert a.sizes['neuroid'] == 4             # all units of layer.10
 
 
 class TestAllMapping:
-    def test_a_list_of_every_region_records_each(self):
+    def test_every_requested_region_is_recorded(self):
         m = _model({'V4': 'layer.8', 'IT': 'layer.10'})
-        m.start_recording(['V4', 'IT'])
-        a = m.process(_stim())
-        assert 'region' in a.coords
-        assert set(a['region'].values.tolist()) == {'V4', 'IT'}
-        assert a.sizes['neuroid'] == 8             # 4 per layer, both layers
+        v4, it = _images_record(m, 'V4', 'IT')
+        assert set(v4['layer'].values.tolist()) == {'layer.8'}
+        assert set(it['layer'].values.tolist()) == {'layer.10'}
+        assert v4.sizes['neuroid'] == it.sizes['neuroid'] == 4
 
 
 class TestCompositeMapping:
-    def test_recording_expands_composite_layers(self):
-        sel = CompositeSelector(layers=(('layer.5', None), ('layer.8', None)))
-        m = _model({'Vc': sel})
-        m.start_recording('Vc')
-        assert m._recording_request.composite_recording is True
-        assert m._recording_request.recording_layers == ['layer.5', 'layer.8']
 
     def test_composite_all_units(self):
         sel = CompositeSelector(layers=(('layer.5', None), ('layer.8', None)))
         m = _model({'Vc': sel})
-        m.start_recording('Vc')
-        a = m.process(_stim())
-        assert set(a['region'].values.tolist()) == {'Vc'}
+        a, = _images_record(m, 'Vc')
         assert a.sizes['neuroid'] == 8
         assert set(a['layer'].values.tolist()) == {'layer.5', 'layer.8'}
 
     def test_composite_indexed_units(self):
         sel = CompositeSelector(layers=(('layer.5', (0, 1)), ('layer.8', (3,))))
         m = _model({'Vc': sel}, units_per_layer=4)
-        m.start_recording('Vc')
-        a = m.process(_stim())
+        a, = _images_record(m, 'Vc')
         assert a.sizes['neuroid'] == 3
         layers = a['layer'].values.tolist()
         assert layers.count('layer.5') == 2
         assert layers.count('layer.8') == 1
-        assert a['region'].values.tolist() == ['Vc', 'Vc', 'Vc']
 
     def test_composite_mixed_with_standard_region(self):
         m = _model({'IT': 'layer.10',
                     'Vc': CompositeSelector(layers=(('layer.5', (0,)), ('layer.8', (1,))))})
-        m.start_recording(['IT', 'Vc'])
-        a = m.process(_stim())
-        regions = a['region'].values.tolist()
-        assert set(regions) == {'IT', 'Vc'}
-        assert regions.count('IT') == 4   # all units of layer.10
-        assert regions.count('Vc') == 2   # one unit each from layer.5, layer.8
+        it, vc = _images_record(m, 'IT', 'Vc')
+        assert it.sizes['neuroid'] == 4   # all units of layer.10
+        assert vc.sizes['neuroid'] == 2   # one unit each from layer.5, layer.8
 
 
 # -- each selector answers for its region; the model never checks its class ----

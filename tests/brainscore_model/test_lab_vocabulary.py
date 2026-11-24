@@ -119,13 +119,6 @@ def _text_task(**fields):
     return TaskContext(response=Choice(['yes', 'no']), **fields)
 
 
-def test_unviable_behavioral_task_names_answer_parameter():
-    subject = BrainScoreModel(identifier='no-path', in_channels={'text'})
-    with pytest.raises(ExecutionNotFeasibleError, match='Paths tried') as error:
-        subject.start_task(_text_task())
-    assert 'answer=' in str(error.value)
-    assert 'readout needs' in str(error.value)
-
 
 # -- Core guide teaching example ---------------------------------------------
 

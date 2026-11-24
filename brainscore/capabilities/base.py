@@ -1,34 +1,25 @@
 """Capability extension contract for BrainScoreModel."""
 
-from typing import Any, Dict
-
 
 class Capability:
     """One ability of a BrainScoreModel: it runs the sessions it claims.
 
     ``supports_session`` claims the outputs a session requests, before any
-    input is read; ``participate`` runs that session.
+    input is read; ``participate`` runs that session. A model gets an added
+    capability from its constructor, ``BrainScoreModel(capabilities=[...])``.
     ``subject.participate(session)`` selects one capability for each session:
-    the claimant with the lowest ``order``; two claimants at that order are an
-    error. The built-in capabilities have order 10000, so an added capability
-    (default 1000) runs a session that a built-in one also claims.
+    an added capability that claims it runs it, before a built-in one; two
+    claimants of the same kind (two added, or two built-in) are an error.
 
-    Every method takes the subject (the ``BrainScoreModel``) first. Per-subject
-    state comes from ``setup``, which runs once before the capability first
-    runs a session (again after ``subject.reset()``), and is read back with
-    ``subject.capability_state(identifier)``; settings come from
-    ``subject.capability_config``.
+    Every method takes the subject (the ``BrainScoreModel``) first. Settings
+    go to the capability's own constructor. A capability keeps its state on
+    itself: give each model its own instance. ``reset`` runs at
+    ``subject.reset()``.
     """
 
     identifier: str
-    order: int = 1000
     input_channels = frozenset()
     output_channels = frozenset()
-
-    def enabled_for(self, subject) -> bool:
-        """Whether this capability is considered for ``subject``."""
-        del subject
-        return True
 
     def declared_input_channels(self, subject):
         """Input channels this capability adds for ``subject``."""
@@ -40,19 +31,9 @@ class Capability:
         del subject
         return set(self.output_channels)
 
-    def setup(self, subject) -> Dict[str, Any]:
-        """Return this capability's initial per-subject state.
-
-        It is stored before the capability first runs a session; read it back
-        with ``subject.capability_state(self.identifier)``.
-        """
-        del subject
-        return {}
-
-    def reset(self, subject, state) -> None:
+    def reset(self, subject) -> None:
         """Release experiment state. Retain configuration needed by later calls."""
         del subject
-        state.clear()
 
     def supports_session(self, subject, channels) -> bool:
         """Claim a complete requested output combination before any input is read."""

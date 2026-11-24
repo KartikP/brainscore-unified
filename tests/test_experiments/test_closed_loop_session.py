@@ -142,7 +142,7 @@ def test_a_policy_may_answer_on_a_non_motor_channel_with_no_new_class(speech_cha
 
 def test_a_policy_output_must_be_a_registered_output_channel(monkeypatch):
     """An unregistered output is refused when the model is built; once registered, it runs."""
-    from brainscore_core.extensions import CatalogEntry, register_channel
+    from brainscore_core.io_catalog import CatalogEntry, register_channel
     monkeypatch.setattr(io_catalog, '_CATALOG', dict(io_catalog._CATALOG))
     policy = lambda row: {'cursor': 7}
     with pytest.raises(ValueError, match=r"'cursor'.*register_channel"):

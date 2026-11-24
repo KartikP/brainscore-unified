@@ -32,7 +32,7 @@ def _model(*arguments, owners=None, calls=None):
             label: -float(i) for i, label in enumerate(labels)},
         'behavioral_readout_layer': 'late',
     }
-    config = {} if owners is None else {'capability_config': {'behavior-sessions': owners}}
+    config = {} if owners is None else {'answer_owners': owners}
 
     def extract(stimuli, layers, **kwargs):
         calls.append('extract')
@@ -69,7 +69,7 @@ def test_a_derived_format_without_a_statement_is_not_declared_and_is_refused_bef
 
 def test_two_native_parts_without_an_owner_are_refused_at_construction():
     with pytest.raises(ValueError, match=r"\['generation', 'readout'\] give 'behavior:rating' natively"
-                                         r".*capability_config"):
+                                         r".*answer_owners"):
         _model('reply', 'behavioral_readout_layer')
 
 
@@ -283,8 +283,7 @@ def _registrations():
     """Every BrainScoreModel call in the library: its answer arguments and stated owners.
 
     Returns the readable calls, the files whose calls take keywords through ``**``
-    expansion, and the files whose ``capability_config`` is not a literal (a capability
-    made from the template names its identifier). The scan cannot read the last two
+    expansion, and the files whose ``answer_owners`` is not a literal. The scan cannot read the last two
     groups; the constructor checks them."""
     root = Path(brainscore.__file__).parent
     found, expanded, not_literal = [], set(), set()
@@ -299,12 +298,12 @@ def _registrations():
                 wired = [name for name in ARGUMENTS_WITH_OUTPUTS if name in keywords
                          and not (isinstance(keywords[name], ast.Constant) and keywords[name].value is None)]
                 try:
-                    config = (ast.literal_eval(keywords['capability_config'])
-                              if 'capability_config' in keywords else {})
+                    owners = (ast.literal_eval(keywords['answer_owners'])
+                              if 'answer_owners' in keywords else {})
                 except ValueError:
                     not_literal.add(where)
                     continue
-                found.append((where, wired, config.get('behavior-sessions', {})))
+                found.append((where, wired, owners))
     return found, expanded, not_literal
 
 
@@ -412,7 +411,7 @@ def test_a_choice_that_no_statement_names_is_refused_with_the_statement_to_write
     model = _model(*arguments, calls=calls)
     with pytest.raises(ExecutionNotFeasibleError) as raised:
         _run(model, ['behavior'], CHOICE)
-    assert "'behavior-sessions'" in str(raised.value) and statement in str(raised.value)
+    assert 'answer_owners=' in str(raised.value) and statement in str(raised.value)
     assert calls == []
 
 

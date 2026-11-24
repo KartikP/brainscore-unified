@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from brainscore import BrainScoreModel, LayerSelector
-from brainscore._model.behavior import ProbabilitiesClassifier
+from brainscore._model.fitted_readout import ProbabilitiesClassifier
 from brainscore._model.intervention import Interventions
 
 pytestmark = pytest.mark.unit
@@ -78,19 +78,9 @@ def test_selector_instance_pickle_round_trip():
     assert restored == selector
 
 
-def test_built_in_capabilities_are_one_per_answering_part():
-    """The registry holds one built-in capability per answering part; they come after
-    any added capability (default order 1000)."""
-    from brainscore.capabilities import Capability, capability_registry
-    built_in = {'neural-sessions', 'behavior-sessions', 'motor-sessions', 'intervention-sessions'}
-    assert built_in <= set(capability_registry)
-    assert {capability_registry[i].order for i in built_in} == {10000}
-    assert Capability.order == 1000
-
-
 @pytest.mark.parametrize('source', [
     'from brainscore_core import BrainScoreModel',
-    'from brainscore_core.model_interface import LayerSelector, Subject',
+    'from brainscore_core.contract import LayerSelector, Subject',
     'import brainscore_core.capabilities.registry',
     'from brainscore_core import brainscore_model as module',
 ])
@@ -101,7 +91,7 @@ def test_guard_rejects_core_implementation_imports(source):
 @pytest.mark.parametrize('source', [
     'from brainscore import BrainScoreModel',
     'from brainscore.selection import LayerSelector',
-    'from brainscore_core.model_interface import Subject, Selection',
+    'from brainscore_core.contract import Subject, Selection',
 ])
 def test_guard_accepts_contract_and_unified_imports(source):
     assert not stale_imports(source)

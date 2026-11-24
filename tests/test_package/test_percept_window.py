@@ -221,12 +221,16 @@ import pandas as pd
 import xarray as xr
 
 from brainscore import BrainScoreModel, LayerSelector
+from brainscore_core.streaming_helpers import neural_response
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 VISION_X = torch.arange(12.).reshape(1, 3, 2, 2)
 TEXT_X = torch.tensor([[4, 5, 6]])
-VISION_STIM = pd.DataFrame({'stimulus_id': ['i'], 'image_path': ['i.png']})
-TEXT_STIM = pd.DataFrame({'stimulus_id': ['s'], 'sentence': ['four five six']})
+VISION_STIM = StimulusSet({'stimulus_id': ['i'], 'image_path': ['i.png']})
+VISION_STIM.identifier = 'percept-window-image'
+TEXT_STIM = StimulusSet({'stimulus_id': ['s'], 'sentence': ['four five six']})
+TEXT_STIM.identifier = 'percept-window-text'
 REGIONS = {'IT': LayerSelector('vision_tower', modality='vision'),
            'language': LayerSelector('text_tower', modality='text')}
 
@@ -283,10 +287,8 @@ def _two_tower_model(vision=None):
 
 
 def _run_each_tower(model):
-    model.start_recording('IT')
-    out_v = model.process(VISION_STIM)
-    model.start_recording('language')
-    out_t = model.process(TEXT_STIM)
+    out_v = neural_response(model, VISION_STIM, ['neural:IT'])
+    out_t = neural_response(model, TEXT_STIM, ['neural:language'])
     return out_v, out_t
 
 
@@ -321,8 +323,7 @@ def test_brainscoremodel_hooks_removed_when_body_raises():
     model, vision, text = _two_tower_model()
     with pytest.raises(RuntimeError, match='mid-benchmark'):
         with PerceptWindow([vision, text]) as eye:
-            model.start_recording('IT')
-            model.process(VISION_STIM)
+            neural_response(model, VISION_STIM, ['neural:IT'])
             raise RuntimeError('mid-benchmark')
     assert len(eye.captures) == 1 and not eye._handles
     _run_each_tower(model)
@@ -337,11 +338,9 @@ def test_brainscoremodel_hooks_removed_when_forward_raises():
     model, vision, text = _two_tower_model(vision=Boom())
     with pytest.raises(ValueError, match='boom'):
         with PerceptWindow([vision, text]) as eye:
-            model.start_recording('IT')
-            model.process(VISION_STIM)
+            neural_response(model, VISION_STIM, ['neural:IT'])
     assert len(eye.captures) == 1 and torch.equal(eye.captures[0].tensor, VISION_X)
-    model.start_recording('language')
-    _assert_same(model.process(TEXT_STIM), EXPECTED_T)
+    _assert_same(neural_response(model, TEXT_STIM, ['neural:language']), EXPECTED_T)
     assert len(eye.captures) == 1
 
 
@@ -379,8 +378,7 @@ def test_failed_attachment_on_brainscoremodel_tower_cleans_up():
     with pytest.raises(RuntimeError, match='refused'):
         with eye:
             pass
-    model.start_recording('IT')
-    _assert_same(model.process(VISION_STIM), EXPECTED_V)
+    _assert_same(neural_response(model, VISION_STIM, ['neural:IT']), EXPECTED_V)
     assert eye.captures == [] and eye._handles == []
 
 

@@ -31,7 +31,7 @@ Features are grouped by how much you need to know to use them, and by how settle
 | Recorders: `RecordNeural`, `RecordBehavior` (one presentation for both); `Intervene` | same |
 | Tools: `RecordInputsOutputs`, `RecordActivity`, `Ablate`, `ScaleActivity`, `PatchActivity` | same |
 | `TorchInstrumentation`, `RunRecord`, `replay_sessions`, `compare_outputs` | same |
-| Timed delivery: `windowed_stream`, `stimulus_session(..., streaming=True)` | [Core concepts 4](../02_core_concepts.md#4-session) |
+| Timed delivery: `stimulus_session(..., streaming=True)`, a `Session` over any event source | [Core concepts 4](../02_core_concepts.md#4-session) |
 | Temporal helpers: `temporal_bin`, HRF convolution, contiguous-block cross-validation | `brainscore.temporal`, [Experiment 10](../../notebooks/experiments/10_story_listening_fmri.ipynb) |
 | Score provenance and status (`score.attrs`, N/A scores) | [Score a model](../guides/score_a_model.md) |
 | Activation caching keyed by weights, settings and inputs | [Perturb and select units](../guides/perturb_and_select_units.md#interventions) |
@@ -41,7 +41,7 @@ Features are grouped by how much you need to know to use them, and by how settle
 | Feature | Notes |
 | --- | --- |
 | `VLMVisionWrapper`, `VideoWrapper` and other large-model wrappers | Tested on specific registrations (Qwen-VL, BLIP-2, V-JEPA, VideoMAE). |
-| Custom channels, tools and capabilities (`register_channel`, `register_tool`, `register_capability`) | [Extend UMI](../guides/extend.md). Long-term structure still under discussion. |
+| Custom channels, tools and capabilities (`register_channel`, `register_tool`, `BrainScoreModel(capabilities=[...])`) | [Extend UMI](../guides/extend.md). Long-term structure still under discussion. |
 | Robotics harnesses: DROID, LIBERO, OpenPI instrumentation | `brainscore.harnesses`, `examples/libero/`. No guide in this manual. |
 | Game and multi-agent harnesses: Gymnasium, grid games, `multi_agent_rollout` (one session per subject for the whole conversation; answers on `behavior:text`, heard on `text`) | [Experiment 8](../../notebooks/experiments/08_learning_in_a_closed_loop.ipynb), [Experiment 13](../../notebooks/experiments/13_passing_outputs_between_subjects.ipynb) |
 | Attribution and activation patching | `brainscore.experiments.attribution` |
@@ -65,4 +65,4 @@ Each part has one name. The older names in the right column were removed without
 | `region_layer_map` values with `modality=` | `region_modality_map=` |
 | none: the activation cache key holds the weights | `backbone_id=` on `BrainScoreModel` and on the wrappers of `brainscore.model_helpers` (the legacy vision `PytorchWrapper` keeps its own `backbone_id`: it names the path of its stored activations, and that path does not change here) |
 
-`process(...)` is not deprecated, but it is a convenience on `BrainScoreModel` and the adapters, not part of the contract. Benchmarks call `participate`.
+`BrainScoreModel.process(row)` has one job: a loop that a simulator owns calls the model one step at a time. It is not part of the contract. `BrainScoreModel.start_recording` and `start_task` were removed: record a region with `neural_response`, answer a task with `behavioral_response`, and send a `StateChange` with `apply_state_change`. Benchmarks call `participate`.

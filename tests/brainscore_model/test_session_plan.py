@@ -41,7 +41,7 @@ def _counting(calls):
         return _features(stimuli, layers, **kwargs)
     return BrainScoreModel('planned', extractor={'text': extract}, in_channels={'text'},
                            region_layer_map={'IT': 'late'}, behavioral_readout_layer='late',
-                           capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
+                           answer_owners={'behavior:choice': ('readout', 'argmax')})
 
 
 def test_one_plan_per_session_and_none_after_it(monkeypatch):
@@ -90,8 +90,8 @@ def _reply_model(calls, memory=None):
         return _features(stimuli, layers, **kwargs)
     return BrainScoreModel('chooses-once', extractor={'text': extract}, in_channels={'text'},
                            behavioral_readout_layer='late', reply=reply, memory=memory,
-                           capability_config={'behavior-sessions': {
-                               'behavior:rating': 'generation', 'behavior:probabilities': 'readout'}})
+                           answer_owners={
+                               'behavior:rating': 'generation', 'behavior:probabilities': 'readout'})
 
 
 @pytest.mark.parametrize('delivery', ['table', 'per trial', 'stream'])
@@ -136,8 +136,7 @@ def test_a_known_table_of_a_stream_is_checked_before_any_set_up(task, outputs, m
             return _features(stimuli, layers, **kwargs)
         model = BrainScoreModel('two-inputs', extractor={'text': extract, 'audio': extract},
                                 region_layer_map={'A1': LayerSelector('late', modality='audio')},
-                                behavioral_readout_layer='late', capability_config={
-                                    'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
+                                behavioral_readout_layer='late', answer_owners={'behavior:choice': ('readout', 'argmax')})
         task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)
     else:
         model = _reply_model(calls)
@@ -145,14 +144,6 @@ def test_a_known_table_of_a_stream_is_checked_before_any_set_up(task, outputs, m
         model.participate(stimulus_session(STIMULI, outputs, task, streaming=True))
     assert calls == []
 
-
-def test_a_direct_answer_call_with_history_and_only_an_answer_part_is_refused():
-    """With no session plan, respond keeps the refusal it had before the plan."""
-    model = BrainScoreModel('answers', in_channels={'text'}, memory='trial_history',
-                            answer=lambda stimulus_row, instruction, label_set: label_set[0])
-    model.start_task(TaskContext(instruction='Which?', response=Choice(['cat', 'dog'])))
-    with pytest.raises(ValueError, match="memory='trial_history' needs reply="):
-        model._behavioral.respond(STIMULI, ['behavior:choice'])
 
 
 def test_trial_history_without_a_part_that_sees_it_is_refused_before_the_readout_fit():
@@ -167,8 +158,8 @@ def test_trial_history_without_a_part_that_sees_it_is_refused_before_the_readout
         return _features(stimuli, layers, **kwargs)
     model = BrainScoreModel('answers', extractor={'text': extract}, in_channels={'text'},
                             behavioral_readout_layer='late', answer=answer, memory='trial_history',
-                            capability_config={'behavior-sessions': {
-                                'behavior:probabilities': 'readout'}})
+                            answer_owners={
+                                'behavior:probabilities': 'readout'})
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)
     with pytest.raises(ExecutionNotFeasibleError, match="memory='trial_history' needs reply="):
         model.participate(stimulus_session(STIMULI, ['behavior:choice', 'behavior:probabilities'], task))
@@ -185,7 +176,7 @@ def test_a_region_the_readout_cannot_record_is_refused_before_the_readout_fit():
     model = BrainScoreModel('two-inputs', extractor={'text': extract, 'audio': extract},
                             region_layer_map={'A1': LayerSelector('late', modality='audio')},
                             behavioral_readout_layer='late',
-                            capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
+                            answer_owners={'behavior:choice': ('readout', 'argmax')})
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)
     with pytest.raises(ExecutionNotFeasibleError, match="reads 'audio' input, but the readout presents 'text'"):
         model.participate(stimulus_session(STIMULI, ['behavior:choice', 'neural:A1'], task))

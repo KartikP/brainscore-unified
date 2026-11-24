@@ -599,11 +599,13 @@ from brainscore.model_helpers.selection import split_site
 
 
 @pytest.mark.parametrize('layer, expected', [
-    ('fc1', ('fc1', 'output')), ('model.layers.14.mlp.down_proj', ('model.layers.14.mlp.down_proj', 'output')),
-    ('model.layers.14.mlp.down_proj:input', ('model.layers.14.mlp.down_proj', 'input')),
-    ('0', ('0', 'output')), ('0:input', ('0', 'input')),
+    ('fc1', ('fc1', 'output', None)),
+    ('model.layers.14.mlp.down_proj', ('model.layers.14.mlp.down_proj', 'output', None)),
+    ('model.layers.14.mlp.down_proj:input', ('model.layers.14.mlp.down_proj', 'input', None)),
+    ('0', ('0', 'output', None)), ('0:input', ('0', 'input', None)),
+    ('layers.6-t1', ('layers.6', 'output', 1)), ('layers.6-t0:input', ('layers.6', 'input', 0)),
 ])
-def test_split_site_accepts_paths_and_one_input_suffix(layer, expected):
+def test_split_site_accepts_paths_one_pass_and_one_input_suffix(layer, expected):
     assert split_site(layer) == expected
 
 
@@ -673,3 +675,11 @@ def test_ablate_tool_refuses_a_target_without_a_leading_tensor():
         with pytest.raises(TypeError, match='not a tensor'):
             instrumentation.targets['part'](torch.ones(1, 3))
     assert not instrumentation.targets['part']._forward_hooks
+
+
+def test_an_intervention_refuses_a_pass_name_with_the_remedy(model_with_ablation):
+    bs, _ = model_with_ablation
+    with pytest.raises(ValueError, match='every call') as error:
+        apply_state_change(bs, StateChange(kind='ablation', target=Selection(layer='fc1-t1'),
+                                           perturbation=Perturbation(kind='zero')))
+    assert "'fc1'" in str(error.value)

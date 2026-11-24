@@ -179,7 +179,11 @@ def _refuse_task_session(model, session, task, answers, regions) -> None:
             raise ExecutionNotFeasibleError(
                 f"{list(answers)} need TaskContext(response=...); task_type {task.task_type!r} "
                 f"states no response.", channels=formats, task_type=task.task_type)
-        model._behavioral.validate_task(task)     # a task with no response that is not passive: ValueError
+        if task.task_type != 'passive':
+            raise ExecutionNotFeasibleError(
+                f"Subject '{model.identifier}' answers a task with a response (Choice, Scale or "
+                f"Text, from brainscore_core.responses); task_type {task.task_type!r} states no "
+                f"response.", channels={'behavior'}, task_type=task.task_type)
         raise ExecutionNotFeasibleError(
             "'behavior' needs TaskContext(response=...); a passive task gives no answer.",
             channels={'behavior'}, task_type=task.task_type)

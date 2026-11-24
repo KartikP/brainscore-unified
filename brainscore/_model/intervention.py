@@ -117,7 +117,7 @@ class Interventions:
     def process(self, state_change):
         """Apply a StateChange with the subject's ``intervention`` part, or undo one by handle.
 
-        The subject changes under the readout, so the next ``start_task`` fits
+        The subject changes under the readout, so the next task fits
         again, even for the task already configured. Refused inside ``intact()``.
         """
         owner = self.owner

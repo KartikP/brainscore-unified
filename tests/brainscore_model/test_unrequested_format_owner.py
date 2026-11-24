@@ -13,7 +13,7 @@ from brainscore_core.contract import Subject, TaskContext
 from brainscore_core.responses import Choice
 from brainscore_core.streaming import StreamEvent
 from brainscore.experiments import Experiment, RecordBehavior, TaskProtocol
-from tests.brainscore_model.test_answer_ownership import API, BLIP2, REGISTERED_STATEMENTS, _model, _run
+from tests.brainscore_model.test_answer_ownership import API, REGISTERED_STATEMENTS, _model, _run
 from tests.brainscore_model.test_behavior_paths import FITTING, STIMULI
 
 pytestmark = pytest.mark.unit
@@ -69,21 +69,6 @@ def test_the_recorder_records_the_choice_and_refuses_a_reaction_time_it_cannot_g
         experiment.validate()
     assert calls == []
 
-
-@pytest.mark.parametrize('parts', [API, BLIP2], ids=['answer+reply', 'answer+readout without fitting'])
-def test_a_repeated_setup_of_an_unchanged_choice_changes_nothing(parts):
-    calls = []
-    model = _model(*parts, owners=REGISTERED_STATEMENTS[parts], calls=calls)
-    fits = []
-    model._behavioral.fit_behavioral_readout = lambda fitting: fits.append(fitting)
-    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
-    model.start_task(task)
-    state = (model._behavioral.response_path, model._behavioral.probability_source,
-             model._behavioral.readout_classifier)
-    model.start_task(task)
-    assert (model._behavioral.response_path, model._behavioral.probability_source,
-            model._behavioral.readout_classifier) == state
-    assert fits == [] and calls == []
 
 
 # --- behavior:log_probabilities is a format of every Choice; no part gives it yet ---

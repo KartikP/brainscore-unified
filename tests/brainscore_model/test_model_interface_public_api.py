@@ -82,13 +82,9 @@ def test_extractor_mapping_survives_reset_and_reuse():
     vision = _FakeExtractor('v-out')
     model = BrainScoreModel('m', extractor={'vision': vision})
     mapping = model.extractor
-    stimuli = _Columns(['image_path'])
-    assert model.process(stimuli) == 'v-out'
     model.reset()
     assert vision.resets == 1
     assert model.extractor['vision'] is vision and dict(mapping) == {'vision': vision}
-    assert model.process(stimuli) == 'v-out'
-    assert [c[0] for c in vision.calls] == [stimuli, stimuli]
 
 
 # Keep the existing imports usable as implementation files move into packages.

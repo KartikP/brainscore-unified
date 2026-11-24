@@ -235,9 +235,9 @@ def get_model(identifier: str, *, probabilities: Optional[str] = None) -> Subjec
         # Generation answers the rating (reply and readout both give it natively). Bare
         # behavior carries the requested format's answer and takes no statement. The
         # probabilities come from the part the registration states.
-        capability_config={'behavior-sessions': {
+        answer_owners={
             'behavior:rating': 'generation',
-            'behavior:probabilities': PROBABILITY_PARTS[probabilities]}},
+            'behavior:probabilities': PROBABILITY_PARTS[probabilities]},
         **variant_kwargs,
     )
     if not bf16:

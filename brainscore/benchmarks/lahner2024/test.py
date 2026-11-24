@@ -18,8 +18,7 @@ from brainscore_core.streaming import StreamEvent
 from brainscore_core.streaming_helpers import drain_session_inputs, session_stimuli
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 
-from brainscore.benchmarks.lahner2024 import _util, benchmark as glm_module
-from brainscore.benchmarks.lahner2024 import benchmark_timeresolved as tr_module
+from brainscore.benchmarks.lahner2024 import _util
 from brainscore.benchmarks.lahner2024.benchmark import Lahner2024BOLDMoments
 from brainscore.benchmarks.lahner2024.benchmark_timeresolved import (
     Lahner2024BOLDMoments_timeresolved, RunBlocks)
@@ -223,12 +222,10 @@ def test_audiovisual_tr_records_both_streams(monkeypatch, tmp_path):
     assert score.attrs['pipeline'] == 'tr_resolved_multimodal_concat'
 
 
-# ── Old path vs participate on the SAME subject (Contract Rule 10.1) ──────
+# ── Frame pooling on a BrainScoreModel ──────────────────────────────
 #
-# The old code called start_recording + process, then temporal_bin on the frame
-# response, and routed on the declared inputs. The functions below are those
-# removed lines. Each benchmark runs once through participate and once with them
-# patched in, on the same BrainScoreModel; results must be identical.
+# The frames of a clip, recorded in one session and pooled with temporal_bin,
+# equal what record_frames_per_clip returns.
 
 from brainscore import BrainScoreModel, LayerSelector
 from brainscore.temporal import temporal_bin
@@ -266,53 +263,16 @@ def _model(visual_key):
                            extractor=extractors)
 
 
-def _old_record_clips(subject, clips, regions):
-    [region] = regions
-    subject.start_recording(region, time_bins=_util.TIME_BINS)
-    return [subject.process(clips)]
 
 
-def _old_record_frames_per_clip(subject, frames, regions):
-    [region] = regions
-    subject.start_recording(region, time_bins=_util.TIME_BINS)
-    return [temporal_bin(subject.process(frames), time_bins=_util.TIME_BINS)]
 
 
-def _both(monkeypatch, run):
-    new = run()
-    with monkeypatch.context() as patch:
-        for module in (_util, glm_module, tr_module):
-            for name, old in (('record_clips', _old_record_clips),
-                              ('record_frames_per_clip', _old_record_frames_per_clip)):
-                if hasattr(module, name):
-                    patch.setattr(module, name, old)
-        old = run()
-    return old, new
 
-
-def _same_score(old, new):
-    assert repr(float(old)) == repr(float(new))
-    np.testing.assert_array_equal(np.asarray(old.attrs['mean_r']), np.asarray(new.attrs['mean_r']))
-    assert old.attrs['pipeline'] == new.attrs['pipeline']
-
-
-@pytest.mark.parametrize('visual_key', ['vision', 'video'])
-@pytest.mark.parametrize('build', [
-    lambda: Lahner2024BOLDMoments(identifier='Lahner2024-fMRI-naturalistic'),
-    lambda: Lahner2024BOLDMoments(channels=AUDIOVISUAL, identifier='Lahner2024-fMRI-naturalistic'),
-    lambda: _tr(),
-    lambda: _tr(channels=AUDIOVISUAL),
-], ids=['glm', 'glm-audiovisual', 'tr', 'tr-audiovisual'])
-def test_old_and_new_path_give_the_same_score(monkeypatch, tmp_path, visual_key, build):
-    install(monkeypatch, tmp_path)
-    benchmark, model = build(), _model(visual_key)
-    old, new = _both(monkeypatch, lambda: benchmark(model))
-    _same_score(old, new)
-
-
-def test_frame_pooling_is_identical_to_the_old_temporal_bin():
+def test_frame_pooling_is_identical_to_temporal_bin_of_the_frames():
+    from brainscore_core.streaming_helpers import neural_response
     model = _model('vision')
-    [old] = _old_record_frames_per_clip(model, _frames(), ['IT'])
+    frames = neural_response(model, _frames(), ['neural:IT'], time_bins=_util.TIME_BINS)
+    old = temporal_bin(frames, time_bins=_util.TIME_BINS)
     [new] = _util.record_frames_per_clip(model, _frames(), ['IT'])
     np.testing.assert_array_equal(old.values, new.values)
     assert list(old['clip_id'].values) == list(new['clip_id'].values)

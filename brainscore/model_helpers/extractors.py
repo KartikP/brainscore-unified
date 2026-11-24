@@ -17,10 +17,11 @@ under an unchanged ``_VERSION``.
 """
 import inspect
 import warnings
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from typing import Callable, List
 
 import numpy as np
+import pandas as pd
 from tqdm.auto import tqdm
 
 from brainscore_core.assembly_builder import make_assembly, make_layer_neuroid_coords, make_neuroid_ids
@@ -110,8 +111,11 @@ class LiveRecording:
     inside one, and ``record(layers, stimuli)`` returns one while another part
     (``reply``, ``answer``, ``likelihood``, ``policy``) runs it. Unknown layers
     fail here, before any compute. Each layer keeps its value, through
-    ``convert``, from the first pass since the previous take (the last value of
-    a module that runs twice in it); later passes (generated tokens) are not kept.
+    ``convert``, from the first pass since the previous take; later passes
+    (generated tokens) are not kept. A layer whose module runs more than once in
+    that pass (a shared or recurrent block) is refused at ``take``, unless its
+    name ends in ``-t<n>``: that layer keeps call ``n`` of the pass, counted
+    from 0 (see ``split_site``), and a pass with fewer calls is refused at ``take``.
 
     ``inputs(args, kwargs)`` runs in the forward pre-hook of that first pass;
     ``kwargs`` also holds the positional arguments, named by ``forward``. Its
@@ -141,6 +145,7 @@ class LiveRecording:
         self._package = package or (lambda activity, read, _row: (activity, read))
         self._inputs, self._one_input, self._reads = inputs or (lambda args, kwargs: None), one_input, bool(inputs)
         self._modules = {layer: get_layer(root, layer) for layer in self.layers}
+        self._call = {layer: split_site(layer)[2] for layer in self.layers}
         self._names = [p.name for p in inspect.signature(model.forward).parameters.values()
                        if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
         self._handles = []
@@ -148,6 +153,7 @@ class LiveRecording:
 
     def _clear(self):
         self._activity, self._read, self._shown, self._passes = OrderedDict(), None, None, 0
+        self._calls = Counter()
 
     def __enter__(self):
         try:
@@ -190,13 +196,28 @@ class LiveRecording:
 
     def _keep(self, layer, value):
         if self._passes == 0:
-            self._activity[layer] = _copy(self._convert(value))     # the network may reuse the buffer
+            call, self._calls[layer] = self._calls[layer], self._calls[layer] + 1
+            if self._call[layer] in (None, call):
+                self._activity[layer] = _copy(self._convert(value))     # the network may reuse the buffer
 
     def take(self, row=None):
         """The first forward pass since the last take, packaged by the extractor."""
+        short = {layer: self._calls[layer] for layer, call in self._call.items()
+                 if call is not None and 0 < self._calls[layer] <= call}
+        if short:
+            raise ValueError(
+                f'Layers name a call that the forward pass did not make ({short} calls, counted '
+                f'from 0). Name a call from -t0 to one below the count.')
         missing = [layer for layer in self.layers if layer not in self._activity]
         if missing:
             raise ValueError(f'No forward pass reached {missing} since the last presentation.')
+        repeated = {layer: count for layer, count in self._calls.items()
+                    if count > 1 and self._call[layer] is None}
+        if repeated:
+            raise ValueError(
+                f'Layers ran more than once in one forward pass ({repeated} calls), and a recording '
+                f'keeps one value for each layer. Name one call as <layer>-t<n>, counted from 0 '
+                f'(layers.6-t1 is the second call), or name a module that runs once for each input.')
         activity, read = self._activity, self._read
         self._clear()
         return self._package(activity, read, row)
@@ -312,34 +333,6 @@ def kind(wrapper) -> str:
     return f'{cls.__module__}.{cls.__qualname__}'
 
 
-def cache_config(wrapper, fields):
-    """The explicit cache key of a wrapper, without its inputs.
-
-    Parts: the kind (``<module>.<Class>``); the ``_VERSION`` in the body of the
-    wrapper's class; the settings ``fields`` (``CACHE_FIELDS``, batch size included; a
-    callable counts by its code); the model (weights hash, structure, dtypes,
-    library versions, precision, hooks); the input device. ``cache_signature``
-    adds the inputs. No source text is part of it, so an edit that keeps values
-    (a comment, a docstring, a move) keeps the key.
-
-    ``_VERSION`` is read from the body of the wrapper's own class only. A
-    subclass does not inherit it, since its own code can change values; without
-    its own ``_VERSION``, ``cache_signature`` does not cache it.
-
-    A torch autocast context around the call changes the values, so when
-    autocast is enabled for the input device type, its dtype is part of the
-    key (``autocast``). Without autocast the key has no such part.
-    """
-    config = {'kind': kind(wrapper), 'version': _version(type(wrapper)),
-              'settings': {field: getattr(wrapper, field) for field in fields},
-              'input_device': str(getattr(wrapper, '_device', None)),
-              'model': model_config(wrapper._model)}
-    autocast = _autocast(getattr(wrapper, '_device', None))
-    if autocast is not None:
-        config['autocast'] = autocast
-    return config
-
-
 def _autocast(device):
     """The autocast dtype in force for ``device``'s type at this moment, or None when autocast is off."""
     import torch
@@ -403,6 +396,7 @@ class CachingExtractor:
     """
 
     _INPUTS = 'paths'
+    _device = None   # a wrapper with a model on a device sets it
 
     @property
     def identifier(self) -> str:
@@ -418,12 +412,39 @@ class CachingExtractor:
                 stimuli_identifier = stimuli.identifier
             assembly = self._cached(self._table_inputs(stimuli), layers, stimuli_identifier)
             assembly = self._columns(assembly, stimuli)
+        elif isinstance(stimuli, pd.DataFrame):
+            # list() of a DataFrame gives its column names, one false input for each column.
+            raise TypeError('A table of stimuli is a StimulusSet: wrap it as StimulusSet(table) '
+                            'and set its identifier. A plain pandas DataFrame is not read.')
         else:
             assembly = self._cached(list(stimuli), layers, stimuli_identifier)
         return self._finish(assembly)
 
     def cache_config(self):
-        return cache_config(self, self.CACHE_FIELDS)
+        """The explicit cache key of a wrapper, without its inputs.
+
+        Parts: the kind (``<module>.<Class>``); the ``_VERSION`` in the body of the
+        wrapper's class; the settings ``CACHE_FIELDS`` (batch size included; a
+        callable counts by its code); the model (weights hash, structure, dtypes,
+        library versions, precision, hooks); the input device. ``cache_signature``
+        adds the inputs. No source text is part of it, so an edit that keeps values
+        (a comment, a docstring, a move) keeps the key.
+
+        ``_VERSION`` is read from the body of the wrapper's own class only. A
+        subclass does not inherit it, since its own code can change values; without
+        its own ``_VERSION``, ``cache_signature`` does not cache it.
+
+        A torch autocast context around the call changes the values, so when
+        autocast is enabled for the input device type, its dtype is part of the
+        key (``autocast``). Without autocast the key has no such part.
+        """
+        config = {'kind': kind(self), 'version': _version(type(self)),
+                  'settings': {field: getattr(self, field) for field in self.CACHE_FIELDS},
+                  'input_device': str(self._device), 'model': model_config(self._model)}
+        autocast = _autocast(self._device)
+        if autocast is not None:
+            config['autocast'] = autocast
+        return config
 
     def _cached(self, inputs, layers, stimuli_identifier=None):
         from brainscore._model import parts

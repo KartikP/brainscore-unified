@@ -353,8 +353,8 @@ def test_record_behavior_runs_for_subjects_without_bare_behavior(tmp_path):
 
     scorer = BrainScoreModel(identifier='scorer', in_channels={'text'},
                              likelihood=lambda prompt, candidates: {'short': 0.0, 'long': -1.0},
-                             capability_config={'behavior-sessions': {
-                                 'behavior:choice': ('likelihood', 'softmax_argmax')}})
+                             answer_owners={
+                                 'behavior:choice': ('likelihood', 'softmax_argmax')})
     choice = TaskContext(instruction='Is it long?', response=Choice(['short', 'long']))
     result = Experiment(subject=scorer, protocol=TaskProtocol(STIMULI, choice),
                         tools=[RecordBehavior()], output_dir=tmp_path / 'choice').run()
@@ -744,9 +744,9 @@ def test_options_that_differ_for_each_row_reach_each_part():
 
     raw = TaskContext(response=Choice(labels='options', verbatim=True))
     scorer = BrainScoreModel(identifier='scorer', in_channels={'text'}, likelihood=likelihood,
-                             capability_config={'behavior-sessions': {   # derived formats (rule 4.11)
+                             answer_owners={   # derived formats (rule 4.11)
                                  'behavior:choice': ('likelihood', 'softmax_argmax'),
-                                 'behavior:probabilities': ('likelihood', 'softmax')}})
+                                 'behavior:probabilities': ('likelihood', 'softmax')})
     session = stimulus_session(_options_stimuli(), ['behavior:choice', 'behavior:log_probabilities'], raw)
     scorer.participate(session)
     scores = session.collect('behavior:log_probabilities')
@@ -755,7 +755,7 @@ def test_options_that_differ_for_each_row_reach_each_part():
     np.testing.assert_array_equal(scores.values, [[-0.25, 0.5], [0.5, -0.25]])
     assert list(scores['response_state'].values) == ['invalid', 'invalid']
     assert list(scores['choice'].values) == [0, 1]
-    from brainscore._model.behavioral import VERBATIM_LOG_PROBABILITIES
+    from brainscore._model.answers import VERBATIM_LOG_PROBABILITIES
     from brainscore_core.response_formats import response_record
     assert scores.attrs['response'] == response_record(
         'behavior:log_probabilities', 'likelihood', category='model-derived',

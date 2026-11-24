@@ -65,7 +65,7 @@ def test_answer_reply_and_likelihood_without_a_readout_answer_a_scale_through_th
         answer=lambda stimulus_row, instruction, label_set: calls.append('answer') or label_set[0],
         reply=lambda prompt: calls.append('reply') or '3',
         likelihood=lambda prompt, labels: calls.append('likelihood') or {label: 0.0 for label in labels},
-        capability_config={'behavior-sessions': {'behavior:probabilities': ('likelihood', 'softmax')}})
+        answer_owners={'behavior:probabilities': ('likelihood', 'softmax')})
     assert 'behavior:rating' in model.out_channels
     session = stimulus_session(STIMULI, ['behavior:rating'],
                                TaskContext(instruction='How much?', response=Scale(1, 7), fitting_stimuli=fitting))

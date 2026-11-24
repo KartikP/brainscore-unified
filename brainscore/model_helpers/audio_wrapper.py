@@ -27,7 +27,7 @@ Design:
 - Sampling rate: the wrapper target rate is taken from the processor's
     ``sampling_rate`` attribute; audio is resampled on load so the processor
     sees the rate it expects.
-- Caching: the ``@store_xarray`` key is explicit (``extractors.cache_config``):
+- Caching: the ``@store_xarray`` key is explicit (``CachingExtractor.cache_config``):
     the weights, settings and inputs, not the identifier. Two registrations
     sharing one audio backbone and its settings reuse activations.
 
@@ -119,7 +119,7 @@ class AudioWrapper(CachingExtractor):
     """
 
     # The version of what this class extracts: a part of the activation cache key
-    # (``extractors.cache_config``), read from this class body only. Raise it by
+    # (``CachingExtractor.cache_config``), read from this class body only. Raise it by
     # hand when a change can move the extracted values, also through code it calls.
     _VERSION = 1
 

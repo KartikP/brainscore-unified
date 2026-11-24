@@ -1,5 +1,5 @@
-"""Tests are the spec: the capability registers once, only opted-in models gain
-its channels, wrong payloads are rejected, and a session runs through
+"""Tests are the spec: the channels register once, only models built with the
+capability gain its channels, wrong payloads are rejected, and a session runs through
 subject.participate. Adapt them as you replace the synthetic word counter.
 """
 import importlib.util
@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from brainscore_core import io_catalog
-from brainscore.capabilities import capability_registry
 from brainscore import BrainScoreModel
 from brainscore_core.streaming import Session, StreamEvent
 
@@ -18,16 +17,12 @@ def capability(monkeypatch):
     """The template module with its registrations isolated to this test."""
     monkeypatch.setattr(io_catalog, '_CATALOG', dict(io_catalog._CATALOG))
     monkeypatch.setattr(io_catalog, '_STIMULUS_COLUMNS', dict(io_catalog._STIMULUS_COLUMNS))
-    previous = dict(capability_registry)
     path = Path(__file__).with_name('capability.py')
     spec = importlib.util.spec_from_file_location('word_count_capability', path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)   # importing alone registers nothing
-    assert module.IDENTIFIER not in capability_registry
     module.register()
     yield module
-    capability_registry.clear()
-    capability_registry.update(previous)
 
 
 def _requests(module, *texts):
@@ -57,7 +52,7 @@ def test_reset_clears_state_and_the_model_is_reusable(capability):
         subject.reset()
 
 
-def test_only_opted_in_models_gain_the_channels(capability):
+def test_only_models_built_with_it_gain_the_channels(capability):
     assert capability.RESULT in capability.build_model().out_channels
     assert capability.REQUEST in capability.build_model().in_channels
     other = BrainScoreModel(identifier='other-model')
@@ -74,15 +69,9 @@ def test_wrong_payloads_are_rejected(capability):
 
 
 def test_bad_settings_fail_before_counting(capability):
-    with pytest.raises(ValueError, match='min_length'):
-        capability.build_model(min_length=0)
-    # A model built directly, bypassing build_model, is checked in setup.
-    subject = BrainScoreModel(identifier='direct',
-                              capability_config={capability.IDENTIFIER: {'min_length': True}})
-    session = Session(_requests(capability, 'one two'), [capability.RESULT])
-    with pytest.raises(ValueError, match='min_length'):
-        subject.participate(session)
-    assert session.next_input() is not None   # no request was consumed
+    for bad in (0, True):
+        with pytest.raises(ValueError, match='min_length'):
+            capability.build_model(min_length=bad)
 
 
 def test_registering_twice_is_an_error(capability):

@@ -22,7 +22,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **Data plugin** | A folder `brainscore/data/<name>/` that registers the stimuli and recorded responses of one study (`stimulus_set_registry`, `data_registry`). Scripts that build its files, such as the frame, clip and sound preparation of the Friends movie data, are in its `data_packaging/` folder. A benchmark reaches the data only through `load_dataset` and `load_stimulus_set`. |
 | **`EnvironmentSource`** | A source that drives an environment (`reset`, `step`): each action changes the next row. |
 | **Event (`StreamEvent`)** | One item on a channel: `channel`, `payload`, `t_ms`, `meta`. |
-| **`ExecutionNotFeasibleError`** | A compatible pair whose run is refused when a session or the benchmark starts, before model computation: the subject cannot run this task, these outputs or these settings. An error with no result, never N/A. |
+| **`ExecutionNotFeasibleError`** | A compatible pair whose run is refused when a session or the benchmark starts, before model computation: the subject cannot run this task, these outputs or these settings. An error with no result. On an old benchmark, a refusal before any input reached the subject is N/A, with the refusal as the reason; a refusal after an input is an error. |
 | **Experiment** | A subject, a protocol, tools and an output folder, run together. Produces a saved record; need not produce a score. |
 | **`extractor`** | A `BrainScoreModel` part, one per input type, that prepares inputs, runs the network and returns layer activity: `extractor(stimuli, layers)`. Its `record(layers, stimuli)` records a region while another part runs the network; the recording's `take(row)` gives one assembly per layer. |
 | **Generation settings** | `max_tokens`, `temperature`, `top_p`, `seed` on a `Text` response. They belong to the task; a `reply` part reads them from `prompt.response`. |
@@ -32,7 +32,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **`intervention`** | A change to a subject while it runs (a lesion, a stimulation, a drug), and the `BrainScoreModel` part that applies it: `StateChange -> (PerturbationApplied, undo_function)`. The channel name (`lesion`, `stimulation`, `pharmacological`) says the kind. |
 | **Layer path** | A module's name in the network, such as `layer3.0.conv1`; list them with `named_modules()`. |
 | **`LayerSelector`** | One layer as a region; `modality=` picks the extractor when the layer name alone does not: in a model with several extractor objects, the name is found in extractors of two input families (an extractor that cannot list its layers counts as having every layer). A tuple, such as `('text', 'vision')`, names the recording extractor first and then the other inputs that reach the layer. |
-| **`likelihood`** | A `BrainScoreModel` part: `(prompt, candidates) -> {candidate: log probability}`. Scores each option as the reply, without generating; gives choices and implied probabilities. |
+| **`likelihood`** | A `BrainScoreModel` part: `(prompt, candidates) -> {candidate: log probability}`. Scores each option as the reply, without generating; gives `behavior:log_probabilities`, and `behavior:probabilities` (`softmax`) and `behavior:choice` (`softmax_argmax`) when `answer_owners` names them. |
 | **Metric** | The calculation that compares model outputs with measured data. |
 | **Modality** | A kind of sensory input: `vision` (pictures), `video`, `text`, `audio`. A modality is not a channel. Pictures arrive on `vision:image` and video on `vision:video`. |
 | **N/A** | Not applicable: the pair was not run because declarations do not fit. Never the same as a zero score. |
@@ -44,10 +44,10 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **`participate(session)`** | The one evaluation method every subject implements. |
 | **`Perturbation`** | How an intervention changes selected units: `zero`, `scale` or `drive` for activity; `replace` only for weights and attention heads. |
 | **`policy`** | A `BrainScoreModel` part, in one form: `row -> {output channel: payload}`. `policy_in_channels` (default `('observation',)`) names the row keys it reads; `policy_out_channels` (default `('motor',)`) the outputs it answers on. A policy that keeps history clears it in `reset()`. |
-| **`process(...)`** | A convenience method on `BrainScoreModel` and adapters for interactive use. Not part of the contract. It records activity; a behavioral answer comes only from a session. |
+| **`process(row)`** | The one-row call of `BrainScoreModel`: a loop that a simulator owns calls the model one step at a time, and the model may record its regions during that step. Not part of the contract. |
 | **Prompt** | One trial as a replying model sees it, in order: the instruction, the stimulus parts (in `present` order), then the response's directive. |
 | **Protocol** | The procedure of an experiment: which conditions, how many repetitions, where sessions begin and end, and when the subject is reset. |
-| **Readout** | A classifier fitted on one layer's activity (`behavioral_readout_layer`). It gives probabilities; its choice is the most probable option, which the registration names with `capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}`. |
+| **Readout** | A classifier fitted on one layer's activity (`behavioral_readout_layer`). It gives probabilities; its choice is the most probable option, which the registration names with `answer_owners={'behavior:choice': ('readout', 'argmax')}`. |
 | **`record`** | To read activity from a subject; a saved run is a `RunRecord`. What to record is a requested output (`neural:<region>`), never a separate argument. |
 | **Region** | A brain area a benchmark names, such as `IT`. A benchmark requests it as the channel `neural:<region>`. |
 | **`region_layer_map`** | Which layer (or units) stands in for each brain region. A hypothesis that benchmarks test. |

@@ -51,5 +51,5 @@ def get_model(identifier: str) -> BrainScoreModel:
         },
         behavioral_readout_layer='encoder.layers.10',
         # The readout derives the choice from its probabilities by argmax.
-        capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}},
+        answer_owners={'behavior:choice': ('readout', 'argmax')},
     )

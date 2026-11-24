@@ -108,8 +108,8 @@ def likelihood(prompt, candidates):
 
 # Three stand-in models: likelihood, reply, unsure reply
 scorer = BrainScoreModel(identifier='likelihood-stand-in', in_channels={'text'}, likelihood=likelihood,
-                         capability_config={'behavior-sessions': {
-                             'behavior:choice': ('likelihood', 'softmax_argmax')}})
+                         answer_owners={
+                             'behavior:choice': ('likelihood', 'softmax_argmax')})
 replier = BrainScoreModel(identifier='reply-stand-in', in_channels={'text'},
                           reply=lambda prompt: prompt.response.labels[0])   # always the first option
 unsure = BrainScoreModel(identifier='unsure-stand-in', in_channels={'text'},

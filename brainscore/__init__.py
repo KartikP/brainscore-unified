@@ -432,9 +432,12 @@ def score(model_identifier, benchmark_identifier,
 
     An incompatible pair, known from the declarations, returns the N/A result
     before any compute (``brainscore_core.score_status.na_score``: NaN,
-    ``attrs['status'] == 'N/A'``, ``reason``, ``missing_channels``). A refusal
-    when the run starts (a subject that refuses a session, a benchmark's own
-    check) raises ``ExecutionNotFeasibleError``; a malformed declaration
+    ``attrs['status'] == 'N/A'``, ``reason``, ``missing_channels``). On an old
+    benchmark, which states no requested output, a task or recording the subject
+    refuses before any input of the benchmark reached it is N/A too, with the
+    refusal as the reason. Any other refusal when the run starts (a subject that
+    refuses a session after an input, a benchmark's own check) raises
+    ``ExecutionNotFeasibleError``; a malformed declaration
     (``ValueError``) and a memory-check failure raise too.
     """
     from brainscore_core.compatibility import CompatibilityError, check_compatibility
@@ -470,8 +473,9 @@ def score(model_identifier, benchmark_identifier,
                     else _resolve_identifier(benchmark, 'custom-benchmark'))
     requested_channels = requested_output_channels_for_score(benchmark)
 
-    # The one place N/A is made: the declaration check, before any compute
-    # (rules 5.6, 5.7). A refusal during the run below is an error.
+    # N/A is made before any compute (rules 5.6, 5.7): at the declaration check, and for
+    # an old benchmark's task refused before any input reached the subject (below). Any
+    # other refusal during the run is an error.
     try:
         compatibility = check_compatibility(subject, benchmark)
     except CompatibilityError as error:
@@ -479,7 +483,7 @@ def score(model_identifier, benchmark_identifier,
         if isinstance(subject, BrainScoreModel):
             # A format a wired part derives but no statement declares: name the line to write
             # (the text of the session refusal; read from the wiring, nothing runs).
-            from ._model.behavioral import statement_hint
+            from ._model.owners import statement_hint
             result.attrs['reason'] += statement_hint(subject, result.attrs['missing_channels'])
         result.attrs.update(model_identifier=model_id, benchmark_identifier=benchmark_id)
         return result
@@ -489,14 +493,24 @@ def score(model_identifier, benchmark_identifier,
     # A legacy domain benchmark (marked by its domain loader) receives the
     # permanent facade, which runs its calls as sessions through participate.
     from brainscore_core.legacy_facade import (
-        declared_visual_degrees, record_replaced_answers, subject_for_benchmark)
+        LegacyBenchmarkFacade, declared_visual_degrees, record_replaced_answers,
+        subject_for_benchmark)
     received = subject_for_benchmark(subject, benchmark,
                                      visual_degrees=declared_visual_degrees(subject))
 
     _t0 = _time.time()
     # A session no note names belongs to this score's subject, also when this score runs inside another.
-    with weight_fingerprint_scope(), record_measures(subject=getattr(subject, 'identifier', None)) as measures:
-        result = benchmark(received)
+    try:
+        with weight_fingerprint_scope(), record_measures(subject=getattr(subject, 'identifier', None)) as measures:
+            result = benchmark(received)
+    except CompatibilityError as error:
+        if not isinstance(received, LegacyBenchmarkFacade):
+            raise       # a benchmark's own CompatibilityError after compute is an error
+        # An old benchmark's task or recording that the subject refused before any input
+        # of the benchmark reached it (the legacy facade): N/A, as at the declaration check.
+        result = na_score(error)
+        result.attrs.update(model_identifier=model_id, benchmark_identifier=benchmark_id)
+        return result
     # The run must leave the subject as it found it: every intervention a session
     # of the benchmark applied is undone. Interventions the caller applied stay.
     measures.check_released(benchmark_id, model_id)

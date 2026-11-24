@@ -12,7 +12,7 @@ tests that define the contract. `../docs/02_core_concepts.md` covers the vocabul
 | `new_metric/` | Metric | a `Metric` subclass | `load_metric('id')` |
 | `new_data/` | Data / Stimulus set | loaders for stimuli and measurements | `load_stimulus_set('id')` / `load_dataset('id')` |
 | `new_tool/` | Tool | a `Tool` subclass (one module) | `load_tool('id')` |
-| `new_capability/` | Capability | an `answer`/`policy`/`intervention` function, or a registered `Capability` | `capability_config` on a model |
+| `new_capability/` | Capability | an `answer`/`policy`/`intervention` function, or a `Capability` | `capabilities=[...]` on a model |
 
 ## Workflow
 

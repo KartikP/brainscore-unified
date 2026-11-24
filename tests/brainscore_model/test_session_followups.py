@@ -152,7 +152,7 @@ def task_model(net, extractor_type, regions, readout=False):
     owners = {'behavior:choice': ('readout', 'argmax')} if readout else {}
     return BrainScoreModel('task-layers', extractor={'text': extractor_type(net)}, region_layer_map=regions,
                            behavioral_readout_layer='late', answer=answer,
-                           capability_config={'behavior-sessions': owners})
+                           answer_owners=owners)
 
 
 READOUT = TaskContext(response=Choice(['cat', 'dog']), fitting_stimuli=STIMULI)

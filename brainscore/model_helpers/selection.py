@@ -1,5 +1,6 @@
 """Tensor coordinates shared by activity recording and intervention."""
-from typing import Any
+import re
+from typing import Any, Optional
 from brainscore_core.events import Selection
 
 
@@ -25,8 +26,12 @@ def selection_view(tensor: Any, selection: Selection) -> tuple[Any, int]:
 INPUT_SITE = ':input'
 
 
-def split_site(layer: str) -> tuple[str, str]:
-    """``'a.b:input'`` -> ``('a.b', 'input')``; a bare path is the module output.
+def split_site(layer: str) -> tuple[str, str, Optional[int]]:
+    """``'a.b-t1:input'`` -> ``('a.b', 'input', 1)``; a bare path is the module output.
+
+    A trailing ``-t<n>`` on the path names one call of a module that runs more
+    than once for one input (a looped block), counted from 0 as the old vision
+    time steps: ``'layers.6-t1'`` is the second call of ``layers.6``.
 
     The input site addresses a module's first positional input, for values
     computed inline that no module outputs (e.g. the gated MLP activation
@@ -38,11 +43,15 @@ def split_site(layer: str) -> tuple[str, str]:
     ``'a:input:input'``) is rejected rather than guessed at.
     """
     path, colon, site = layer.partition(':')
+    path, call = _split_pass(path)
     if not path:
         raise ValueError(f"Layer name {layer!r} has an empty module path.")
-    if not colon:
-        return path, 'output'
-    if site != INPUT_SITE[1:]:
+    if colon and site != INPUT_SITE[1:]:
         raise ValueError(f"Unknown layer site in {layer!r}; only a single trailing "
                          f"'{INPUT_SITE}' is supported.")
-    return path, 'input'
+    return path, 'input' if colon else 'output', call
+
+
+def _split_pass(path: str) -> tuple[str, Optional[int]]:
+    match = re.search(r'-t([0-9]+)$', path)
+    return (path, None) if match is None else (path[:match.start()], int(match.group(1)))
