@@ -1,6 +1,7 @@
 # UMI development study: vision-language models
 
-Fifteen Hugging Face vision-language models (Qwen3-VL, Qwen2.5-VL, SmolVLM2, Gemma 3, InternVL3), registered
+Sixteen Hugging Face vision-language models (Qwen3-VL, Qwen2.5-VL, SmolVLM2, Gemma 3, InternVL3,
+Janus-Pro), registered
 by one set of rules so that they compare with each other. Each identifier ends in `_UMI-dev`.
 Everything of the study is in this folder: `model_configs.json` holds the values of each model,
 `model.py` builds every one of them, `test.py` tests them, `requirements.txt` states the packages
@@ -9,6 +10,12 @@ they need beyond the reference environment.
 Qwen2.5-VL 3B and 7B also exist outside the study (`qwen2.5-vl-3b`, `qwen2.5-vl-7b`), with layers
 chosen by hand. A score of the study version and a score of that registration are different
 measurements of the same weights.
+
+Janus-Pro-7B (`deepseek-community/Janus-Pro-7B`, the native class of transformers) also holds parts that
+make pictures (`model.vqmodel`, `model.generation_*`). They load with the weights; the study records only
+the vision part and the language model, and asks for text only. Its processor adds its own default system
+text to a text prompt (`use_default_system_prompt` in the checkpoint's settings). One picture is one
+384 x 384 image (resized and padded); it takes no clips. Proof: the three steps below with `-k janus`.
 
 ## The rules every model follows
 
@@ -44,7 +51,7 @@ measurements of the same weights.
 | neural V1, V2, V4, IT, VWFA | all | |
 | neural language_system, from text | all | |
 | neural language_system during an answer | none | the study's rule above (Qwen3-VL and Gemma 3 also need a general change, below) |
-| vision layers as LayerPCA(1000) of the patch tokens | SmolVLM2, InternVL3, Gemma 3 | The PCA is fitted one layer at a time, so the fit holds one layer of the 1000 corpus pictures in memory. Qwen-VL records the hidden width, no PCA. Gemma 3 first takes the mean of each 4 x 4 block of its 64 x 64 patch grid (256 tokens, the pool of Gemma 3's own projector; `token_pool` in the values, named in the provenance): its whole grid (4096 tokens x 1152) gives a PCA fit that SVD refuses |
+| vision layers as LayerPCA(1000) of the patch tokens | SmolVLM2, InternVL3, Gemma 3, Janus-Pro | The PCA is fitted one layer at a time, so the fit holds one layer of the 1000 corpus pictures in memory. Qwen-VL records the hidden width, no PCA. Gemma 3 first takes the mean of each 4 x 4 block of its 64 x 64 patch grid (256 tokens, the pool of Gemma 3's own projector; `token_pool` in the values, named in the provenance): its whole grid (4096 tokens x 1152) gives a PCA fit that SVD refuses |
 | clips (`vision:video`), from the vision part | Qwen3-VL, Qwen2.5-VL | the other processors give no flattened clip patches. The setting `video_sampling` (in the values, named in the provenance) states the frame sampling of a clip: the model authors' tool `qwen-vl-utils`: 2 frames per second, at least 4 frames, at most 768, sampling on. It equals the class defaults of the Qwen2.5-VL and Qwen3-VL video processors (Qwen2.5-VL's class has no rate and sampling off; the study sets them), so a 16-frame clip at 30 Hz gives 4 frames |
 | behavior: choice, probabilities, log_probabilities, rating, rt, text | all | |
 | perturbation (lesion, stimulation, pharmacological) | Qwen3-VL, Qwen2.5-VL | the other families record their vision layers as PCA components, and a lesion addresses the module's units |
