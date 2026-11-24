@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 GITHUB = 'https://github.com/courtois-neuromod/{}.git'
+PUBLIC_STORE = 'conp-ria-storage'     # the CONP store; the others need an account
 RESTRICTED = ('sub-04',)    # needs a data transfer agreement with CNeuroMod: never packaged
 ATLASES = 'anat.atlases'
 LABELS = ('tpl-MNI152NLin2009cAsym/tpl-MNI152NLin2009cAsym_atlas-Schaefer2018TianS3NettekovenAsym_'
@@ -74,11 +75,13 @@ def sessions(clone: Path, participant: str, session: str | None) -> list:
 # --- download ------------------------------------------------------------------------------
 
 def clone(cache: Path, repository: str) -> Path:
-    """A DataLad clone of one CNeuroMod repository in ``cache`` (no recursion; kept for a resume)."""
+    """A DataLad clone of one CNeuroMod repository in ``cache`` (no recursion; kept for a resume),
+    with the public store (``conp-ria-storage``) enabled: the clone does not enable it."""
     folder = cache / repository
     if not (folder / '.git').exists():
         cache.mkdir(parents=True, exist_ok=True)
         subprocess.run(['datalad', 'clone', GITHUB.format(repository), str(folder)], check=True)
+    subprocess.run(['datalad', 'siblings', '-d', str(folder), 'enable', '-s', PUBLIC_STORE], check=True)
     return folder
 
 
@@ -94,9 +97,9 @@ def annex_size(path: Path) -> int:
 def check_prerequisites() -> None:
     missing = [program for program in ('datalad', 'git-annex') if shutil.which(program) is None]
     if missing:
-        raise RuntimeError(f'{" and ".join(missing)} not found. Install DataLad and git-annex, for example '
-                           '`pipx install datalad` and `conda install -c conda-forge git-annex` (or the '
-                           'git-annex package of your system), then run the same command again.')
+        raise RuntimeError(f'{" and ".join(missing)} not found. Install DataLad and git-annex 10.20230126 or '
+                           'later, for example `pipx install datalad` and `pipx inject --include-apps datalad '
+                           'git-annex`, then run the same command again.')
 
 
 def plan(paths: list, cache: Path) -> int:

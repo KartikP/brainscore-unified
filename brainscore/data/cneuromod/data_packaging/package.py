@@ -10,6 +10,7 @@ does not exist, the clones are made and the needed files downloaded in
 ``$BRAINSCORE_DATA_HOME/sources/cneuromod``, kept there so that a stopped run resumes.
 """
 import argparse
+import glob
 import importlib
 from pathlib import Path
 
@@ -30,7 +31,8 @@ def _atlas_patterns(participant: str) -> list:
 
 
 def _files(root: Path, repository: str, patterns: list) -> list:
-    found = [path for pattern in patterns for path in sorted((root / repository).glob(pattern))]
+    # glob.glob, not Path.glob: an annexed file whose content is not here yet is a dangling link.
+    found = [Path(path) for pattern in patterns for path in sorted(glob.glob(str(root / repository / pattern)))]
     if not found:
         raise FileNotFoundError(f'nothing in {root / repository} matches {patterns}')
     return found

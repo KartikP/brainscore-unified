@@ -104,3 +104,13 @@ def test_a_mask_on_another_grid_is_resampled_to_the_grid():
     fine[2:, :, :] = 1                                   # the half with x >= 2 mm
     mask = nibabel.Nifti1Image(fine, np.diag([1.0, 1.0, 1.0, 1.0]))
     assert shared.region_columns(mask, grid).tolist() == [4, 5, 6, 7]
+
+
+def test_a_file_whose_content_is_not_downloaded_yet_is_listed(tmp_path):
+    """An annexed file before ``datalad get`` is a link to absent content; it must be planned and fetched."""
+    folder = tmp_path / 'things.glmsingle' / 'sub-01'
+    folder.mkdir(parents=True)
+    (folder / 'betas.h5').symlink_to('../.git/annex/objects/MD5E-s11315631976--2c46.h5')
+    found = package._files(tmp_path, 'things.glmsingle', ['sub-01/betas.h5', 'sub-01/*.h5'])
+    assert [path.name for path in found] == ['betas.h5', 'betas.h5']
+    assert shared.annex_size(found[0]) == 11315631976
