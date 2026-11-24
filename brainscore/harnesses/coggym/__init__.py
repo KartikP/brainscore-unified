@@ -12,7 +12,7 @@ own prompt from these, so a chat model can place the instruction in the user
 turn where CogGym's own client sends a separate system text. Scores can
 therefore differ a little from scores made with CogGym's own client.
 
-CogGym's evaluator runs in its own environment, in a child process (``_coggym_worker.py``)
+CogGym's evaluator runs in its own environment, in a child process (``_worker.py``)
 started with the Python of CogGym's folder (``_environment_folder.py``). Its pre-flight gives the
 trials and prompts; one process per run serves every repetition and the analysis, and each
 model call comes back here as one request and one reply. The subject, the sessions, the
@@ -55,7 +55,7 @@ from brainscore.harnesses._child_process import ChildFailed, ChildProcess
 from brainscore.harnesses._environment_folder import (Library, _RUNTIME_VARIABLES, _command_environment,
                                                       environment_python, ready_folder)
 from brainscore.harnesses.adapter import run_request
-from brainscore.harnesses.coggym_validation import SLIDER_VALIDATION_POLICY
+from brainscore.harnesses.coggym.validation import SLIDER_VALIDATION_POLICY
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Text
@@ -67,7 +67,7 @@ DEFAULT_EXPERIMENT = 'Hu2023Fine/exp1'
 COGGYM = Library(
     name='CogGym', repository='https://github.com/lance-ying/coggym.git',
     commit='a1cd9df1118fec80eba7463de237d1497d77e041',
-    requirements=Path(__file__).with_name('coggym_requirements.txt'),
+    requirements=Path(__file__).with_name('requirements.txt'),
     required_files=('evaluation/__init__.py', 'evaluation/providers.py', 'evaluation/cli.py',
                     'evaluation/analyze.py', 'evaluation/public_manifest.json',
                     'evaluation/trial_selection_map.json', 'EML'))
@@ -75,7 +75,7 @@ COGGYM = Library(
 _PART_CHANNELS = {'text': 'text', 'image': 'vision:image', 'video': 'vision:video'}
 _PART_COLUMNS = {'text': 'text', 'image': 'image_path', 'video': 'video_path'}
 # The worker that runs CogGym's evaluator in its own environment.
-_WORKER = Path(__file__).with_name('_coggym_worker.py')
+_WORKER = Path(__file__).with_name('_worker.py')
 # Seconds the evaluator may work without a word while the parent waits for it (between two
 # model calls, or in its analysis): a stated bound, not a measured budget.
 _EVALUATOR_SILENCE_S = 900.0

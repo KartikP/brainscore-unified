@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from brainscore.harnesses.coggym_validation import validate_responses
+from brainscore.harnesses.coggym.validation import validate_responses
 
 
 def query(tag='rating', kind='single-slider', options=()):

@@ -13,7 +13,7 @@ data_builder_registry['coggym'] = lambda: DataBuilder(
            'holds `LICENSE` (MIT) and `DATA_LICENSE.md`.',
     access='public, no account.',
     layout='none.',
-    needs='git and the packages of `brainscore/harnesses/coggym_requirements.txt`, in a folder of its own.',
+    needs='git and the packages of `brainscore/harnesses/coggym/requirements.txt`, in a folder of its own.',
     writes='Nothing to package: the first `load_benchmark("CogGym...")` makes the checkout and its environment '
            '(see this plugin\'s README).',
 )

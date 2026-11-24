@@ -14,7 +14,7 @@ import sys
 import pytest
 
 from brainscore.harnesses import coggym
-from brainscore.harnesses.coggym_validation import validate_responses
+from brainscore.harnesses.coggym.validation import validate_responses
 
 from tests.command_stand_ins import pinned_git  # noqa: F401  (a fixture)
 from tests.coggym_stand_in import ANALYZE_ROW, EXPERIMENT, write_ready_folder

@@ -26,7 +26,7 @@ from tests.command_stand_ins import PINNED_COMMIT, commands  # noqa: F401  (comm
 pytestmark = pytest.mark.unit
 
 BENCHMARK = 'CogGym.Hu2023Fine.exp1'
-REQUIREMENTS = Path(brainscore.__file__).parent / 'harnesses' / 'coggym_requirements.txt'
+REQUIREMENTS = Path(brainscore.__file__).parent / 'harnesses' / 'coggym' / 'requirements.txt'
 
 
 @pytest.fixture

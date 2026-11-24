@@ -1,8 +1,8 @@
-"""CogGym's evaluator in its own process: run as ``<CogGym environment python> _coggym_worker.py <checkout>``.
+"""CogGym's evaluator in its own process: run as ``<CogGym environment python> _worker.py <checkout>``.
 
 This script runs in the environment Brain-Score makes for CogGym, which holds CogGym's
 pinned packages and no Brain-Score package. It imports only the standard library, CogGym's
-``evaluation`` package from the checkout, and ``coggym_validation.py`` (standard library
+``evaluation`` package from the checkout, and ``validation.py`` (standard library
 only) from its own folder. It answers the parent's commands on the two pipes of
 ``brainscore/harnesses/_child_process.py``:
 
@@ -85,7 +85,7 @@ def main(checkout):
         importlib.import_module('evaluation.providers')
         cli = importlib.import_module('evaluation.cli')
         analysis = importlib.import_module('evaluation.analyze')
-        validation = _load('_coggym_validation', Path(__file__).with_name('coggym_validation.py'))
+        validation = _load('_validation', Path(__file__).with_name('validation.py'))
         startup = None
     except Exception as error:
         # The evaluator cannot start (a missing package, a broken checkout): every command is

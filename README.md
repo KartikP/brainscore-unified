@@ -9,7 +9,7 @@ UMI is a source candidate on the `unified-model-interface-v2` branches; its pack
 ## Layout
 
 - `brainscore/model_helpers/`: extraction wrappers for image, text, VLM vision, video and audio.
-- `brainscore/harnesses/`: environment and subject harnesses (robotics environment harness, a prototype human subject `HumanSubject`), and the adapters for external experiment libraries (`adapter.py` holds what every adapter shares; `coggym.py`, `ewok.py`).
+- `brainscore/harnesses/`: environment and subject harnesses (robotics environment harness, a prototype human subject `HumanSubject`), and the adapters for external experiment libraries (`adapter.py` holds what every adapter shares; `coggym/`, `ewok.py`).
 - `brainscore/models/`: registered models (CLIP, Qwen-VL, BLIP-2, V-JEPA, null controls and others).
 - `brainscore/benchmarks/`: registered benchmarks (ROAR, induced dyslexia, Lahner2024, LeBel2023, Algonauts2025, CogGym, EWoK, the grid game). MajajHong2015, Pereira2018 and the other Brain-Score 2.0 benchmarks are registered in the vision and language packages; `brainscore.score` runs them for any subject that fits.
 - `brainscore/metrics/`: scoring metrics.

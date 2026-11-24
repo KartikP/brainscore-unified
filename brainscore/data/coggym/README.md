@@ -14,7 +14,7 @@ On a fresh machine, the first `load_benchmark("CogGym...")` makes one folder:
 - `checkout/`: the authors' repository (`https://github.com/lance-ying/coggym`) at
   commit `a1cd9df1118fec80eba7463de237d1497d77e041`;
 - `env/`: a virtual environment with only CogGym's packages, each at an exact
-  version (`brainscore/harnesses/coggym_requirements.txt`, installed with
+  version (`brainscore/harnesses/coggym/requirements.txt`, installed with
   `--no-deps` and checked with `pip check`). The list is CogGym's own requirements
   (google-genai, python-dotenv, Pillow) and their dependencies at the versions of the
   earlier CogGym runs; `pip check` at creation is the test that it is complete on
@@ -111,7 +111,7 @@ Follow the authors' access and distribution terms for any additional files.
 
 - Source: CogGym (Ying et al.), https://github.com/lance-ying/coggym at a pinned commit. The repository holds `LICENSE` (MIT) and `DATA_LICENSE.md`.
 - Access: public, no account.
-- Needs: git and the packages of `brainscore/harnesses/coggym_requirements.txt`, in a folder of its own.
+- Needs: git and the packages of `brainscore/harnesses/coggym/requirements.txt`, in a folder of its own.
 - Command: none: nothing to package.
 - Writes: Nothing to package: the first `load_benchmark("CogGym...")` makes the checkout and its environment (see this plugin's README).
 - Check: nothing to compare.
