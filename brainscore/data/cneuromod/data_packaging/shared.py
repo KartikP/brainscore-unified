@@ -16,6 +16,8 @@ import pandas as pd
 
 GITHUB = 'https://github.com/courtois-neuromod/{}.git'
 PUBLIC_STORE = 'conp-ria-storage-http'     # the CONP store over https; the others need an account or ssh
+PUBLIC_STORE_URL = 'https://sftp.conp.ca/users/cneuromod/'
+_CONFIRM = re.compile(r'verifyremote \S+ --safe (\S+)')
 RESTRICTED = ('sub-04',)    # needs a data transfer agreement with CNeuroMod: never packaged
 ATLASES = 'anat.atlases'
 LABELS = ('tpl-MNI152NLin2009cAsym/tpl-MNI152NLin2009cAsym_atlas-Schaefer2018TianS3NettekovenAsym_'
@@ -81,8 +83,27 @@ def clone(cache: Path, repository: str) -> Path:
     if not (folder / '.git').exists():
         cache.mkdir(parents=True, exist_ok=True)
         subprocess.run(['datalad', 'clone', GITHUB.format(repository), str(folder)], check=True)
-    subprocess.run(['datalad', 'siblings', '-d', str(folder), 'enable', '-s', PUBLIC_STORE], check=True)
+    _enable_public_store(folder)
     return folder
+
+
+def _enable_public_store(folder: Path) -> None:
+    """Enable the public store. git-annex 10.20261113 (not 10.20261026) first asks to confirm a special
+    remote: confirm it when, and only when, it asks and the remote is the CNeuroMod store of CONP."""
+    enable = ['datalad', 'siblings', '-d', str(folder), 'enable', '-s', PUBLIC_STORE]
+    result = subprocess.run(enable, capture_output=True, text=True)
+    if result.returncode == 0:
+        print(result.stdout, end='')
+        return
+    message = result.stdout + result.stderr
+    asked = _CONFIRM.search(message)
+    if asked is None:
+        raise RuntimeError(f'enabling {PUBLIC_STORE} in {folder} failed:\n{message}')
+    if f'url={PUBLIC_STORE_URL}' not in message:
+        raise RuntimeError(f'git-annex asks to confirm {PUBLIC_STORE} in {folder}, but it is not at '
+                           f'{PUBLIC_STORE_URL}: not confirmed. Check the clone; its message:\n{message}')
+    subprocess.run(['git-annex', 'verifyremote', PUBLIC_STORE, '--safe', asked.group(1)], cwd=folder, check=True)
+    subprocess.run(enable, check=True)
 
 
 def annex_size(path: Path) -> int:

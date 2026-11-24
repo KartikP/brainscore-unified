@@ -26,7 +26,8 @@ data_builder_registry['cneuromod-things'] = lambda: DataBuilder(
     source=_SOURCE + ' THINGS: St-Laurent et al. 2026, Scientific Data 13:141. The images are not included.',
     access='public, no account: masks, atlas, event files and GLMsingle outputs of sub-01, 02, 03 and 06.',
     layout=_LAYOUT.format(repositories='things/`, `things.glmsingle/`, `anat.atlases/') + '.',
-    needs='DataLad and git-annex 10.20230126 or later; h5py, nibabel, nilearn; per participant 11.32 GB to '
+    needs='DataLad and git-annex 10.20230126 or later (tested: 10.20261026 and 10.20261113; from '
+          '10.20261113 git-annex asks to confirm the CONP store, which the command does); h5py, nibabel, nilearn; per participant 11.32 GB to '
           'download (the trial-response file holds every session, also for a one-session part) and about 12 GB '
           'of disk; measured for sub-01 on a cloud machine: 403 s, mostly the download (24 MB/s); a '
           'rebuild from the kept download: 3 s per session.',

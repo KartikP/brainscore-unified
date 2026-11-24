@@ -205,3 +205,42 @@ def test_an_event_value_is_written_with_the_digits_of_the_source_file(tmp_path):
     events = shared.run_table(things, tmp_path, 'sub-01', {'session': 1, 'task': 'things', 'run': 1})
     shared.write_csv(events, tmp_path / 'events.csv')
     assert ',2.3210708713531574,' in (tmp_path / 'events.csv').read_text()
+
+
+_REFUSAL = ('enable-sibling(impossible): . (sibling) [git-annex does not use special remote conp-ria-storage-http '
+            'until its configuration is verified, and there is no interactive session to confirm it:\n'
+            'This is the configuration of the remote:\n\ttype=httpalso cost=50 url={url} autoenable=true\n'
+            'If so, run:  git-annex verifyremote conp-ria-storage-http --safe 5\n'
+            'If not, run: git-annex verifyremote conp-ria-storage-http --unsafe]')
+
+
+def _enable_runs(monkeypatch, refusals):
+    """Stand-in for the programs of ``shared.clone``: the first ``len(refusals)`` enables print a refusal."""
+    import subprocess
+    calls, left = [], list(refusals)
+
+    def run(argv, *args, **kwargs):
+        calls.append(list(argv))
+        refused = argv[:2] == ['datalad', 'siblings'] and left
+        return types.SimpleNamespace(returncode=1 if refused else 0, stdout=left.pop(0) if refused else '', stderr='')
+    monkeypatch.setattr(subprocess, 'run', run)
+    return calls
+
+
+@pytest.mark.parametrize('refusals, verified', [([], False), ([_REFUSAL.format(
+    url='https://sftp.conp.ca/users/cneuromod/ria-conp/4de/annex/objects/')], True)])
+def test_the_public_store_is_confirmed_only_when_git_annex_asks(tmp_path, monkeypatch, refusals, verified):
+    (tmp_path / 'things' / '.git').mkdir(parents=True)
+    calls = _enable_runs(monkeypatch, refusals)
+    shared.clone(tmp_path, 'things')
+    verifies = [call for call in calls if call[:2] == ['git-annex', 'verifyremote']]
+    assert verifies == ([['git-annex', 'verifyremote', 'conp-ria-storage-http', '--safe', '5']] if verified else [])
+    assert calls[-1][:2] == ['datalad', 'siblings']       # enabled after the confirmation
+
+
+def test_a_store_at_another_address_is_not_confirmed(tmp_path, monkeypatch):
+    (tmp_path / 'things' / '.git').mkdir(parents=True)
+    calls = _enable_runs(monkeypatch, [_REFUSAL.format(url='https://example.org/annex/objects/')])
+    with pytest.raises(RuntimeError, match='example.org'):
+        shared.clone(tmp_path, 'things')
+    assert not [call for call in calls if call[:2] == ['git-annex', 'verifyremote']]

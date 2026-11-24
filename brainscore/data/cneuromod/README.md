@@ -10,7 +10,10 @@ package_data('cneuromod-things', part='sub-01/ses-01')   # one session; part='su
 ```
 
 The command states what it needs (DataLad, git-annex, the download size, the free disk) before
-it downloads. The DataLad clones stay in `$BRAINSCORE_DATA_HOME/sources/cneuromod`, so a
+it downloads. Tested with git-annex 10.20261026 and 10.20261113. From 10.20261113 git-annex does not
+use a special remote until it is confirmed; the command confirms the public store
+(`git-annex verifyremote conp-ria-storage-http --safe <id>`) only when git-annex asks and the store
+is at `https://sftp.conp.ca/users/cneuromod/`. The DataLad clones stay in `$BRAINSCORE_DATA_HOME/sources/cneuromod`, so a
 stopped run resumes with the same command. It prints the sha1 of each written file; compare it
 with the checksums below. Participant sub-04 is restricted and never packaged.
 
@@ -103,7 +106,7 @@ neuroscience. Scientific Data 13, 141. https://doi.org/10.1038/s41597-026-06591-
 
 - Source: Courtois NeuroMod, https://docs.cneuromod.ca (the repositories at https://github.com/courtois-neuromod); the documentation states CC0 for the public participants, and each repository README says "Redistribution of data outside of the Courtois NeuroMod data bank is prohibited": package locally, do not share the output. THINGS: St-Laurent et al. 2026, Scientific Data 13:141. The images are not included.
 - Access: public, no account: masks, atlas, event files and GLMsingle outputs of sub-01, 02, 03 and 06.
-- Needs: DataLad and git-annex 10.20230126 or later; h5py, nibabel, nilearn; per participant 11.32 GB to download (the trial-response file holds every session, also for a one-session part) and about 12 GB of disk; measured for sub-01 on a cloud machine: 403 s, mostly the download (24 MB/s); a rebuild from the kept download: 3 s per session.
+- Needs: DataLad and git-annex 10.20230126 or later (tested: 10.20261026 and 10.20261113; from 10.20261113 git-annex asks to confirm the CONP store, which the command does); h5py, nibabel, nilearn; per participant 11.32 GB to download (the trial-response file holds every session, also for a one-session part) and about 12 GB of disk; measured for sub-01 on a cloud machine: 403 s, mostly the download (24 MB/s); a rebuild from the kept download: 3 s per session.
 - Command: `python -m brainscore.data package cneuromod-things`. Source folder: none: the script clones the repositories with DataLad (https, no recursion) and downloads only the files it needs into `$BRAINSCORE_DATA_HOME/sources/cneuromod`, kept so that a stopped run resumes. A folder of earlier clones (`things/`, `things.glmsingle/`, `anat.atlases/`) given as the source is read where it is. Output (or `--output <new folder>`): `~/brainscore-data/packaged/cneuromod-things`. One part only: add `--part <part>` (a part as Writes states).
 - Writes: `atlas/` (a copy of the group cneuromod2026 atlas and its labels, with `parcels.csv`, the parcels present); per participant `masks/` (copies of the region masks); per session `ses-NN/`: `trials.nc` (GLMsingle trial responses, region voxels from the masks), `events.csv` (the event files, each trial with its stimulus identifier), `stimuli.csv` (identifiers only); and `glmsingle/` (the released noise-ceiling map). A part: `sub-XX` (one participant) or `sub-XX/ses-NN` (one session); sub-04 is restricted and never packaged.
 - Check: the sha1 and exact content digest of 47 files in `data_packaging/expected.json`; each other file: its counts or byte size in `build.json`
