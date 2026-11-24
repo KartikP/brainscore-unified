@@ -337,7 +337,9 @@ class CogGymRunner:
     A subject runs the protocol when it takes in at least one of the inputs
     the selected trials send (``instruction``, ``text``, ``vision:image``,
     ``vision:video``: ``required_input_channels``) and answers on
-    ``behavior:text``. An input it cannot take is dropped (a partial match). A
+    ``behavior:text``. An input it cannot take is dropped (a partial match),
+    except the experiment's clips or pictures (``essential_input_channels``):
+    without them the pair is N/A. A
     ``BrainScoreModel`` with a ``reply`` part does both. The protocol checks no
     compatibility itself: ``score()`` does it for the benchmark, and
     ``check_compatibility(subject, runner)`` says before an ``Experiment``
@@ -431,6 +433,12 @@ class CogGymRunner:
         # one runs with it dropped (Contract Rules 5.2, 5.5, 5.6).
         self.required_input_channels = frozenset(
             {'instruction'} | {_PART_CHANNELS[kind] for kind in shown})
+        # The experiment's stimulus, its clips (else its pictures), is essential: a subject
+        # that cannot take it never sees the stimulus, so the pair is N/A (Contract Rule
+        # 5.1). Still instruction screens of a video experiment stay optional.
+        stimulus = next((kind for kind in ('video', 'image') if kind in shown), None)
+        self.essential_input_channels = (None if stimulus is None
+                                         else frozenset({_PART_CHANNELS[stimulus]}))
         self.requested_output_channels = frozenset({'behavior:text'})
 
     @property

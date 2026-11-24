@@ -287,6 +287,27 @@ def build_messages(trial, experiment):
     assert subject.requests == []
 
 
+def test_the_plain_runner_names_the_same_essential_input(reference):
+    """The plain runner and the benchmark read one source: a subject without the clips
+    is not compatible with either."""
+    from brainscore_core.compatibility import check_compatibility
+    root, stand_in = reference
+    (root / 'checkout/evaluation/public_manifest.json').write_text(json.dumps({
+        'experiments': [{'path': 'Fu2025Hierarchical/exp1'}],
+    }))
+    content = [{'type': 'text', 'text': 'instructions'}, image_part(), {'type': 'video', 'path': '/clip.mp4'}]
+    stand_in.cli(f'''
+def build_messages(trial, experiment):
+    return 'system', [{{'role': 'user', 'content': {content!r}}}]
+''')
+    runner = coggym.CogGymRunner(root, model='fixture', experiment='Fu2025Hierarchical/exp1',
+                                 modalities=('text', 'image', 'video'))
+    subject = _ParticipateOnlySubject()
+    subject.in_channels = frozenset({'instruction', 'text', 'vision:image'})
+    with pytest.raises(CompatibilityError):
+        check_compatibility(subject, runner)
+
+
 class _ParticipateOnlySubject(Subject):
     """A contract subject: declarations, participate and reset; no process()."""
 

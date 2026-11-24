@@ -128,11 +128,7 @@ class CogGymBenchmark(BenchmarkBase):
         # The folder the pre-flight found or made: the scoring run uses the same one.
         self._configuration['folder'] = preflight.folder
         self.required_input_channels = preflight.required_input_channels
-        # A subject that cannot take the experiment's pictures or clips never sees the
-        # stimulus: the pair is N/A (Contract Rule 5.1). Still instruction screens of a
-        # video experiment stay optional.
-        if self.modality != 'text':
-            self.essential_input_channels = frozenset({f'vision:{self.modality}'})
+        self.essential_input_channels = preflight.essential_input_channels
         identifier = f'CogGym.{experiment.replace("/", ".")}'
         self._reference_profile = (repetitions, temperature, max_tokens) == (5, 1.0, 512)
         if not self._reference_profile:
