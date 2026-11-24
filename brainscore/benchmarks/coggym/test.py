@@ -136,7 +136,9 @@ def analyze(*args, **kwargs):
 
 def test_public_experiments_are_registered_lazily():
     # Representative registrations: a text slider experiment and a video choice experiment.
-    assert {'CogGym.Hu2023Fine.exp1', 'CogGym.Fu2025Hierarchical.exp2'} <= set(brainscore.benchmark_registry)
+    assert {'CogGym.Hu2023Fine.exp1', 'CogGym.Fu2025Hierarchical.exp1'} <= set(brainscore.benchmark_registry)
+    # In the manifest, but not registered: CogGym's scorer matches none of its trials.
+    assert 'CogGym.Fu2025Hierarchical.exp2' not in brainscore.benchmark_registry
     assert EXPERIMENTS['Hu2023Fine/exp1'] == 'text'
     assert EXPERIMENTS['Fu2025Hierarchical/exp2'] == 'video'
 

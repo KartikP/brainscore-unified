@@ -51,7 +51,7 @@ benchmark_registry['CogGym.JaraEttinger2021Quantitative.exp3'] = partial(_load, 
 benchmark_registry['CogGym.Chandra2024Cooperative.exp1'] = partial(_load, 'Chandra2024Cooperative/exp1')
 benchmark_registry['CogGym.Bass2022Partial.exp1'] = partial(_load, 'Bass2022Partial/exp1')
 benchmark_registry['CogGym.Fu2025Hierarchical.exp1'] = partial(_load, 'Fu2025Hierarchical/exp1')
-benchmark_registry['CogGym.Fu2025Hierarchical.exp2'] = partial(_load, 'Fu2025Hierarchical/exp2')
+# Fu2025Hierarchical/exp2 is not registered: CogGym's scorer matches 0 of its 99 trial ids (they end in _exN).
 benchmark_registry['CogGym.sosa2021Moral.exp1'] = partial(_load, 'sosa2021Moral/exp1')
 benchmark_registry['CogGym.sosa2021Moral.exp2'] = partial(_load, 'sosa2021Moral/exp2')
 benchmark_registry['CogGym.sosa2021Moral.exp3'] = partial(_load, 'sosa2021Moral/exp3')
