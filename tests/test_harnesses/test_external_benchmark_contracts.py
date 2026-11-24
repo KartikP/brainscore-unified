@@ -77,40 +77,33 @@ def test_subject_taking_every_input_has_a_full_match(
 
 
 @pytest.mark.parametrize('experiment,content,in_channels,media', _MEDIA)
-def test_text_only_subject_runs_with_the_media_dropped_and_is_stamped(
+def test_text_only_subject_is_na_without_the_pictures_or_clips(
     reference, scored_reference, tmp_path, experiment, content, in_channels, media,
 ):
-    """A subject without the media form gets no event on it and a prompt without it."""
+    """A subject without the experiment's pictures or clips never sees the stimulus:
+    the pair is N/A before any request (Contract Rule 5.1)."""
     root, clip, benchmark = _media_benchmark(reference, tmp_path, experiment, content)
     prompts = []
     text_subject = make_subject(lambda prompt: prompts.append(prompt) or '50')
-    match = check_channel_compatibility(text_subject, benchmark)
-    assert match.kind == 'partial' and match.dropped_inputs == media
-    # score() checks the pair once and stamps the match on the score.
+    with pytest.raises(CompatibilityError):
+        check_channel_compatibility(text_subject, benchmark)
     score = brainscore.score(text_subject, benchmark, check_mem=False)
-    assert len(prompts) == 15
-    for prompt in prompts:
-        assert [kind for kind, _ in prompt.parts] == ['text', 'text']
-        assert prompt.names == ('instruction', 'text')
-    assert score.attrs['compatibility']['match'] == 'partial'
-    assert score.attrs['compatibility']['dropped_inputs'] == sorted(media)
-    assert 'instruction' in score.attrs['compatibility']['consumed_inputs']
+    assert score.attrs['status'] == 'N/A'
+    assert set(score.attrs['missing_channels']) == benchmark.essential_input_channels <= media
+    assert prompts == []
 
 
-def test_text_only_subject_receives_no_picture_event(reference, scored_reference, tmp_path):
+def test_a_protocol_run_drops_the_picture_for_a_text_only_subject(reference, scored_reference,
+                                                                  tmp_path):
+    """``Experiment`` checks no compatibility: the protocol drops what the subject
+    does not take."""
     root, clip, benchmark = _media_benchmark(
         reference, tmp_path, 'Aboody2025Inferring/exp1', ['image'])
-    events = []
-    score = brainscore.score(_Recorder(events), benchmark, check_mem=False)
-    assert events and 'vision:image' not in events
-    assert {'instruction', 'text'} >= set(events)
-    assert score.attrs['compatibility']['match'] == 'partial'
-    assert score.attrs['compatibility']['dropped_inputs'] == ['vision:image']
-    # A protocol run through Experiment drops the picture the same way.
     events = []
     Experiment(subject=_Recorder(events), output_dir=tmp_path / 'protocol',
                protocol=benchmark.protocol(model='recorder', reset=lambda repetition: None)).run()
     assert events and 'vision:image' not in events
+    assert {'instruction', 'text'} >= set(events)
 
 
 class _Recorder(Subject):
