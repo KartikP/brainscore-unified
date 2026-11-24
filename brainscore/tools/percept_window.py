@@ -15,8 +15,8 @@ truncated at ``max_length``. It is strictly more faithful than the presented
 stimulus, and it costs **zero extra forward passes**: the hook tees the tensor
 that the model's own forward already computed.
 
-    from brainscore.percept_window import PerceptWindow
-    with PerceptWindow(network, denorm=processor) as eye:   # the torch module a subject runs
+    from brainscore.tools import load_tool
+    with load_tool('record-percept', target=network, denorm=processor) as eye:   # the network a subject runs
         benchmark(subject)
     eye.save('/tmp/percept')      # reconstructed images / decoded text / waveforms
 
@@ -35,12 +35,13 @@ the recorder and the pure reconstruction functions need only numpy + torch.
 """
 import json
 import os
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
+
+from brainscore.activation_window import resolve_targets
 
 
 # ── Pure reconstruction functions (no model, no hooks — unit-testable) ──
@@ -174,38 +175,6 @@ def _first_tensor(args, kwargs):
         if isinstance(v, torch.Tensor):
             return v
     return None
-
-
-def resolve_targets(target, _containers=()) -> List[Tuple[str, torch.nn.Module]]:
-    """Resolve a network target into ``[(name, module), ...]``.
-
-    Accepts a torch Module, a list of Modules or a ``{name: module}`` mapping.
-    Pass the network itself: the tool reads nothing inside a subject or an
-    extractor. De-duplicates by module identity; a list/mapping containing
-    itself raises.
-    """
-    found: List[Tuple[str, torch.nn.Module]] = []
-    seen: set = set()
-
-    def add(name, mod):
-        if id(mod) not in seen:
-            seen.add(id(mod))
-            found.append((name, mod))
-
-    if isinstance(target, torch.nn.Module):
-        add(type(target).__name__, target)
-        return found
-    if not isinstance(target, (list, tuple, Mapping)):
-        raise TypeError(f'Pass a torch.nn.Module, or a list or mapping of them; got '
-                        f'{type(target).__name__}. For a subject, pass the network it runs.')
-    if id(target) in _containers:
-        raise ValueError("PerceptWindow target list/mapping contains itself")
-    _containers += (id(target),)
-    items = enumerate(target) if isinstance(target, (list, tuple)) else target.items()
-    for key, t in items:
-        for nm, m in resolve_targets(t, _containers):
-            add(f"{key}:{nm}", m)
-    return found
 
 
 # ── PerceptWindow ───────────────────────────────────────────────────────

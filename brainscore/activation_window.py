@@ -16,13 +16,45 @@ module's output.
 """
 import json
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
 
-from .percept_window import resolve_targets
+
+
+def resolve_targets(target, _containers=()) -> List[Tuple[str, torch.nn.Module]]:
+    """Resolve a network target into ``[(name, module), ...]``.
+
+    Accepts a torch Module, a list of Modules or a ``{name: module}`` mapping.
+    Pass the network itself: the tool reads nothing inside a subject or an
+    extractor. De-duplicates by module identity; a list/mapping containing
+    itself raises.
+    """
+    found: List[Tuple[str, torch.nn.Module]] = []
+    seen: set = set()
+
+    def add(name, mod):
+        if id(mod) not in seen:
+            seen.add(id(mod))
+            found.append((name, mod))
+
+    if isinstance(target, torch.nn.Module):
+        add(type(target).__name__, target)
+        return found
+    if not isinstance(target, (list, tuple, Mapping)):
+        raise TypeError(f'Pass a torch.nn.Module, or a list or mapping of them; got '
+                        f'{type(target).__name__}. For a subject, pass the network it runs.')
+    if id(target) in _containers:
+        raise ValueError("The target list or mapping contains itself")
+    _containers += (id(target),)
+    items = enumerate(target) if isinstance(target, (list, tuple)) else target.items()
+    for key, t in items:
+        for nm, m in resolve_targets(t, _containers):
+            add(f"{key}:{nm}", m)
+    return found
 
 
 def first_tensor_out(out):

@@ -13,7 +13,7 @@ import pytest
 import torch
 from torch import nn
 
-from brainscore.percept_window import (
+from brainscore.tools.percept_window import (
     PerceptWindow,
     infer_modality,
     denormalize_image,
@@ -403,3 +403,13 @@ def test_cyclic_mapping_target_raises_clearly():
         PerceptWindow(cyclic)
     shared = Tower(2.)                                  # reuse is not a cycle
     assert len(PerceptWindow({'a': [shared], 'b': [shared]}).targets) == 1
+
+
+def test_the_tool_table_gives_a_capture_window_that_hooks_only_inside_its_block():
+    from brainscore.tools import load_tool
+    network = Doubler()
+    with load_tool('record-percept', target=network, denorm=([0.5] * 3, [0.25] * 3)) as window:
+        network(torch.zeros(1, 3, 4, 4))
+    network(torch.zeros(1, 3, 4, 4))                 # after the block: no capture
+    assert isinstance(window, PerceptWindow)
+    assert window.summary()['by_modality'] == {'vision': 1}

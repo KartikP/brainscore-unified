@@ -18,6 +18,7 @@ _TOOLS: dict[str, Any] = {      # a path tuple here; a callable for a registered
     'leace': ('brainscore.tools.leace', 'LEACE', True),
     'patch-activity': ('brainscore.experiments', 'PatchActivity', False),
     'record-activity': ('brainscore.experiments', 'RecordActivity', False),
+    'record-percept': ('brainscore.tools.percept_window', 'PerceptWindow', False),
     'record-io': ('brainscore.experiments', 'RecordInputsOutputs', False),
     'record-reasoning': ('brainscore.experiments', 'RecordReasoning', False),
     'scale-activity': ('brainscore.experiments', 'ScaleActivity', False),

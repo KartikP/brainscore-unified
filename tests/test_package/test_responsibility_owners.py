@@ -356,7 +356,7 @@ _DOMAIN_REGISTRIES = ('Contract Rule 11.2: the registries of vision and language
 # (responsibility, site): the rule sentence that states the exception
 STATED_EXCEPTIONS = {
     ('R11 hooks on a network', 'unified:activation_window.py'): _OBSERVER,
-    ('R11 hooks on a network', 'unified:percept_window.py'): _OBSERVER,
+    ('R11 hooks on a network', 'unified:tools/percept_window.py'): _OBSERVER,
     ('R20 registry assignment', 'vision:__init__.py'): _DOMAIN_REGISTRIES,
     ('R20 registry assignment', 'language:__init__.py'): _DOMAIN_REGISTRIES,
     ('R20 registry assignment', 'unified:tools/_registry.py'):
