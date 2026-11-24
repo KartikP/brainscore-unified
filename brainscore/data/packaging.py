@@ -55,7 +55,8 @@ class DataBuilder:
     :param build: the plugin's ``data_packaging`` script as a command line
         (``python -m <module> <arguments>``);
         ``{source}``, ``{output}`` and ``{work}`` (a private folder for downloads and
-        intermediate files, deleted after the build) are filled in. A script reads the
+        intermediate files, deleted after the build) are filled in, and ``{part}`` (empty, or the
+        part ``package_data`` was given) in a command that can package a part. A script reads the
         source and never changes or deletes a file in it. Empty when there is no builder.
     :param sha1: file name to the sha1 the plugin registers for it
     :param cannot: when no builder exists yet: what is known and what a maintainer needs
@@ -89,6 +90,8 @@ class DataBuilder:
                 command += (f' with the source in `~/brainscore-data/sources/{name}` '
                             f'(or `--source <folder>`): {self.layout}')
             command = command.rstrip('.') + f'. Output (or `--output <new folder>`): {self._place_text(name)}.'
+            if '{part}' in self.build:
+                command += ' One part only: add `--part <part>` (a part as Writes states).'
         elif self.cannot:
             command = f'none yet. {self.cannot}'
         else:
@@ -160,10 +163,11 @@ def _lacks(source: Path, patterns: tuple) -> str:
     return ''
 
 
-def _run(command: str, source: Path, output: Path, work: Path) -> None:
+def _run(command: str, source: Path, output: Path, work: Path, part: str = '') -> None:
     """Run a ``python -m`` command line in this process, as the plugin's script."""
     words = shlex.split(command.format(**{key: shlex.quote(str(value)) for key, value in
-                                          (('source', source), ('output', output), ('work', work))}))
+                                          (('source', source), ('output', output), ('work', work),
+                                           ('part', part))}))
     if words[:2] != ['python', '-m'] or len(words) < 3:
         raise ValueError(f'a build command is "python -m <module> ...", not {command!r}')
     argv = sys.argv
@@ -378,8 +382,11 @@ def _check(builder: DataBuilder, recorded: dict, relative: str, entry: dict, con
 
 
 def package_data(name: str, source: str | Path | None = None,
-                 output: str | Path | None = None) -> Path | None:
+                 output: str | Path | None = None, part: str | None = None) -> Path | None:
     """Package the files of data plugin ``name`` from its original source.
+
+    ``part`` packages a part of a large dataset (for example one participant or one session),
+    when the plugin's command can (its ``build`` has ``{part}``); its writes say what a part is.
 
     Returns the output folder, or ``None`` when there is nothing to package.
     Raises ``LocalDataMissing`` with what to get and where to put it when the source
@@ -394,6 +401,8 @@ def package_data(name: str, source: str | Path | None = None,
     if not builder.build:
         print(f'{name}: nothing to package. {builder.writes}')
         return None
+    if part and '{part}' not in builder.build:
+        raise ValueError(f'{name} is packaged whole: its command takes no part. Run it without a part.')
     native = Path(source).expanduser() if source is not None else source_folder(name)
     if not builder.fetches:
         if not native.exists():
@@ -419,7 +428,7 @@ def package_data(name: str, source: str | Path | None = None,
     placed, keep = {}, False
     try:
         try:
-            _run(builder.build, native, staging, work)
+            _run(builder.build, native, staging, work, part or '')
         except FileNotFoundError as missing:
             if builder.fetches:
                 raise

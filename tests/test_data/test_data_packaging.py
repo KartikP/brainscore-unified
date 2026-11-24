@@ -171,6 +171,12 @@ def test_a_missing_source_says_what_to_get_and_where_to_put_it(tmp_path, offline
         assert not (tmp_path / 'out' / name).exists()
 
 
+def test_a_part_is_refused_by_a_plugin_packaged_whole(tmp_path, monkeypatch):
+    monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path))
+    with pytest.raises(ValueError, match='packaged whole'):
+        package_data('sun2025', part='sub-01')
+
+
 def test_a_plugin_with_no_builder_says_so(tmp_path):
     for name, factory in data_builder_registry.items():
         builder = factory()
