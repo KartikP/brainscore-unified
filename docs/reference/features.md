@@ -46,7 +46,7 @@ Features are grouped by how much you need to know to use them, and by how settle
 | Game and multi-agent harnesses: Gymnasium, grid games, `multi_agent_rollout` (one session per subject for the whole conversation; answers on `behavior:text`, heard on `text`) | [Experiment 8](../../notebooks/experiments/08_learning_in_a_closed_loop.ipynb), [Experiment 13](../../notebooks/experiments/13_passing_outputs_between_subjects.ipynb) |
 | Attribution and activation patching | `brainscore.experiments.attribution` |
 | Reasoning records (`RecordReasoning`) | Records only reasoning text a subject exposes in the extra data of its answer events (`meta['reasoning']`). A `reply` part puts it there when it returns a `StreamEvent` with `reasoning` in its meta; an `answer` part cannot. |
-| `PerceptWindow`, `ActivationWindow` (hooks on a torch network; `TorchInstrumentation` uses `ActivationWindow`) | Prefer `RecordActivity` in experiments. Pass the network, not the subject. |
+| `ActivationWindow` (hooks on a torch network; `TorchInstrumentation` uses it) and the input capture window `load_tool('record-percept', target=network)` | Prefer `RecordActivity` in experiments. Pass the network, not the subject. [Experiments](../guides/experiments.md#see-what-the-network-took-in) |
 | `Witness` (a panel per response of a subject, from its sessions) | `brainscore.witness`; inside its `with` block it replaces the subject's `participate` with one that watches each session with `observed`, and restores it at the end. |
 | Brain-surface visualization | `brainscore.visualization` |
 | Human participants through the same session interface | Prototype, `brainscore.harnesses.human`. |

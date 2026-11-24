@@ -612,6 +612,13 @@ SMALL_CONFIGS = {
                          num_attention_heads=2, num_key_value_heads=1),
         vision_config=dict(hidden_size=32, intermediate_size=32, num_hidden_layers=2, num_attention_heads=2,
                            image_size=[28, 28], patch_size=[14, 14])),
+    'JanusForConditionalGeneration': lambda t: t.JanusConfig(
+        text_config=dict(model_type='llama', vocab_size=300, hidden_size=32, intermediate_size=32, num_hidden_layers=3,
+                         num_attention_heads=2, num_key_value_heads=1),
+        vision_config=dict(hidden_size=32, num_hidden_layers=2, num_attention_heads=2, image_size=32, patch_size=16,
+                           projection_dim=32),
+        vq_config=dict(embed_dim=8, num_embeddings=16, base_channels=32, channel_multiplier=[1, 1], num_res_blocks=1,
+                       latent_channels=8, projection_dim=32, image_token_embed_dim=32, num_patches=2)),
 }
 CLASSES = sorted({c['model_class'] for c in study.MODEL_CONFIGS.values()})
 
@@ -682,6 +689,10 @@ def _small(model_class, config):
         if hasattr(text, 'head_dim'):
             text.head_dim = 32
         vision.num_hidden_layers, vision.hidden_size, vision.intermediate_size, vision.num_attention_heads = 4, 32, 32, 2
+    elif model_class == 'JanusForConditionalGeneration':     # SigLIP-like vision part with an mlp_ratio
+        text.hidden_size = 64
+        vision.num_hidden_layers, vision.hidden_size, vision.num_attention_heads = 4, 32, 2
+        vision.projection_dim = config.vq_config.projection_dim = 64     # the two aligners give the text width
     else:
         pytest.fail(f'{model_class} has no reduction for its qualification: add one to _small')
     return config

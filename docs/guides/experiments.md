@@ -221,6 +221,28 @@ outside experiments, is the exception: inside its `with` block it replaces the s
 
 Targets are layer paths or `Selection` objects, the same ones used in [Perturb and select units](perturb_and_select_units.md).
 
+## See what the network took in
+
+The tool `record-percept` captures the tensor that enters a network, after resizing,
+cropping, normalizing or tokenizing, and turns it back into a picture, a text or a sound.
+Like `ActivationWindow`, it is a context manager on the network (not on the subject): its
+hooks are on only inside the `with` block, and it adds no forward pass.
+
+```python
+import torch
+from brainscore.tools import load_tool
+
+network = torch.nn.Conv2d(3, 4, kernel_size=3)
+with load_tool('record-percept', target=network, denorm=([0.5] * 3, [0.25] * 3)) as window:
+    network(torch.zeros(1, 3, 8, 8))          # each forward pass inside the block is captured
+print(window.summary()['by_modality'])
+# {'vision': 1}
+window.save('percept')                        # PNG files and manifest.json
+```
+
+`denorm` takes `(mean, std)` or the image processor that normalized the input; give
+`tokenizer=` to `save` to write the text a language model read.
+
 ## Reopen a saved run
 
 A run kept with `output_dir` or `result.save(path)` can be read again later, in a new session:

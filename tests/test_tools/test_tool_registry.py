@@ -3,6 +3,7 @@ import subprocess
 import sys
 
 import pytest
+import torch
 
 from brainscore.tools import list_tools, load_tool
 from tests.heavy_import import heavy_import_message
@@ -15,6 +16,7 @@ MINIMAL = {
     'patch-activity': {'targets': ['population'], 'reference': {}},
     'record-activity': {'targets': ['population']},
     'record-io': {},
+    'record-percept': {'target': torch.nn.Identity()},
     'record-reasoning': {},
     'scale-activity': {'targets': ['population'], 'factor': 0.5},
 }

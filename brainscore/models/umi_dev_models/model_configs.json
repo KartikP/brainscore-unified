@@ -203,5 +203,18 @@
     "video": false,
     "device_map": null,
     "packages": []
+  },
+  "janus-pro-7b_UMI-dev": {
+    "hf_id": "deepseek-community/Janus-Pro-7B",
+    "revision": "8f23139ed8d37346501091b3690291cb7b16f9fc",
+    "model_class": "JanusForConditionalGeneration",
+    "vision": ["model.vision_model", "encoder.layers"],
+    "language": ["model.language_model", "layers"],
+    "dtype": "bfloat16",
+    "download_gb": 14.8,
+    "image_processor_kwargs": {},
+    "video": false,
+    "device_map": null,
+    "packages": []
   }
 }

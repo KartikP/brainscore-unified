@@ -91,8 +91,10 @@ class InducedDyslexia(BenchmarkBase):
         # record and the reading answers back. A subject without any of these
         # outputs, or without the lesion input that the lesion record answers, is
         # N/A before any compute.
-        self.required_input_channels = frozenset(
-            {channel, 'instruction', 'lesion'})
+        # The words are the stimulus: a subject that cannot take them never sees
+        # them, so the pair is N/A (Contract Rule 5.1). The lesion is not a stimulus.
+        self.essential_input_channels = frozenset({channel})
+        self.required_input_channels = self.essential_input_channels | {'instruction', 'lesion'}
         self.requested_output_channels = frozenset(
             {'behavior:choice', f'neural:{localizer_region}', 'perturbation'})
 

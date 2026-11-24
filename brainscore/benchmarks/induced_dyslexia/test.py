@@ -221,6 +221,15 @@ class TestPreflight:
         match = check_compatibility(_Subject(), self._bench())
         assert match.consumed_inputs == {'text', 'lesion'}
 
+    def test_a_subject_without_the_words_is_na(self):
+        # The lesion input is not the stimulus: a subject that cannot take the word
+        # pictures never sees the words, so the pair is N/A.
+        bench = InducedDyslexia(identifier='Yeatman2021-induced_dyslexia-image',
+                                channels=('vision:image',), reading_benchmark=_Reader({}),
+                                localizer_stimuli=None)
+        with pytest.raises(CompatibilityError, match='vision:image'):
+            check_compatibility(_Subject(), bench)
+
     @pytest.mark.parametrize('missing', ['perturbation', 'neural:VWFA'])
     def test_subject_without_output_is_na_before_compute(self, missing):
         subject = _Subject()

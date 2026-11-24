@@ -128,6 +128,7 @@ class CogGymBenchmark(BenchmarkBase):
         # The folder the pre-flight found or made: the scoring run uses the same one.
         self._configuration['folder'] = preflight.folder
         self.required_input_channels = preflight.required_input_channels
+        self.essential_input_channels = preflight.essential_input_channels
         identifier = f'CogGym.{experiment.replace("/", ".")}'
         self._reference_profile = (repetitions, temperature, max_tokens) == (5, 1.0, 512)
         if not self._reference_profile:

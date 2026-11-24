@@ -487,8 +487,9 @@ def score(model_identifier, benchmark_identifier,
             result.attrs['reason'] += statement_hint(subject, result.attrs['missing_channels'])
         result.attrs.update(model_identifier=model_id, benchmark_identifier=benchmark_id)
         return result
+    memory_check = 'not run: check_mem=False'     # recorded on the score: no silent fallback
     if check_mem:
-        check_memory(subject, benchmark)
+        memory_check = check_memory(subject, benchmark)
 
     # A legacy domain benchmark (marked by its domain loader) receives the
     # permanent facade, which runs its calls as sessions through participate.
@@ -527,6 +528,7 @@ def score(model_identifier, benchmark_identifier,
         benchmark_identifier=benchmark_id,
     )
     result.attrs['compatibility'] = compatibility.as_attrs()
+    result.attrs['memory_check'] = memory_check
     record_replaced_answers(result, received)
     return result
 

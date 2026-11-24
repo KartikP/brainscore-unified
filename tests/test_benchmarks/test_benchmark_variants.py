@@ -33,7 +33,6 @@ REGISTERED = [
     'CogGym.Bass2022Partial.exp1',
     'CogGym.Chandra2024Cooperative.exp1',
     'CogGym.Fu2025Hierarchical.exp1',
-    'CogGym.Fu2025Hierarchical.exp2',
     'CogGym.Hu2023Fine.exp1',
     'CogGym.JaraEttinger2021Quantitative.exp1',
     'CogGym.JaraEttinger2021Quantitative.exp2',

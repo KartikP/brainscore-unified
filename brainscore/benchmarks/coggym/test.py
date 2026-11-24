@@ -136,7 +136,9 @@ def analyze(*args, **kwargs):
 
 def test_public_experiments_are_registered_lazily():
     # Representative registrations: a text slider experiment and a video choice experiment.
-    assert {'CogGym.Hu2023Fine.exp1', 'CogGym.Fu2025Hierarchical.exp2'} <= set(brainscore.benchmark_registry)
+    assert {'CogGym.Hu2023Fine.exp1', 'CogGym.Fu2025Hierarchical.exp1'} <= set(brainscore.benchmark_registry)
+    # In the manifest, but not registered: CogGym's scorer matches none of its trials.
+    assert 'CogGym.Fu2025Hierarchical.exp2' not in brainscore.benchmark_registry
     assert EXPERIMENTS['Hu2023Fine/exp1'] == 'text'
     assert EXPERIMENTS['Fu2025Hierarchical/exp2'] == 'video'
 
@@ -262,6 +264,48 @@ def build_messages(trial, experiment):
     assert set(protocol.metadata['modalities']) == {'text', 'image', 'video'}
     # The still images and the clips are both required inputs.
     assert benchmark.required_input_channels == {'instruction', 'text', 'vision:image', 'vision:video'}
+
+
+def test_a_video_experiment_is_na_for_a_subject_that_takes_no_video(reference):
+    root, stand_in = reference
+    (root / 'checkout/evaluation/public_manifest.json').write_text(json.dumps({
+        'experiments': [{'path': 'Fu2025Hierarchical/exp1'}],
+    }))
+    content = [{'type': 'text', 'text': 'instructions'}, image_part(), {'type': 'video', 'path': '/clip.mp4'}]
+    stand_in.cli(f'''
+def build_messages(trial, experiment):
+    return 'system', [{{'role': 'user', 'content': {content!r}}}]
+''')
+    benchmark = brainscore.load_benchmark('CogGym.Fu2025Hierarchical.exp1', folder=root,
+        reset=lambda repetition: None)
+    subject = _ParticipateOnlySubject()
+    subject.in_channels = frozenset({'instruction', 'text', 'vision:image'})
+    # Without the clips the subject never sees the stimulus: N/A before any request.
+    result = brainscore.score(subject, benchmark, check_mem=False)
+    assert result.attrs['status'] == 'N/A'
+    assert result.attrs['missing_channels'] == ['vision:video']
+    assert subject.requests == []
+
+
+def test_the_plain_runner_names_the_same_essential_input(reference):
+    """The plain runner and the benchmark read one source: a subject without the clips
+    is not compatible with either."""
+    from brainscore_core.compatibility import check_compatibility
+    root, stand_in = reference
+    (root / 'checkout/evaluation/public_manifest.json').write_text(json.dumps({
+        'experiments': [{'path': 'Fu2025Hierarchical/exp1'}],
+    }))
+    content = [{'type': 'text', 'text': 'instructions'}, image_part(), {'type': 'video', 'path': '/clip.mp4'}]
+    stand_in.cli(f'''
+def build_messages(trial, experiment):
+    return 'system', [{{'role': 'user', 'content': {content!r}}}]
+''')
+    runner = coggym.CogGymRunner(root, model='fixture', experiment='Fu2025Hierarchical/exp1',
+                                 modalities=('text', 'image', 'video'))
+    subject = _ParticipateOnlySubject()
+    subject.in_channels = frozenset({'instruction', 'text', 'vision:image'})
+    with pytest.raises(CompatibilityError):
+        check_compatibility(subject, runner)
 
 
 class _ParticipateOnlySubject(Subject):

@@ -13,7 +13,6 @@ The reader is a person who registers a model.
 | Record a layer from clips, with a vision-language processor | `vlm_video_wrapper.py`: `VLMVideoWrapper` | An extractor that hands the whole clip to the processor and gives one time bin per temporal patch. |
 | Record a layer from sound | `audio_wrapper.py`: `AudioWrapper` | An extractor for an audio backbone; `mean` or `sequence` aggregation. |
 | Record with a plain PyTorch vision module | `PytorchWrapper`, in `brainscore_vision.model_helpers.activations.pytorch` | An extractor for still images; it lives in the vision package, not here. |
-| Record one pass over a picture, a clip and a sentence together (the fused form) | `fused.py`: `fused_chat_extractor` | One forward pass of a chat model over image, video and text; one step per kind plus `final`. |
 | Let a chat model write an answer and give likelihoods | `replies.py`: `chat_parts` | A `reply` part and a `likelihood` part for a Hugging Face chat model. |
 | Build a text-only causal language model in one call | `causal_lm.py`: `build_causal_lm_subject` | A `BrainScoreModel` that records, takes interventions, replies and scores options. |
 | Use a model behind a web service | `api_behavioral.py`: `api_answer`, `build_api_reply`, `api_policy` | An `answer` part, a `reply` part or a `policy` that calls a provider API, with a response cache. |
@@ -32,7 +31,6 @@ The reader is a person who registers a model.
 - `video_wrapper.py`: the extractor for video models.
 - `vlm_video_wrapper.py`: the extractor for clips in a vision-language model.
 - `audio_wrapper.py`: the extractor for audio models.
-- `fused.py`: the recording of one pass over image, video and text together.
 - `replies.py`: the reply and likelihood parts of a chat model, and the prompt-to-input step they use.
 - `causal_lm.py`: the one-call registration of a causal language model.
 - `api_behavioral.py`: the parts that use a closed-weight model behind a web service.
