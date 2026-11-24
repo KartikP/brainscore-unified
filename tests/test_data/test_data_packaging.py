@@ -840,11 +840,18 @@ def _sun2025_source(tmp_path, monkeypatch, offline):
     return source
 
 
+def _cneuromod_source(tmp_path, monkeypatch, offline):
+    from tests.cneuromod_stand_in import REAL_NIBABEL, make_source
+    monkeypatch.setitem(sys.modules, 'nibabel', REAL_NIBABEL)     # the stand-in nibabel reads GIfTI only
+    return make_source(tmp_path / 'cneuromod')
+
+
 SOURCES = {'ewok': _ewok_source, 'lebel2023': _lebel_source, 'algonauts2025': _algonauts_film_source,
            'lahner2024-frames': _lahner_clips_source,
            'lahner2024-sound': _lahner_clips_source, 'lahner2024-timeresolved': _lahner_series_source,
            'lahner2024-motion': _lahner_motion_source, 'rajalingham2018-2afc': _rajalingham_source,
-           'sun2025': _sun2025_source}
+           'sun2025': _sun2025_source, 'cneuromod-things': _cneuromod_source,
+           'cneuromod-things-timeseries': _cneuromod_source, 'cneuromod-movie10-timeseries': _cneuromod_source}
 UPLOAD_FLAGS = {'lebel2023': '--upload', 'lahner2024-timeresolved': '--upload-to-s3',
                 'lahner2024-motion': '--upload-to-s3'}
 
