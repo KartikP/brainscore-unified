@@ -126,3 +126,22 @@ def test_two_builds_give_the_same_bytes(source, tmp_path):
         sums.append({str(p.relative_to(out)): hashlib.sha1(p.read_bytes()).hexdigest()
                      for p in out.rglob('*') if p.is_file() and p.name != 'build.json'})
     assert sums[0] == sums[1] and any(name.endswith('.nc') for name in sums[0])
+
+
+def test_an_assembly_has_the_same_bytes_under_any_hash_seed(tmp_path):
+    """Two processes with other string hash seeds (as two separate builds are) write the same file."""
+    import hashlib
+    import os
+    import subprocess
+    code = ('import sys, numpy as np, pandas as pd; from pathlib import Path; '
+            'from brainscore.data.cneuromod.data_packaging import shared; '
+            "p = pd.DataFrame({name: ['a', 'b'] for name in 'abcdefghij'}); "
+            "n = pd.DataFrame({name: [1, 2, 3] for name in 'klmnopqrst'}); "
+            'shared.write_assembly(np.zeros((2, 3)), p, n, Path(sys.argv[1]))')
+    digests = set()
+    for seed in ('1', '2', '3'):
+        path = tmp_path / f'{seed}.nc'
+        subprocess.run([sys.executable, '-W', 'ignore', '-c', code, str(path)], check=True,
+                       env={**os.environ, 'PYTHONHASHSEED': seed}, capture_output=True)
+        digests.add(hashlib.sha1(path.read_bytes()).hexdigest())
+    assert len(digests) == 1

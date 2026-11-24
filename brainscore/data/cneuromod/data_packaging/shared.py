@@ -251,15 +251,17 @@ def write_csv(table: pd.DataFrame, path: Path) -> None:
 def write_assembly(values: np.ndarray, presentation: pd.DataFrame, neuroid: pd.DataFrame, path: Path) -> None:
     """A netCDF data array, dims ``presentation`` x ``neuroid``, one coordinate per column.
 
-    Written as netCDF3 (the scipy engine): the same content gives the same bytes, so a rebuild
-    has the same sha1. A netCDF4 file of the same content differs in a few layout bytes.
+    Written so that the same content gives the same bytes and a rebuild has the same sha1:
+    netCDF3 (the scipy engine; netCDF4 differs in a few layout bytes) and a sorted list of
+    coordinate names.
     """
     import xarray as xr
     coords = {**{f'{name}': ('presentation', _plain(presentation[name])) for name in presentation},
               **{f'{name}': ('neuroid', _plain(neuroid[name])) for name in neuroid}}
     path.parent.mkdir(parents=True, exist_ok=True)
-    xr.DataArray(values.astype(np.float32), dims=('presentation', 'neuroid'), coords=coords,
-                 name='responses').to_netcdf(path, engine='scipy')
+    array = xr.DataArray(values.astype(np.float32), dims=('presentation', 'neuroid'), coords=coords, name='responses')
+    array.encoding['coordinates'] = ' '.join(sorted(coords))    # else a set order, which varies by process
+    array.to_netcdf(path, engine='scipy')
 
 
 def _plain(column: pd.Series) -> np.ndarray:
