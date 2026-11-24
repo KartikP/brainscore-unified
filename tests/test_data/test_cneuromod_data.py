@@ -8,7 +8,7 @@ import pytest
 import xarray as xr
 
 from brainscore.data import package_data
-from brainscore.data.cneuromod.data_packaging import package, shared
+from brainscore.data.cneuromod.data_packaging import package, shared, things
 from tests.cneuromod_stand_in import IMAGE_BYTES, make_source
 
 pytestmark = pytest.mark.unit
@@ -162,11 +162,12 @@ def _repeated_trials(n_images=200, seed=0):
 def test_the_noise_ceiling_follows_the_signal_share_and_ignores_a_shift_and_scale_per_voxel():
     from brainscore.data.cneuromod.validation.fig2a_noise_ceiling import noise_ceiling
     responses, image = _repeated_trials()
-    ceiling, used = noise_ceiling(responses, image, np.ones(len(image), bool))
+    ceiling, used = noise_ceiling(responses, image, things.answered_viewing(image, np.ones(len(image))))
     assert used == 200
     assert ceiling[0] == pytest.approx(100) and ceiling[1] < 5
     assert ceiling[2] == pytest.approx(75, abs=10)          # ncsnr 1: 100 * 1 / (1 + 1/3)
-    moved, _ = noise_ceiling(responses * [2, 3, 4] + [5, -1, 7], image, np.ones(len(image), bool))
+    viewing = things.answered_viewing(image, np.ones(len(image)))
+    moved, _ = noise_ceiling(responses * [2, 3, 4] + [5, -1, 7], image, viewing)
     assert moved == pytest.approx(ceiling)
 
 
@@ -175,7 +176,7 @@ def test_the_noise_ceiling_leaves_out_an_image_with_a_trial_without_response():
     responses, image = _repeated_trials()
     answered = np.ones(len(image), bool)
     answered[0] = False
-    _, used = noise_ceiling(responses, image, answered)
+    _, used = noise_ceiling(responses, image, things.answered_viewing(image, np.where(answered, 1.0, np.nan)))
     assert used == 199
 
 
@@ -188,7 +189,7 @@ def test_the_noise_ceiling_takes_the_answered_trials_of_an_image_shown_more_than
     image = np.insert(image, extra, image[0])
     answered = np.ones(len(image), bool)
     answered[extra] = False
-    ceiling, used = noise_ceiling(responses, image, answered)
+    ceiling, used = noise_ceiling(responses, image, things.answered_viewing(image, np.where(answered, 1.0, np.nan)))
     assert used == 200
     assert ceiling[0] == pytest.approx(100)
 
@@ -244,3 +245,12 @@ def test_a_store_at_another_address_is_not_confirmed(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match='example.org'):
         shared.clone(tmp_path, 'things')
     assert not [call for call in calls if call[:2] == ['git-annex', 'verifyremote']]
+
+
+def test_the_viewing_order_counts_the_answered_trials_of_an_image_in_time_and_not_the_released_label():
+    """The released ``repetition`` can be 4 or 5 (out-of-order sessions); the viewing order is 1, 2, 3 in time,
+    over answered trials only."""
+    from brainscore.data.cneuromod.data_packaging import things
+    image = np.array(['a', 'b', 'a', 'a', 'b', 'a'])
+    response = np.array([1.0, -1.0, np.nan, 2.0, 1.0, -2.0])     # the 2nd trial of 'a' has no response
+    assert things.answered_viewing(image, response).tolist() == [1, 1, 0, 2, 2, 3]

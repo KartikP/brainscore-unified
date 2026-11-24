@@ -21,6 +21,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from brainscore.data.cneuromod.data_packaging import things
+
 REGIONS = ('V1', 'V2', 'V3', 'FFA', 'EBA', 'PPA')
 # The participant's own masks first (pRF, fLoc localizer); sub-06 did no localizer and has only the
 # group parcels of the Kanwisher lab warped to its brain, not chosen by any THINGS measure.
@@ -36,29 +38,20 @@ def region_rows(table: pd.DataFrame, region: str) -> pd.DataFrame:
     return table.iloc[:0]
 
 
-def noise_ceiling(responses: np.ndarray, image: np.ndarray, answered: np.ndarray, n: int = 3) -> tuple:
-    """``(noise ceiling per voxel in percent, images used)`` from trials x voxels in time order.
-
-    Only answered trials count (as the paper's script); an image counts when it has exactly ``n``
-    of them, also when it was shown more often; its trials keep their time order.
+def noise_ceiling(responses: np.ndarray, image: np.ndarray, viewing: np.ndarray, n: int = 3) -> tuple:
+    """``(noise ceiling per voxel in percent, images used)`` from trials x voxels; ``viewing`` is the
+    place of each trial among the answered trials of its image (``things.answered_viewing``, 0: no
+    response). An image counts when it has exactly ``n`` answered trials, also when shown more often.
     """
-    answered = np.asarray(answered, dtype=bool)
-    responses, image = responses[answered], np.asarray(image).astype(str)[answered]
-    labels, counts = np.unique(image, return_counts=True)
-    used = labels[counts == n]
-    order = np.argsort(image, kind='stable')              # trials grouped by image, time order kept
-    grouped = image[order]
-    starts = np.searchsorted(grouped, used)
-    cube = np.stack([responses[order[starts + rep]] for rep in range(n)], axis=1)   # images x reps x voxels
+    image = np.asarray(image).astype(str)
+    labels, counts = np.unique(image[viewing > 0], return_counts=True)
+    used = np.isin(image, labels[counts == n])
+    cube = np.stack([responses[used & (viewing == place)][np.argsort(image[used & (viewing == place)], kind='stable')]
+                     for place in range(1, n + 1)], axis=1)                         # images x places x voxels
     cube = (cube - cube.mean(axis=0)) / cube.std(axis=0)                            # per repetition, over images
     noise = np.sqrt(np.mean(np.var(cube, axis=1, ddof=1), axis=0))
     snr = np.sqrt(np.clip(1 - noise ** 2, 0, None)) / noise
-    return np.nan_to_num(100 * snr ** 2 / (snr ** 2 + 1 / n)), len(used)
-
-
-def _answered(response: np.ndarray) -> np.ndarray:
-    """A trial has a response unless the field is empty (netCDF keeps a missing text as '')."""
-    return pd.Series(response).replace(['', 'nan', 'n/a'], np.nan).notna().to_numpy()
+    return np.nan_to_num(100 * snr ** 2 / (snr ** 2 + 1 / n)), int(np.sum(counts == n))
 
 
 def participant_ceiling(folder: Path) -> tuple:
@@ -71,8 +64,8 @@ def participant_ceiling(folder: Path) -> tuple:
     first = ~pd.Index(neuroid['voxel'].values).duplicated()        # a voxel in several masks counts once
     responses = np.concatenate([s.values[:, first] for s in sessions])
     image = np.concatenate([s['stimulus_id'].values for s in sessions])
-    answered = np.concatenate([_answered(s['response'].values) for s in sessions])
-    ceiling, used = noise_ceiling(responses, image, answered)
+    response = np.concatenate([s['response'].values for s in sessions])
+    ceiling, used = noise_ceiling(responses, image, things.answered_viewing(image, response))
     by_voxel = pd.Series(ceiling, index=neuroid['voxel'].values[first])
     table = pd.DataFrame({name: neuroid[name].values for name in ('atlas', 'region', 'voxel', 'i', 'j', 'k')})
     table['ours'] = by_voxel.loc[table['voxel']].to_numpy()

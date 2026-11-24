@@ -44,6 +44,19 @@ def run_events(clone: Path, participant: str, run: dict) -> pd.DataFrame:
     return events
 
 
+def answered_viewing(stimulus_id: np.ndarray, response: np.ndarray) -> np.ndarray:
+    """For each trial (given in time order) its place among the answered trials of its image: 1, 2, 3, ...;
+    0 when the trial has no response. Use this, not the released ``repetition`` column, for the viewing
+    order: ``repetition`` is the label of the event files and is 4 or 5 on some trials of out-of-order
+    sessions (sub-01 sessions 14-15). The paper's noise ceiling uses the 1st, 2nd and 3rd answered trial.
+    """
+    ids = pd.Series(np.asarray(stimulus_id).astype(str))
+    answered = pd.Series(response).replace(['', 'nan', 'n/a'], np.nan).notna().to_numpy()
+    viewing = np.zeros(len(ids), dtype=int)
+    viewing[answered] = ids[answered].groupby(ids[answered]).cumcount().to_numpy() + 1
+    return viewing
+
+
 def glmsingle_patterns(participant: str) -> list:
     base = f'{participant}/glmsingle/output/{participant}_task-things_space-T1w_model-fitHrfGLMdenoiseRR'
     return [f'{base}_stat-trialBetas_desc-zscore_statseries.h5', f'{base}_stat-noiseCeilings_statmap.nii.gz']

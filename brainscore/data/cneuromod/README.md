@@ -33,6 +33,11 @@ with the checksums below. Participant sub-04 is restricted and never packaged.
   trial: participant, session, task, run, trial, onset, duration, stimulus_id, repetition,
   condition, response, ...) x `neuroid` (one per region mask and voxel: region, atlas, voxel,
   i, j, k); and `glmsingle/`, the released noise-ceiling map.
+  The `repetition` column is the label of the released event files, unchanged. It is not always
+  the viewing order: in out-of-order sessions it is 4 or 5 (18 trials of sub-01, sessions 14-15),
+  and it counts trials without a response. For the viewing order use
+  `data_packaging.things.answered_viewing(stimulus_id, response)`: the place of each trial among
+  the answered trials of its image, in time order (0: no response). The Fig. 2a check uses it.
 - Time series (when public): `sub-XX/atlas/parcels.csv`, the parcels of the participant's own
   atlas in the column order of its time series, and `ses-NN/timeseries_cneuromod2026.nc`, one row per TR (participant,
   session, task, run, tr, time = tr x 1.49 s, event, stimulus_id, time_in_event) x one column per
