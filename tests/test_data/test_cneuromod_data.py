@@ -115,3 +115,14 @@ def test_a_file_whose_content_is_not_downloaded_yet_is_listed(tmp_path):
     found = package._files(tmp_path, 'things.glmsingle', ['sub-01/betas.h5', 'sub-01/*.h5'])
     assert [path.name for path in found] == ['betas.h5', 'betas.h5']
     assert shared.annex_size(found[0]) == 11315631976
+
+
+def test_two_builds_give_the_same_bytes(source, tmp_path):
+    """The README states checksums, so a rebuild must give the same sha1 for every file."""
+    import hashlib
+    sums = []
+    for name in ('first', 'second'):
+        out = package_data('cneuromod-things', source=source, output=tmp_path / name, part='sub-01')
+        sums.append({str(p.relative_to(out)): hashlib.sha1(p.read_bytes()).hexdigest()
+                     for p in out.rglob('*') if p.is_file() and p.name != 'build.json'})
+    assert sums[0] == sums[1] and any(name.endswith('.nc') for name in sums[0])
