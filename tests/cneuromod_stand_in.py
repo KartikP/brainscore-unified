@@ -63,6 +63,8 @@ def make_source(root: Path) -> Path:
     (atlas_labels := atlases / labels).parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame({'index': [1, 2, 1001, 1178], 'name': ['LH_Vis_1', 'LH_Vis_2', 'HIP-head-m-rh', 'Cereb-S5Rv']}
                  ).to_csv(atlas_labels, sep='\t', index=False)
+    _nifti(dseg, atlases / 'tpl-MNI152NLin2009cAsym' / 'tpl-MNI152NLin2009cAsym_res-01_atlas-'
+           'Schaefer2018TianS3NettekovenAsym_desc-1000Parcels7Networks50Subcort128Cereb_dseg.nii.gz', np.int16)
     (root / 'images').mkdir(parents=True, exist_ok=True)
     (root / 'images' / 'img110.jpg').write_bytes(IMAGE_BYTES)      # a stimulus file the packaging must not copy
     for participant in sorted(set(THINGS) | set(MOVIE10)):

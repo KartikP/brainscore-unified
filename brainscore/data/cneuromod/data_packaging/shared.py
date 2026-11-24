@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 GITHUB = 'https://github.com/courtois-neuromod/{}.git'
-PUBLIC_STORE = 'conp-ria-storage'     # the CONP store; the others need an account
+PUBLIC_STORE = 'conp-ria-storage-http'     # the CONP store over https; the others need an account or ssh
 RESTRICTED = ('sub-04',)    # needs a data transfer agreement with CNeuroMod: never packaged
 ATLASES = 'anat.atlases'
 LABELS = ('tpl-MNI152NLin2009cAsym/tpl-MNI152NLin2009cAsym_atlas-Schaefer2018TianS3NettekovenAsym_'
@@ -76,7 +76,7 @@ def sessions(clone: Path, participant: str, session: str | None) -> list:
 
 def clone(cache: Path, repository: str) -> Path:
     """A DataLad clone of one CNeuroMod repository in ``cache`` (no recursion; kept for a resume),
-    with the public store (``conp-ria-storage``) enabled: the clone does not enable it."""
+    with the public store (``conp-ria-storage-http``) enabled: a clone does not always enable it."""
     folder = cache / repository
     if not (folder / '.git').exists():
         cache.mkdir(parents=True, exist_ok=True)

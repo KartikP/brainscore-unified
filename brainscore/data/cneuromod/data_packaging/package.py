@@ -25,9 +25,10 @@ def _mask_patterns(participant: str) -> list:
     return [f'tpl-{short}T1w/tpl-{short}T1w_res-func_atlas-*_mask.nii.gz']
 
 
-def _atlas_patterns(participant: str) -> list:
-    return [f'tpl-MNI152NLin2009cAsym/tpl-MNI152NLin2009cAsym_{participant}_res-func_atlas-'
-            'Schaefer2018TianS3NettekovenAsym_*_dseg.nii.gz', shared.LABELS]
+# The group cneuromod2026 atlas (1 mm, before the grey-matter mask of each participant): public.
+# The masked atlas of each participant is not public; the time series files carry their own.
+_ATLAS = ['tpl-MNI152NLin2009cAsym/tpl-MNI152NLin2009cAsym_res-01_atlas-Schaefer2018TianS3NettekovenAsym_*_dseg.nii.gz',
+          shared.LABELS]
 
 
 def _files(root: Path, repository: str, patterns: list) -> list:
@@ -65,9 +66,9 @@ def main(argv=None) -> None:
             'events': _files(root, module.REPOSITORY, sorted({p for name in names
                                                                for p in module.event_patterns(participant, name)})),
             'masks': _files(root, shared.ATLASES, _mask_patterns(participant)),
-            'atlas': _files(root, shared.ATLASES, _atlas_patterns(participant)),
             'form': _files(root, form_repository, form)}
-    paths = [path for kinds in needed.values() for group in kinds.values() for path in group]
+    atlas = _files(root, shared.ATLASES, _ATLAS)
+    paths = atlas + [path for kinds in needed.values() for group in kinds.values() for path in group]
     if fetching:
         shared.plan(paths, root)
         shared.get(paths)
@@ -75,16 +76,18 @@ def main(argv=None) -> None:
 
     out = Path(args.out)
     number = None if session is None else shared.number(session)
+    dseg, labels = atlas
+    shared.copy_files(atlas, out / 'atlas')
+    shared.write_csv(shared.atlas_parcels(dseg, labels), out / 'atlas' / 'parcels.csv')
     for participant, kinds in needed.items():
         masks = shared.copy_files(kinds['masks'], out / participant / 'masks')
-        dseg, labels = kinds['atlas']
-        shared.copy_files([dseg, labels], out / participant / 'atlas')
-        shared.write_csv(shared.atlas_parcels(dseg, labels), out / participant / 'atlas' / 'parcels.csv')
         if args.form == 'glmsingle':
             module.glmsingle_trials(root, participant, number, masks, out)
             continue
         h5 = next(path for path in kinds['form'] if path.name.endswith('_timeseries.h5'))
         neuroid, columns = _timeseries_neuroids(args.form, kinds['form'], masks, labels)
+        if columns is None:         # the parcels present in the participant's own atlas
+            shared.write_csv(neuroid, out / participant / 'atlas' / 'parcels.csv')
         shared.timeseries_assembly(module, root / module.REPOSITORY, participant, h5, neuroid, columns, number, out)
 
 

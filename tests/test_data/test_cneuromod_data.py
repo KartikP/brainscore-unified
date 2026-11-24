@@ -32,7 +32,7 @@ def test_each_tr_takes_the_event_that_holds_its_start_and_none_at_the_run_edges(
 
 def test_one_participant_writes_only_that_participant(source, tmp_path):
     out = _build('cneuromod-things', source, tmp_path, part='sub-02')
-    assert sorted(p.name for p in out.iterdir() if p.is_dir()) == ['sub-02']
+    assert sorted(p.name for p in out.glob('sub-*')) == ['sub-02']
     trials = xr.open_dataarray(out / 'sub-02' / 'ses-01' / 'trials.nc')
     assert trials.sizes['presentation'] == 6                      # 2 runs x 3 trials
     assert set(trials['region'].values) == {'V1', 'FFA'}          # masks of the visual atlases only
@@ -41,7 +41,7 @@ def test_one_participant_writes_only_that_participant(source, tmp_path):
     # The response of a voxel is the beta of its own grid column (V1 voxel (1,1,1) is grid column 0).
     v1 = trials.where(trials['region'] == 'V1', drop=True)
     assert int(v1['voxel'].values[0]) == 0 and float(v1.values[0, 0]) == 1.0
-    assert (out / 'sub-02' / 'masks').is_dir() and (out / 'sub-02' / 'atlas' / 'parcels.csv').exists()
+    assert (out / 'sub-02' / 'masks').is_dir() and (out / 'atlas' / 'parcels.csv').exists()
 
 
 def test_one_session_and_an_absent_session(source, tmp_path):
@@ -77,6 +77,7 @@ def test_a_second_data_set_uses_the_shared_part_unchanged(source, tmp_path):
     life = series.where(series['task'] == 'life01', drop=True)
     assert set(life['run'].values) == {2}
     assert series['parcel_name'].values.tolist() == ['LH_Vis_1', 'HIP-head-m-rh']
+    assert pd.read_csv(out / 'sub-01' / 'atlas' / 'parcels.csv')['parcel'].tolist() == [1, 1001]
     events = pd.read_csv(out / 'sub-01' / 'ses-01' / 'events.csv')
     assert events['repetition'].tolist() == [1, 2]
 
