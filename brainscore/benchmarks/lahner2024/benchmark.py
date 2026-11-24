@@ -93,6 +93,7 @@ from typing import Callable, List, Optional, Sequence, Tuple
 import numpy as np
 
 from brainscore_core.benchmarks import BenchmarkBase
+from brainscore_core.execution_plan import ExecutionPlan
 from brainscore_core.metrics import Score, per_unit_pearson
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     NeuronRecordingAssembly,
@@ -427,6 +428,40 @@ class Lahner2024BOLDMoments(BenchmarkBase):
 
     def _frames(self):
         return frame_table(self.stimulus_set, self._sample_times_ms)
+
+    @property
+    def execution_plan(self) -> ExecutionPlan:
+        """The memory plan: at most one extracted row per clip and frame, one metric row
+        per clip, a ridge fit and no ceiling metric. The probe shows one clip the way
+        the run shows it to the subject (``_probe``)."""
+        n_clips = len(self.stimulus_set)
+        return ExecutionPlan(
+            # ponytail: the frames route holds the most rows; a clip subject holds fewer.
+            n_extraction_presentations=n_clips * len(self._sample_times_ms),
+            metric_observations=n_clips, metric_category='ridge', runs_ceiling_metric=False,
+            probe_stimuli=self._probe)
+
+    def _probe(self, subject):
+        """One row: the first clip in every stream the run shows ``subject`` (the clip
+        or a frame of it, and the sound), read from the same files as the run."""
+        import pandas as pd
+        from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+        stimuli = self.stimulus_set
+        first = str(stimuli['stimulus_id'].iloc[0])
+        row = {'stimulus_id': first}
+        for stream, channel, _ in stream_regions(
+                subject, taken_inputs(subject, self.required_input_channels), self._regions):
+            if stream == 'audio':
+                table = clip_table(stimuli, stimuli.identifier, ids=[first], sound=True)
+            elif channel == 'vision:video':
+                table = clip_table(stimuli, stimuli.identifier, ids=[first])
+            else:
+                table = self._frames().iloc[:1]
+            row.update({column: table[column].iloc[0] for column in table.columns
+                        if column in ('video_path', 'audio_path', 'image_file_name')})
+        probe = StimulusSet(pd.DataFrame([row]))
+        probe.identifier = f'{stimuli.identifier}-memory-probe'
+        return probe
 
     def _per_voxel_ceiling(self, mask):
         """sqrt(reliability on the scored test-set videos) per scored voxel; ``None``
