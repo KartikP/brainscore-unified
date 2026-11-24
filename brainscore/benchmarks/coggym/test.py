@@ -266,6 +266,27 @@ def build_messages(trial, experiment):
     assert benchmark.required_input_channels == {'instruction', 'text', 'vision:image', 'vision:video'}
 
 
+def test_a_video_experiment_is_na_for_a_subject_that_takes_no_video(reference):
+    root, stand_in = reference
+    (root / 'checkout/evaluation/public_manifest.json').write_text(json.dumps({
+        'experiments': [{'path': 'Fu2025Hierarchical/exp1'}],
+    }))
+    content = [{'type': 'text', 'text': 'instructions'}, image_part(), {'type': 'video', 'path': '/clip.mp4'}]
+    stand_in.cli(f'''
+def build_messages(trial, experiment):
+    return 'system', [{{'role': 'user', 'content': {content!r}}}]
+''')
+    benchmark = brainscore.load_benchmark('CogGym.Fu2025Hierarchical.exp1', folder=root,
+        reset=lambda repetition: None)
+    subject = _ParticipateOnlySubject()
+    subject.in_channels = frozenset({'instruction', 'text', 'vision:image'})
+    # Without the clips the subject never sees the stimulus: N/A before any request.
+    result = brainscore.score(subject, benchmark, check_mem=False)
+    assert result.attrs['status'] == 'N/A'
+    assert result.attrs['missing_channels'] == ['vision:video']
+    assert subject.requests == []
+
+
 class _ParticipateOnlySubject(Subject):
     """A contract subject: declarations, participate and reset; no process()."""
 
