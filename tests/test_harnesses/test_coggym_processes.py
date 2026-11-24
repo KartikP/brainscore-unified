@@ -106,7 +106,7 @@ def test_a_failure_to_open_the_pipes_leaves_no_descriptor_open(reference, monkey
         import sys
         caller = sys._getframe(1)
         if (caller.f_code.co_filename.endswith('_child_process.py')
-                and any('_coggym_worker.py' in part for part in caller.f_locals['self'].command)):
+                and any('_worker.py' in part for part in caller.f_locals['self'].command)):
             calls.append(None)
             if len(calls) == 2:
                 raise OSError(errno.EMFILE, 'Too many open files')

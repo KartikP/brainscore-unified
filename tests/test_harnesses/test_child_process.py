@@ -19,7 +19,7 @@ from tests.coggym_stand_in import EXPERIMENT, write_checkout
 
 pytestmark = pytest.mark.unit
 
-WORKER = Path(_child_process.__file__).with_name('_coggym_worker.py')
+WORKER = Path(_child_process.__file__).with_name('coggym') / '_worker.py'
 
 
 def _worker(checkout, log_directory, idle_timeout_s=20.0):

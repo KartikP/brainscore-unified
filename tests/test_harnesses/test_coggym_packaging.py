@@ -19,8 +19,8 @@ import pytest
 pytestmark = pytest.mark.unit
 
 ROOT = Path(__file__).resolve().parents[2]
-RUNTIME_FILES = ('brainscore/harnesses/coggym_requirements.txt', 'brainscore/harnesses/_coggym_worker.py',
-                 'brainscore/harnesses/coggym_validation.py', 'brainscore/harnesses/_supervise.py',
+RUNTIME_FILES = ('brainscore/harnesses/coggym/requirements.txt', 'brainscore/harnesses/coggym/_worker.py',
+                 'brainscore/harnesses/coggym/validation.py', 'brainscore/harnesses/_supervise.py',
                  'brainscore/harnesses/README.md')
 
 

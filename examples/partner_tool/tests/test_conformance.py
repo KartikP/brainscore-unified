@@ -20,7 +20,7 @@ What a declaration does not say is unknown, not a default:
 External evaluators have further declarations that are tested in the unified
 repository, not here:
 - CogGym: the pinned revision and check_channel_compatibility
-  (brainscore/harnesses/coggym.py).
+  (brainscore/harnesses/coggym/__init__.py).
 - LIBERO bridge: Bridge.__init__ / check_start and the LiberoChunkPolicy shape
   checks (examples/libero).
 """
