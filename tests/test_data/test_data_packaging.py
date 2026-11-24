@@ -31,6 +31,8 @@ from brainscore import data_builder_registry
 from brainscore.data import DataBuilder, package_data
 from brainscore.data import local
 from brainscore.data.local import LocalDataMissing
+# Imported here, at collection: imported first under the nibabel stand-in of ``offline``, it would keep the stand-in.
+from tests.cneuromod_stand_in import REAL_NIBABEL, make_source as make_cneuromod_source
 
 pytestmark = pytest.mark.unit
 
@@ -841,9 +843,8 @@ def _sun2025_source(tmp_path, monkeypatch, offline):
 
 
 def _cneuromod_source(tmp_path, monkeypatch, offline):
-    from tests.cneuromod_stand_in import REAL_NIBABEL, make_source
     monkeypatch.setitem(sys.modules, 'nibabel', REAL_NIBABEL)     # the stand-in nibabel reads GIfTI only
-    return make_source(tmp_path / 'cneuromod')
+    return make_cneuromod_source(tmp_path / 'cneuromod')
 
 
 SOURCES = {'ewok': _ewok_source, 'lebel2023': _lebel_source, 'algonauts2025': _algonauts_film_source,
