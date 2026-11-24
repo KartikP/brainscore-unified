@@ -191,3 +191,17 @@ def test_the_noise_ceiling_takes_the_answered_trials_of_an_image_shown_more_than
     ceiling, used = noise_ceiling(responses, image, answered)
     assert used == 200
     assert ceiling[0] == pytest.approx(100)
+
+
+def test_an_event_value_is_written_with_the_digits_of_the_source_file(tmp_path):
+    """The default pandas float parser of some versions changes the last digit (2.3210708713531574 read as
+    2.321070871353158): the written event table must not depend on the pandas version."""
+    from brainscore.data.cneuromod.data_packaging import things
+    func = tmp_path / 'sub-01' / 'ses-001' / 'func'
+    func.mkdir(parents=True)
+    (func / 'sub-01_ses-001_task-things_run-1_events.tsv').write_text(
+        'onset\tduration\timage_path\trepetition\tresponse_time\n'
+        '3.0\t2.98\timages_fmri/girl/girl_02s.jpg\t1\t2.3210708713531574\n')
+    events = shared.run_table(things, tmp_path, 'sub-01', {'session': 1, 'task': 'things', 'run': 1})
+    shared.write_csv(events, tmp_path / 'events.csv')
+    assert ',2.3210708713531574,' in (tmp_path / 'events.csv').read_text()

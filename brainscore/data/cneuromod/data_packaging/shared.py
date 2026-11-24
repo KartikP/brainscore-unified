@@ -206,7 +206,7 @@ def atlas_parcels(dseg: Path, labels: Path) -> pd.DataFrame:
     """The parcels present in a participant's atlas, in column order (ascending index, no 0)."""
     import nibabel
     present = np.unique(np.asarray(nibabel.load(dseg).dataobj).astype(int))
-    names = pd.read_csv(labels, sep='\t').set_index('index')['name']
+    names = read_tsv(labels).set_index('index')['name']
     present = present[present > 0]
     return pd.DataFrame({'parcel': present, 'parcel_name': [names.get(i, '') for i in present]})
 
@@ -241,6 +241,13 @@ def stimulus_table(module, events: pd.DataFrame) -> pd.DataFrame:
     table = table[table['stimulus_id'] != '']
     table['source'] = module.STIMULUS_SOURCE
     return table
+
+
+def read_tsv(path: Path) -> pd.DataFrame:
+    """A tab-separated source table. ``round_trip``: each number is read exactly, so it is written
+    back with the digits of the source; the default parser of some pandas versions changes the last
+    digit, and the written bytes would then depend on the pandas version."""
+    return pd.read_csv(path, sep='\t', float_precision='round_trip')
 
 
 def write_csv(table: pd.DataFrame, path: Path) -> None:

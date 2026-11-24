@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from brainscore.data.cneuromod.data_packaging import shared
+
 NAME = 'movie10'
 REPOSITORY = 'movie10'
 PARTICIPANTS = ('sub-01', 'sub-02', 'sub-03', 'sub-04', 'sub-05', 'sub-06')    # sub-04 is refused by the shared part
@@ -23,7 +25,7 @@ def event_patterns(participant: str, session: str) -> list:
 
 
 def run_events(clone: Path, participant: str, run: dict) -> pd.DataFrame:
-    events = pd.read_csv(clone / f'task-{run["task"]}_events.tsv', sep='\t')
+    events = shared.read_tsv(clone / f'task-{run["task"]}_events.tsv')
     events['stimulus_id'] = run['task']
     events['repetition'] = run['run']
     return events

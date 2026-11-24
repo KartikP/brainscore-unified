@@ -39,7 +39,7 @@ def run_events(clone: Path, participant: str, run: dict) -> pd.DataFrame:
     if len(files) != 1:
         raise FileNotFoundError(f'{participant} session {run["session"]} run {run["run"]}: '
                                 f'{len(files)} event files found, 1 expected')
-    events = pd.read_csv(files[0], sep='\t')
+    events = shared.read_tsv(files[0])
     events['stimulus_id'] = [Path(str(path)).stem for path in events['image_path']]
     return events
 
