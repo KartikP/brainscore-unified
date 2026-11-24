@@ -2,7 +2,7 @@
 
 Core rebuilds each trial of a source with no table from its events. An event
 that names no column gets the catalog's column for its channel
-(``image_file_name`` for ``vision:image``, ``video_path`` for ``vision:video``),
+(``image_path`` for ``vision:image``, ``video_path`` for ``vision:video``),
 so the prompt layout, an answer part and an extractor see the part, as they do in
 a table. Before, the column was the channel's name, which no reader knew: a task
 that named the part in ``present`` was refused, and without ``present`` the
@@ -59,8 +59,8 @@ def test_an_answer_part_reads_the_picture_of_a_raw_event_by_the_catalog():
                             answer=lambda stimulus_row, instruction, label_set: rows.append(stimulus_row) or label_set[0])
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
     model.participate(Session(_events('vision:image'), ['behavior:choice'], task))
-    assert [_find_column(row, 'image') for row in rows] == ['image_file_name'] * 2
-    assert [row['image_file_name'] for row in rows] == ['pic.png'] * 2
+    assert [_find_column(row, 'image') for row in rows] == ['image_path'] * 2
+    assert [row['image_path'] for row in rows] == ['pic.png'] * 2
 
 
 @pytest.mark.parametrize('channel, key', [('vision:image', 'vision'), ('vision:video', 'video')])
