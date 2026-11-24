@@ -443,7 +443,8 @@ class Lahner2024BOLDMoments(BenchmarkBase):
 
     def _probe(self, subject):
         """One row: the first clip in every stream the run shows ``subject`` (the clip
-        or a frame of it, and the sound), read from the same files as the run."""
+        or a frame of it, and the sound), read from the same files as the run. The frame
+        is in ``image_path``, the one picture column every extractor reads."""
         import pandas as pd
         from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
         stimuli = self.stimulus_set
@@ -456,9 +457,9 @@ class Lahner2024BOLDMoments(BenchmarkBase):
             elif channel == 'vision:video':
                 table = clip_table(stimuli, stimuli.identifier, ids=[first])
             else:
-                table = self._frames().iloc[:1]
+                table = self._frames().iloc[:1].rename(columns={'image_file_name': 'image_path'})
             row.update({column: table[column].iloc[0] for column in table.columns
-                        if column in ('video_path', 'audio_path', 'image_file_name')})
+                        if column in ('video_path', 'audio_path', 'image_path')})
         probe = StimulusSet(pd.DataFrame([row]))
         probe.identifier = f'{stimuli.identifier}-memory-probe'
         return probe
