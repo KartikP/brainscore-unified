@@ -212,7 +212,8 @@ class NodeKitEnvironment:
             return {}
         picture = answer['picture']
         observation = {'t_ms': picture['at_ms'], **answer['body'], 'turns_left': self.max_steps - self.steps,
-                       'acts_per_step': answer['acts_per_step'], 'act_form': self.form, 'task': self.task}
+                       'acts_per_step': answer['acts_per_step'], 'act_form': self.form, 'task': self.task,
+                       'briefing': self.briefing}
 
         def decoded(part):
             return np.frombuffer(base64.b64decode(part['data']), np.uint8).reshape(part['shape'])
@@ -260,10 +261,12 @@ class NodeKitEnvironment:
         self.steps, self.result, self.invalid_steps, self.trace = 0, None, 0, None
         words = _SESSION_WORDS[self.form] + (f' {_NO_LOOK}' if self.view == 'participant' else '')
         self.task = f'{_SESSION_WORDS[self.form]}\n\n{self.instructions}'.strip()
-        answer = self._child.ask({'reset': {'pacing': [self.pacing.capitalize(), round(self.dense_step_ms * 1000)],
-                                            'limits': {'turns': self.max_steps, 'actions': self._acts_per_step},
-                                            'seconds': self.max_ms / 1000,
-                                            'instructions': f'{words}\n\n{self.instructions}'.strip()}})
+        # The arguments of nkl's briefing, also in each row (observation['briefing']): a subject that reads
+        # positions on its own grid has nkl write the same briefing for its screen.
+        self.briefing = {'pacing': [self.pacing.capitalize(), round(self.dense_step_ms * 1000)],
+                         'limits': {'turns': self.max_steps, 'actions': self._acts_per_step},
+                         'seconds': self.max_ms / 1000, 'instructions': f'{words}\n\n{self.instructions}'.strip()}
+        answer = self._child.ask({'reset': self.briefing})
         self.system, self.acts_per_step = answer['system'], answer['acts_per_step']
         if answer['extent'] != list(self.screen):
             raise RuntimeError(f'nkl shows the program on {answer["extent"]} scene units, not the {self.screen} '

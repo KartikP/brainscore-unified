@@ -116,10 +116,14 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
     settings of each turn (None: the model's default, greedy for a local model); with a seed, turn ``n`` uses
     ``seed + n``, so a repeated run with the same seed asks the same. ``position_grid``: the model writes
     positions on a grid of that many positions a side of the picture (its own convention, stated by its plugin),
-    not in pixels; every position the turn's briefing shows (the pointer) is on that grid too, so what the model
-    reads and writes is one convention, and the policy scales its acts to pixels and states the grid with its
-    settings (the score's provenance). nkl's system prompt (on ``instruction``) keeps nkl's pixel words. None
-    (the default): pixels."""
+    not in pixels; nkl's system briefing is written by nkl for a screen of that grid (its own sentences, from the
+    harness's arguments in ``observation['briefing']``) and every position the turn's briefing shows (the
+    pointer) is on that grid too, so what the model reads and writes is one convention; the policy scales its
+    acts to pixels and states the grid with its settings (the score's provenance). None (the default): pixels.
+
+    Limit: the grid scales x and y differently (1024 -> 1000, 768 -> 1000): nkl's stroke times ('120 ms for 50
+    pixels') are stated for distances across the screen's width; a vertical grid unit is shorter (0.768 px
+    against 1.024 px)."""
     from brainscore_core.responses import Prompt, Text
     from brainscore_core.streaming import StreamEvent
     reader = _Reader()
@@ -150,7 +154,14 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
                 'memories': state['memories'], 'problems': state['problems']}
         if position_grid:        # every position the turn shows and reads is on the model's grid
             turn = on_grid(turn, position_grid)
-        parts, names = [('text', row['instruction'])], ['instruction']
+        system = row['instruction']
+        if position_grid and 'briefing' in seen:     # nkl's briefing written for the model's grid, by nkl
+            if state.get('system_for') != seen['briefing']:
+                state['system'] = reader.ask({'system': {'briefing': seen['briefing'], 'screen': [position_grid] * 2,
+                                                         'extent': [screen.shape[1], screen.shape[0]]}})
+                state['system_for'] = seen['briefing']
+            system = state['system']
+        parts, names = [('text', system)], ['instruction']
         video = row.get('vision:video')
         shown = changed_frames(video, seen.get('frame_t_ms', []), state['last'], frames)
         briefing = reader.ask({'brief': turn})
@@ -171,7 +182,9 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
         kept = 0 if seen.get('view') == 'agent' else turns_kept
         history = tuple(state['history'][-kept:]) if kept else ()
         answer = reply(Prompt(parts=tuple(parts), names=tuple(names), response=settings, history=history))
-        state_settings_as(policy, reply, {'position_grid': position_grid} if position_grid else None)
+        state_settings_as(policy, reply, {'position_grid': position_grid,
+                                          'system_briefing': f'written for a {position_grid} x {position_grid} screen'}
+                          if position_grid else None)
         text = answer.payload if isinstance(answer, StreamEvent) else answer
         meta = answer.meta if isinstance(answer, StreamEvent) else {}
         read = reader.ask({'read': {**turn, 'text': text, 'form': seen['act_form']}})

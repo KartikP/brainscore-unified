@@ -8,6 +8,8 @@ last reply):
 
 - ``{"brief": turn}`` answers nkl's briefing of the turn as parts ``[text, picture]`` (the picture's name
   where one goes: ``screen`` or ``look:<id>``).
+- ``{"system": {"briefing": ..., "screen": [w, h], "extent": [w, h]}}`` answers nkl's system briefing written
+  for that screen (a subject's own grid).
 - ``{"read": {"text": reply, "form": "motor:key" | "motor:pointer", **turn}}`` reads the reply with nkl's
   ``parse`` and answers ``{"acts": [...] or None, "memories": [...], "problems": [...]}``: the acts in the
   form of Brain-Score's ``motor:key`` or ``motor:pointer`` (the numbers the reply wrote, in the units of the
@@ -102,11 +104,29 @@ def read(turn):
             'problems': []}
 
 
+def system(command):
+    """nkl's system briefing for the harness's arguments (``observation['briefing']``) on a screen of
+    ``command['screen']`` (a subject's grid): nkl writes its own sentences for that screen; the stroke times
+    are for ``command['extent']`` scene units across the screen's width."""
+    from dataclasses import replace
+    from nkl import agents
+    settings = command['briefing']
+    kind, step = settings['pacing']
+    pacing = {'Frozen': agents.Frozen(), 'Realtime': agents.Realtime(), 'Dense': agents.Dense(step)}[kind]
+    limits = agents.Limits(**{key: value for key, value in settings['limits'].items() if value is not None})
+    if settings['limits'].get('actions') is None and isinstance(pacing, agents.Dense):
+        limits = replace(limits, actions=1)
+    return agents.system_prompt(settings['instructions'], screen=tuple(command['screen']),
+                                extent=tuple(command['extent']), limits=limits, pacing=pacing,
+                                motor=agents.Motor(), seconds=settings['seconds'])
+
+
 def main():
     while line := commands.readline():
         command = json.loads(line)
         try:
-            send({'done': brief(command['brief']) if 'brief' in command else read(command['read'])})
+            send({'done': brief(command['brief']) if 'brief' in command else
+                  system(command['system']) if 'system' in command else read(command['read'])})
         except Exception as error:
             send({'failed': {'type': type(error).__name__, 'message': str(error),
                              'traceback': traceback.format_exc()}})

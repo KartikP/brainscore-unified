@@ -177,7 +177,10 @@ def send(message):
     messages.write((json.dumps(message) + '\\n').encode()); messages.flush()
 while line := commands.readline():
     command = json.loads(line)
-    if 'brief' in command:
+    if 'system' in command:
+        width, height = command['system']['screen']
+        send({'done': f'The screen image is {width} x {height} pixels.'})
+    elif 'brief' in command:
         turn = command['brief']
         send({'done': [['problems: ' + '; '.join(turn['problems']), None], ['The screen now:', 'screen']]})
     else:
@@ -347,3 +350,22 @@ def test_a_run_stops_after_the_same_acts_in_a_row(stand_in):
     result, environment, session = nodekit.play(subject, _program(stand_in / 'stuck'), form='motor:key')
     assert session.source.end_reason == 'truncated' and environment.stop_cause == 'the same acts in a row'
     assert environment.steps == nodekit.MAX_SAME_IN_A_ROW
+
+
+def test_under_a_grid_the_system_briefing_is_nkl_s_written_for_the_grid(stand_in, monkeypatch):
+    import brainscore.harnesses._environment_folder as environment_folder
+    import brainscore.harnesses.nodekit.policy as act
+    reader = stand_in / 'stand_in_reader.py'
+    reader.write_text(READER)
+    monkeypatch.setattr(act, '_READER', reader)
+    monkeypatch.setattr(environment_folder, 'ready_folder', nodekit.ready_folder)
+    prompts = []
+    policy = act.act_policy(lambda prompt: prompts.append(prompt) or '[]', position_grid=1000)
+    row = {'vision:image': np.zeros((768, 1024, 3), np.uint8), 'instruction': 'The screen image is 1024 x 768 pixels.',
+           'observation': {'t_ms': 0.0, 'act_form': 'motor:key', 'pointer': [0.0, 0.0],
+                           'briefing': {'pacing': ['Frozen', 16667], 'limits': {'turns': 5}, 'seconds': 1,
+                                        'instructions': ''}}}
+    policy(row)
+    system = prompts[0].parts[0][1]
+    assert '1000 x 1000' in system and '1024' not in system and '768' not in system
+    policy.close()
