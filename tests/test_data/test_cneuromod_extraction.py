@@ -260,6 +260,7 @@ def test_another_code_commit_is_refused(tmp_path, monkeypatch):
 def test_a_release_commit_that_is_not_public_is_made_with_the_pinned_commit_when_the_data_set_names_it(
         tmp_path, monkeypatch, capsys):
     from brainscore.data.cneuromod.data_packaging import mario
+    assert mario.UNPUBLISHED_RELEASE_CODE == '4492c476e8d94d4c302046fc12df5ec9a67da03d'   # as mario.timeseries names it
     monkeypatch.setitem(BOLD, 'mario', '{p}_{s}_task-mario_run-{r}_space-{space}_desc-preproc_bold.nii.gz')
     make_tree(tmp_path, 'mario')
     calls = stand_in(monkeypatch, code_commit=mario.UNPUBLISHED_RELEASE_CODE)

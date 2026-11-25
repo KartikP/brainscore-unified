@@ -38,7 +38,7 @@ _GAME = 'gym-retro_game'
 # Limit: mario.timeseries names cneuromod_extract_tseries at this commit, which is not in its public
 # repository; the time series are made with extraction.CODE_COMMIT (the THINGS and movie10 commit, which
 # has the mario configuration). The atlas and mask files are compared with the release by their MD5.
-UNPUBLISHED_RELEASE_CODE = '4492c476d8d94d4c302046fc12df5ec9a67da03d'
+UNPUBLISHED_RELEASE_CODE = '4492c476e8d94d4c302046fc12df5ec9a67da03d'
 
 
 def event_patterns(participant: str, session: str) -> list:
