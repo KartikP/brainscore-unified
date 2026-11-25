@@ -5,7 +5,10 @@ a ``BrainScoreModel`` with an ``answer`` part (the API closure) and NO
 ``extractor`` — it can run behavioral / instruction-following benchmarks
 (object matching, lexical decision, the game) but NOT activation-based neural
 encoding. Scoring requires the provider's API key in the environment
-(``ANTHROPIC_API_KEY`` / ``OPENAI_API_KEY``); registration + load do not.
+(``ANTHROPIC_API_KEY`` / ``OPENAI_API_KEY``), or, for the ``bedrock`` provider, the
+user's AWS credentials with access to the model; registration + load do not. A model
+that takes pictures also has the NodeKit act policy (``brainscore.harnesses.nodekit.policy``),
+so it takes part in a task on a screen with the keyboard or the pointer.
 """
 from brainscore import BrainScoreModel
 from brainscore.model_helpers.api_behavioral import api_answer, build_api_reply
@@ -17,6 +20,14 @@ from brainscore.model_helpers.api_behavioral import api_answer, build_api_reply
 REGISTRY = {
     'claude-opus-behavioral': dict(
         provider='anthropic', model='claude-opus-4-8',
+        in_channels=('vision:image', 'text')),
+    # Claude Sonnet 5.5: the same model through Amazon Bedrock (the user's AWS credentials) or through
+    # the Anthropic API (ANTHROPIC_API_KEY); the registration picks the way.
+    'claude-sonnet-5-5-bedrock': dict(
+        provider='bedrock', model='us.anthropic.claude-sonnet-5-5',
+        in_channels=('vision:image', 'text')),
+    'claude-sonnet-5-5-behavioral': dict(
+        provider='anthropic', model='claude-sonnet-5-5',
         in_channels=('vision:image', 'text')),
     'claude-haiku-behavioral': dict(
         provider='anthropic', model='claude-haiku-4-5',
@@ -64,10 +75,17 @@ def get_model(identifier: str) -> BrainScoreModel:
         max_tokens=16,
         cache_dir=f"{_CACHE_ROOT}/{identifier}",
     )
+    reply = build_api_reply(cfg['provider'], cfg['model'], cache_dir=f"{_CACHE_ROOT}/{identifier}")
+    screen = {}
+    if 'vision:image' in cfg['in_channels']:
+        from brainscore.harnesses.nodekit.policy import act_policy
+        screen = dict(policy=act_policy(reply),
+                      policy_in_channels=('vision:image', 'vision:video', 'instruction', 'observation'),
+                      policy_out_channels=('motor:key', 'motor:pointer'))
     return BrainScoreModel(
         identifier=identifier,
         in_channels=set(cfg['in_channels']),
         answer=answer,
-        reply=build_api_reply(cfg['provider'], cfg['model'],
-                              cache_dir=f"{_CACHE_ROOT}/{identifier}"),
+        reply=reply,
+        **screen,
     )

@@ -701,6 +701,12 @@ def test_every_request_of_a_registered_api_model_states_its_temperature(identifi
     client.messages = client.completions = client.chat = client
     monkeypatch.setitem(sys.modules, 'anthropic', types.SimpleNamespace(Anthropic=lambda: client))
     monkeypatch.setitem(sys.modules, 'openai', types.SimpleNamespace(OpenAI=lambda **k: client))
+    bedrock = types.SimpleNamespace(converse=lambda **k: requests.append(k['inferenceConfig']) or {
+        'output': {'message': {'content': [{'text': 'yes'}]}}})
+    monkeypatch.setitem(sys.modules, 'boto3', types.SimpleNamespace(client=lambda *a, **k: bedrock))
+    monkeypatch.setitem(sys.modules, 'botocore', types.SimpleNamespace(exceptions=types.SimpleNamespace(
+        NoCredentialsError=type('NoCredentialsError', (Exception,), {}))))
+    monkeypatch.setitem(sys.modules, 'botocore.exceptions', sys.modules['botocore'].exceptions)
     monkeypatch.setenv('HOME', str(tmp_path))   # the response store is under the home folder
     stimuli = StimulusSet({'stimulus_id': ['s0'], 'sentence': ['The sky is blue.']})
     stimuli.identifier = 'temperature-stated'
@@ -714,8 +720,57 @@ def test_every_request_of_a_registered_api_model_states_its_temperature(identifi
                 get_model(identifier).participate(stimulus_session(
                     stimuli, [output], TaskContext(instruction=None if index else 'Answer.', response=response)))
             sent[output, index] = len(requests) - before
-    if REGISTRY[identifier]['provider'] == 'anthropic':
+    from brainscore.model_helpers.api_behavioral import PROVIDERS, _samples_only
+    if _samples_only(PROVIDERS[REGISTRY[identifier]['provider']], REGISTRY[identifier]['model']):
         # Sampled with no seed, by the answer part and the reply part: asked again each time.
         assert all(count == 2 for count in sent.values()), sent
     else:
         assert requests and all(r.get('temperature') == 0 for r in requests)
+
+
+class TestBedrock:
+    """The bedrock provider with a stand-in at the boto3 client boundary (no AWS call)."""
+
+    def _boto3(self, monkeypatch, calls):
+        import sys
+        import types
+
+        class Client:
+            def converse(self, **request):
+                calls.append(request)
+                return {'output': {'message': {'content': [{'text': 'press Space'}]}},
+                        'usage': {'inputTokens': 12, 'outputTokens': 3}}
+        botocore = types.ModuleType('botocore')
+        botocore.exceptions = types.SimpleNamespace(NoCredentialsError=type('NoCredentialsError', (Exception,), {}))
+        monkeypatch.setitem(sys.modules, 'botocore', botocore)
+        monkeypatch.setitem(sys.modules, 'botocore.exceptions', botocore.exceptions)
+        monkeypatch.setitem(sys.modules, 'boto3', types.SimpleNamespace(client=lambda service, region_name=None: Client()))
+
+    def test_a_claude_reply_on_bedrock_obeys_the_anthropic_settings(self, monkeypatch, tmp_path):
+        from PIL import Image
+        from brainscore_core.responses import Prompt, Text
+        from brainscore_core.streaming import StreamEvent
+        from brainscore.model_helpers.api_behavioral import build_api_reply
+        calls = []
+        self._boto3(monkeypatch, calls)
+        Image.new('RGB', (4, 4)).save(tmp_path / 'screen.png')
+        reply = build_api_reply('bedrock', 'us.anthropic.claude-sonnet-5-5')
+        answer = reply(Prompt(parts=(('text', 'You take part.'), ('text', 'Now:'), ('image', str(tmp_path / 'screen.png'))),
+                              names=('instruction', 'turn', 'screen'), response=Text(max_tokens=64)))
+        assert isinstance(answer, StreamEvent) and answer.payload == 'press Space'
+        assert answer.meta['token_usage'] == {'input_tokens': 12, 'output_tokens': 3}
+        request = calls[0]
+        assert request['system'] == [{'text': 'You take part.'}]
+        assert request['inferenceConfig'] == {'maxTokens': 64}                 # no temperature for Claude
+        assert request['messages'][0]['content'][1]['image']['format'] == 'png'
+        with pytest.raises(Exception, match='temperature'):
+            reply(Prompt(parts=(('text', 'x'),), names=('turn',), response=Text(max_tokens=8, temperature=0.5)))
+
+    def test_another_bedrock_model_gets_the_task_temperature(self, monkeypatch):
+        from brainscore_core.responses import Prompt, Text
+        from brainscore.model_helpers.api_behavioral import build_api_reply
+        calls = []
+        self._boto3(monkeypatch, calls)
+        build_api_reply('bedrock', 'meta.llama3-70b')(Prompt(parts=(('text', 'x'),), names=('turn',),
+                                                             response=Text(max_tokens=8)))
+        assert calls[0]['inferenceConfig'] == {'maxTokens': 8, 'temperature': 0}

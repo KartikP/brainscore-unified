@@ -7,6 +7,8 @@ def get_model(identifier):  # defer the model.py import to load time
 
 
 model_registry['claude-opus-behavioral'] = lambda: get_model('claude-opus-behavioral')
+model_registry['claude-sonnet-5-5-bedrock'] = lambda: get_model('claude-sonnet-5-5-bedrock')
+model_registry['claude-sonnet-5-5-behavioral'] = lambda: get_model('claude-sonnet-5-5-behavioral')
 model_registry['claude-haiku-behavioral'] = lambda: get_model('claude-haiku-behavioral')
 model_registry['gpt-4o-behavioral'] = lambda: get_model('gpt-4o-behavioral')
 model_registry['deepseek-chat-behavioral'] = lambda: get_model('deepseek-chat-behavioral')
