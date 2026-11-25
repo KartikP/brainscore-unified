@@ -225,3 +225,9 @@ def test_changed_frames_keeps_frames_that_differ_up_to_the_cap():
     assert [at for at, _ in changed_frames(video, list(range(10)), None, 4)] == [0, 3, 7]
     video = np.arange(10, dtype=np.uint8)[:, None, None, None] * np.ones((10, 2, 2, 3), np.uint8)
     assert [at for at, _ in changed_frames(video, list(range(10)), video[0], 4)] == [1, 4, 6, 9]
+
+
+def test_the_outputs_hold_the_act_form(stand_in):
+    policy, _ = _keys('ArrowLeft')
+    with pytest.raises(ValueError, match='act form'):
+        nodekit.play(_subject('keys', policy), _program(stand_in / 'keys'), form='motor:key', outputs=['neural:IT'])

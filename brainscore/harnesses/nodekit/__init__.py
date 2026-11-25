@@ -222,17 +222,22 @@ class NodeKitEnvironment:
             self._child = None
 
 
-def play(subject, program, *, form: str, **settings):
+def play(subject, program, *, form: str, outputs=None, **settings):
     """One run of ``program`` (a bundle folder) by ``subject`` on the act form ``form`` through
     ``environment_session``:
-    ``(result, environment, session)``; ``result`` is None when the run did not complete. With ``record=``
-    the run's trace is kept there under the subject's identifier and the time."""
+    ``(result, environment, session)``; ``result`` is None when the run did not complete. ``outputs`` are the
+    channels the session requests (the act form by default; with ``neural:<region>`` beside it the subject's
+    layers for the region are recorded at each turn, ``session.collect``). With ``record=`` the run's trace is
+    kept there under the subject's identifier and the time."""
     import time
     from brainscore_core.streaming_helpers import environment_session
     settings.setdefault('name', f"{getattr(subject, 'identifier', 'subject')}-{time.strftime('%Y%m%dT%H%M%S')}")
     environment = NodeKitEnvironment(program, form=form, **settings)
     try:
-        session = environment_session(environment, [form], action_channel=form)
+        requested = list(outputs or (form,))
+        if form not in requested:
+            raise ValueError(f'outputs {requested} must hold the act form {form!r} the run reads.')
+        session = environment_session(environment, requested, action_channel=form)
         subject.participate(session)
         return environment.result, environment, session
     finally:
