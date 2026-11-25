@@ -7,7 +7,7 @@ import pandas as pd
 
 NAME = 'cneuromod-things'
 # The sha1 of each THINGS image of the sessions, from images_THINGS.zip (https://osf.io/jum2f), read 2026-11-24.
-IMAGE_SHA1 = Path(__file__).parent / 'things_images_sha1.csv'
+IMAGE_CHECKSUMS = Path(__file__).parent / 'things_images_sha1.csv'
 
 
 def packaged(root=None) -> Path:
@@ -65,7 +65,7 @@ def load_stimulus_set(root=None):
         raise local.LocalDataMissing(f'{len(missing)} of {len(table)} THINGS images are not in {images} '
                                      f'(for example {missing[0]}). {local.REGISTRY["things-images"].instructions()}')
     import hashlib
-    recorded = pd.read_csv(IMAGE_SHA1).set_index('stimulus_id')['sha1']
+    recorded = pd.read_csv(IMAGE_CHECKSUMS).set_index('stimulus_id')['sha1']
     unknown = sorted(set(ids) - set(recorded.index))
     if unknown:
         raise ValueError(f'{len(unknown)} packaged images have no recorded sha1 (for example {unknown[0]}): '

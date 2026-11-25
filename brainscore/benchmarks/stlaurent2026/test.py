@@ -71,7 +71,7 @@ def packaged(tmp_path, monkeypatch):
     record = tmp_path / 'sha1.csv'
     pd.DataFrame({'stimulus_id': IMAGES, 'sha1': [hashlib.sha1(i.encode()).hexdigest() for i in IMAGES]}
                  ).to_csv(record, index=False)
-    monkeypatch.setattr(things_data, 'IMAGE_SHA1', record)
+    monkeypatch.setattr(things_data, 'IMAGE_CHECKSUMS', record)
     rng = np.random.default_rng(2)
     root = tmp_path / 'packaged'
     _package(root, 'sub-01', [_region(rng, 'V1', 'retinoVisionNpythy', 60), _region(rng, 'hV4', 'retinoVisionNpythy', 60),
@@ -155,7 +155,7 @@ def test_an_image_with_other_bytes_than_the_things_database_is_refused_by_name(p
 
 
 def test_the_recorded_sha1_lists_the_4320_images_of_the_sessions():
-    record = pd.read_csv(things_data.IMAGE_SHA1)
+    record = pd.read_csv(things_data.IMAGE_CHECKSUMS)
     assert len(record) == 4320 and record['stimulus_id'].is_unique and record['sha1'].str.len().eq(40).all()
 
 
