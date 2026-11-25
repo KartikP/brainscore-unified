@@ -339,3 +339,9 @@ def test_the_act_policy_reads_positions_on_the_model_s_grid(stand_in, monkeypatc
         policy = act.act_policy(lambda prompt: 'grid?', position_grid=grid)
         assert policy(row)['motor:key'].payload == [{'act': 'wait', 'ms': sent}]
         policy.close()
+
+
+def test_each_run_has_nkl_data_of_its_own_and_a_shared_home(stand_in):
+    one = nodekit.NodeKitEnvironment(_program(stand_in / 'a'), form='motor:key').child_environment()
+    two = nodekit.NodeKitEnvironment(_program(stand_in / 'b'), form='motor:key').child_environment()
+    assert one['HOME'] == two['HOME'] and one['NKL_HOME'] != two['NKL_HOME']

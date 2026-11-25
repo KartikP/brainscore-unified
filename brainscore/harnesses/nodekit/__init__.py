@@ -63,9 +63,11 @@ from __future__ import annotations
 import base64
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -198,6 +200,7 @@ class NodeKitEnvironment:
         self._child, self.steps, self.t_ms, self.result, self.invalid_steps, self.trace = None, 0, 0.0, None, 0, None
         self.system, self._shown, self.invalid_in_a_row, self.stop_cause = None, None, 0, None
         self.acts_per_step = None
+        self._run_folder = uuid.uuid4().hex[:16]
 
     def _row(self, answer: dict):
         self.t_ms = answer['t_ms']
@@ -240,9 +243,7 @@ class NodeKitEnvironment:
 
     def reset(self, **_):
         self.close()
-        home = self.folder.parent / 'nkl-home'      # nkl's data and its Chrome download
-        environment = {name: os.environ[name] for name in _RUNTIME_VARIABLES if name in os.environ}
-        environment.update(PYTHONNOUSERSITE='1', HOME=str(home), NKL_HOME=str(home / 'nkl'))
+        environment = self.child_environment()
         if sys.platform.startswith('linux'):
             fetched = subprocess.run([str(environment_python(self.folder)), '-c', 'from nkl._core.server.chrome import '
                                       'fetch_chrome; print(fetch_chrome())'], env=environment, capture_output=True,
@@ -292,10 +293,21 @@ class NodeKitEnvironment:
     def clock(self):
         return {'t_ms': self.t_ms, 'time_source': 'nkl simulation clock', 'time_inferred': False}
 
+    def child_environment(self) -> dict:
+        """The child's environment: a home shared by every run (nkl's Chrome download) and nkl's data folder of
+        this run alone, so each run starts and owns its nkl server: nkl attaches to a server another process
+        started in the same data folder, and that server ends with that process."""
+        home = self.folder.parent / 'nkl-home'
+        environment = {name: os.environ[name] for name in _RUNTIME_VARIABLES if name in os.environ}
+        environment.update(PYTHONNOUSERSITE='1', HOME=str(home),
+                           NKL_HOME=str(home / 'runs' / self._run_folder))
+        return environment
+
     def close(self):
         if self._child is not None:
             self._child.__exit__(None, None, None)
             self._child = None
+            shutil.rmtree(self.child_environment()['NKL_HOME'], ignore_errors=True)
 
 
 def play(subject, program, *, form: str, outputs=None, **settings):
