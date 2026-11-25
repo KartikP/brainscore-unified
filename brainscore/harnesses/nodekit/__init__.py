@@ -7,15 +7,29 @@ Python 3.13): the checkout is NodeKit's task repository at a pinned commit, whic
 and the bundles. nkl drives its own headless Chrome for Testing (downloaded by nkl at the first run).
 Nothing of nkl is imported here.
 
-Each step: the row holds the screen picture on ``vision:image`` ((H, W, 3) uint8, 1024 x 768 by default)
-and the act forms on ``instruction``; the subject answers on ``motor`` with a list of acts, each a mapping
+Each step: the row holds the frames since the last step on ``vision:video`` ((T, 384, 512, 3) uint8: one at
+each frame time the clock passed, 60 frames a second (``FRAME_MS``; nkl states no display rate), at half
+the screen size), the screen at the end of the step on ``vision:image`` ((H, W, 3) uint8, 1024 x 768 by
+default) and the act forms on ``instruction``; the subject answers on ``motor`` with a list of acts, each a mapping
 ``{'act': <name>, <fields>}`` (``ACTS``): key acts ``press``, ``release`` (a W3C ``KeyboardEvent.code``,
 such as ``Space`` or ``ArrowLeft``) and ``type``; pointer acts ``move``, ``down``, ``up`` and ``stroke``;
 ``wait``. Positions are pixels of the last picture: the origin at the top left, x to the right, y down.
 ``nkl_acts`` is the one place that turns them into nkl's acts (scene units: origin at the centre, y up).
-The program's clock moves only by the acts (``wait`` passes time; a key or button act takes 1 ms): the
-clock stands still while the subject thinks. The run ends when the program ends (``terminal``) or after
-``max_steps`` (``truncated``); ``result`` is then the program's result as value JSON.
+The program's clock moves only by the acts (``wait`` passes time; a key or button act takes 1 ms, a stroke
+as nkl's motor allows): the subject's own compute time is not counted. Each step runs to at least the next
+frame time (the worker adds the wait), so a step with no act (an empty list, valid) or with an answer that
+could not be read (None, counted in ``invalid_steps``) also moves the clock by one frame. The run ends
+when the program ends (``terminal``; ``result`` is then the program's result as value JSON); when its
+simulated time passes ``max_ms`` or its steps pass ``max_steps``, the harness leaves the run (nkl's Leave)
+and it ends ``truncated`` with no result; an nkl error stops the session with the error. Times in the
+result (response times) are simulated times.
+
+Each run's nkl trace is written to ``<record>/<folder>/submissions/<name>.json``, the form of a
+participant's submission in the task repository, so ``python -m brainscore.harnesses.nodekit replay
+<record>`` opens the repository's replay viewer on it (``replay``), as on the participants' runs.
+
+Limit: a subject that takes ``vision:image`` and not ``vision:video`` sees only the screen at the end of
+each step: a stimulus shorter than its steps (a brief patch) can pass unseen.
 
 ``program_needs`` is the one place that reads what a program needs (key acts, pointer acts) from the
 program itself; the act form of the environment follows from it, and a subject that sends an act the
@@ -45,6 +59,10 @@ REPOSITORY = 'https://github.com/intelligence-observatory/umi-nkl.git'
 COMMIT = '46ff367543ed5a209147ad9b8e6275ce81059d38'
 NKL_WHEEL = 'vendor/nkl-0.1.0-py3-none-any.whl'
 SCREEN = (1024, 768)
+FRAME_MS = 1000 / 60            # the frame times of vision:video: 60 frames a second
+VIDEO = (512, 384)              # the size of a vision:video frame
+# The participants' folder of each bundle in the task repository: the replay viewer's names.
+VIEWER_FOLDERS = {'drifting-gabor': 'gabor', 'triplet-similarity': 'triplets', 'face-arrangement': 'faces'}
 # nkl's act names (nkl.sim.actions) by the input they need, with their fields: name -> (required, optional).
 ACTS = {
     'key': {'press': ({'key'}, set()), 'release': ({'key'}, set()), 'type': ({'text'}, set())},
@@ -176,16 +194,18 @@ class NodeKitEnvironment:
     """One run of the nkl program in the bundle folder ``program``, with ``seed`` (a bundle's trials are
     already dealt; the seed is nkl's run seed), on a screen of ``screen`` pixels."""
 
-    def __init__(self, program, *, seed: int = 0, screen=SCREEN, max_steps: int = 3000,
-                 folder: Optional[Path] = None, log_directory: Optional[Path] = None):
-        self.program, self.seed, self.screen, self.max_steps = Path(program), seed, tuple(screen), max_steps
+    def __init__(self, program, *, seed: int = 0, screen=SCREEN, max_ms: float = 3_600_000, max_steps: int = 20000,
+                 record: Optional[Path] = None, name: str = 'run', folder: Optional[Path] = None,
+                 log_directory: Optional[Path] = None):
+        self.program, self.seed, self.screen = Path(program), seed, tuple(screen)
+        self.max_ms, self.max_steps, self.record, self.name = max_ms, max_steps, record, name
         if not (self.program / 'program.json').is_file():
             raise ValueError(f'{self.program} is not an nkl bundle: it holds no program.json.')
         self.needs = program_needs(self.program)
         self._acts = NodeKitActs(self.needs, self.program.name)
         self.folder = ready_folder(library(), f'NodeKit {self.program.name}', folder)
         self.log_directory = Path(log_directory) if log_directory else self.folder / 'logs'
-        self._child, self.steps, self.t_ms, self.result, self.invalid_steps = None, 0, 0.0, None, 0
+        self._child, self.steps, self.t_ms, self.result, self.invalid_steps, self.trace = None, 0, 0.0, None, 0, None
 
     def action_spec(self):
         return self._acts
@@ -195,31 +215,44 @@ class NodeKitEnvironment:
         return (f'You take part in a task on a screen of {self.screen[0]} x {self.screen[1]} pixels; you see the '
                 f'screen as a picture. Act on motor with a list of acts, each {{"act": name, fields}}: {acts}. '
                 f'Positions are pixels of the picture: the origin at the top left, x to the right, y down. Time '
-                f'passes only by your acts: wait(ms) lets time pass.')
+                f'passes only by your acts: wait(ms) lets time pass. Each step shows the frames since the last '
+                f'step and the screen now.')
 
     def _row(self, answer: dict):
         self.t_ms = answer['t_ms']
         if answer['ended']:
             return {}
-        picture = np.frombuffer(base64.b64decode(answer['picture']), np.uint8).reshape(answer['shape'])
-        return {'vision:image': picture, 'instruction': self.instruction()}
 
-    def _ended(self, row):
+        def decoded(part):
+            return np.frombuffer(base64.b64decode(part['data']), np.uint8).reshape(part['shape'])
+        row = {'vision:image': decoded(answer['picture'])[0], 'instruction': self.instruction()}
+        if answer['frames']:
+            row['vision:video'] = decoded(answer['frames'])
+        return row
+
+    def _ended(self, row, reason):
+        if reason == 'truncated':
+            self._child.ask({'leave': True})
         self.result = self._child.ask({'result': True})
-        return row, 'terminal'
+        if self.record is not None:
+            folder = Path(self.record) / VIEWER_FOLDERS.get(self.program.name, self.program.name) / 'submissions'
+            folder.mkdir(parents=True, exist_ok=True)
+            self.trace = Path(self._child.ask({'trace': str(folder / f'{self.name}.json')}))
+        return row, reason
 
     def reset(self, **_):
         self.close()
         home = self.folder.parent / 'nkl-home'      # nkl's data and its Chrome download
         environment = {name: os.environ[name] for name in _RUNTIME_VARIABLES if name in os.environ}
         environment.update(PYTHONNOUSERSITE='1', HOME=str(home), NKL_HOME=str(home / 'nkl'))
-        self._child = ChildProcess([environment_python(self.folder), _WORKER, self.program, self.seed, *self.screen],
+        self._child = ChildProcess([environment_python(self.folder), _WORKER, self.program, self.seed, *self.screen,
+                                    FRAME_MS, *VIDEO],
                                    env=environment, log_directory=self.log_directory,
                                    idle_timeout_s=_CHILD_SILENCE_S).__enter__()
-        self.steps, self.result, self.invalid_steps = 0, None, 0
+        self.steps, self.result, self.invalid_steps, self.trace = 0, None, 0, None
         answer = self._child.ask({'reset': True})
         row = self._row(answer)
-        return self._ended(row) if answer['ended'] else row
+        return self._ended(row, 'terminal') if answer['ended'] else row
 
     def step(self, outputs):
         acts = self._acts.validate(outputs['motor'])
@@ -229,8 +262,10 @@ class NodeKitEnvironment:
         self.steps += 1
         row = self._row(answer)
         if answer['ended']:
-            return self._ended(row)
-        return row, 'truncated' if self.steps >= self.max_steps else None
+            return self._ended(row, 'terminal')
+        if self.t_ms >= self.max_ms or self.steps >= self.max_steps:
+            return self._ended(row, 'truncated')
+        return row, None
 
     def clock(self):
         return {'t_ms': self.t_ms, 'time_source': 'nkl simulation clock', 'time_inferred': False}
@@ -243,8 +278,11 @@ class NodeKitEnvironment:
 
 def play(subject, program, *, outputs=('motor',), **settings):
     """One run of ``program`` (a bundle folder) by ``subject`` through ``environment_session``:
-    ``(result, environment, session)``; ``result`` is None when the run did not complete."""
+    ``(result, environment, session)``; ``result`` is None when the run did not complete. With ``record=``
+    the run's trace is kept there under the subject's identifier and the time."""
+    import time
     from brainscore_core.streaming_helpers import environment_session
+    settings.setdefault('name', f"{getattr(subject, 'identifier', 'subject')}-{time.strftime('%Y%m%dT%H%M%S')}")
     environment = NodeKitEnvironment(program, **settings)
     try:
         session = environment_session(environment, list(outputs))
@@ -252,3 +290,13 @@ def play(subject, program, *, outputs=('motor',), **settings):
         return environment.result, environment, session
     finally:
         environment.close()
+
+
+def replay(record, port: int = 5310) -> None:
+    """Open the task repository's replay viewer on ``record`` (a folder of ``<folder>/submissions/*.json``
+    traces, a subject's or the participants' ``prolific/``), served on 127.0.0.1 with the pinned bundles."""
+    folder = ready_folder(library(), 'NodeKit replay')
+    checkout = folder / 'checkout'
+    subprocess.run([str(environment_python(folder)), str(checkout / 'src' / 'umi_nkl' / 'viewer.py'),
+                    '--prolific', str(Path(record).resolve()), '--bundles', str(checkout / 'bundles'),
+                    '--port', str(port)], check=True)
