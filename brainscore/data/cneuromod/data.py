@@ -1,22 +1,24 @@
-"""Read the packaged CNeuroMod THINGS files: the trial responses of one participant and region, and
-the images. ``brainscore.load_dataset('cneuromod-things', ...)`` and
-``brainscore.load_stimulus_set('cneuromod-things')`` call these."""
+"""Read the packaged CNeuroMod files: the THINGS trial responses of one participant and region and the
+images (``load_dataset('cneuromod-things', ...)``, ``load_stimulus_set('cneuromod-things')``); the mario
+time series of one participant and the media of its TRs (``load_dataset('cneuromod-mario', participant)``,
+``load_stimulus_set('cneuromod-mario', participant)``)."""
 from pathlib import Path
 
 import pandas as pd
 
 NAME = 'cneuromod-things'
+MARIO = 'cneuromod-mario-timeseries'
 # The sha1 of each THINGS image of the sessions, from images_THINGS.zip (https://osf.io/jum2f), read 2026-11-24.
 IMAGE_CHECKSUMS = Path(__file__).parent / 'things_images_sha1.csv'
 
 
-def packaged(root=None) -> Path:
-    """The folder ``package_data('cneuromod-things')`` wrote: ``root``, or its default place."""
+def packaged(root=None, name: str = NAME) -> Path:
+    """The folder ``package_data(name)`` wrote: ``root``, or its default place."""
     from brainscore.data.local import LocalDataMissing, data_home
-    folder = Path(root) if root is not None else data_home() / 'packaged' / NAME
+    folder = Path(root) if root is not None else data_home() / 'packaged' / name
     if not folder.is_dir():
         raise LocalDataMissing(f'{folder} does not exist. Package the data first: '
-                               f"`brainscore.data.package_data('{NAME}', part='sub-01')`, one call per participant "
+                               f"`brainscore.data.package_data('{name}', part='sub-01')`, one call per participant "
                                f'(see brainscore/data/cneuromod/README.md).')
     return folder
 
@@ -81,3 +83,45 @@ def load_stimulus_set(root=None):
     stimuli.stimulus_paths = dict(zip(table['stimulus_id'], table['image_path']))
     return stimuli
 
+
+
+def load_timeseries(participant: str, root=None, name: str = MARIO):
+    """The per-TR time series of ``participant``, every session in order: a ``presentation`` (TR) x ``neuroid``
+    (parcel) array with the coordinates the packaging wrote (``session``, ``run``, ``tr``, ``stimulus_id``, ...)."""
+    import xarray as xr
+    folder = packaged(root, name) / participant
+    paths = sorted(folder.glob('ses-*/timeseries_cneuromod2026.nc'))
+    if not paths:
+        raise FileNotFoundError(f"no ses-*/timeseries_cneuromod2026.nc under {folder}: package {participant} "
+                                f"(`package_data('{name}', part='{participant}')`).")
+    sessions = []
+    for path in paths:
+        with xr.open_dataarray(path) as session:
+            sessions.append(session.load())
+    return xr.concat(sessions, dim='presentation')
+
+
+def load_mario_media(participant: str, root=None):
+    """The media of each TR of ``participant`` that shows a repetition: one row per TR, ``stimulus_id`` (the TR,
+    ``sub-01_ses-001_run-1_tr-0012``), ``video_path`` (its clip), ``image_path`` (its middle frame),
+    ``audio_path`` (its sound), ``session``, ``run``, ``tr``, ``repetition_id``, ``frames``."""
+    from brainscore.data.local import LocalDataMissing
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    folder = packaged(root, MARIO)
+    table_path = folder / participant / 'media' / 'media.csv'
+    if not table_path.is_file():
+        raise LocalDataMissing(f'{table_path} does not exist. Make the media of each TR from the play videos: '
+                               f'`python -m brainscore.data.cneuromod.data_packaging.mario --packaged {folder} '
+                               f'--part {participant}` (see brainscore/data/cneuromod/README.md).')
+    table = pd.read_csv(table_path)
+    for column in ('video_path', 'image_path', 'audio_path'):
+        table[column] = [str(folder / path) for path in table[column]]
+    missing = [path for path in table['video_path'] if not Path(path).is_file()]
+    if missing:
+        raise LocalDataMissing(f'{len(missing)} of {len(table)} clips of {participant} are missing (for example '
+                               f'{missing[0]}): make the media again with the command above.')
+    stimuli = StimulusSet(table)
+    import hashlib      # the name names the rows: another media table gives another stored entry
+    stimuli.identifier = f'cneuromod-mario-{participant}-{hashlib.sha1(table_path.read_bytes()).hexdigest()[:12]}'
+    stimuli.stimulus_paths = dict(zip(table['stimulus_id'], table['video_path']))
+    return stimuli

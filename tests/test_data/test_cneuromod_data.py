@@ -324,5 +324,31 @@ def test_a_mario_tr_has_its_repetition_its_video_frames_and_the_seconds_each_but
     assert series['button_A'].values[:3] == pytest.approx([0.49, 0.51, 0.0])
     assert series['button_RIGHT'].values[5] == pytest.approx(0.2)
     stimuli = pd.read_csv(out / 'sub-01' / 'ses-01' / 'stimuli.csv')
-    assert stimuli['video'].tolist() == [f'sub-01/ses-001/beh/videos/{name}.mp4' for name in stimuli['stimulus_id']]
+    assert stimuli['replay_video'].tolist() == [f'sub-01/ses-001/beh/videos/{name}.mp4'
+                                               for name in stimuli['stimulus_id']]
     assert set(stimuli['level']) == {'w1l1', 'w1l2'}
+
+
+@pytest.mark.skipif(__import__('shutil').which('ffmpeg') is None, reason='ffmpeg is needed')
+def test_the_mario_media_of_a_tr_are_its_frames_its_middle_frame_and_the_sound_of_the_same_frames(source, tmp_path):
+    import cv2
+    from scipy.io import wavfile
+    from brainscore.data.cneuromod.data_packaging import mario
+    out = _build('cneuromod-mario-timeseries', source, tmp_path, part='sub-01')
+    replays = tmp_path / 'replays'
+    for name, seconds in (('w1l1_rep-000', 6), ('w1l2_rep-001', 4)):     # 60 frames per second, with sound
+        video = replays / 'sub-01' / 'ses-001' / 'beh' / 'videos' / f'sub-01_ses-001_task-mario_level-{name}.mp4'
+        video.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', f'testsrc=size=240x224:rate=60:duration={seconds}',
+                        '-f', 'lavfi', '-i', f'sine=frequency=440:sample_rate=32000:duration={seconds}',
+                        '-shortest', str(video)], check=True)
+    table = pd.read_csv(mario.write_media(out, 'sub-01', replays))
+    assert table['tr'].tolist() == [1, 2, 3, 4, 6, 7, 8]                  # the TRs that show a repetition
+    first = table.iloc[0]
+    capture = cv2.VideoCapture(str(out / first['video_path']))
+    assert int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) == first['frames'] == 148 - 59
+    assert capture.get(cv2.CAP_PROP_FPS) == pytest.approx(60)
+    assert cv2.imread(str(out / first['image_path'])).shape == (224, 240, 3)
+    rate, sound = wavfile.read(out / first['audio_path'])
+    assert rate == 16000 and len(sound) == pytest.approx(first['frames'] / 60 * 16000, abs=1)
+    assert table.loc[table['tr'] == 4, 'frames'].item() == 360 - 327     # stops at the repetition's last frame

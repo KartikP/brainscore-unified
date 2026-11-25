@@ -91,3 +91,17 @@ def _stimuli(root=None):
 
 data_registry['cneuromod-things'] = _trials
 stimulus_set_registry['cneuromod-things'] = _stimuli
+
+
+def _mario_timeseries(participant, root=None):
+    from .data import load_timeseries
+    return load_timeseries(participant, root)
+
+
+def _mario_media(participant, root=None):
+    from .data import load_mario_media
+    return load_mario_media(participant, root)
+
+
+data_registry['cneuromod-mario'] = _mario_timeseries
+stimulus_set_registry['cneuromod-mario'] = _mario_media
