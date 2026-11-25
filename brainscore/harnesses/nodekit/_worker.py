@@ -1,10 +1,12 @@
 """One nkl program (a bundle's ``program.json``) as a simulated participant, in nkl's own environment.
 
-    <environment python> _worker.py <bundle folder> <seed> <screen width> <screen height>
+    <environment python> _worker.py <bundle folder> <seed> <screen width> <screen height> <video width> <video height>
 
 Standard library and nkl only. A step is one turn of nkl's agent harness (``nkl.agents``): the turn's
 acts as one schedule (``act``), then a look at the screen, under the run's pacing; the body (pointer, keys)
-follows the acts (``observe``). Commands, one JSON line each:
+follows the acts (``observe``). Beside nkl's schedule, the worker looks at each frame time the clock passes
+(60 frames a second, ``FRAME_US``, at the video size; each look is a frame line in the trace), so the frames
+since the last turn come back with the screen. Commands, one JSON line each:
 
 - ``{"reset": {"pacing": [kind, step µs], "limits": {...}, "seconds": s, "instructions": text}}`` starts
   the run (``begin``) and answers the first screen with nkl's briefing for it (``system_prompt``).
@@ -15,8 +17,12 @@ follows the acts (``observe``). Commands, one JSON line each:
 - ``{"result": true}``: the program's result as value JSON, or None when it did not complete.
 - ``{"trace": <file>}`` writes the run's trace lines to the file as one JSON array.
 
-A reset or a step answers ``{"done": screen}``: the picture (base64 RGB, top row first), the run's time
-in ms, whether it has ended, and the body and limits the subject's briefing shows.
+A reset or a step answers ``{"done": screen}``: the picture (base64 RGB, top row first), the frames since
+the last turn with their times, the run's time in ms, whether it has ended, and the body and limits the
+subject's briefing shows.
+
+Limit: a frame is a look between two scheduled items: the positions of a pointer stroke between its
+samples are not frames of their own (a stroke is sampled at nkl's motor rate, 120 a second).
 
 Limit: nkl 0.1.0 starts a run from a ``Call`` of Python code; a bundle holds the lowered program
 instead. ``BundleCall`` gives the program, its arguments and its media as a ``Call`` does, and the
@@ -129,7 +135,52 @@ def actions(acts, context):
     return made
 
 
-def screen(run, context, system=None):
+FRAME_US = 1_000_000 / 60
+LOOKS_PER_REQUEST = 20          # nkl's answer to one request holds every picture of it
+
+
+def frame_time(k):
+    return round(k * FRAME_US)
+
+
+def with_frames(video, frames):
+    """``nkl.fsim.run`` with a look at each frame time the schedule passes, in requests of at most
+    ``LOOKS_PER_REQUEST`` looks; the frames go to ``frames`` and the schedule's own looks come back."""
+    import math
+    from nkl import fsim
+    real = fsim.run
+
+    def run(r, schedule, until=None):
+        t, items, k = r.t, [], math.floor(r.t / FRAME_US) + 1
+        while frame_time(k) <= r.t:
+            k += 1
+        for dt, item in schedule:
+            at, previous = t + dt, t
+            while frame_time(k) <= at:
+                items.append((frame_time(k) - previous, fsim.Look(size=video), True))
+                previous, k = frame_time(k), k + 1
+            items.append((at - previous, item, False))
+            t = at
+        own, part = [], []
+        for item in items:
+            part.append(item)
+            if sum(frame for *_, frame in part) >= LOOKS_PER_REQUEST or item is items[-1]:
+                r, images = real(r, [(dt, what) for dt, what, _ in part])
+                looks = [frame for _, what, frame in part if isinstance(what, fsim.Look)]
+                for image, frame in zip(images, looks):
+                    (frames if frame else own).append(image)
+                part = []
+        return r, own
+    return run
+
+
+def encoded(images):
+    return {'data': base64.b64encode(b''.join(image.data for image in images)).decode(),
+            'shape': [len(images), images[0].height, images[0].width, 3],
+            'at_ms': [image.at / 1000 for image in images]}
+
+
+def screen(run, context, system=None, frames=()):
     from nkl._core.host.agents import to_pixels
     ended = run.outcome is not None
     image, body = context.screen, context.body
@@ -141,6 +192,8 @@ def screen(run, context, system=None):
     if not ended:
         answer['picture'] = {'data': base64.b64encode(image.data).decode(), 'shape': [image.height, image.width, 3],
                              'at_ms': image.at / 1000}
+    if frames:
+        answer['frames'] = encoded(frames)
     if system is not None:
         answer['system'] = system
     return answer
@@ -149,6 +202,7 @@ def screen(run, context, system=None):
 def main():
     from nkl import agents, fsim
     folder, seed, width, height = Path(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])
+    video = (int(sys.argv[5]), int(sys.argv[6]))
     run = context = pacing = None
     motor = agents.Motor()
     while line := commands.readline():
@@ -170,9 +224,14 @@ def main():
                 made = actions(step['acts'], context)
                 response = agents.AgentResponse(tuple(made), (), (), '', None, agents.Usage(), float(step['seconds']),
                                                 1, '', '', '')
-                run, images = agents.act(run, context, response, pacing, motor)
+                frames, run_schedule = [], fsim.run
+                fsim.run = with_frames(video, frames)
+                try:
+                    run, images = agents.act(run, context, response, pacing, motor)
+                finally:
+                    fsim.run = run_schedule
                 context = agents.observe(context, response, images)
-                send({'done': screen(run, context)})
+                send({'done': screen(run, context, frames=frames)})
             elif 'leave' in command:
                 if run.outcome is None:
                     run = fsim.stop(run)

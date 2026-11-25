@@ -159,9 +159,10 @@ class NodeKitBenchmark(BenchmarkBase):
             raise ValueError(f'pacing is one of {PACINGS} (nkl\'s Frozen, Realtime and Dense), not {pacing!r}.')
         self.task, self.max_steps, self.pacing, self.record = task, max_steps, pacing, record
         # The screen is the stimulus: a subject that cannot take it never sees the task (N/A, Rule 5.1).
-        # nkl's briefing goes on instruction and the facts of each turn (time, hands, turns left) on observation.
+        # The frames since the last turn go on vision:video (a subject without it sees the last screen only),
+        # nkl's briefing on instruction and the facts of each turn (time, hands, turns left) on observation.
         self.essential_input_channels = frozenset({'vision:image'})
-        self.required_input_channels = self.essential_input_channels | {'instruction', 'observation'}
+        self.required_input_channels = self.essential_input_channels | {'vision:video', 'instruction', 'observation'}
         self.requested_output_channels = frozenset({ACT_FORMS[task]})
         super().__init__(identifier=identifier, version=1, parent='behavior', ceiling=None, bibtex='')
 

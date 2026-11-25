@@ -8,8 +8,11 @@ and the bundles. nkl drives its own headless Chrome for Testing (downloaded by n
 Nothing of nkl is imported here.
 
 A step is one turn of nkl's own agent harness (``nkl.agents``), so a run here and a run there with the
-same acts have the same trace. The row of a step holds the screen on ``vision:image`` ((H, W, 3) uint8,
-1024 x 768 by default), nkl's briefing for the task on ``instruction`` (``system_prompt``: the screen, how
+same acts have the same acts and outcome in their traces (ours holds the frame looks as well). The row of a
+step holds the screen on ``vision:image`` ((H, W, 3) uint8, 1024 x 768 by default), the frames since the
+last turn on ``vision:video`` ((T, 384, 512, 3) uint8: one at each frame time the clock passed, 60 frames a
+second, at half the screen size, as a participant's screen showed them; their times are
+``observation['frame_t_ms']``; absent when the clock passed no frame time), nkl's briefing for the task on ``instruction`` (``system_prompt``: the screen, how
 acts take time and how the clock runs under the pacing, the limits, then the benchmark's instructions) and
 the facts of the turn on ``observation`` (``t_ms``: the screen's time; ``pointer`` in pixels,
 ``pointer_down``, ``keys_down``: the subject's own hands; ``turns_left``; ``acts_per_step``; ``act_form``:
@@ -35,9 +38,9 @@ Each run's nkl trace is written to ``<record>/<folder>/submissions/<name>.json``
 participant's submission in the task repository, so ``python -m brainscore.harnesses.nodekit replay
 <record>`` opens the repository's replay viewer on it (``replay``), as on the participants' runs.
 
-Limit: the subject sees the screen at the end of each step only (nkl's ``look`` act is not offered): under
-frozen or realtime pacing, a brief stimulus (the 45 ms Gabor patch) is seen only when a step ends while it
-is shown.
+Limit: a subject that takes ``vision:image`` and not ``vision:video`` sees only the screen at the end of each
+step: a brief stimulus (the 45 ms Gabor patch) is seen only when a step ends while it is shown. nkl's
+``look`` act is not offered (it is not a motor act).
 
 Limit: a session takes its acts on one channel: a program that needs key and pointer acts in one run (type
 a text, then click) runs with the one form its benchmark asks for, and a step that needs the other form
@@ -66,6 +69,7 @@ NKL_WHEEL = 'vendor/nkl-0.1.0-py3-none-any.whl'
 SCREEN = (1024, 768)
 PACINGS = ('frozen', 'realtime', 'dense')
 DENSE_STEP_US = 16_667          # nkl's Dense step: one frame at 60 frames a second
+VIDEO = (512, 384)              # the size of a vision:video frame; frames at 60 a second (the worker's FRAME_US)
 # The participants' folder of each bundle in the task repository: the replay viewer's names.
 VIEWER_FOLDERS = {'drifting-gabor': 'gabor', 'triplet-similarity': 'triplets', 'face-arrangement': 'faces'}
 FORMS = ('motor:key', 'motor:pointer')
@@ -151,9 +155,15 @@ class NodeKitEnvironment:
         picture = answer['picture']
         observation = {'t_ms': picture['at_ms'], **answer['body'], 'turns_left': self.max_steps - self.steps,
                        'acts_per_step': answer['acts_per_step'], 'act_form': self.form}
+
+        def decoded(part):
+            return np.frombuffer(base64.b64decode(part['data']), np.uint8).reshape(part['shape'])
+        row = {'vision:image': decoded(picture), 'instruction': self.system, 'observation': observation}
+        if answer.get('frames'):
+            row['vision:video'] = decoded(answer['frames'])
+            observation['frame_t_ms'] = answer['frames']['at_ms']
         self._shown = time.monotonic()
-        return {'vision:image': np.frombuffer(base64.b64decode(picture['data']), np.uint8).reshape(picture['shape']),
-                'instruction': self.system, 'observation': observation}
+        return row
 
     def _ended(self, row, reason):
         if reason == 'truncated':
@@ -170,7 +180,8 @@ class NodeKitEnvironment:
         home = self.folder.parent / 'nkl-home'      # nkl's data and its Chrome download
         environment = {name: os.environ[name] for name in _RUNTIME_VARIABLES if name in os.environ}
         environment.update(PYTHONNOUSERSITE='1', HOME=str(home), NKL_HOME=str(home / 'nkl'))
-        self._child = ChildProcess([environment_python(self.folder), _WORKER, self.program, self.seed, *self.screen],
+        self._child = ChildProcess([environment_python(self.folder), _WORKER, self.program, self.seed, *self.screen,
+                                    *VIDEO],
                                    env=environment, log_directory=self.log_directory,
                                    idle_timeout_s=_CHILD_SILENCE_S).__enter__()
         self.steps, self.result, self.invalid_steps, self.trace = 0, None, 0, None
