@@ -68,8 +68,8 @@ def _keys(answer):
     def policy(row):
         seen.append(row)
         if len(seen) == 1:
-            return {'motor': [{'act': 'Wait', 'ms': 250}]}
-        return {'motor': [{'act': 'KeyPress', 'key': answer}, {'act': 'KeyRelease', 'key': answer}]}
+            return {'motor': [{'act': 'wait', 'ms': 250}]}
+        return {'motor': [{'act': 'press', 'key': answer}, {'act': 'release', 'key': answer}]}
     return policy, seen
 
 
@@ -82,22 +82,22 @@ def test_a_subject_takes_part_through_participate_and_the_program_result_comes_b
     assert session.source.end_reason == 'terminal'
     picture = seen[0]['vision:image']
     assert picture.shape == (768, 1024, 3) and picture.dtype == np.uint8
-    assert 'KeyPress' in seen[0]['instruction'] and 'PointerDown' not in seen[0]['instruction']
+    assert 'press' in seen[0]['instruction'] and 'stroke' not in seen[0]['instruction']
     assert environment.t_ms == 252.0         # the clock moved by the acts only
 
 
 def test_an_act_the_program_does_not_read_fails_at_the_first_action_with_the_forms_it_takes(stand_in):
     program = _program(stand_in / 'keys-only', ['keyboard.inputs'])
-    subject = BrainScoreModel('pointer', policy=lambda row: {'motor': [{'act': 'PointerDown'}]},
+    subject = BrainScoreModel('pointer', policy=lambda row: {'motor': [{'act': 'down'}]},
                               policy_in_channels=('vision:image',))
     with pytest.raises(Exception, match='keys-only takes acts') as error:
         nodekit.play(subject, program)
-    assert 'KeyPress' in str(error.value)
+    assert "'press'" in str(error.value)
 
 
 def test_a_run_that_does_not_end_is_truncated_and_has_no_result(stand_in):
     program = _program(stand_in / 'waits', ['keyboard.inputs'])
-    subject = BrainScoreModel('waits', policy=lambda row: {'motor': [{'act': 'Wait', 'ms': 10}]},
+    subject = BrainScoreModel('waits', policy=lambda row: {'motor': [{'act': 'wait', 'ms': 10}]},
                               policy_in_channels=('vision:image',))
     result, environment, session = nodekit.play(subject, program, max_steps=3)
     assert result is None and session.source.end_reason == 'truncated' and environment.steps == 3
@@ -108,3 +108,11 @@ def test_what_a_program_needs_is_read_from_its_imports(tmp_path):
     assert nodekit.program_needs(_program(tmp_path / 'b', ['pointer.state'])) == {'pointer', 'time'}
     both = nodekit.program_needs(_program(tmp_path / 'c', ['pointer.inputs', 'keyboard.inputs']))
     assert {'key', 'pointer'} <= both
+
+
+def test_pixels_of_the_picture_become_nkl_scene_units_in_one_place():
+    acts = nodekit.nkl_acts([{'act': 'move', 'x': 952, 'y': 734}, {'act': 'down'},
+                             {'act': 'stroke', 'points': [[512, 384]]}, {'act': 'press', 'key': 'Space'}],
+                            (1024, 768))
+    assert acts == [{'act': 'PointerMove', 'x': 440, 'y': -350}, {'act': 'PointerDown'},
+                    {'act': 'PointerStroke', 'points': [[0, 0]]}, {'act': 'KeyPress', 'key': 'Space'}]

@@ -9,11 +9,13 @@ Nothing of nkl is imported here.
 
 Each step: the row holds the screen picture on ``vision:image`` ((H, W, 3) uint8, 1024 x 768 by default)
 and the act forms on ``instruction``; the subject answers on ``motor`` with a list of acts, each a mapping
-``{'act': <name>, <fields>}`` with nkl's own act names (``ACTS``). The program's clock moves only by the
-acts (a ``Wait`` passes time; a key or button act takes 1 ms): the clock stands still while the subject
-thinks. Positions are scene units: the origin at the screen's centre, x to the right, y up; one unit is
-one pixel of the picture. The run ends when the program ends (``terminal``) or after ``max_steps``
-(``truncated``); ``result`` is then the program's result as value JSON.
+``{'act': <name>, <fields>}`` (``ACTS``): key acts ``press``, ``release`` (a W3C ``KeyboardEvent.code``,
+such as ``Space`` or ``ArrowLeft``) and ``type``; pointer acts ``move``, ``down``, ``up`` and ``stroke``;
+``wait``. Positions are pixels of the last picture: the origin at the top left, x to the right, y down.
+``nkl_acts`` is the one place that turns them into nkl's acts (scene units: origin at the centre, y up).
+The program's clock moves only by the acts (``wait`` passes time; a key or button act takes 1 ms): the
+clock stands still while the subject thinks. The run ends when the program ends (``terminal``) or after
+``max_steps`` (``truncated``); ``result`` is then the program's result as value JSON.
 
 ``program_needs`` is the one place that reads what a program needs (key acts, pointer acts) from the
 program itself; the act form of the environment follows from it, and a subject that sends an act the
@@ -45,11 +47,14 @@ NKL_WHEEL = 'vendor/nkl-0.1.0-py3-none-any.whl'
 SCREEN = (1024, 768)
 # nkl's act names (nkl.sim.actions) by the input they need, with their fields: name -> (required, optional).
 ACTS = {
-    'key': {'KeyPress': ({'key'}, set()), 'KeyRelease': ({'key'}, set()), 'TypeText': ({'text'}, set())},
-    'pointer': {'PointerMove': ({'x', 'y'}, set()), 'PointerDown': (set(), set()), 'PointerUp': (set(), set()),
-                'PointerStroke': ({'points'}, {'force'})},
-    'time': {'Wait': ({'ms'}, set())},
+    'key': {'press': ({'key'}, set()), 'release': ({'key'}, set()), 'type': ({'text'}, set())},
+    'pointer': {'move': ({'x', 'y'}, set()), 'down': (set(), set()), 'up': (set(), set()),
+                'stroke': ({'points'}, {'force'})},
+    'time': {'wait': ({'ms'}, set())},
 }
+# The act of nkl.sim.actions for each act name.
+_NKL_ACTS = {'press': 'KeyPress', 'release': 'KeyRelease', 'type': 'TypeText', 'move': 'PointerMove',
+             'down': 'PointerDown', 'up': 'PointerUp', 'stroke': 'PointerStroke', 'wait': 'Wait'}
 _WORKER = Path(__file__).with_name('_worker.py')
 # Seconds the child may take for one command (a first reset starts nkl's server and Chrome).
 _CHILD_SILENCE_S = 600.0
@@ -104,10 +109,32 @@ def program_needs(program: Path) -> frozenset:
     return frozenset({'time'} | {need for need, names in reads.items() if imports & names})
 
 
+def nkl_acts(acts, screen) -> list:
+    """The acts as nkl's (``nkl.sim.actions`` names and fields): pixels of a ``screen`` (width, height)
+    picture, origin top left and y down, become scene units, origin at the centre and y up (device ratio 1)."""
+    width, height = screen
+
+    def scene(x, y):
+        return x - width / 2, height / 2 - y
+    converted = []
+    for act in acts:
+        fields = {key: value for key, value in act.items() if key != 'act'}
+        if 'x' in fields:
+            fields['x'], fields['y'] = scene(fields['x'], fields['y'])
+        if 'points' in fields:
+            fields['points'] = [list(scene(*point)) for point in fields['points']]
+        converted.append({'act': _NKL_ACTS[act['act']], **fields})
+    return converted
+
+
 class NodeKitActs:
     """The ``motor`` payload of a program: a list of acts (or one act), each ``{'act': name, fields}``
     with a name of ``ACTS`` for an input the program reads; None is no act (an answer that could not be
-    read). The key names and the values are checked by nkl."""
+    read). The key names and the values are checked by nkl.
+
+    Limit: a session takes its acts on one output channel; key and pointer acts share bare ``motor`` here.
+    With one channel for each form (``motor:key``, ``motor:pointer``), a program that needs both in one run
+    (type a text, then click) cannot run until a session takes acts on two channels."""
 
     def __init__(self, needs: frozenset, task: str):
         self.forms = {name: fields for need in sorted(needs) for name, fields in ACTS[need].items()}
@@ -142,7 +169,7 @@ class NodeKitActs:
         return {'kind': 'nodekit acts', 'task': self.task,
                 'acts': {name: sorted(required) + [f'{key} (optional)' for key in sorted(optional)]
                          for name, (required, optional) in self.forms.items()},
-                'positions': 'scene units: origin at the screen centre, x right, y up, one unit one pixel'}
+                'positions': 'pixels of the last picture: origin at the top left, x right, y down'}
 
 
 class NodeKitEnvironment:
@@ -167,8 +194,8 @@ class NodeKitEnvironment:
         acts = '; '.join(f'{name}({", ".join(fields)})' for name, fields in self._acts.describe()['acts'].items())
         return (f'You take part in a task on a screen of {self.screen[0]} x {self.screen[1]} pixels; you see the '
                 f'screen as a picture. Act on motor with a list of acts, each {{"act": name, fields}}: {acts}. '
-                f'Positions are scene units: the origin at the screen centre, x to the right, y up, one unit one '
-                f'pixel. Time passes only by your acts: Wait(ms) lets time pass.')
+                f'Positions are pixels of the picture: the origin at the top left, x to the right, y down. Time '
+                f'passes only by your acts: wait(ms) lets time pass.')
 
     def _row(self, answer: dict):
         self.t_ms = answer['t_ms']
@@ -198,7 +225,7 @@ class NodeKitEnvironment:
         acts = self._acts.validate(outputs['motor'])
         if acts is None:
             self.invalid_steps += 1
-        answer = self._child.ask({'step': acts or []})
+        answer = self._child.ask({'step': nkl_acts(acts or [], self.screen)})
         self.steps += 1
         row = self._row(answer)
         if answer['ended']:
