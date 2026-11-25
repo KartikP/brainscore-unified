@@ -123,5 +123,6 @@ def load_mario_media(participant: str, root=None):
     stimuli = StimulusSet(table)
     import hashlib      # the name names the rows: another media table gives another stored entry
     stimuli.identifier = f'cneuromod-mario-{participant}-{hashlib.sha1(table_path.read_bytes()).hexdigest()[:12]}'
-    stimuli.stimulus_paths = dict(zip(table['stimulus_id'], table['video_path']))
+    # the picture of each row: a picture extractor reads stimulus_paths; a clip extractor reads the video_path column
+    stimuli.stimulus_paths = dict(zip(table['stimulus_id'], table['image_path']))
     return stimuli

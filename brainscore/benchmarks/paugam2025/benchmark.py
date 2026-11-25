@@ -232,7 +232,7 @@ class Paugam2025MarioButtons(BenchmarkBase):
     @property
     def execution_plan(self) -> ExecutionPlan:
         media = load_stimulus_set(DATA, self._participants[0], root=self._root)
-        return ExecutionPlan(n_extraction_presentations=len(media), metric_category='classifier',
+        return ExecutionPlan(n_extraction_presentations=len(media), metric_category='behavioral',
                              runs_ceiling_metric=False, probe_stimuli=media.iloc[:1])
 
     def _rows(self, participant):
@@ -261,10 +261,10 @@ class Paugam2025MarioButtons(BenchmarkBase):
             test = table[table['test']].reset_index(drop=True)
             fitting = type(table)(fitting)
             fitting.identifier = f'{table.identifier}-fit{FIT_EVERY}'
-            fitting.stimulus_paths = dict(zip(fitting['stimulus_id'], fitting['video_path']))
+            fitting.stimulus_paths = dict(zip(fitting['stimulus_id'], fitting['image_path']))
             stimuli = type(table)(test.drop(columns=['label']))
             stimuli.identifier = f'{table.identifier}-test'
-            stimuli.stimulus_paths = dict(zip(stimuli['stimulus_id'], stimuli['video_path']))
+            stimuli.stimulus_paths = dict(zip(stimuli['stimulus_id'], stimuli['image_path']))
             from brainscore_core.streaming_helpers import stimulus_session
             session = stimulus_session(stimuli, ['behavior:choice'], TaskContext(
                 fitting_stimuli=fitting, instruction=INSTRUCTION, response=Choice(choices)))

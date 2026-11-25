@@ -344,6 +344,9 @@ def test_the_mario_media_of_a_tr_are_its_frames_its_middle_frame_and_the_sound_o
                         '-shortest', str(video)], check=True)
     table = pd.read_csv(mario.write_media(out, 'sub-01', replays))
     assert table['tr'].tolist() == [1, 2, 3, 4, 6, 7, 8]                  # the TRs that show a repetition
+    from brainscore.data.cneuromod.data import load_mario_media
+    media = load_mario_media('sub-01', out)
+    assert all(path.endswith('.png') for path in media.stimulus_paths.values())    # a picture extractor reads these
     first = table.iloc[0]
     capture = cv2.VideoCapture(str(out / first['video_path']))
     assert first['frames'] == 148 - 59
