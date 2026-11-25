@@ -14,7 +14,7 @@ own masks).
 The cortex form, ``StLaurent2026-fMRI-things-cortex``, asks ``neural:cortex``: the target is the
 cortical voxels of the participant's fMRIPrep segmentation (``aparcaseg``, native space), for
 sub-01, 02, 03 and 06. The model's ``cortex`` selector names its layers; each layer is one band,
-reduced to at most 100 components on the training images (``prepare_bands`` of Algonauts2025), at
+reduced to at most 100 components on the training images (``prepare_bands`` of the encoding metric), at
 most 12 bands; a banded ridge (one penalty per band, one penalty tuple for all voxels, chosen on
 one held-out fold of training categories from a random search of the grid). The other steps are
 those of the region form.
@@ -49,9 +49,8 @@ from brainscore_core.execution_plan import ExecutionPlan
 from brainscore_core.metrics import Score
 from brainscore import load_dataset, load_stimulus_set
 from brainscore.benchmarks._score import benchmark_score, noise_ceiling, not_estimated, voxel_score
-from brainscore.benchmarks.algonauts2025.scoring import prepare_bands
 from brainscore.metrics.encoding import (
-    NormalEquations, cross_validated_r, grid_search, group_kfold, penalty_grid, ridge)
+    NormalEquations, cross_validated_r, grid_search, group_kfold, penalty_grid, prepare_bands, ridge)
 
 BIBTEX = """@article{stlaurent2026things,
   title={CNeuroMod-THINGS, a densely-sampled fMRI dataset for visual neuroscience},

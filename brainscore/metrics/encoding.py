@@ -18,7 +18,9 @@ returns the Pearson r of each target on the held-out rows. The Pearson r is
 ``brainscore_core.metrics.per_unit_pearson``; this module has no second one.
 
 Features are one 2-D array, or a list of 2-D arrays (bands) with the same rows.
-A banded penalty has one value per band.
+A banded penalty has one value per band. ``prepare_bands`` centres, reduces
+(``FeatureProjection``) and scales each band on the training rows (Algonauts2025,
+StLaurent2026 cortex).
 
 The settings of the solvers and choosers exist to keep existing scores
 bit-for-bit (Contract Rules 10). Each one reproduces the arithmetic of one
@@ -37,9 +39,9 @@ import pandas as pd
 from brainscore_core.metrics import per_unit_pearson
 
 __all__ = [
-    'Chosen', 'NormalEquations', 'SklearnRidge',
+    'Chosen', 'FeatureProjection', 'NormalEquations', 'SklearnRidge',
     'cross_validated_r', 'fixed', 'grid_search', 'group_kfold',
-    'held_out_r', 'penalty_grid', 'random_group_split',
+    'held_out_r', 'penalty_grid', 'prepare_bands', 'random_group_split',
     'ridge', 'row_kfold', 'summarize',
 ]
 
@@ -259,6 +261,68 @@ class _NormalFit:
             predictions = predictions + (self.y_mean if columns is None
                                          else self.y_mean[columns])
         return predictions
+
+
+# -- Bands prepared -------------------------------------------------------------
+
+class FeatureProjection:
+    """Truncated SVD to at most ``feature_cap`` components.
+
+    A band with ``feature_cap`` units or fewer is kept as it is. ``transform``
+    refuses features of another width or another unit order than the fit.
+    """
+
+    def __init__(self, feature_cap):
+        self.feature_cap = feature_cap
+        self.n_features_in_ = None
+        self.feature_ids_ = None
+        self.svd_ = None
+
+    def fit(self, features, feature_ids=None):
+        self.n_features_in_ = features.shape[1]
+        self.feature_ids_ = None if feature_ids is None else np.array(feature_ids, copy=True)
+        self.svd_ = None
+        if self.n_features_in_ > self.feature_cap:
+            from sklearn.decomposition import TruncatedSVD
+            self.svd_ = TruncatedSVD(
+                n_components=min(self.feature_cap, features.shape[0]), random_state=0)
+            self.svd_.fit(features)
+        return self
+
+    def transform(self, features, feature_ids=None):
+        if self.n_features_in_ is None:
+            raise ValueError('Fit the feature projection on training data before prediction.')
+        if features.shape[1] != self.n_features_in_:
+            raise ValueError('Prediction feature width differs from the training feature basis.')
+        if self.feature_ids_ is not None and (
+                feature_ids is None or not np.array_equal(self.feature_ids_, feature_ids)):
+            raise ValueError('Prediction feature identities/order differ from the training feature basis.')
+        return (self.svd_.transform(features) if self.svd_ is not None
+                else np.asarray(features, dtype=np.float64))
+
+
+def prepare_bands(bands, fit_rows, dim_cap, prepared=None):
+    """Centre, reduce and standardize each band; return ``(prepared, fitted)``.
+
+    ``fitted[band]`` is ``(mean, projection, component mean, band scale)``,
+    fitted on ``bands[band][fit_rows]`` unless ``prepared`` gives fitted ones.
+    """
+    out, fitted = {}, {}
+    for name, (features, feature_ids) in bands.items():
+        features = np.asarray(features, dtype=np.float64)
+        if prepared is None:
+            mean = features[fit_rows].mean(0)
+            projection = FeatureProjection(dim_cap).fit(features[fit_rows] - mean, feature_ids)
+            components = projection.transform(features[fit_rows] - mean, feature_ids)
+            # One scale for the band, not one for each component.
+            c_mean = components.mean(0)
+            c_scale = float(np.sqrt(components.var(0).mean())) or 1.0
+        else:
+            mean, projection, c_mean, c_scale = prepared[name]
+        components = projection.transform(features - mean, feature_ids)
+        out[name] = (components - c_mean) / c_scale
+        fitted[name] = (mean, projection, c_mean, c_scale)
+    return out, fitted
 
 
 # -- Penalty choosers --------------------------------------------------------

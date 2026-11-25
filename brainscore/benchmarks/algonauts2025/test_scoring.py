@@ -15,8 +15,9 @@ import numpy as np
 import pytest
 
 from brainscore.benchmarks.algonauts2025 import scoring
+from brainscore.metrics import encoding
 from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025
-from brainscore.benchmarks.algonauts2025.projection import FeatureProjection
+from brainscore.metrics.encoding import FeatureProjection
 from brainscore.benchmarks.algonauts2025.scoring import (
     fit_predict_banded,
     score_banded,
@@ -62,7 +63,7 @@ class _Recorded(FeatureProjection):
 def test_the_preparation_of_a_fold_never_sees_the_rows_of_its_test_stimuli(monkeypatch):
     X, Y, groups = _synth(n_feat=30)
     keep = np.ones(len(groups), dtype=bool)
-    monkeypatch.setattr(scoring, 'FeatureProjection', _Recorded)
+    monkeypatch.setattr(encoding, 'FeatureProjection', _Recorded)
 
     _Recorded.fits = []
     score_banded({'a': (X, None)}, Y, groups, keep, _same, dim_cap=4,
@@ -181,7 +182,7 @@ def test_all_parcels_share_one_penalty_tuple_and_bands_get_their_own_penalty():
 
 
 def test_a_band_keeps_the_relative_sizes_of_its_components():
-    from brainscore.benchmarks.algonauts2025.scoring import prepare_bands
+    from brainscore.metrics.encoding import prepare_bands
     rng = np.random.default_rng(0)
     X = rng.standard_normal((200, 6)) * np.array([10.0, 5.0, 2.0, 1.0, 0.5, 0.1])
     prepared, _ = prepare_bands({'A': (X, None)}, np.ones(200, bool), 100)
