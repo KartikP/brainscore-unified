@@ -17,8 +17,10 @@ The reply is read with nkl's ``parse`` in the same child; its acts go out on the
 an act of the other form) gives no act (None, an invalid step) and its problems with the command and the
 rule broken are shown at the next turn, as nkl does; the event meta holds the reply and the problems.
 
-The model sees no earlier turn: what it keeps is nkl's memory notes (at most 16 of 400 characters, nkl's
-``Limits``), kept here and cleared in ``reset()``. ``trace`` holds each turn's reply, problems, acts and
+The conversation is kept within a stated limit: the last ``turns_kept`` turns come before the turn as earlier
+user and assistant turns, as text only (their briefing and the reply; their pictures are not sent again). The
+model also keeps nkl's memory notes (at most 16 of 400 characters, nkl's ``Limits``). Both are cleared in
+``reset()``. ``trace`` holds each turn's reply, problems, acts and
 token use.
 
 Limit: the policy needs NodeKit's task repository (private) for nkl's environment, as the harness does.
@@ -32,6 +34,7 @@ from typing import Callable, Optional
 import numpy as np
 
 FRAMES_SHOWN = 4          # the most frames of vision:video one turn shows the model
+TURNS_KEPT = 8            # the earlier turns, as text, that each turn shows the model
 _READER = Path(__file__).with_name('_reader.py')
 
 
@@ -75,7 +78,7 @@ def changed_frames(video, times, last, most: int):
     return [changed[round(i * (len(changed) - 1) / (most - 1))] for i in range(most)] if most > 1 else changed[-1:]
 
 
-def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, max_tokens: int = 4096,
+def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int = TURNS_KEPT, max_tokens: int = 4096,
                temperature: Optional[float] = None, seed: Optional[int] = None) -> Callable:
     """A ``policy(row) -> {act form: acts}`` that asks ``reply`` (a ``reply(prompt)`` part) each turn and
     reads its answer with nkl's reader. ``max_tokens``, ``temperature`` and ``seed`` are the ``Text`` response
@@ -84,7 +87,7 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, max_tokens: int =
     from brainscore_core.responses import Prompt, Text
     from brainscore_core.streaming import StreamEvent
     reader, folder = _Reader(), Path(tempfile.mkdtemp(prefix='nodekit-turns-'))
-    state = {'memories': [], 'problems': [], 'last': None, 'turn': 0}
+    state = {'memories': [], 'problems': [], 'last': None, 'turn': 0, 'history': []}
     trace: list = []
 
     def picture(array) -> str:
@@ -113,10 +116,13 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, max_tokens: int =
                 names.append('screen')
         settings = Text(max_tokens=max_tokens, temperature=temperature,
                         seed=None if seed is None else seed + state['turn'])
-        answer = reply(Prompt(parts=tuple(parts), names=tuple(names), response=settings))
+        history = tuple(state['history'][-turns_kept:]) if turns_kept else ()
+        answer = reply(Prompt(parts=tuple(parts), names=tuple(names), response=settings, history=history))
         text = answer.payload if isinstance(answer, StreamEvent) else answer
         meta = answer.meta if isinstance(answer, StreamEvent) else {}
         read = reader.ask({'read': {**turn, 'text': text, 'form': seen['act_form']}})
+        said = [(part, name) for part, name in zip(parts, names) if part[0] == 'text' and name != 'instruction']
+        state['history'].append((Prompt(parts=tuple(p for p, _ in said), names=tuple(n for _, n in said)), text))
         state.update(memories=read['memories'], problems=read['problems'], last=screen, turn=state['turn'] + 1)
         trace.append({'turn': state['turn'], 't_ms': seen['t_ms'], 'frames_shown': [at for at, _ in shown],
                       'reply': text, 'problems': read['problems'], 'acts': read['acts'],
@@ -127,7 +133,7 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, max_tokens: int =
             'parse_error': None if problems is None else f'the reply broke nkl\'s rules: {problems}'})}
 
     def reset():
-        state.update(memories=[], problems=[], last=None, turn=0)
+        state.update(memories=[], problems=[], last=None, turn=0, history=[])
         trace.clear()
 
     policy.reset, policy.trace, policy.close = reset, trace, reader.close

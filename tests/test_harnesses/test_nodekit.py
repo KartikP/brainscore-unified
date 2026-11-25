@@ -215,6 +215,10 @@ def test_the_act_policy_reads_each_reply_and_shows_its_problems_and_changed_fram
     assert prompts[2].names.count('frame') == 2 and prompts[2].names[-1] == 'screen'
     assert [turn['problems'] for turn in policy.trace][:1] == [['command 1 (look): look is not offered here']]
     assert prompts[0].response.temperature is None and prompts[0].response.seed is None
+    # The earlier turns come before, as text: the briefing and the reply, no picture.
+    assert prompts[0].history == ()
+    assert [answered for _, answered in prompts[2].history] == ['look', '[{"act": "wait", "ms": 250}]']
+    assert all(kind == 'text' for earlier, _ in prompts[2].history for kind, _ in earlier.parts)
     policy.close()
 
 
