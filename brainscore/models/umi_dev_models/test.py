@@ -559,10 +559,33 @@ def test_one_whole_image_per_picture_or_a_refusal(tmp_path, processor, whole, ti
         study._whole_images(paths, image_processor, tiled)
 
 
-def test_a_part_offloaded_or_spread_is_refused():
-    part = torch.nn.Linear(2, 2).to('meta')
-    with pytest.raises(ValueError, match='one accelerator'):
-        study._one_device('m', part, 'vision')
+class _PartOn(torch.nn.Module):
+    """A stand-in part whose parameters are on the named devices (no accelerator needed); its input
+    embeddings, when given, are another such part."""
+
+    def __init__(self, *devices, entry=None):
+        super().__init__()
+        self._devices, self._entry = [torch.device(d) for d in devices], entry
+
+    def parameters(self, recurse=True):
+        return iter(SimpleNamespace(device=device) for device in self._devices)
+
+    def get_input_embeddings(self):
+        return self._entry
+
+
+def test_a_language_part_spread_over_accelerators_takes_inputs_at_its_embeddings():
+    spread = _PartOn('cuda:1', 'cuda:2', 'cuda:3', entry=_PartOn('cuda:1'))
+    assert study._part_device('m', spread, 'language') == 'cuda:1'
+    assert study._part_device('m', _PartOn('cuda:0', 'cuda:0'), 'language') == 'cuda:0'    # one device: as before
+    assert study._part_device('m', torch.nn.Linear(2, 2), 'vision') == 'cpu'
+
+
+@pytest.mark.parametrize('devices, part', [(('meta',), 'language'), (('cuda:0', 'meta'), 'language'),
+                                           (('cuda:0', 'cpu'), 'language'), (('cuda:0', 'cuda:1'), 'vision')])
+def test_an_offloaded_part_or_a_spread_vision_part_is_refused(devices, part):
+    with pytest.raises(ValueError, match='Give a device_map'):
+        study._part_device('m', _PartOn(*devices), part)
 
 
 def test_a_missing_package_and_a_missing_class_are_named_before_any_download(monkeypatch):

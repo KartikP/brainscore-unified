@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional
 
 import numpy as np
 
@@ -75,9 +75,12 @@ def changed_frames(video, times, last, most: int):
     return [changed[round(i * (len(changed) - 1) / (most - 1))] for i in range(most)] if most > 1 else changed[-1:]
 
 
-def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, max_tokens: int = 4096) -> Callable:
+def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, max_tokens: int = 4096,
+               temperature: Optional[float] = None, seed: Optional[int] = None) -> Callable:
     """A ``policy(row) -> {act form: acts}`` that asks ``reply`` (a ``reply(prompt)`` part) each turn and
-    reads its answer with nkl's reader. ``max_tokens`` is the longest reply (a ``Text`` response setting)."""
+    reads its answer with nkl's reader. ``max_tokens``, ``temperature`` and ``seed`` are the ``Text`` response
+    settings of each turn (None: the model's default, greedy for a local model); with a seed, turn ``n`` uses
+    ``seed + n``, so a repeated run with the same seed asks the same."""
     from brainscore_core.responses import Prompt, Text
     from brainscore_core.streaming import StreamEvent
     reader, folder = _Reader(), Path(tempfile.mkdtemp(prefix='nodekit-turns-'))
@@ -108,7 +111,9 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, max_tokens: int =
             if image:
                 parts.append(('image', picture(screen)))
                 names.append('screen')
-        answer = reply(Prompt(parts=tuple(parts), names=tuple(names), response=Text(max_tokens=max_tokens)))
+        settings = Text(max_tokens=max_tokens, temperature=temperature,
+                        seed=None if seed is None else seed + state['turn'])
+        answer = reply(Prompt(parts=tuple(parts), names=tuple(names), response=settings))
         text = answer.payload if isinstance(answer, StreamEvent) else answer
         meta = answer.meta if isinstance(answer, StreamEvent) else {}
         read = reader.ask({'read': {**turn, 'text': text, 'form': seen['act_form']}})

@@ -80,7 +80,8 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
                 else:
                     extended[key] = value
             with torch.no_grad():
-                logits = model(**extended).logits[0, length - 1:length - 1 + ids.shape[1]]
+                # On the input device: a device-mapped model can give its logits on another.
+                logits = model(**extended).logits[0, length - 1:length - 1 + ids.shape[1]].to(ids.device)
             scores[candidate] = float(logits.float().log_softmax(-1)
                                       .gather(-1, ids[0, :, None]).sum())
         return scores
@@ -142,7 +143,8 @@ def _scores_alone(model, sequences, start: int) -> list:
         # kept by a float32 mask, one sum over the row (the same order of terms as before).
         scored = torch.tensor([[0] * start + [1] * (len(sequence) - start)], device=device)[:, 1:].float()
         with torch.no_grad():
-            logp = model(input_ids=ids, attention_mask=torch.ones_like(ids)).logits[:, :-1].float().log_softmax(-1)
+            logits = model(input_ids=ids, attention_mask=torch.ones_like(ids)).logits[:, :-1].to(device)
+            logp = logits.float().log_softmax(-1)
         totals.append(float((logp.gather(-1, ids[:, 1:, None])[..., 0] * scored).sum(1)[0]))
     return totals
 
@@ -202,7 +204,7 @@ def segment_log_probabilities(model, tokenizer, segments: Sequence[str], sliding
     from brainscore_core.text import prepare_context
     from brainscore_language.model_helpers.huggingface import slice_kv_cache
     window = model.config.get_text_config().max_position_embeddings
-    device = next(model.parameters()).device
+    device = input_device(model)
     steps, count, earlier = [], 0, None
     for i in range(len(segments)):
         encoded = tokenizer(prepare_context(segments[:i + 1]), return_tensors='pt')

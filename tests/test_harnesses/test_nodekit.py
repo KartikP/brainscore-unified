@@ -214,6 +214,7 @@ def test_the_act_policy_reads_each_reply_and_shows_its_problems_and_changed_fram
     # The 250 ms wait passed 15 frame times; the frames are equal, so one changed frame is shown, then the screen.
     assert prompts[2].names.count('frame') == 2 and prompts[2].names[-1] == 'screen'
     assert [turn['problems'] for turn in policy.trace][:1] == [['command 1 (look): look is not offered here']]
+    assert prompts[0].response.temperature is None and prompts[0].response.seed is None
     policy.close()
 
 
@@ -231,3 +232,9 @@ def test_the_outputs_hold_the_act_form(stand_in):
     policy, _ = _keys('ArrowLeft')
     with pytest.raises(ValueError, match='act form'):
         nodekit.play(_subject('keys', policy), _program(stand_in / 'keys'), form='motor:key', outputs=['neural:IT'])
+
+
+def test_the_act_policy_gives_each_turn_the_sampling_settings():
+    from brainscore.harnesses.nodekit.policy import act_policy
+    policy = act_policy(lambda prompt: '', temperature=0.7, seed=3)
+    assert callable(policy.reset) and policy.trace == []

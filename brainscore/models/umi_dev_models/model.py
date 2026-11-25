@@ -162,15 +162,28 @@ def _load(identifier, config):
     return model.eval(), processor
 
 
-def _one_device(identifier, module, part):
-    """The one device of a loaded part; its extractor is given it, so nothing is moved. Offloaded or
-    spread weights are refused: v2's extractors would move them or send inputs to meta."""
+def _part_device(identifier, module, part):
+    """The device for the inputs of a loaded part; its extractor is given it, so nothing is moved. A part
+    on one device gives that device. A language part spread over several accelerators (a model too large
+    for one, under device_map='auto') gives the device of its input embeddings; the loading library moves
+    each block's input to that block. Offloaded weights (on meta, or on the CPU next to an accelerator)
+    are refused.
+
+    Limit: the vision part must be on one accelerator, because its picture and clip extractors move it
+    or send inputs to one device; every vision part of the study is far smaller than one accelerator."""
     devices = {parameter.device for parameter in module.parameters()}
-    if len(devices) != 1 or next(iter(devices)).type == 'meta':
+    offloaded = any(d.type == 'meta' for d in devices) or (len(devices) > 1 and any(d.type == 'cpu' for d in devices))
+    if offloaded:
         raise ValueError(f"'{identifier}': the {part} part is on {sorted(map(str, devices))}; this study "
-                         f"needs each part on one accelerator (no offload). Give a device_map or a "
-                         f"max_memory that holds it on one.")
-    return str(next(iter(devices)))
+                         f"needs each part on accelerators (no offload). Give a device_map or a max_memory "
+                         f"that holds it on accelerators.")
+    if len(devices) > 1 and part == 'vision':
+        raise ValueError(f"'{identifier}': the vision part is on {sorted(map(str, devices))}; this study "
+                         f"needs it on one accelerator. Give a device_map that holds it on one.")
+    if len(devices) == 1:
+        return str(next(iter(devices)))
+    from brainscore.model_helpers.device import input_device
+    return str(input_device(module))
 
 
 def _blocks(model, part):
@@ -292,18 +305,19 @@ SCREEN_INPUTS = ('vision:image', 'vision:video', 'instruction', 'observation')
 
 def _policy(reply, identifier):
     """One policy for the study's two closed loops: a task on a screen (its row's observation names the act
-    form) gets NodeKit's act policy; the grid game gets ``api_policy`` as before. ``reset()`` clears both."""
+    form) gets NodeKit's act policy; the grid game gets ``api_policy`` as before. ``reset()`` clears both. A run
+    with other turn settings (sampling, a seed) sets ``policy.screen`` to its own ``act_policy(reply, ...)``."""
     from brainscore.harnesses.nodekit.policy import act_policy
     from brainscore.model_helpers.api_behavioral import api_policy
     screen, grid = act_policy(reply), api_policy(_reply_client(reply), identifier)
 
     def policy(row):
-        return (screen if 'act_form' in (row.get('observation') or {}) else grid)(row)
+        return (policy.screen if 'act_form' in (row.get('observation') or {}) else policy.grid)(row)
 
     def reset():
-        screen.reset()
-        grid.reset()
-    policy.reset, policy.screen, policy.grid = reset, screen, grid
+        policy.screen.reset()
+        policy.grid.reset()
+    policy.reset, policy.screen, policy.grid, policy.reply = reset, screen, grid, reply
     return policy
 
 
@@ -342,18 +356,18 @@ def get_model(identifier: str):
     if pixels is None:          # the processor's flattened patches (Qwen-VL layout)
         from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
         image = VLMVisionWrapper(model=vision_module, processor=processor, identifier=f'{identifier}-vision',
-                                 device=_one_device(identifier, vision_module, 'vision'))
+                                 device=_part_device(identifier, vision_module, 'vision'))
     else:                       # whole pictures as (B, C, H, W); every patch token kept (or pooled), so PCA to 1000
         pool = config.get('token_pool')
         image = _pixel_extractor(pool)(
             model=vision_module, identifier=f'{identifier}-vision' + (f'-pool{pool}' if pool else ''),
-            device=_one_device(identifier, vision_module, 'vision'),
+            device=_part_device(identifier, vision_module, 'vision'),
             preprocessing=partial(_whole_images, image_processor=processor.image_processor, settings=pixels))
         pca = _one_layer_pca()(image, n_components=1000)
         pca.handle = image.register_batch_activations_hook(pca)
     extractor = {'vision': image, 'text': TextWrapper(
         model=language_module, tokenizer=processor.tokenizer, identifier=f'{identifier}-text',
-        device=_one_device(identifier, language_module, 'language'))}
+        device=_part_device(identifier, language_module, 'language'))}
     if config['video']:
         from brainscore.model_helpers.vlm_video_wrapper import VLMVideoWrapper
         # The stated frame sampling (the Qwen authors' tool), on the processor, so a recording and an
