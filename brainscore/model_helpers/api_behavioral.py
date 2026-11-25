@@ -27,6 +27,7 @@ layer activations, so an API model has no ``extractor``; it declares its inputs 
 ``in_channels``, and a neural benchmark gets a clear error.
 """
 import base64
+import functools
 import hashlib
 import json
 import os
@@ -227,7 +228,7 @@ def _call_bedrock(model, system, messages, settings):
     if system:
         kwargs['system'] = [{'text': system}]
     try:
-        resp = boto3.client('bedrock-runtime', region_name=os.getenv('AWS_REGION')).converse(**kwargs)
+        resp = _bedrock_client(os.getenv('AWS_REGION')).converse(**kwargs)
     except botocore.exceptions.NoCredentialsError as e:
         raise RuntimeError('Amazon Bedrock needs AWS credentials: run `aws configure` (or set a profile or role) '
                            'with access to the model, or use an API-key provider.') from e
@@ -238,6 +239,18 @@ def _call_bedrock(model, system, messages, settings):
     usage = resp.get('usage', {})
     return _with_meta(text, reasoning, {'input_tokens': usage.get('inputTokens', 0),
                                         'output_tokens': usage.get('outputTokens', 0)} if usage else None)
+
+
+@functools.lru_cache(maxsize=None)
+def _bedrock_client(region):
+    """One Bedrock runtime client for each region (None: the configured one)."""
+    import boto3
+    return boto3.client('bedrock-runtime', region_name=region)
+
+
+def _bedrock_region() -> str:
+    """The AWS region a Bedrock request goes to: ``AWS_REGION`` or the configured one."""
+    return _bedrock_client(os.getenv('AWS_REGION')).meta.region_name
 
 
 def _samples_only(call, model) -> bool:
@@ -281,7 +294,7 @@ def _one_turn(call, model, system, text, image, max_tokens) -> str:
     image_part = ([] if image is None
                   else [{'type': 'image', 'media_type': image[0], 'data': image[1]}])
     settings = _one_turn_settings(call, model, max_tokens)
-    content = image_part + text_part if call is _call_anthropic else text_part + image_part
+    content = image_part + text_part if _samples_only(call, model) else text_part + image_part
     reply = call(model, system, [{'role': 'user', 'content': content}], settings)
     return reply.payload if isinstance(reply, StreamEvent) else reply
 
@@ -486,7 +499,8 @@ def build_api_reply(
                             if _samples_only(call, model) else 0)
         if _samples_only(call, model):
             _anthropic_settings(settings)   # fail before the cache or a request
-        _state_settings(reply, provider_name, model, settings)
+        _state_settings(reply, provider_name, model,
+                        {**settings, 'region': _bedrock_region()} if call is _call_bedrock else settings)
         system, messages = _reply_messages(prompt)
         key = hashlib.sha256(json.dumps([provider_name, model, system, messages, settings,
                                          _CACHE_FORM], sort_keys=True).encode('utf-8')).hexdigest()

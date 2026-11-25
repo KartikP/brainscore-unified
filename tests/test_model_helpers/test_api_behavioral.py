@@ -701,8 +701,11 @@ def test_every_request_of_a_registered_api_model_states_its_temperature(identifi
     client.messages = client.completions = client.chat = client
     monkeypatch.setitem(sys.modules, 'anthropic', types.SimpleNamespace(Anthropic=lambda: client))
     monkeypatch.setitem(sys.modules, 'openai', types.SimpleNamespace(OpenAI=lambda **k: client))
-    bedrock = types.SimpleNamespace(converse=lambda **k: requests.append(k['inferenceConfig']) or {
-        'output': {'message': {'content': [{'text': 'yes'}]}}})
+    bedrock = types.SimpleNamespace(meta=types.SimpleNamespace(region_name='us-east-2'),
+                                    converse=lambda **k: requests.append(k['inferenceConfig']) or {
+                                        'output': {'message': {'content': [{'text': 'yes'}]}}})
+    from brainscore.model_helpers.api_behavioral import _bedrock_client
+    _bedrock_client.cache_clear()
     monkeypatch.setitem(sys.modules, 'boto3', types.SimpleNamespace(client=lambda *a, **k: bedrock))
     monkeypatch.setitem(sys.modules, 'botocore', types.SimpleNamespace(exceptions=types.SimpleNamespace(
         NoCredentialsError=type('NoCredentialsError', (Exception,), {}))))
@@ -736,6 +739,8 @@ class TestBedrock:
         import types
 
         class Client:
+            meta = types.SimpleNamespace(region_name='us-east-2')
+
             def converse(self, **request):
                 calls.append(request)
                 return {'output': {'message': {'content': [{'text': 'press Space'}]}},
@@ -745,6 +750,8 @@ class TestBedrock:
         monkeypatch.setitem(sys.modules, 'botocore', botocore)
         monkeypatch.setitem(sys.modules, 'botocore.exceptions', botocore.exceptions)
         monkeypatch.setitem(sys.modules, 'boto3', types.SimpleNamespace(client=lambda service, region_name=None: Client()))
+        from brainscore.model_helpers.api_behavioral import _bedrock_client
+        _bedrock_client.cache_clear()
 
     def test_a_claude_reply_on_bedrock_obeys_the_anthropic_settings(self, monkeypatch, tmp_path):
         from PIL import Image
@@ -774,3 +781,10 @@ class TestBedrock:
         build_api_reply('bedrock', 'meta.llama3-70b')(Prompt(parts=(('text', 'x'),), names=('turn',),
                                                              response=Text(max_tokens=8)))
         assert calls[0]['inferenceConfig'] == {'maxTokens': 8, 'temperature': 0}
+
+
+def test_an_api_model_takes_frames_only_for_a_task_on_a_screen():
+    from brainscore.models.api_closed.model import get_model
+    subject = get_model('claude-opus-5-5-bedrock')
+    assert 'vision:video' not in subject.output_inputs['behavior:text']
+    assert {'motor:key', 'motor:pointer'} <= subject.out_channels

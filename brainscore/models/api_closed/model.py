@@ -89,10 +89,8 @@ def get_model(identifier: str) -> BrainScoreModel:
         screen = dict(policy=act_policy(reply),
                       policy_in_channels=('vision:image', 'vision:video', 'instruction', 'observation'),
                       policy_out_channels=('motor:key', 'motor:pointer'))
-    return BrainScoreModel(
-        identifier=identifier,
-        in_channels=set(cfg['in_channels']),
-        answer=answer,
-        reply=reply,
-        **screen,
-    )
+    parts = dict(identifier=identifier, in_channels=set(cfg['in_channels']), answer=answer, reply=reply, **screen)
+    # The frames of a screen task (vision:video) reach the act policy only: every other output is answered
+    # from the model's own inputs (the reply refuses a video part).
+    answers = {output for output in BrainScoreModel(**parts).out_channels if output.startswith('behavior')}
+    return BrainScoreModel(**parts, output_inputs={output: set(cfg['in_channels']) for output in answers})
