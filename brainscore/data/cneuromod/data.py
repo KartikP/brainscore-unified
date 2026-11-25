@@ -6,6 +6,8 @@ from pathlib import Path
 import pandas as pd
 
 NAME = 'cneuromod-things'
+# The sha1 of each THINGS image of the sessions, from images_THINGS.zip (https://osf.io/jum2f), read 2026-11-24.
+IMAGE_SHA1 = Path(__file__).parent / 'things_images_sha1.csv'
 
 
 def packaged(root=None) -> Path:
@@ -47,7 +49,9 @@ def load_trials(participant: str, region: str, root=None):
 
 def load_stimulus_set(root=None):
     """The images the packaged participants saw, from the THINGS images the user put at the
-    ``things-images`` place: one row per image, ``stimulus_id``, ``category``, ``image_path``."""
+    ``things-images`` place: one row per image, ``stimulus_id``, ``category``, ``image_path``.
+    Each image must have the bytes of the THINGS database (the sha1 of ``things_images_sha1.csv``);
+    a missing or different file is refused by name."""
     from brainscore.data import local
     from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
     folder = packaged(root)
@@ -60,6 +64,18 @@ def load_stimulus_set(root=None):
     if missing:
         raise local.LocalDataMissing(f'{len(missing)} of {len(table)} THINGS images are not in {images} '
                                      f'(for example {missing[0]}). {local.REGISTRY["things-images"].instructions()}')
+    import hashlib
+    recorded = pd.read_csv(IMAGE_SHA1).set_index('stimulus_id')['sha1']
+    unknown = sorted(set(ids) - set(recorded.index))
+    if unknown:
+        raise ValueError(f'{len(unknown)} packaged images have no recorded sha1 (for example {unknown[0]}): '
+                         'the packaged files are not the CNeuroMod THINGS sessions.')
+    wrong = [path for i, path in zip(ids, table['image_path'])
+             if hashlib.sha1(Path(path).read_bytes()).hexdigest() != recorded[i]]
+    if wrong:
+        raise ValueError(f'{len(wrong)} of {len(table)} images in {images} differ from the THINGS database bytes '
+                         f'(for example {wrong[0]}): use the files of images_THINGS.zip (https://osf.io/jum2f) '
+                         'unchanged, not a resized or converted copy.')
     stimuli = StimulusSet(table)
     stimuli.identifier = NAME
     stimuli.stimulus_paths = dict(zip(table['stimulus_id'], table['image_path']))

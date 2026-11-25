@@ -1,4 +1,5 @@
 """The THINGS benchmarks on a small made-up packaged folder (no download, no real model)."""
+import hashlib
 import zlib
 
 import numpy as np
@@ -9,6 +10,7 @@ import brainscore
 from brainscore import BrainScoreModel
 from brainscore.benchmarks.stlaurent2026 import benchmark as things_benchmark
 from brainscore.benchmarks.stlaurent2026.benchmark import TEST_CATEGORIES, StLaurent2026Things
+from brainscore.data.cneuromod import data as things_data
 from brainscore.data.cneuromod.data_packaging import shared
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 
@@ -65,7 +67,11 @@ def packaged(tmp_path, monkeypatch):
     for image in IMAGES:
         path = tmp_path / 'home' / 'things-images' / image.rsplit('_', 1)[0] / f'{image}.jpg'
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(b'')
+        path.write_bytes(image.encode())
+    record = tmp_path / 'sha1.csv'
+    pd.DataFrame({'stimulus_id': IMAGES, 'sha1': [hashlib.sha1(i.encode()).hexdigest() for i in IMAGES]}
+                 ).to_csv(record, index=False)
+    monkeypatch.setattr(things_data, 'IMAGE_SHA1', record)
     rng = np.random.default_rng(2)
     root = tmp_path / 'packaged'
     _package(root, 'sub-01', [_region(rng, 'V1', 'retinoVisionNpythy', 60), _region(rng, 'hV4', 'retinoVisionNpythy', 60),
@@ -139,6 +145,18 @@ def test_no_test_category_reaches_the_fit(packaged, monkeypatch):
         for train, test in folds:
             assert not set(groups[train]) & TEST_CATEGORIES
             assert set(groups[test]) <= TEST_CATEGORIES
+
+
+def test_an_image_with_other_bytes_than_the_things_database_is_refused_by_name(packaged, tmp_path):
+    changed = tmp_path / 'home' / 'things-images' / CATEGORIES[3] / f'{IMAGES[20]}.jpg'
+    changed.write_bytes(b'a resized copy')
+    with pytest.raises(ValueError, match=IMAGES[20]):
+        brainscore.load_stimulus_set('cneuromod-things', root=packaged)
+
+
+def test_the_recorded_sha1_lists_the_4320_images_of_the_sessions():
+    record = pd.read_csv(things_data.IMAGE_SHA1)
+    assert len(record) == 4320 and record['stimulus_id'].is_unique and record['sha1'].str.len().eq(40).all()
 
 
 def test_the_stored_split_holds_144_of_720_categories():

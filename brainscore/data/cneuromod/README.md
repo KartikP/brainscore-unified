@@ -95,7 +95,11 @@ earlier packaging, with the group parcels beside the own masks (sub-01 now: 1241
 ## Stimuli and terms
 
 - THINGS images: https://osf.io/jum2f, academic use only (a password zip); get them there and
-  match them by `stimulus_id` (the image file name) or `things_image_nr`.
+  match them by `stimulus_id` (the image file name) or `things_image_nr`. For the THINGS benchmarks
+  put the unzipped `object_images` folder at `$BRAINSCORE_DATA_HOME/things-images`;
+  `load_stimulus_set('cneuromod-things')` checks each of the 4320 images of the sessions against its
+  sha1 in `things_images_sha1.csv` (from `images_THINGS.zip`, read 2026-11-24) and names a file that
+  is missing or differs.
 - movie10 films: copyright kept by their owners.
 
 ## Add a data set
