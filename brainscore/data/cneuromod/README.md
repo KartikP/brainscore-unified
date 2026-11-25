@@ -46,11 +46,49 @@ with the checksums below. Participant sub-04 is restricted and never packaged.
   and it counts trials without a response. For the viewing order use
   `data_packaging.things.answered_viewing(stimulus_id, response)`: the place of each trial among
   the answered trials of its image, in time order (0: no response). The Fig. 2a check uses it.
-- Time series (when public): `sub-XX/atlas/parcels.csv`, the parcels of the participant's own
+- Time series: `sub-XX/atlas/parcels.csv`, the parcels of the participant's own
   atlas in the column order of its time series, and `ses-NN/timeseries_cneuromod2026.nc`, one row per TR (participant,
   session, task, run, tr, time = tr x 1.49 s, event, stimulus_id, time_in_event) x one column per
   parcel. The extraction (`cneuromod_extract_tseries`, denoise `simple+gsr`) drops no volume, so
   TR n starts at n x 1.49 s; a TR takes the event whose [onset, onset + duration) holds its start.
+
+## Time series made from the fMRIPrep outputs
+
+The released time series (`things.timeseries`, `movie10.timeseries`) need a key from CNeuroMod.
+`package_data('cneuromod-things-timeseries', part='sub-01/ses-02')` (or
+`cneuromod-movie10-timeseries`) makes them instead from public files, as the release made them
+(`data_packaging/extraction.py`):
+
+- The commits: `cneuromod_extract_tseries` at `ae310a53` (the code of the release; another commit
+  is refused) and `<data set>.fmriprep` at the commit that `<data set>.timeseries` names (THINGS
+  `5155ba0d`, movie10 `638de599`); `anat.atlases` at the commit the code names (`0b78173e`). They
+  are printed at the start.
+- The inputs, per run of the session: the BOLD, its brain mask and its confounds in the space of the
+  form (cneuromod2026: MNI152NLin2009cAsym; voxel_native: T1w); and the atlas files that the code's
+  configuration names (`schaefer1000Tian50Nette128`, `gm_epi`).
+- The code runs in its own environment (`sources/cneuromod/extraction/env`, the pinned versions of
+  its `requirements.txt`; pip cache and temporary files beside it), never in the calling one, from
+  its own folder, with denoise `simple+gsr`, as the release.
+- One session at a time; after each session every run is checked (rows = BOLD volumes, columns =
+  the parcels of the participant's atlas or the voxels of its mask), because the code catches the
+  error of a run and goes on. A failed run raises with its name. Then the session's BOLD files are
+  dropped. A session whose runs are all in the HDF5 file is skipped, so the same command resumes.
+- The files get the released names (`atlas-cneuromod26_desc-1134Parcels`, `desc-voxelwise`), and the
+  reader above reads them. The voxel form: `python -m brainscore.data.cneuromod.data_packaging.package
+  --dataset things --form voxel_native --source <absent folder> --out <new folder> --part sub-01`.
+- Checked on a cloud machine on 2026-11-25 (THINGS sub-01 ses-02, the same code outside this
+  command): 190 rows per run, 1134 parcels, 102959 voxels; the participant's atlas and mask have the
+  released MD5s.
+
+## Licences
+
+- `cneuromod_extract_tseries`: MIT (its `LICENSE`, "Copyright (c) 2024, CNeuroMod"). It is not
+  copied; it is cloned on the user's machine.
+- The data: open. The CNeuroMod documentation states CC0 for the public participants; the
+  `License` field of `anat.atlases` and `movie10.fmriprep` points to the data transfer agreement
+  page; each repository README says "Redistribution of data outside of the Courtois NeuroMod data
+  bank is prohibited". Until CNeuroMod states which applies, package locally and do not share the
+  output.
 
 ## The atlas has 1134 parcels, its label table 1178 rows
 
@@ -119,10 +157,10 @@ neuroscience. Scientific Data 13, 141. https://doi.org/10.1038/s41597-026-06591-
 
 ### cneuromod-movie10-timeseries
 
-- Source: Courtois NeuroMod, https://docs.cneuromod.ca (the repositories at https://github.com/courtois-neuromod); the documentation states CC0 for the public participants, and each repository README says "Redistribution of data outside of the Courtois NeuroMod data bank is prohibited": package locally, do not share the output.
-- Access: not public yet: the movie10.timeseries files of sub-01, 02, 03, 05 and 06 are on the CNeuroMod S3 store only, which needs a key from CNeuroMod (https://docs.cneuromod.ca/contents/access.html); the same command works once they are on the public store.
-- Needs: DataLad and git-annex; h5py, nibabel, nilearn; the cneuromod2026 form is 0.2 GB per participant (from the annex keys); time not measured.
-- Command: `python -m brainscore.data package cneuromod-movie10-timeseries`. Source folder: none: the script clones the repositories with DataLad (https, no recursion) and downloads only the files it needs into `$BRAINSCORE_DATA_HOME/sources/cneuromod`, kept so that a stopped run resumes. A folder of earlier clones (`movie10/`, `movie10.timeseries/`, `anat.atlases/`) given as the source is read where it is. Output (or `--output <new folder>`): `~/brainscore-data/packaged/cneuromod-movie10-timeseries`. One part only: add `--part <part>` (a part as Writes states).
+- Source: Courtois NeuroMod, https://docs.cneuromod.ca (the repositories at https://github.com/courtois-neuromod); the documentation states CC0 for the public participants, and each repository README says "Redistribution of data outside of the Courtois NeuroMod data bank is prohibited": package locally, do not share the output. Made with CNeuroMod's extraction code (https://github.com/courtois-neuromod/cneuromod_extract_tseries, MIT licence) at ae310a53, the commit of the released time series.
+- Access: public, no account: the time series of sub-01, 02, 03, 05 and 06 are made on this machine from the public fMRIPrep outputs (movie10.fmriprep) and anat.atlases, at the commits that movie10.timeseries names (its released files need a key from CNeuroMod).
+- Needs: DataLad and git-annex 10.20230126 or later (checked first); the venv module of the calling Python: the command makes an environment in `sources/cneuromod/extraction/env` with the pinned versions of the code and never installs into the calling environment; one session of fMRIPrep outputs on the disk at a time (dropped after its check). Measured for THINGS sub-01 ses-02 on a cloud machine: 4.76 GB of input, 131 s, 4.2 GB of memory. THINGS: about 169 GB of input and 2 h per participant; movie10: 475 GB for the 5 participants (estimates from the file sizes).
+- Command: `python -m brainscore.data package cneuromod-movie10-timeseries`. Source folder: none: the script clones the repositories with DataLad (https, no recursion) and downloads only the files it needs into `$BRAINSCORE_DATA_HOME/sources/cneuromod`, kept so that a stopped run resumes. A folder of earlier clones (`movie10/`, `movie10.timeseries/`, `anat.atlases/`) given as the source is read where it is (and its released time series files are then read, not made). Output (or `--output <new folder>`): `~/brainscore-data/packaged/cneuromod-movie10-timeseries`. One part only: add `--part <part>` (a part as Writes states).
 - Writes: `atlas/` (a copy of the group cneuromod2026 atlas and its labels, with `parcels.csv`, the parcels present); per participant `masks/` (copies of the region masks); per session `ses-NN/`: `timeseries_cneuromod2026.nc` (one row per TR: participant, session, task, run, tr, time, the event and stimulus identifier of the TR), `events.csv`, `stimuli.csv` (identifiers only), and `sub-XX/atlas/parcels.csv` (the parcels of the participant's own atlas). A part: `sub-XX` (one participant) or `sub-XX/ses-NN` (one session); sub-04 is restricted and never packaged.
 - Check: the printed counts; no sha1 is recorded for these files
 
@@ -137,9 +175,9 @@ neuroscience. Scientific Data 13, 141. https://doi.org/10.1038/s41597-026-06591-
 
 ### cneuromod-things-timeseries
 
-- Source: Courtois NeuroMod, https://docs.cneuromod.ca (the repositories at https://github.com/courtois-neuromod); the documentation states CC0 for the public participants, and each repository README says "Redistribution of data outside of the Courtois NeuroMod data bank is prohibited": package locally, do not share the output.
-- Access: not public yet: the things.timeseries files of sub-01, 02, 03 and 06 are on the CNeuroMod S3 store only, which needs a key from CNeuroMod (https://docs.cneuromod.ca/contents/access.html); the same command works once they are on the public store.
-- Needs: DataLad and git-annex; h5py, nibabel, nilearn; the cneuromod2026 form is 0.2 GB per participant (from the annex keys); time not measured.
-- Command: `python -m brainscore.data package cneuromod-things-timeseries`. Source folder: none: the script clones the repositories with DataLad (https, no recursion) and downloads only the files it needs into `$BRAINSCORE_DATA_HOME/sources/cneuromod`, kept so that a stopped run resumes. A folder of earlier clones (`things/`, `things.timeseries/`, `anat.atlases/`) given as the source is read where it is. Output (or `--output <new folder>`): `~/brainscore-data/packaged/cneuromod-things-timeseries`. One part only: add `--part <part>` (a part as Writes states).
+- Source: Courtois NeuroMod, https://docs.cneuromod.ca (the repositories at https://github.com/courtois-neuromod); the documentation states CC0 for the public participants, and each repository README says "Redistribution of data outside of the Courtois NeuroMod data bank is prohibited": package locally, do not share the output. Made with CNeuroMod's extraction code (https://github.com/courtois-neuromod/cneuromod_extract_tseries, MIT licence) at ae310a53, the commit of the released time series.
+- Access: public, no account: the time series of sub-01, 02, 03 and 06 are made on this machine from the public fMRIPrep outputs (things.fmriprep) and anat.atlases, at the commits that things.timeseries names (its released files need a key from CNeuroMod).
+- Needs: DataLad and git-annex 10.20230126 or later (checked first); the venv module of the calling Python: the command makes an environment in `sources/cneuromod/extraction/env` with the pinned versions of the code and never installs into the calling environment; one session of fMRIPrep outputs on the disk at a time (dropped after its check). Measured for THINGS sub-01 ses-02 on a cloud machine: 4.76 GB of input, 131 s, 4.2 GB of memory. THINGS: about 169 GB of input and 2 h per participant; movie10: 475 GB for the 5 participants (estimates from the file sizes).
+- Command: `python -m brainscore.data package cneuromod-things-timeseries`. Source folder: none: the script clones the repositories with DataLad (https, no recursion) and downloads only the files it needs into `$BRAINSCORE_DATA_HOME/sources/cneuromod`, kept so that a stopped run resumes. A folder of earlier clones (`things/`, `things.timeseries/`, `anat.atlases/`) given as the source is read where it is (and its released time series files are then read, not made). Output (or `--output <new folder>`): `~/brainscore-data/packaged/cneuromod-things-timeseries`. One part only: add `--part <part>` (a part as Writes states).
 - Writes: `atlas/` (a copy of the group cneuromod2026 atlas and its labels, with `parcels.csv`, the parcels present); per participant `masks/` (copies of the region masks); per session `ses-NN/`: `timeseries_cneuromod2026.nc` (one row per TR: participant, session, task, run, tr, time, the event and stimulus identifier of the TR), `events.csv`, `stimuli.csv` (identifiers only), and `sub-XX/atlas/parcels.csv` (the parcels of the participant's own atlas). A part: `sub-XX` (one participant) or `sub-XX/ses-NN` (one session); sub-04 is restricted and never packaged.
 - Check: the printed counts; no sha1 is recorded for these files

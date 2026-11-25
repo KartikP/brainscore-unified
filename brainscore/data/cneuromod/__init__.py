@@ -55,13 +55,19 @@ data_builder_registry['cneuromod-things'] = lambda: DataBuilder(
 
 for _dataset, _participants in (('things', 'sub-01, 02, 03 and 06'), ('movie10', 'sub-01, 02, 03, 05 and 06')):
     data_builder_registry[f'cneuromod-{_dataset}-timeseries'] = lambda dataset=_dataset, who=_participants: DataBuilder(
-        source=_SOURCE,
-        access=f'not public yet: the {dataset}.timeseries files of {who} are on the CNeuroMod S3 store only, '
-               'which needs a key from CNeuroMod (https://docs.cneuromod.ca/contents/access.html); the same '
-               'command works once they are on the public store.',
-        layout=_LAYOUT.format(repositories=f'{dataset}/`, `{dataset}.timeseries/`, `anat.atlases/') + '.',
-        needs='DataLad and git-annex; h5py, nibabel, nilearn; the cneuromod2026 form is 0.2 GB per '
-              'participant (from the annex keys); time not measured.',
+        source=_SOURCE + ' Made with CNeuroMod\'s extraction code (https://github.com/courtois-neuromod/'
+                         'cneuromod_extract_tseries, MIT licence) at ae310a53, the commit of the released time series.',
+        access=f'public, no account: the time series of {who} are made on this machine from the public fMRIPrep '
+               f'outputs ({dataset}.fmriprep) and anat.atlases, at the commits that {dataset}.timeseries names '
+               '(its released files need a key from CNeuroMod).',
+        layout=_LAYOUT.format(repositories=f'{dataset}/`, `{dataset}.timeseries/`, `anat.atlases/') + ' (and its '
+               'released time series files are then read, not made).',
+        needs='DataLad and git-annex 10.20230126 or later (checked first); the venv module of the calling Python: '
+              'the command makes an environment in `sources/cneuromod/extraction/env` with the pinned versions '
+              'of the code and never installs into the calling environment; one session of fMRIPrep outputs on '
+              'the disk at a time (dropped after its check). Measured for THINGS sub-01 ses-02 on a cloud machine: '
+              '4.76 GB of input, 131 s, 4.2 GB of memory. THINGS: about 169 GB of input and 2 h per participant; '
+              'movie10: 475 GB for the 5 participants (estimates from the file sizes).',
         writes=_FILES + '`timeseries_cneuromod2026.nc` (one row per TR: participant, session, task, run, tr, '
                'time, the event and stimulus identifier of the TR), `events.csv`, `stimuli.csv` (identifiers '
                'only), and `sub-XX/atlas/parcels.csv` (the parcels of the participant\'s own atlas). ' + _PART,

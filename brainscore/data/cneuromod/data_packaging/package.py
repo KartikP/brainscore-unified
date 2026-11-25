@@ -3,11 +3,11 @@
     python -m brainscore.data.cneuromod.data_packaging.package --dataset things --form glmsingle \
         --source <folder> --out <new folder> [--part sub-01 | sub-01/ses-01]
 
-``--form``: ``glmsingle`` (THINGS trial responses, public) or a time series form
-(``cneuromod2026``, ``schaefer1000``, ``voxel_native``, ``voxel_mni``; not public yet).
-The source is a folder of CNeuroMod DataLad clones (``things/``, ``anat.atlases/``, ...). When it
-does not exist, the clones are made and the needed files downloaded in
-``$BRAINSCORE_DATA_HOME/sources/cneuromod``, kept there so that a stopped run resumes.
+``--form``: ``glmsingle`` (THINGS trial responses, public) or a time series form (``cneuromod2026``,
+``voxel_native``). The source is a folder of CNeuroMod DataLad clones (``things/``, ``anat.atlases/``,
+...), read where it is. When it does not exist, the clones are made and the needed files downloaded in
+``$BRAINSCORE_DATA_HOME/sources/cneuromod``, kept there so that a stopped run resumes; a time series
+is then made from the public fMRIPrep outputs (``extraction.py``), as the release made it.
 """
 import argparse
 import glob
@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from brainscore.data.cneuromod.data_packaging import shared
+from brainscore.data.cneuromod.data_packaging import extraction, shared
 from brainscore.data.local import data_home
 
 
@@ -67,7 +67,9 @@ def main(argv=None) -> None:
             'events': _files(root, module.REPOSITORY, sorted({p for name in names
                                                                for p in module.event_patterns(participant, name)})),
             'masks': _files(root, shared.ATLASES, _mask_patterns(participant)),
-            'form': _files(root, form_repository, form)}
+            # fetched: made from the public fMRIPrep outputs; the released files need an account
+            'form': (extraction.build(module, args.form, root, participant, session)
+                     if fetching and args.form != 'glmsingle' else _files(root, form_repository, form))}
         if args.form == 'glmsingle':
             needed[participant]['cortex'] = _files(root, module.ANATOMY, module.cortex_patterns(participant))[:1]
     atlas = _files(root, shared.ATLASES, _ATLAS)
