@@ -139,11 +139,11 @@ def _old_lahner_builder(benchmark, *, raw, metric, ceiling=None, value=None, **a
 def test_lahner_old_and_new_benchmark_paths_agree(monkeypatch, tmp_path, identifier, measured):
     """The same synthetic data through the old and the new builder: value, raw,
     flag and (where measured) ceiling are byte-identical."""
-    import brainscore.benchmarks.lahner2024.benchmark as lahner
+    import brainscore.benchmarks._score as shared_score     # voxel_score builds the Lahner score there
     install(monkeypatch, tmp_path)
     new = brainscore.load_benchmark(identifier)(Recorder({'vision:video'}))
     with monkeypatch.context() as patch:
-        patch.setattr(lahner, 'benchmark_score', _old_lahner_builder)
+        patch.setattr(shared_score, 'benchmark_score', _old_lahner_builder)
         old = brainscore.load_benchmark(identifier)(Recorder({'vision:video'}))
     assert _same(new, old)
     assert _same(new.attrs['raw'], old.attrs['raw'])
