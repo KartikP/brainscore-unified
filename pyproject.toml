@@ -134,6 +134,7 @@ brainscore = ["data/rajalingham2018_2afc/*.csv", "data/*/data_packaging/expected
 "brainscore.harnesses" = ["README.md"]
 "brainscore.harnesses.coggym" = ["requirements.txt"]
 "brainscore.harnesses.mario" = ["requirements.txt"]
+"brainscore.harnesses.nodekit" = ["requirements.txt"]
 
 [tool.setuptools.exclude-package-data]
 "*" = ["*.pyc", "**/__pycache__/*"]
