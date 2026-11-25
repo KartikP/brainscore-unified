@@ -21,7 +21,7 @@ those of the region form.
 
 For each participant:
 
-1. Images: those with three answered trials (``things.answered_viewing``), as the paper's noise
+1. Images: those with three answered trials (the ``viewing`` coordinate), as the paper's noise
    ceiling counts them. Split by category, one fixed list (``test_categories.txt``: 144 of the
    720 categories, 20 percent, drawn once): no test category is in the fit.
 2. Target: per image and voxel, the mean of the three answered viewings; each viewing z-scored
@@ -49,7 +49,6 @@ from brainscore_core.execution_plan import ExecutionPlan
 from brainscore_core.metrics import Score
 from brainscore import load_dataset, load_stimulus_set
 from brainscore.benchmarks._score import benchmark_score, noise_ceiling, not_estimated, voxel_score
-from brainscore.data.cneuromod.data_packaging.things import answered_viewing
 from brainscore.benchmarks.algonauts2025.scoring import prepare_bands
 from brainscore.metrics.encoding import (
     NormalEquations, cross_validated_r, grid_search, group_kfold, penalty_grid, ridge)
@@ -134,7 +133,7 @@ class StLaurent2026Things(BenchmarkBase):
         packaged = PACKAGED_REGION.get(self._region, self._region)
         trials = load_dataset(DATA, participant, packaged, root=self._root)
         image = trials['stimulus_id'].values.astype(str)
-        viewing = answered_viewing(image, trials['response'].values)
+        viewing = trials['viewing'].values
         labels, counts = np.unique(image[viewing > 0], return_counts=True)
         images = labels[counts == VIEWINGS]                                   # sorted
         test = np.isin(category(images), list(TEST_CATEGORIES))
@@ -211,7 +210,7 @@ class StLaurent2026Things(BenchmarkBase):
                 by_participant[participant]['components_per_band'] = components
             scores[participant] = score
             by_participant[participant].update(
-                value=float(score), raw=float(score.attrs['raw']), median_ceiling=float(score.attrs['ceiling']),
+                value=float(score), median_r=float(score.attrs['raw']), median_ceiling=float(score.attrs['ceiling']),
                 n_voxels_scored=score.attrs['n_voxels_scored'])
         if not scores:
             raise ValueError(f'no participant has {MIN_VOXELS} voxels in {self._region} with a noise ceiling of at '

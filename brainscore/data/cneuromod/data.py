@@ -22,7 +22,8 @@ def packaged(root=None) -> Path:
 def load_trials(participant: str, region: str, root=None):
     """The trial responses of ``participant`` in ``region`` (the packaged name: ``hV4``, ``FFA``,
     ``cortex``), every session in time order: a ``presentation`` x ``neuroid`` array with the
-    presentation coordinates of ``trials.nc`` (``stimulus_id``, ``response``, ...)."""
+    presentation coordinates of ``trials.nc`` (``stimulus_id``, ``response``, ...) and ``viewing``, the
+    place of each trial among the answered trials of its image (``things.answered_viewing``; 0: no response)."""
     import xarray as xr
     folder = packaged(root) / participant
     paths = sorted(folder.glob('ses-*/trials.nc'))
@@ -38,7 +39,10 @@ def load_trials(participant: str, region: str, root=None):
                              f'{sorted(set(session["region"].values))}.')
         sessions.append(session.isel(neuroid=keep).load())
         session.close()
-    return xr.concat(sessions, dim='presentation')
+    from brainscore.data.cneuromod.data_packaging.things import answered_viewing
+    trials = xr.concat(sessions, dim='presentation')
+    return trials.assign_coords(viewing=('presentation', answered_viewing(trials['stimulus_id'].values,
+                                                                          trials['response'].values)))
 
 
 def load_stimulus_set(root=None):
