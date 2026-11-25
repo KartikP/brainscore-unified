@@ -4,8 +4,17 @@ same program and trials, ``brainscore.harnesses.nodekit``), and its trials are c
 A run's result is the program's list of trial records, as for a participant (``data.rows``). Practice
 trials are out of every score: only ``phase == 'test'`` rows are compared. Rows are matched by what was
 shown (the condition, the triplet, the pair of faces), never by trial number. Each score states its form
-(``score_form``), its chance or floor, and its ceiling. A run that does not complete has no trial record:
-every test trial is missing and the result is invalid.
+(``score_form``), its chance or floor, and its ceiling.
+
+One episode is one whole run of the task, with its instructions, practice and feedback, as the participants
+did it (``trial_memory = 'none'``: each run starts empty; within the run a subject keeps what it keeps, as a
+participant does; nkl's trace marks no trial starts, so there is no begin or end for each trial). The run
+may last twice the participants' longest run in simulated time (``max_ms``, read from their traces) and
+20000 steps; then the harness leaves it. nkl gives the trial records only when the program completes, so a
+run that does not complete has none: every test trial is missing and the result is invalid. The subject's
+response times are simulated times (``subject_response_ms``): recorded, not scored. Each run's trace is
+kept under ``record`` (``attrs['trace']``) and replays in the task repository's viewer
+(``python -m brainscore.harnesses.nodekit replay <record>``).
 
 - ``NodeKit.DriftingGabor`` (after Tadin et al. 2003): the subject's proportion correct, as the mean
   over the 10 conditions (patch size x duration; one contrast, 0.95), divided by the participants' mean
@@ -138,28 +147,43 @@ class NodeKitBenchmark(BenchmarkBase):
 
     trial_memory = 'none'       # one run of the task is one episode that starts empty
 
-    def __init__(self, identifier: str, task: str, max_steps: int = 3000):
-        self.task, self.max_steps = task, max_steps
+    def __init__(self, identifier: str, task: str, max_steps: int = 20000, record=None):
+        self.task, self.max_steps, self.record = task, max_steps, record
         # The screen is the stimulus: a subject that cannot take it never sees the task (N/A, Rule 5.1).
+        # The frames since the last step go on vision:video as well; a subject without it sees the screen only.
         self.essential_input_channels = frozenset({'vision:image'})
-        self.required_input_channels = self.essential_input_channels | {'instruction'}
+        self.required_input_channels = self.essential_input_channels | {'vision:video', 'instruction'}
         self.requested_output_channels = frozenset({'motor'})
         super().__init__(identifier=identifier, version=1, parent='behavior', ceiling=None, bibtex='')
 
     @cached_property
+    def _trials(self):
+        return data.trials(self.task)
+
+    @cached_property
     def participants(self) -> pd.DataFrame:
-        return data.table(data.trials(self.task))
+        return data.table(self._trials)
+
+    @property
+    def max_ms(self) -> float:
+        """Twice the participants' longest run, in simulated ms."""
+        return 2 * self._trials.attrs['longest_run_ms']
 
     @cached_property
     def ceiling(self) -> Score:
         return Score(METRICS[self.task][1](self.participants))
 
     def __call__(self, subject) -> Score:
+        from brainscore.data.local import data_home
         from brainscore.harnesses.nodekit import bundle, play
-        result, environment, _ = play(subject, bundle(self.task), max_steps=self.max_steps)
-        return self.score_result(result, environment.steps, environment.invalid_steps)
+        record = self.record or data_home() / 'records' / 'nodekit'
+        result, environment, session = play(subject, bundle(self.task), max_steps=self.max_steps,
+                                            max_ms=self.max_ms, record=record)
+        return self.score_result(result, steps=environment.steps, invalid_steps=environment.invalid_steps,
+                                 run_ms=environment.t_ms, end_reason=session.source.end_reason,
+                                 trace=str(environment.trace))
 
-    def score_result(self, result, steps: int = 0, invalid_steps: int = 0) -> Score:
+    def score_result(self, result, **run) -> Score:
         """The score of one run's result (None for a run that did not complete)."""
         tests = len(test_rows(self.participants[self.participants.participant == 'p1']))
         if result is None:
@@ -169,8 +193,10 @@ class NodeKitBenchmark(BenchmarkBase):
             own = test_rows(data.rows(result))
             measured = METRICS[self.task][0](own, self.participants)
             states = ['valid'] * len(own) + ['missing'] * max(0, tests - len(own))
+            if 'response_milliseconds' in own:
+                measured['subject_response_ms'] = [float(t) for t in own['response_milliseconds']]
         attrs = {key: value for key, value in measured.items() if key not in ('raw', 'score_form')}
         return benchmark_score(self, raw=measured['raw'], metric=measured['score_form'],
                                ceiling=self.ceiling, answers=pd.DataFrame({'response_state': states}),
-                               answer_policy=ANSWER_POLICY, invalid_limit=0.1, steps=steps,
-                               invalid_steps=invalid_steps, **attrs)
+                               answer_policy=ANSWER_POLICY, invalid_limit=0.1, max_ms=self.max_ms,
+                               max_steps=self.max_steps, **run, **attrs)

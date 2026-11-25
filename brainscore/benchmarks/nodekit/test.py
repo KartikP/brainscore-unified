@@ -23,7 +23,7 @@ def clone(tmp_path, monkeypatch):
     runs = {'b.json': [gabor_record('practice', 5, 667, 'left', 'left'), gabor_record('test', 8, 45, 'right', 'left')],
             'a.json': [gabor_record('practice', 5, 667, 'left', 'left'), gabor_record('test', 8, 45, 'right', 'right')]}
     for name, result in runs.items():
-        (folder / name).write_text(json.dumps([[0, 0, 'PageOpened', {}], [1, 5, 'ProgramCompleted', result]]))
+        (folder / name).write_text(json.dumps([[0, 0, 'PageOpened', {}], [1, 5000, 'ProgramCompleted', result]]))
     (folder / 'c.json').write_text(json.dumps([[0, 0, 'PageOpened', {}], [1, 5, 'ProgramStopped', {}]]))
     monkeypatch.setattr(nodekit, 'source', lambda: tmp_path)
     return tmp_path
@@ -33,7 +33,7 @@ def test_the_reader_names_participants_by_file_order_and_counts_runs_that_did_no
     assembly = data.trials('drifting-gabor')
     table = data.table(assembly)
     assert list(table.participant.unique()) == ['p1', 'p2']           # a.json, then b.json
-    assert assembly.attrs['not_completed'] == 1
+    assert assembly.attrs['not_completed'] == 1 and assembly.attrs['longest_run_ms'] == 5.0
     assert table[table.participant == 'p1'].correct.tolist() == [True, True]
     assert {'phase', 'size_degrees', 'duration_milliseconds', 'direction', 'response'} <= set(table.columns)
     assert not any('.json' in str(value) for value in table.values.ravel())   # file names stay in the clone
@@ -134,6 +134,15 @@ def test_a_run_that_does_not_complete_is_invalid_with_every_test_trial_missing(c
     benchmark = NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor')
     score = benchmark.score_result(None)
     assert score.attrs['n_missing'] == 1 and score.attrs['result_validity'] == 'invalid'
+    assert benchmark.max_ms == 10.0                      # twice the participants' longest run
+
+
+def test_the_subject_response_times_are_recorded_not_scored(clone):
+    benchmark = NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor')
+    fast = [gabor_record('test', 8, 45, 'right', 'right')]
+    slow = [dict(fast[0], response_milliseconds=9000.0)]
+    assert float(benchmark.score_result(fast)) == float(benchmark.score_result(slow))
+    assert benchmark.score_result(slow).attrs['subject_response_ms'] == [9000.0]
 
 
 def test_the_three_benchmarks_are_registered():
