@@ -38,7 +38,6 @@ import json
 import os
 import sys
 import traceback
-from dataclasses import replace
 from pathlib import Path
 
 read_fd, write_fd = (int(fd) for fd in os.environ['BRAINSCORE_CHILD_FDS'].split(','))
@@ -239,8 +238,8 @@ def main():
                 settings = command['reset']
                 pacing = pacing_of(*settings['pacing'])
                 limits = agents.Limits(**settings['limits'])
-                if isinstance(pacing, agents.Dense):
-                    limits = replace(limits, actions=1)       # as nkl's agent harness: one action a turn
+                # Dense keeps nkl's normal action limit (nkl's own Dense harness allows one action a turn): a
+                # turn moves the clock at least the step, and a key press and its release fit in one turn.
                 run, context = agents.begin(start(folder, seed, (width, height)), limits=limits)
                 system = agents.system_prompt(
                     settings['instructions'], screen=(context.screen.width, context.screen.height),

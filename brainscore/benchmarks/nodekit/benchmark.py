@@ -236,6 +236,7 @@ class NodeKitBenchmark(BenchmarkBase):
                                             instructions=INSTRUCTIONS.get(self.task, ''),
                                             max_steps=self.max_steps, max_ms=self.max_ms, record=record)
         return self.score_result(result, steps=environment.steps, invalid_steps=environment.invalid_steps,
+                                 acts_per_step=environment.acts_per_step,
                                  run_ms=environment.t_ms, end_reason=session.source.end_reason,
                                  trace=str(environment.trace))
 

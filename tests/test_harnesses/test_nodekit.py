@@ -24,7 +24,7 @@ def screen(system=None, start=None, file=None):
     ended = answer is not None or left
     reply = {'t_ms': t, 'ended': ended, 'body': {'pointer': [0.0, 0.0], 'pointer_down': False,
              'pointer_connected': True, 'keys_down': []}, 'extent': [width, height],
-             'acts_per_step': 1 if settings['pacing'][0] == 'Dense' else 20}
+             'acts_per_step': 20}
     if not ended:
         reply['picture'] = {'data': base64.b64encode(bytes([128]) * (width * height * 3)).decode(),
                             'shape': [height, width, 3], 'at_ms': t}
@@ -127,12 +127,12 @@ def test_the_pacing_is_frozen_by_default_and_a_setting(stand_in):
         nodekit.play(_subject('keys', policy), program, form='motor:key', pacing='fast')
 
 
-def test_dense_pacing_takes_one_act_a_step(stand_in):
-    program = _program(stand_in / 'keys')
+def test_dense_pacing_keeps_the_normal_action_limit(stand_in):
     policy, seen = _keys('ArrowLeft')
-    with pytest.raises(ValueError, match='one act a step'):
-        nodekit.play(_subject('keys', policy), program, form='motor:key', pacing='dense')
-    assert seen[0]['observation']['acts_per_step'] == 1
+    result, environment, _ = nodekit.play(_subject('keys', policy), _program(stand_in / 'keys'), form='motor:key',
+                                          pacing='dense', dense_step_ms=250)
+    assert result is not None and environment.acts_per_step == 20       # a press and its release in one turn
+    assert seen[0]['observation']['acts_per_step'] == 20
 
 
 def test_an_act_of_the_other_form_is_refused_before_the_program_gets_it(stand_in):

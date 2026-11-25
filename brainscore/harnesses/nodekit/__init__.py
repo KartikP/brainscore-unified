@@ -27,8 +27,10 @@ ms, a stroke as nkl's motor allows, a wait its time; then the subject sees the s
 
 The pacing (``PACINGS``, nkl's): ``frozen`` (the default) stops the task's clock while the subject
 answers; ``realtime`` lets the subject's answering time (the wall time from the screen to the acts) pass
-before its first act; ``dense`` moves the clock ``dense_step_ms`` each step (by default ``DENSE_STEP_MS``, nkl's: one frame) and takes
-one act a step: a fixed answering time that does not depend on the machine. An
+before its first act; ``dense`` moves the clock at least ``dense_step_ms`` each step (by default ``DENSE_STEP_MS``, nkl's: one frame;
+nkl's own ``act`` timing): a fixed answering time that does not depend on the machine. It keeps nkl's normal
+action limit (``acts_per_step``, 20 a reply, as frozen); nkl's own Dense harness allows one action a reply, so
+a key press and its release would need two turns. The score states the step and the action limit. An
 empty list is a valid step with no act and None an answer that could not be read (counted in
 ``invalid_steps``); under frozen or realtime pacing neither moves the clock. ``MAX_INVALID_IN_A_ROW`` answers
 in a row with no act stop the run (``stop_cause``). The run ends when the program
@@ -174,6 +176,7 @@ class NodeKitEnvironment:
         self.log_directory = Path(log_directory) if log_directory else self.folder / 'logs'
         self._child, self.steps, self.t_ms, self.result, self.invalid_steps, self.trace = None, 0, 0.0, None, 0, None
         self.system, self._shown, self.invalid_in_a_row, self.stop_cause = None, None, 0, None
+        self.acts_per_step = None
 
     def _row(self, answer: dict):
         self.t_ms = answer['t_ms']
@@ -227,7 +230,7 @@ class NodeKitEnvironment:
                                             'limits': {'turns': self.max_steps}, 'seconds': self.max_ms / 1000,
                                             'instructions': f'{_SESSION_WORDS[self.form]} {_NO_LOOK}\n\n'
                                                             f'{self.instructions}'.strip()}})
-        self.system = answer['system']
+        self.system, self.acts_per_step = answer['system'], answer['acts_per_step']
         if answer['extent'] != list(self.screen):
             raise RuntimeError(f'nkl shows the program on {answer["extent"]} scene units, not the {self.screen} '
                                'pixels of the screen; the briefing and the act positions assume one unit a pixel.')
@@ -240,9 +243,6 @@ class NodeKitEnvironment:
         self.invalid_in_a_row = self.invalid_in_a_row + 1 if acts is None else 0
         if acts is None:
             self.invalid_steps += 1
-        elif self.pacing == 'dense' and len(acts) > 1:
-            raise ValueError(f'{self.program.name} runs with dense pacing: one act a step, not {len(acts)} '
-                             f'({acts!r}). Send the acts in separate steps.')
         frames = None
         if self.frames:
             (self.folder / 'frames').mkdir(exist_ok=True)
