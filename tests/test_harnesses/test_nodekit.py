@@ -345,3 +345,10 @@ def test_each_run_has_nkl_data_of_its_own_and_a_shared_home(stand_in):
     one = nodekit.NodeKitEnvironment(_program(stand_in / 'a'), form='motor:key').child_environment()
     two = nodekit.NodeKitEnvironment(_program(stand_in / 'b'), form='motor:key').child_environment()
     assert one['HOME'] == two['HOME'] and one['NKL_HOME'] != two['NKL_HOME']
+
+
+def test_a_run_stops_after_the_same_acts_in_a_row(stand_in):
+    subject = _subject('stuck', lambda row: {'motor:key': [{'act': 'press', 'key': 'Space'}]})
+    result, environment, session = nodekit.play(subject, _program(stand_in / 'stuck'), form='motor:key')
+    assert session.source.end_reason == 'truncated' and environment.stop_cause == 'the same acts in a row'
+    assert environment.steps == nodekit.MAX_SAME_IN_A_ROW

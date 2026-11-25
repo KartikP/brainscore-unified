@@ -40,7 +40,8 @@ a picture during the acts); the next row carries ``vision:image`` as named pictu
 states the view, the pacing, the dense step and the action limit. An
 empty list is a valid step with no act and None an answer that could not be read (counted in
 ``invalid_steps``); under frozen or realtime pacing neither moves the clock. ``MAX_INVALID_IN_A_ROW`` answers
-in a row with no act stop the run (``stop_cause``). The run ends when the program
+in a row with no act stop the run, as do ``MAX_SAME_IN_A_ROW`` identical act lists in a row (a subject that
+is stuck) (``stop_cause``). The run ends when the program
 ends (``terminal``; ``result`` is then the program's result as value JSON); when its simulated time passes
 ``max_ms`` or its steps pass ``max_steps``, the harness stops it as nkl's agent harness does, and it ends
 ``truncated`` with no result; an nkl error stops the session with the error. Times in the result (response
@@ -87,6 +88,7 @@ PACINGS = ('frozen', 'realtime', 'dense')
 VIEWS = ('participant', 'agent')
 PARTICIPANT_ACTS_PER_STEP = 20  # the acts of one step in the participant view, under every pacing
 MAX_INVALID_IN_A_ROW = 20       # a run with this many answers in a row that give no act stops (truncated)
+MAX_SAME_IN_A_ROW = 40          # a run with this many identical act lists in a row (stuck) stops (truncated)
 DENSE_STEP_MS = 16.667          # nkl's Dense step: one frame at 60 frames a second
 VIDEO = (512, 384)              # the size of a vision:video frame; frames at 60 a second (the worker's FRAME_US)
 # The participants' folder of each bundle in the task repository: the replay viewer's names.
@@ -199,6 +201,7 @@ class NodeKitEnvironment:
         self.log_directory = Path(log_directory) if log_directory else self.folder / 'logs'
         self._child, self.steps, self.t_ms, self.result, self.invalid_steps, self.trace = None, 0, 0.0, None, 0, None
         self.system, self._shown, self.invalid_in_a_row, self.stop_cause = None, None, 0, None
+        self.same_in_a_row, self._last_acts = 0, None
         self.acts_per_step = None
         self._run_folder = uuid.uuid4().hex[:16]
 
@@ -273,6 +276,8 @@ class NodeKitEnvironment:
             raise ValueError(f'{self.program.name} runs in the participant view: a look is offered only in the '
                              f'agent view (view="agent"); the frames since the last step are on vision:video.')
         self.invalid_in_a_row = self.invalid_in_a_row + 1 if acts is None else 0
+        self.same_in_a_row = self.same_in_a_row + 1 if acts and acts == self._last_acts else 0
+        self._last_acts = acts
         if acts is None:
             self.invalid_steps += 1
         frames = None
@@ -284,9 +289,12 @@ class NodeKitEnvironment:
         row = self._row(answer)
         if answer['ended']:
             return self._ended(row, 'terminal')
-        if self.t_ms >= self.max_ms or self.steps >= self.max_steps or self.invalid_in_a_row >= MAX_INVALID_IN_A_ROW:
+        stuck = self.same_in_a_row + 1 >= MAX_SAME_IN_A_ROW
+        if (self.t_ms >= self.max_ms or self.steps >= self.max_steps or self.invalid_in_a_row >= MAX_INVALID_IN_A_ROW
+                or stuck):
             self.stop_cause = ('time' if self.t_ms >= self.max_ms else 'steps' if self.steps >= self.max_steps
-                               else 'invalid answers in a row')
+                               else 'invalid answers in a row' if self.invalid_in_a_row >= MAX_INVALID_IN_A_ROW
+                               else 'the same acts in a row')
             return self._ended(row, 'truncated')
         return row, None
 
