@@ -43,6 +43,13 @@ REGION_LAYER_MAP = {
     'V4': 'encoder.layer.7',
     'IT': 'encoder.layer.11',
 }
+# ``cortex`` (the whole-cortex benchmarks): every encoder block, one band each, as the CLIP registrations.
+CORTEX_LAYERS = tuple(f'encoder.layer.{i}' for i in range(12))
+
+
+def region_layers() -> dict:
+    from brainscore.selection import CompositeSelector
+    return {**REGION_LAYER_MAP, 'cortex': CompositeSelector(tuple((layer, None) for layer in CORTEX_LAYERS))}
 
 # VideoMAE base config: 16 input frames, tubelet_size=2 → 8 temporal steps,
 # 224×224 image with patch_size=16 → 14×14 = 196 spatial patches per tubelet
@@ -100,7 +107,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     return BrainScoreModel(
         identifier=identifier,
         model=videomae,
-        region_layer_map=REGION_LAYER_MAP,
+        region_layer_map=region_layers(),
         extractor={
             'video': video_wrapper,
         },
