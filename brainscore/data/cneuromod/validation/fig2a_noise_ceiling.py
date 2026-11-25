@@ -1,12 +1,9 @@
 """THINGS Fig. 2a check: the voxelwise noise ceiling from the packaged trial responses only.
 
-St-Laurent et al. (2026), Scientific Data 13:141, Fig. 2a (p.8) and the method (p.5-6), as the
-paper's ``things.glmsingle/code/glmsingle/GLMsingle_noiseceilings.py`` computes it: images with
-3 answered trials; the responses of each repetition (1st, 2nd, 3rd trial of an image, in time
-order) z-scored per voxel over the images; the noise variance is the variance over the 3
-repetitions (n - 1), averaged over images; signal = 1 - noise (not below 0);
-NC = 100 ncsnr^2 / (ncsnr^2 + 1/3). The packaged responses are a per-voxel shift and scale of
-the paper's betas, which the z-scoring per repetition cancels.
+St-Laurent et al. (2026), Scientific Data 13:141, Fig. 2a (p.8), with the method of p.5-6
+(``brainscore.benchmarks.noise_ceiling``, the function the THINGS benchmarks use): images
+with 3 answered trials (1st, 2nd, 3rd answered trial of an image, in time order). The packaged
+responses are a per-voxel shift and scale of the paper's betas, which the method cancels.
 
     python -m brainscore.data.cneuromod.validation.fig2a_noise_ceiling --packaged <folder> --out <folder>
 
@@ -21,6 +18,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from brainscore.benchmarks import noise_ceiling
 from brainscore.data.cneuromod.data_packaging import things
 
 REGIONS = ('V1', 'V2', 'V3', 'FFA', 'EBA', 'PPA')
@@ -36,22 +34,6 @@ def region_rows(table: pd.DataFrame, region: str) -> pd.DataFrame:
         if len(rows):
             return rows
     return table.iloc[:0]
-
-
-def noise_ceiling(responses: np.ndarray, image: np.ndarray, viewing: np.ndarray, n: int = 3) -> tuple:
-    """``(noise ceiling per voxel in percent, images used)`` from trials x voxels; ``viewing`` is the
-    place of each trial among the answered trials of its image (``things.answered_viewing``, 0: no
-    response). An image counts when it has exactly ``n`` answered trials, also when shown more often.
-    """
-    image = np.asarray(image).astype(str)
-    labels, counts = np.unique(image[viewing > 0], return_counts=True)
-    used = np.isin(image, labels[counts == n])
-    cube = np.stack([responses[used & (viewing == place)][np.argsort(image[used & (viewing == place)], kind='stable')]
-                     for place in range(1, n + 1)], axis=1)                         # images x places x voxels
-    cube = (cube - cube.mean(axis=0)) / cube.std(axis=0)                            # per repetition, over images
-    noise = np.sqrt(np.mean(np.var(cube, axis=1, ddof=1), axis=0))
-    snr = np.sqrt(np.clip(1 - noise ** 2, 0, None)) / noise
-    return np.nan_to_num(100 * snr ** 2 / (snr ** 2 + 1 / n)), int(np.sum(counts == n))
 
 
 def participant_ceiling(folder: Path) -> tuple:

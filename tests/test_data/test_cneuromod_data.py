@@ -160,7 +160,7 @@ def _repeated_trials(n_images=200, seed=0):
 
 
 def test_the_noise_ceiling_follows_the_signal_share_and_ignores_a_shift_and_scale_per_voxel():
-    from brainscore.data.cneuromod.validation.fig2a_noise_ceiling import noise_ceiling
+    from brainscore.benchmarks import noise_ceiling
     responses, image = _repeated_trials()
     ceiling, used = noise_ceiling(responses, image, things.answered_viewing(image, np.ones(len(image))))
     assert used == 200
@@ -172,7 +172,7 @@ def test_the_noise_ceiling_follows_the_signal_share_and_ignores_a_shift_and_scal
 
 
 def test_the_noise_ceiling_leaves_out_an_image_with_a_trial_without_response():
-    from brainscore.data.cneuromod.validation.fig2a_noise_ceiling import noise_ceiling
+    from brainscore.benchmarks import noise_ceiling
     responses, image = _repeated_trials()
     answered = np.ones(len(image), bool)
     answered[0] = False
@@ -181,7 +181,7 @@ def test_the_noise_ceiling_leaves_out_an_image_with_a_trial_without_response():
 
 
 def test_the_noise_ceiling_takes_the_answered_trials_of_an_image_shown_more_than_3_times():
-    from brainscore.data.cneuromod.validation.fig2a_noise_ceiling import noise_ceiling
+    from brainscore.benchmarks import noise_ceiling
     responses, image = _repeated_trials()
     shown_again = image == image[0]
     extra = np.where(shown_again)[0][0]
