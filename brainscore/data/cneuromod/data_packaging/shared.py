@@ -165,6 +165,28 @@ def plan(paths: list, cache: Path) -> int:
     return to_get
 
 
+def not_public(paths: list) -> list:
+    """The paths among ``paths`` whose content is in no CNeuroMod store a user can read (the CONP store):
+    ``git annex whereis`` in each clone. A file in git is public."""
+    import json
+    by_clone, absent = {}, []
+    for path in paths:
+        if not present(path):
+            root = next(parent for parent in path.parents if (parent / '.datalad').exists())
+            by_clone.setdefault(root, []).append(path)
+    for root, files in by_clone.items():
+        for start in range(0, len(files), 200):
+            part = files[start:start + 200]
+            result = subprocess.run(['git', 'annex', 'whereis', '--json', *(str(f.relative_to(root)) for f in part)],
+                                    cwd=root, capture_output=True, text=True)
+            stores = {}
+            for line in result.stdout.splitlines():
+                entry = json.loads(line)
+                stores[entry['file']] = ' '.join(place.get('description', '') for place in entry.get('whereis', []))
+            absent += [f for f in part if 'conp-ria-storage' not in stores.get(str(f.relative_to(root)), '')]
+    return absent
+
+
 def get(paths: list) -> None:
     """``datalad get`` of the listed paths only, grouped by clone."""
     by_clone = {}

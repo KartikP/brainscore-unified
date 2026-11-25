@@ -59,6 +59,7 @@ def build(module, form: str, root: Path, participant: str, session: str | None) 
     fmriprep = base / 'sourcedata' / f'{module.NAME}.fmriprep'
     work = base / 'output' / module.NAME / form
     func = work / participant / 'func'
+    work.mkdir(parents=True, exist_ok=True)
     for name in shared.sessions(fmriprep, participant, session):
         bolds = sorted(Path(path) for path in glob.glob(
             str(fmriprep / participant / name / 'func' / f'*_space-{config["space"]}_desc-preproc_bold.nii.gz')))
@@ -69,6 +70,13 @@ def build(module, form: str, root: Path, participant: str, session: str | None) 
         inputs = [path for bold in bolds for path in (
             bold, bold.with_name(bold.name.replace('_desc-preproc_bold', '_desc-brain_mask')),
             confounds_of(bold))]
+        private = shared.not_public(inputs)
+        if private:     # Limit: such a session is left out of the time series; not_public.txt names it
+            print(f'{participant} {name}: {len(private)} input files are on no public store (for example '
+                  f'{private[0].name}): the session is left out.')
+            with open(work / 'not_public.txt', 'a') as record:
+                record.write(f'{participant} {name} {len(runs)} runs\n')
+            continue
         shared.plan(inputs, base)
         shared.get(inputs)
         # Relative atlas paths in the configuration: run from the code folder. Quoted: a path may hold a space.

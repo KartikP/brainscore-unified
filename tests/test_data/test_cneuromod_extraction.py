@@ -4,6 +4,7 @@ The programs (git, DataLad, the separate environment and CNeuroMod's extraction 
 by a stand-in at the subprocess boundary; the stand-in extraction writes the files the code writes.
 """
 import glob
+import json
 import subprocess
 import sys
 import types
@@ -116,7 +117,7 @@ def make_tree(root: Path, dataset: str, sessions=('ses-01',), non_steady=()) -> 
     return base
 
 
-def stand_in(monkeypatch, code_commit=extraction.CODE_COMMIT, short=(), missing=()):
+def stand_in(monkeypatch, code_commit=extraction.CODE_COMMIT, short=(), missing=(), private=()):
     """Replace ``subprocess.run``. The extraction writes, as the code does, the participant's atlas or mask
     and one HDF5 dataset per present BOLD run not yet in the file; ``short`` runs lose a row, ``missing``
     runs are not written (the code catches the error of a run and goes on)."""
@@ -126,7 +127,11 @@ def stand_in(monkeypatch, code_commit=extraction.CODE_COMMIT, short=(), missing=
         argv = [str(word) for word in argv]
         calls.append(types.SimpleNamespace(argv=argv, cwd=kwargs.get('cwd'), env=kwargs.get('env')))
         out = ''
-        if argv[:2] == ['git', '-C'] and argv[3] == 'ls-tree':
+        if argv[:3] == ['git', 'annex', 'whereis']:        # on the public store unless its session is private
+            out = ''.join(json.dumps({'file': f, 'whereis': [] if any(f'/{p}/' in f for p in private)
+                                      else [{'description': 'conp-ria-storage [conp-ria-storage-http]'}]}) + '\n'
+                          for f in argv[4:])
+        elif argv[:2] == ['git', '-C'] and argv[3] == 'ls-tree':
             path = argv[5]
             out = f'160000 commit {code_commit if path.startswith("code/") else ATLASES_PIN if path == "atlases" else FMRIPREP_PIN}\t{path}\n'
         elif argv[1:3] == ['-m', 'venv']:
@@ -248,6 +253,18 @@ def test_a_finished_session_is_skipped_and_its_bold_files_dropped(tmp_path, monk
     assert not {path for path in _gets(calls) if '/ses-01/' in path}       # nothing of ses-01 fetched again
     with h5py.File(next(path for path in files if path.suffix == '.h5'), 'r') as handle:
         assert sorted(handle) == ['ses-01', 'ses-02'] and len(handle['ses-02']) == 2
+
+
+def test_a_session_on_no_public_store_is_left_out_and_named(tmp_path, monkeypatch, capsys):
+    make_tree(tmp_path, 'things', sessions=('ses-01', 'ses-02'))
+    calls = stand_in(monkeypatch, private=('ses-02',))
+    files = extraction.build(things, 'cneuromod2026', tmp_path, 'sub-01', None)
+    assert not {path for path in _gets(calls) if '/ses-02/' in path}        # nothing of it fetched
+    with h5py.File(next(path for path in files if path.suffix == '.h5'), 'r') as handle:
+        assert sorted(handle) == ['ses-01']
+    assert 'no public store' in capsys.readouterr().out
+    record = tmp_path / 'extraction' / 'output' / 'things' / 'cneuromod2026' / 'not_public.txt'
+    assert record.read_text().split()[:2] == ['sub-01', 'ses-02']
 
 
 def test_another_code_commit_is_refused(tmp_path, monkeypatch):
