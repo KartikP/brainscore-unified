@@ -348,8 +348,10 @@ def test_each_run_has_nkl_data_of_its_own_and_a_shared_home(stand_in):
 def test_a_run_stops_after_the_same_acts_in_a_row(stand_in):
     subject = _subject('stuck', lambda row: {'motor:key': [{'act': 'press', 'key': 'Space'}]})
     result, environment, session = nodekit.play(subject, _program(stand_in / 'stuck'), form='motor:key')
-    assert session.source.end_reason == 'truncated' and environment.stop_cause == 'the same acts in a row'
-    assert environment.steps == nodekit.MAX_SAME_IN_A_ROW
+    # The same acts on the same screen are a cycle of one step: the cycle rule stops it first (the 40-in-a-row
+    # rule stops the same acts on screens that change).
+    assert session.source.end_reason == 'truncated' and environment.stop_cause == 'a cycle of the same acts and screens'
+    assert environment.steps == nodekit.CYCLE_REPEATS
 
 
 def test_under_a_grid_the_system_briefing_is_nkl_s_written_for_the_grid(stand_in, monkeypatch):
@@ -369,3 +371,22 @@ def test_under_a_grid_the_system_briefing_is_nkl_s_written_for_the_grid(stand_in
     system = prompts[0].parts[0][1]
     assert '1000 x 1000' in system and '1024' not in system and '768' not in system
     policy.close()
+
+
+def test_a_run_stops_after_a_cycle_of_the_same_acts_and_screens(stand_in):
+    cycle = [[{'act': 'press', 'key': 'KeyA'}], [{'act': 'press', 'key': 'KeyB'}], [{'act': 'press', 'key': 'KeyC'}]]
+    count = [0]
+
+    def policy(row):
+        count[0] += 1
+        return {'motor:key': cycle[(count[0] - 1) % 3]}
+    result, environment, session = nodekit.play(_subject('loop', policy), _program(stand_in / 'loop'), form='motor:key')
+    assert session.source.end_reason == 'truncated' and environment.stop_cause == 'a cycle of the same acts and screens'
+    assert environment.steps == 3 * nodekit.CYCLE_REPEATS
+
+
+def test_a_cycle_needs_the_same_screens_too():
+    same = [('a', 's1'), ('b', 's2')] * 5
+    assert nodekit.repeats_a_cycle(same)
+    assert not nodekit.repeats_a_cycle([('a', f's{i}') for i in range(10)])      # the same acts, new screens
+    assert not nodekit.repeats_a_cycle([('null', 's')] * 10)                     # no act: the invalid-answer rule

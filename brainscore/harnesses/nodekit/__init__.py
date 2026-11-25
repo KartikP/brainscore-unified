@@ -42,7 +42,8 @@ states the view, the pacing, the dense step and the action limit. An
 empty list is a valid step with no act and None an answer that could not be read (counted in
 ``invalid_steps``); under frozen or realtime pacing neither moves the clock. ``MAX_INVALID_IN_A_ROW`` answers
 in a row with no act stop the run, as do ``MAX_SAME_IN_A_ROW`` identical act lists in a row (a subject that
-is stuck) (``stop_cause``). The run ends when the program
+is stuck), and a cycle of up to ``CYCLE_PERIODS`` steps of the same acts and screens repeated ``CYCLE_REPEATS``
+times (a subject that goes round in a loop; checked not to cut the finished Gabor runs) (``stop_cause``). The run ends when the program
 ends (``terminal``; ``result`` is then the program's result as value JSON); when its simulated time passes
 ``max_ms`` or its steps pass ``max_steps``, the harness stops it as nkl's agent harness does, and it ends
 ``truncated`` with no result; an nkl error stops the session with the error. Times in the result (response
@@ -63,6 +64,7 @@ cannot be taken.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import shutil
@@ -90,6 +92,19 @@ VIEWS = ('participant', 'agent')
 PARTICIPANT_ACTS_PER_STEP = 20  # the acts of one step in the participant view, under every pacing
 MAX_INVALID_IN_A_ROW = 20       # a run with this many answers in a row that give no act stops (truncated)
 MAX_SAME_IN_A_ROW = 40          # a run with this many identical act lists in a row (stuck) stops (truncated)
+CYCLE_PERIODS, CYCLE_REPEATS = 10, 5   # a run whose last steps repeat one cycle of (acts, screen) stops (stuck)
+
+
+def repeats_a_cycle(steps: list, periods: int = CYCLE_PERIODS, repeats: int = CYCLE_REPEATS) -> bool:
+    """Whether the last ``repeats`` x P steps (each a pair of the acts and the screen it led to) are one cycle of
+    P steps repeated, for a period P up to ``periods``; a cycle of answers with no act does not count (the
+    invalid-answer rule stops those)."""
+    for period in range(1, periods + 1):
+        tail = steps[-repeats * period:]
+        if len(tail) == repeats * period and all(tail[i] == tail[i % period] for i in range(len(tail))) \
+                and any(acts not in (None, 'null') for acts, _ in tail[:period]):
+            return True
+    return False
 DENSE_STEP_MS = 16.667          # nkl's Dense step: one frame at 60 frames a second
 VIDEO = (512, 384)              # the size of a vision:video frame; frames at 60 a second (the worker's FRAME_US)
 # The participants' folder of each bundle in the task repository: the replay viewer's names.
@@ -202,7 +217,7 @@ class NodeKitEnvironment:
         self.log_directory = Path(log_directory) if log_directory else self.folder / 'logs'
         self._child, self.steps, self.t_ms, self.result, self.invalid_steps, self.trace = None, 0, 0.0, None, 0, None
         self.system, self._shown, self.invalid_in_a_row, self.stop_cause = None, None, 0, None
-        self.same_in_a_row, self._last_acts = 0, None
+        self.same_in_a_row, self._last_acts, self._steps_seen = 0, None, []
         self.acts_per_step = None
         self._run_folder = uuid.uuid4().hex[:16]
 
@@ -294,12 +309,18 @@ class NodeKitEnvironment:
         row = self._row(answer)
         if answer['ended']:
             return self._ended(row, 'terminal')
-        stuck = self.same_in_a_row + 1 >= MAX_SAME_IN_A_ROW
+        if row:
+            screen = row['vision:image']
+            screen = screen['screen'] if isinstance(screen, dict) else screen
+            self._steps_seen = (self._steps_seen + [(json.dumps(acts, sort_keys=True),
+                                                     hashlib.sha1(screen.tobytes()).hexdigest())])[-CYCLE_PERIODS * CYCLE_REPEATS:]
+        cycle = repeats_a_cycle(self._steps_seen)
+        stuck = self.same_in_a_row + 1 >= MAX_SAME_IN_A_ROW or cycle
         if (self.t_ms >= self.max_ms or self.steps >= self.max_steps or self.invalid_in_a_row >= MAX_INVALID_IN_A_ROW
                 or stuck):
             self.stop_cause = ('time' if self.t_ms >= self.max_ms else 'steps' if self.steps >= self.max_steps
                                else 'invalid answers in a row' if self.invalid_in_a_row >= MAX_INVALID_IN_A_ROW
-                               else 'the same acts in a row')
+                               else 'a cycle of the same acts and screens' if cycle else 'the same acts in a row')
             return self._ended(row, 'truncated')
         return row, None
 
