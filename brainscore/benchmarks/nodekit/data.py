@@ -49,7 +49,7 @@ def trials(task: str) -> BehavioralAssembly:
     from brainscore.harnesses.nodekit import source
     files = sorted((source() / 'prolific' / FOLDERS[task] / 'submissions').glob('*.json'))
     tables, not_completed, run_ms = [], 0, []
-    for number, path in enumerate(files, 1):
+    for path in files:
         trace = json.loads(path.read_text())
         result = completed_result(trace)
         if result is None:
@@ -57,7 +57,7 @@ def trials(task: str) -> BehavioralAssembly:
             continue
         run_ms.append(trace[-1][1] / 1000)          # the run's last line, in ms
         table = rows(result)
-        table.insert(0, 'participant', f'p{number}')
+        table.insert(0, 'participant', f'p{len(tables) + 1}')      # completed runs, numbered in file order
         tables.append(table)
     table = pd.concat(tables, ignore_index=True)
     coords = {column: ('presentation', [value if not isinstance(value, (list, dict)) else json.dumps(value)

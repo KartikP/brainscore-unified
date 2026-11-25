@@ -51,6 +51,7 @@ import numpy as np
 import pandas as pd
 
 from brainscore.benchmarks.nodekit.benchmark import NodeKitBenchmark, faces, faces_ceiling, gabor, triplets
+from brainscore_core.metrics import Score
 
 
 def _table(records, participant):
@@ -171,3 +172,36 @@ def test_the_pacing_is_frozen_by_default_stamped_and_checked(clone):
 def test_the_gabor_briefing_names_the_key_that_turns_a_page():
     from brainscore.benchmarks.nodekit.benchmark import INSTRUCTIONS
     assert 'Enter' in INSTRUCTIONS['drifting-gabor']
+
+
+def test_participants_are_numbered_among_the_runs_that_completed(tmp_path, monkeypatch):
+    folder = tmp_path / 'prolific' / 'gabor' / 'submissions'
+    folder.mkdir(parents=True)
+    (folder / 'a.json').write_text(json.dumps([[0, 0, 'PageOpened', {}], [1, 5, 'ProgramStopped', {}]]))
+    (folder / 'b.json').write_text(json.dumps([[0, 0, 'PageOpened', {}], [1, 5000, 'ProgramCompleted',
+                                                [gabor_record('test', 8, 45, 'right', 'right')]]]))
+    monkeypatch.setattr(nodekit, 'source', lambda: tmp_path)
+    assert list(data.table(data.trials('drifting-gabor')).participant.unique()) == ['p1']
+    assert NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor').score_result(None).attrs['n_missing'] == 1
+
+
+def test_face_arrangement_is_off_the_leaderboard():
+    assert NodeKitBenchmark('NodeKit.FaceArrangement', 'face-arrangement').leaderboard_eligible is False
+    assert NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor').leaderboard_eligible is True
+
+
+def test_a_pair_shown_twice_has_the_mean_distance():
+    from brainscore.benchmarks.nodekit.benchmark import pair_distances
+    twice = pd.concat([_faces(0.1, 's'), _faces(0.3, 's')], ignore_index=True)
+    assert pair_distances(twice)[('1', '2')] == pytest.approx(0.2)
+
+
+def test_a_constant_arrangement_is_an_invalid_result(monkeypatch):
+    people = pd.concat([_faces(0.1, 'p1'), _faces(0.2, 'p2'), _faces(0.3, 'p3')], ignore_index=True)
+    benchmark = NodeKitBenchmark('NodeKit.FaceArrangement', 'face-arrangement')
+    monkeypatch.setattr(NodeKitBenchmark, 'participants', people)
+    monkeypatch.setattr(NodeKitBenchmark, 'ceiling', Score(1.0))
+    flat = [{'face_arrangement_trial': {'phase': 'test', 'face_ids': ['1', '2', '3']},
+             'distances': [[0, 0.5, 0.5], [0.5, 0, 0.5], [0.5, 0.5, 0]]}]
+    score = benchmark.score_result(flat, steps=10, invalid_steps=2)
+    assert score.attrs['result_validity'] == 'invalid' and score.attrs['invalid_step_share'] == 0.2

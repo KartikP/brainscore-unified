@@ -35,6 +35,7 @@ kept under ``record`` (``attrs['trace']``) and replays in the task repository's 
 """
 from __future__ import annotations
 
+import functools
 import json
 from functools import cached_property
 
@@ -106,15 +107,16 @@ def triplets(subject: pd.DataFrame, participants: pd.DataFrame) -> dict:
 
 # --- Face arrangement ---------------------------------------------------------------------------------------
 def pair_distances(table: pd.DataFrame) -> pd.Series:
-    """The final distance of each pair of faces shown together, by the pair's two face ids (sorted)."""
+    """The final distance of each pair of faces shown together, by the pair's two face ids (sorted); a pair
+    shown in more than one trial has the mean of its distances."""
     pairs = {}
     for _, row in test_rows(table).iterrows():
         ids = row['face_ids'] if isinstance(row['face_ids'], list) else json.loads(row['face_ids'])
         distances = row['distances'] if isinstance(row['distances'], list) else json.loads(row['distances'])
         for i in range(len(ids)):
             for j in range(i + 1, len(ids)):
-                pairs[tuple(sorted((ids[i], ids[j])))] = distances[i][j]
-    return pd.Series(pairs).sort_index()
+                pairs.setdefault(tuple(sorted((ids[i], ids[j]))), []).append(distances[i][j])
+    return pd.Series({pair: float(np.mean(values)) for pair, values in pairs.items()}).sort_index()
 
 
 def _each(participants: pd.DataFrame) -> dict:
@@ -127,10 +129,17 @@ def faces_ceiling(participants: pd.DataFrame) -> float:
                                     .reindex(each[p].index))[0] for p in each]))
 
 
+@functools.lru_cache(maxsize=4)
+def _faces_floor(mean: tuple) -> list:
+    """The Spearman correlations of 1000 random permutations (seed 0) of the participants' mean distances
+    with themselves; computed once for each set of means."""
+    rng = np.random.default_rng(0)
+    return [spearmanr(rng.permutation(mean), mean)[0] for _ in range(1000)]
+
+
 def faces(subject: pd.DataFrame, participants: pd.DataFrame) -> dict:
     mean = pd.concat(_each(participants), axis=1).mean(axis=1)
-    rng = np.random.default_rng(0)
-    floor = [spearmanr(rng.permutation(mean.values), mean.values)[0] for _ in range(1000)]
+    floor = _faces_floor(tuple(mean.values))
     own = pair_distances(subject).reindex(mean.index)
     return {'raw': float(spearmanr(own.values, mean.values)[0]),
             'floor': float(np.mean(floor)), 'floor_interval': [float(np.percentile(floor, 2.5)),
@@ -162,6 +171,9 @@ class NodeKitBenchmark(BenchmarkBase):
         if pacing not in PACINGS:
             raise ValueError(f'pacing is one of {PACINGS} (nkl\'s Frozen, Realtime and Dense), not {pacing!r}.')
         self.task, self.max_steps, self.pacing, self.record = task, max_steps, pacing, record
+        # Faces: the participants' ceiling (.174) is inside the random floor's interval, so the benchmark cannot
+        # separate a subject from chance (owner, 2026-11-25: in the code, off the leaderboard).
+        self.leaderboard_eligible = task != 'face-arrangement'
         # The screen is the stimulus: a subject that cannot take it never sees the task (N/A, Rule 5.1).
         # The frames since the last turn go on vision:video (a subject without it sees the last screen only),
         # nkl's briefing on instruction and the facts of each turn (time, hands, turns left) on observation.
@@ -200,18 +212,22 @@ class NodeKitBenchmark(BenchmarkBase):
 
     def score_result(self, result, **run) -> Score:
         """The score of one run's result (None for a run that did not complete)."""
-        tests = len(test_rows(self.participants[self.participants.participant == 'p1']))
+        tests = int(test_rows(self.participants).groupby('participant').size().max())
         if result is None:
             measured = {'raw': float('nan'), 'score_form': 'no trial record'}
             states = ['missing'] * tests
         else:
             own = test_rows(data.rows(result))
             measured = METRICS[self.task][0](own, self.participants)
-            states = ['valid'] * len(own) + ['missing'] * max(0, tests - len(own))
+            # A raw that is not a number (a constant arrangement has no rank order) is no measurement.
+            state = 'valid' if np.isfinite(measured['raw']) else 'invalid'
+            states = [state] * len(own) + ['missing'] * max(0, tests - len(own))
             if 'response_milliseconds' in own:
                 measured['subject_response_ms'] = [float(t) for t in own['response_milliseconds']]
         attrs = {key: value for key, value in measured.items() if key not in ('raw', 'score_form')}
         return benchmark_score(self, raw=measured['raw'], metric=measured['score_form'],
                                ceiling=self.ceiling, answers=pd.DataFrame({'response_state': states}),
                                answer_policy=ANSWER_POLICY, invalid_limit=0.1, max_ms=self.max_ms,
-                               max_steps=self.max_steps, pacing=self.pacing, **run, **attrs)
+                               max_steps=self.max_steps, pacing=self.pacing, **run, **attrs,
+                               **({'invalid_step_share': run['invalid_steps'] / run['steps']}
+                                  if run.get('steps') else {}))
