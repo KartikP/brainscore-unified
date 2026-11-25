@@ -254,6 +254,8 @@ def test_each_declared_output_comes_out_of_one_session(stand_in, identifier):
         'behavior:choice', 'behavior:probabilities', 'behavior:log_probabilities', 'behavior:rating',
         'behavior:rt', 'behavior:text', 'motor'} <= subject.out_channels
     assert subject.output_inputs['motor'] == {'observation'}
+    assert {'motor:key', 'motor:pointer'} <= subject.out_channels       # a task on a screen, by the act policy
+    assert {'vision:image', 'instruction', 'observation'} <= subject.output_inputs['motor:key']
     assert ('vision:video' in subject.in_channels) == config['video']
     pixel = config['image_processor_kwargs'] is not None
     assert ('perturbation' in subject.out_channels) == (not pixel) == ('lesion' in subject.in_channels)

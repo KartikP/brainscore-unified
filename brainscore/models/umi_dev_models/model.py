@@ -51,8 +51,9 @@ def cortex_layers(block_paths, n_max=CORTEX_BANDS):
 
 
 class _StudySubject(ProvenanceSubject):
-    """The study's provenance on every response, and the one input the policy acts on: it reads the
-    observation's frame, so ``motor`` is answered from an observation only. The study records the
+    """The study's provenance on every response, and the inputs the policy acts on: on the grid game it
+    reads the observation's frame, so ``motor`` is answered from an observation only; on a task on a
+    screen (``motor:key``, ``motor:pointer``) it reads the screen, its frames, the briefing and the turn. The study records the
     language layer in a passive session only: a session that asks for it under a task (the planner runs
     the task even when only neural outputs are requested) or together with an answer is refused before
     any compute."""
@@ -65,13 +66,15 @@ class _StudySubject(ProvenanceSubject):
         inputs = dict(self._subject.output_inputs)
         if 'motor' in self._subject.out_channels:
             inputs['motor'] = frozenset({'observation'})
+        inputs.update({form: frozenset(SCREEN_INPUTS) & self.in_channels
+                       for form in SCREEN_FORMS if form in self._subject.out_channels})
         inputs.update({output: frozenset({'vision:image'}) for output in self.READOUT if output in self._subject.out_channels})
         return inputs
 
     def participate(self, session):
         outputs, task = set(session.outputs or ()), session.task
         answering = (task is not None and task.task_type != 'passive') or any(
-            o.startswith('behavior') or o == 'motor' for o in outputs)
+            o.startswith('behavior') or o.startswith('motor') for o in outputs)
         shown = self._shown(session) if outputs & set(self.READOUT) else None
         if shown is not None and 'vision:image' not in shown:
             from brainscore_core.compatibility import ExecutionNotFeasibleError
@@ -283,6 +286,27 @@ def _reply_client(reply):
     return local_model
 
 
+SCREEN_FORMS = ('motor:key', 'motor:pointer')
+SCREEN_INPUTS = ('vision:image', 'vision:video', 'instruction', 'observation')
+
+
+def _policy(reply, identifier):
+    """One policy for the study's two closed loops: a task on a screen (its row's observation names the act
+    form) gets NodeKit's act policy; the grid game gets ``api_policy`` as before. ``reset()`` clears both."""
+    from brainscore.harnesses.nodekit.policy import act_policy
+    from brainscore.model_helpers.api_behavioral import api_policy
+    screen, grid = act_policy(reply), api_policy(_reply_client(reply), identifier)
+
+    def policy(row):
+        return (screen if 'act_form' in (row.get('observation') or {}) else grid)(row)
+
+    def reset():
+        screen.reset()
+        grid.reset()
+    policy.reset, policy.screen, policy.grid = reset, screen, grid
+    return policy
+
+
 def _intervention(model, vision, language):
     """``pytorch_intervention`` on one module that holds each part's blocks under the first name of its
     block path, so a change names a layer as the region map does (the modules are shared)."""
@@ -300,7 +324,6 @@ def _intervention(model, vision, language):
 
 def get_model(identifier: str):
     from brainscore import BrainScoreModel
-    from brainscore.model_helpers.api_behavioral import api_policy
     from brainscore.model_helpers.replies import chat_parts
     from brainscore.model_helpers.text_wrapper import TextWrapper
     from brainscore.selection import CompositeSelector, LayerSelector
@@ -344,7 +367,10 @@ def get_model(identifier: str):
     subject = BrainScoreModel(
         identifier, model, region_layer_map, extractor=extractor, reply=reply, likelihood=likelihood,
         behavioral_readout_layer=region_layer_map['IT'],
-        policy=api_policy(_reply_client(reply), identifier), policy_in_channels=('observation', 'instruction', 'reward'),
+        # A model without video takes the screen task's last screen only (no vision:video).
+        policy=_policy(reply, identifier),
+        policy_in_channels=('reward', *(c for c in SCREEN_INPUTS if config['video'] or c != 'vision:video')),
+        policy_out_channels=('motor', *SCREEN_FORMS),
         answer_owners={'behavior:rating': 'generation', 'behavior:probabilities': 'readout'},
         **parts)
     depths = ', '.join(f'{region} {f:.2f}' for table in DEPTH_TABLE.values() for region, f in table.items())

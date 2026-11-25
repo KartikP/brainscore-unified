@@ -166,3 +166,62 @@ def test_a_subject_that_takes_only_pictures_gets_the_last_screen_only(stand_in):
                               policy_out_channels=('motor:key',))
     nodekit.play(subject, _program(stand_in / 'keys'), form='motor:key')
     assert all(set(row) == {'vision:image'} and row['vision:image'].shape == (768, 1024, 3) for row in seen)
+
+
+# --- the act policy, with a stand-in for nkl's reader at its child-process boundary ---------------------------
+READER = '''
+import json, os
+read_fd, write_fd = (int(fd) for fd in os.environ['BRAINSCORE_CHILD_FDS'].split(','))
+commands, messages = os.fdopen(read_fd, 'rb'), os.fdopen(write_fd, 'wb')
+def send(message):
+    messages.write((json.dumps(message) + '\\n').encode()); messages.flush()
+while line := commands.readline():
+    command = json.loads(line)
+    if 'brief' in command:
+        turn = command['brief']
+        send({'done': [['problems: ' + '; '.join(turn['problems']), False], ['The screen now:', True]]})
+    else:
+        turn = command['read']
+        if turn['text'] == 'look':
+            send({'done': {'acts': None, 'memories': [], 'problems': ['command 1 (look): look is not offered here']}})
+        else:
+            send({'done': {'acts': json.loads(turn['text']), 'memories': [], 'problems': []}})
+'''
+
+
+def test_the_act_policy_reads_each_reply_and_shows_its_problems_and_changed_frames(stand_in, monkeypatch):
+    import brainscore.harnesses._environment_folder as environment_folder
+    import brainscore.harnesses.nodekit.policy as act
+    reader = stand_in / 'stand_in_reader.py'
+    reader.write_text(READER)
+    monkeypatch.setattr(act, '_READER', reader)
+    monkeypatch.setattr(environment_folder, 'ready_folder', nodekit.ready_folder)
+    replies = iter(['look', '[{"act": "wait", "ms": 250}]',
+                    '[{"act": "press", "key": "ArrowLeft"}, {"act": "release", "key": "ArrowLeft"}]'])
+    prompts = []
+
+    def reply(prompt):
+        prompts.append(prompt)
+        return next(replies)
+    policy = act.act_policy(reply)
+    subject = BrainScoreModel('text-subject', policy=policy,
+                              policy_in_channels=('vision:image', 'vision:video', 'instruction', 'observation'),
+                              policy_out_channels=('motor:key', 'motor:pointer'))
+    result, environment, session = nodekit.play(subject, _program(stand_in / 'keys'), form='motor:key')
+    assert result[0]['response'] == 'ArrowLeft' and environment.invalid_steps == 1
+    assert prompts[0].names[0] == 'instruction' and prompts[0].parts[0][1] == environment.system
+    assert 'look is not offered' in prompts[1].parts[1][1]                     # the problem, at the next turn
+    # The 250 ms wait passed 15 frame times; the frames are equal, so one changed frame is shown, then the screen.
+    assert prompts[2].names.count('frame') == 2 and prompts[2].names[-1] == 'screen'
+    assert [turn['problems'] for turn in policy.trace][:1] == [['command 1 (look): look is not offered here']]
+    policy.close()
+
+
+def test_changed_frames_keeps_frames_that_differ_up_to_the_cap():
+    from brainscore.harnesses.nodekit.policy import changed_frames
+    video = np.zeros((10, 2, 2, 3), np.uint8)
+    video[3:] = 1
+    video[7:] = 2
+    assert [at for at, _ in changed_frames(video, list(range(10)), None, 4)] == [0, 3, 7]
+    video = np.arange(10, dtype=np.uint8)[:, None, None, None] * np.ones((10, 2, 2, 3), np.uint8)
+    assert [at for at, _ in changed_frames(video, list(range(10)), video[0], 4)] == [1, 4, 6, 9]
