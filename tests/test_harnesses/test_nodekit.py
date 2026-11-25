@@ -305,3 +305,20 @@ def test_the_agent_view_names_its_pictures_and_a_look_is_refused_in_the_particip
     assert seen[0]['observation']['view'] == 'agent'
     with pytest.raises(ValueError, match='agent view'):
         nodekit.play(subject, _program(stand_in / 'keys2'), form='motor:key')
+
+
+def test_the_act_policy_shows_no_earlier_turn_in_the_agent_view(stand_in, monkeypatch):
+    import brainscore.harnesses._environment_folder as environment_folder
+    import brainscore.harnesses.nodekit.policy as act
+    reader = stand_in / 'stand_in_reader.py'
+    reader.write_text(READER)
+    monkeypatch.setattr(act, '_READER', reader)
+    monkeypatch.setattr(environment_folder, 'ready_folder', nodekit.ready_folder)
+    prompts = []
+    policy = act.act_policy(lambda prompt: prompts.append(prompt) or '[{"act": "wait", "ms": 100}]')
+    row = {'vision:image': {'screen': np.zeros((768, 1024, 3), np.uint8)}, 'instruction': 'brief',
+           'observation': {'t_ms': 0.0, 'act_form': 'motor:key', 'view': 'agent'}}
+    policy(row)
+    policy(row)
+    assert prompts[1].history == ()
+    policy.close()

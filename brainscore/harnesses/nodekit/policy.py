@@ -18,7 +18,8 @@ The reply is read with nkl's ``parse`` in the same child; its acts go out on the
 an act of the other form) gives no act (None, an invalid step) and its problems with the command and the
 rule broken are shown at the next turn, as nkl does; the event meta holds the reply and the problems.
 
-The conversation is kept within a stated limit: the last ``turns_kept`` turns come before the turn as earlier
+In the participant view the conversation is kept within a stated limit (in the agent view, nkl's own, the model
+sees no earlier turn): the last ``turns_kept`` turns come before the turn as earlier
 user and assistant turns, as text only (their briefing and the reply; their pictures are not sent again). The
 model also keeps nkl's memory notes (at most 16 of 400 characters, nkl's ``Limits``). Both are cleared in
 ``reset()``. ``trace`` holds each turn's reply, problems, acts and
@@ -132,7 +133,9 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
                 names.append('screen' if image == 'screen' else 'look')
         settings = Text(max_tokens=max_tokens, temperature=temperature,
                         seed=None if seed is None else seed + state['turn'])
-        history = tuple(state['history'][-turns_kept:]) if turns_kept else ()
+        # The agent view is nkl's own: its agents see no earlier turn (their memories only).
+        kept = 0 if seen.get('view') == 'agent' else turns_kept
+        history = tuple(state['history'][-kept:]) if kept else ()
         answer = reply(Prompt(parts=tuple(parts), names=tuple(names), response=settings, history=history))
         _state_as(policy, reply)
         text = answer.payload if isinstance(answer, StreamEvent) else answer
