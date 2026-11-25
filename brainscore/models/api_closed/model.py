@@ -29,6 +29,13 @@ REGISTRY = {
     'claude-sonnet-5-5-behavioral': dict(
         provider='anthropic', model='claude-sonnet-5-5',
         in_channels=('vision:image', 'text')),
+    # Claude Opus 5.5, both ways (Sonnet 5.5 answered NodeKit's briefing with empty tool markup on 2026-11-25).
+    'claude-opus-5-5-bedrock': dict(
+        provider='bedrock', model='us.anthropic.claude-opus-5-5',
+        in_channels=('vision:image', 'text')),
+    'claude-opus-5-5-behavioral': dict(
+        provider='anthropic', model='claude-opus-5-5',
+        in_channels=('vision:image', 'text')),
     'claude-haiku-behavioral': dict(
         provider='anthropic', model='claude-haiku-4-5',
         in_channels=('vision:image', 'text')),
