@@ -1,9 +1,9 @@
 """The Super Mario Bros. emulator in its own environment (stable-retro); the standard library, numpy and retro only.
 
-    <environment python> _worker.py <checkout of mario.stimuli> <ROM file>
+    <environment python> _worker.py <checkout of mario.stimuli> <ROM file> <level state file>
 
-The game's integration (the level states, ``data.json``, ``scenario.json``, ``rom.sha``) is read from the
-checkout; the ROM is the file the user gives. A temporary integration folder holds copies of the checkout's
+The game's integration (``data.json``, ``scenario.json``, ``rom.sha``) is read from the checkout, the level
+state from its file; the ROM is the file the user gives. A temporary integration folder holds copies of the checkout's
 files and a link to the ROM; it is deleted when the worker ends. Commands, one JSON line each:
 ``{"reset": "<state>"}`` and ``{"step": [9 buttons], "frames": n}``; each answers ``{"done": observation}``:
 the frames of the step (base64, uint8, (n, 224, 240, 3)), the sound (base64, int16, mono), the sound rate, the
@@ -43,13 +43,17 @@ def observation(env, frames, sound, done):
 
 
 def main():
-    checkout, rom = Path(sys.argv[1]), Path(sys.argv[2])
-    import retro
+    checkout, rom, state = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
+    import stable_retro as retro
     folder = Path(tempfile.mkdtemp(prefix='mario-integration-'))
     env = None
     try:
         game = folder / GAME
-        shutil.copytree(checkout / GAME, game, ignore=shutil.ignore_patterns('rom.nes'))
+        game.mkdir()
+        for name in ('data.json', 'scenario.json', 'metadata.json', 'rom.sha'):
+            if (checkout / GAME / name).is_file():
+                shutil.copyfile(checkout / GAME / name, game / name)
+        shutil.copyfile(state, game / state.name)
         (game / 'rom.nes').symlink_to(rom.resolve())
         retro.data.Integrations.add_custom_path(str(folder))
         while line := commands.readline():

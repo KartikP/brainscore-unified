@@ -1,9 +1,11 @@
 # Every package of the environment Brain-Score makes for the Super Mario Bros. emulator, each at an exact
-# version, installed with --no-deps and checked with pip check. stable-retro 0.9.9 is the version of the
-# lock file of courtois-neuromod/mario.tutorials (the trained agent's code); the other lines are its
-# dependencies (PyPI metadata, read 2026-11-25). pip and setuptools: as the other harnesses.
-stable-retro==0.9.9
-gymnasium==0.29.1
+# version, installed with --no-deps and checked with pip check. The trained agent's code
+# (courtois-neuromod/mario.tutorials) locks stable-retro 0.9.9, but its macOS arm64 wheels (and those of
+# 0.9.5 to 1.0.0) hold an x86_64 library that does not load on an arm64 Mac; 1.0.1 is the first arm64 build,
+# with the same retro API. The other lines are its dependencies (PyPI metadata, read 2026-11-25). pip and
+# setuptools: as the other harnesses.
+stable-retro==1.0.1
+gymnasium==1.1.1
 numpy==1.26.4
 cloudpickle==3.1.1
 typing-extensions==4.12.2

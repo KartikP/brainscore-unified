@@ -30,4 +30,4 @@ def test_a_missing_rom_is_refused_before_any_folder_is_made(tmp_path, monkeypatc
 def test_the_library_pins_the_integration_and_never_its_rom():
     assert mario.MARIO.commit == 'e3ecccf76d7776733ac1a98cf997c97e97f65f66'
     assert not any('rom.nes' in path for path in mario.MARIO.required_files)
-    assert 'stable-retro==0.9.9' in mario.MARIO.requirements.read_text().split()
+    assert 'stable-retro==1.0.1' in mario.MARIO.requirements.read_text().split()

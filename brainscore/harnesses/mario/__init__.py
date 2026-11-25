@@ -5,7 +5,9 @@ the checkout is CNeuroMod's game integration ``mario.stimuli`` at a pinned commi
 participants played, ``data.json``, ``scenario.json``, ``rom.sha``), never its ROM. The ROM is a file the
 user owns and names (``rom=``); Brain-Score never downloads, copies or stores it: the worker links it into a
 temporary integration folder for the run and deletes the folder after. stable-retro checks it against
-``rom.sha``.
+``rom.sha``. The level states are annexed files of ``mario.stimuli``: ``level_state`` fetches the one
+asked for from the public CNeuroMod store with DataLad (the CNeuroMod data plugin's download), at the
+same commit.
 
 Each step: the subject's action (one of the 12 button sets of ``ACTIONS``) is held for 4 frames
 (60 frames per second); the next row holds those 4 frames on ``vision:video`` ((4, 224, 240, 3) uint8)
@@ -32,7 +34,7 @@ MARIO = Library(
     commit='e3ecccf76d7776733ac1a98cf997c97e97f65f66',
     requirements=Path(__file__).with_name('requirements.txt'),
     required_files=('SuperMarioBros-Nes/data.json', 'SuperMarioBros-Nes/scenario.json',
-                    'SuperMarioBros-Nes/rom.sha', 'SuperMarioBros-Nes/Level1-1.state'))
+                    'SuperMarioBros-Nes/rom.sha'))
 # The NES buttons in stable-retro's order, and the 12 button sets of the trained agents (COMPLEX_MOVEMENT).
 NES_BUTTONS = ('B', None, 'SELECT', 'START', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'A')
 ACTIONS = ((), ('RIGHT',), ('RIGHT', 'A'), ('RIGHT', 'B'), ('RIGHT', 'A', 'B'), ('A',), ('LEFT',), ('LEFT', 'A'),
@@ -40,6 +42,21 @@ ACTIONS = ((), ('RIGHT',), ('RIGHT', 'A'), ('RIGHT', 'B'), ('RIGHT', 'A', 'B'), 
 FRAMES_PER_STEP = 4
 INSTRUCTION = 'Play Super Mario Bros.: reach the flag at the end of the level.'
 _WORKER = Path(__file__).with_name('_worker.py')
+
+
+def level_state(level: str) -> Path:
+    """The state file of ``level`` at the pinned commit, fetched once into the CNeuroMod download folder."""
+    from brainscore.data.cneuromod.data_packaging import extraction, shared
+    from brainscore.data.local import data_home
+    shared.check_prerequisites()
+    clone = shared.clone(data_home() / 'sources' / 'cneuromod', 'mario.stimuli')
+    extraction.checkout(clone, MARIO.commit)
+    state = clone / 'SuperMarioBros-Nes' / f'{level}.state'
+    if not state.is_symlink() and not state.exists():
+        raise ValueError(f'{level} is not a level of the integration; the levels are the .state files of '
+                         f'{state.parent} (Level1-1, ...).')
+    shared.get([state])
+    return state
 
 
 def buttons(action: int) -> list:
@@ -62,6 +79,7 @@ class MarioEnvironment:
             raise FileNotFoundError(f'no ROM at {self.rom}: name the Super Mario Bros. (NES) ROM file you own; '
                                     'Brain-Score does not provide it.')
         self.folder = ready_folder(MARIO, f'mario {level}', folder)
+        self.state = level_state(level)
         self.log_directory = Path(log_directory) if log_directory else self.folder / 'logs'
         self._child, self.steps, self.trace = None, 0, []
 
@@ -78,7 +96,8 @@ class MarioEnvironment:
     def reset(self, **_):
         self.close()
         environment = {name: os.environ[name] for name in _RUNTIME_VARIABLES if name in os.environ}
-        self._child = ChildProcess([environment_python(self.folder), _WORKER, self.folder / 'checkout', self.rom],
+        self._child = ChildProcess([environment_python(self.folder), _WORKER, self.folder / 'checkout', self.rom,
+                                    self.state],
                                    env={**environment, 'PYTHONNOUSERSITE': '1'}, log_directory=self.log_directory,
                                    idle_timeout_s=120).__enter__()
         self.steps, self.trace = 0, []
