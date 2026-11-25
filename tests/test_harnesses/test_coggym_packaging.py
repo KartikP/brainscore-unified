@@ -21,7 +21,10 @@ pytestmark = pytest.mark.unit
 ROOT = Path(__file__).resolve().parents[2]
 RUNTIME_FILES = ('brainscore/harnesses/coggym/requirements.txt', 'brainscore/harnesses/coggym/_worker.py',
                  'brainscore/harnesses/coggym/validation.py', 'brainscore/harnesses/_supervise.py',
-                 'brainscore/harnesses/README.md')
+                 'brainscore/harnesses/README.md', 'brainscore/harnesses/mario/requirements.txt',
+                 'brainscore/harnesses/mario/_worker.py', 'brainscore/benchmarks/paugam2025/test_runs.txt',
+                 'brainscore/benchmarks/stlaurent2026/test_categories.txt',
+                 'brainscore/data/cneuromod/things_images_sha1.csv')
 
 
 def _imported_from(root: Path, package_file: str) -> bool:
