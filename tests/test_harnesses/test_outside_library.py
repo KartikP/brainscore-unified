@@ -113,6 +113,25 @@ def test_an_empty_python_name_makes_the_folder_with_this_python(lanternfield):
     assert empty == usual
 
 
+def test_a_requirement_line_names_a_file_of_the_checkout_only_when_the_library_asks(lanternfield, tmp_path):
+    module, commands = lanternfield
+    requirements = tmp_path / 'checkout_requirements.txt'
+    requirements.write_text('./vendor/lantern-1.0-py3-none-any.whl\nplain==1.0\n')
+    library = dataclasses.replace(module.LANTERNFIELD, name='Wheelfield', requirements=requirements,
+                                  checkout_requirements=True)
+    folder = module.ready_folder(library, 'Wheelfield.demo')
+    (install,) = [call['args'] for call in commands.of('pip') if 'install' in call['args']
+                  and 'Wheelfield' in call['args'][-1]]
+    assert install[-1].endswith('requirements.txt')
+    lines = (folder / 'requirements.txt').read_text().splitlines()
+    assert Path(lines[0]).is_absolute() and lines[0].endswith('checkout/vendor/lantern-1.0-py3-none-any.whl')
+    assert lines[1] == 'plain==1.0'
+    # The default: the library's own file, every line as it is.
+    module.ready_folder(module.LANTERNFIELD, 'Lanternfield.demo')
+    assert any(call['args'][-1] == str(module.LANTERNFIELD.requirements) for call in commands.of('pip'))
+    assert folder.exists()
+
+
 def test_a_folder_made_for_another_python_or_library_is_refused_also_when_named(lanternfield, tmp_path):
     module, _ = lanternfield
     log = tmp_path / 'python.log'

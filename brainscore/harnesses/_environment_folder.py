@@ -61,6 +61,9 @@ class Library:
     requirements: Path              # the pinned packages, one ``name==version`` per line
     required_files: tuple = ()      # paths in the checkout that must exist
     python: str | None = None       # the Python 3 that makes the environment; None: this one
+    # True: a requirement line that starts with ``./`` names a file of the checkout (a wheel the
+    # repository carries); False (the default): every line is given to pip as it is.
+    checkout_requirements: bool = False
 
     def __post_init__(self) -> None:
         if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', self.name):
@@ -218,8 +221,14 @@ def _make(library, identifier, folder, version):
             raise ValueError(f'the environment runs Python {made}, not {version}')
         # Every package at its pinned version, nothing resolved beyond the list; then a check.
         # Into this environment only (pip refuses to run outside a virtual environment).
+        requirements = library.requirements
+        if library.checkout_requirements:
+            requirements = partial / 'requirements.txt'
+            requirements.write_text(''.join(
+                (str(checkout / line.strip()[2:]) if line.strip().startswith('./') else line.rstrip('\n')) + '\n'
+                for line in library.requirements.read_text().splitlines()))
         _run([str(python), '-m', 'pip', 'install', '--require-virtualenv', '--no-deps', '--no-input',
-              '--disable-pip-version-check', '-r', str(library.requirements)])
+              '--disable-pip-version-check', '-r', str(requirements)])
         _run([str(python), '-m', 'pip', 'check', '--disable-pip-version-check'])
         freeze = _run([str(python), '-m', 'pip', 'freeze', '--all', '--disable-pip-version-check'])
         (partial / 'ready.json').write_text(json.dumps({
