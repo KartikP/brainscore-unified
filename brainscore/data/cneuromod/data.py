@@ -1,0 +1,63 @@
+"""Read the packaged CNeuroMod THINGS files: the trial responses of one participant and region, and
+the images. ``brainscore.load_dataset('cneuromod-things', ...)`` and
+``brainscore.load_stimulus_set('cneuromod-things')`` call these."""
+from pathlib import Path
+
+import pandas as pd
+
+NAME = 'cneuromod-things'
+
+
+def packaged(root=None) -> Path:
+    """The folder ``package_data('cneuromod-things')`` wrote: ``root``, or its default place."""
+    from brainscore.data.local import LocalDataMissing, data_home
+    folder = Path(root) if root is not None else data_home() / 'packaged' / NAME
+    if not folder.is_dir():
+        raise LocalDataMissing(f'{folder} does not exist. Package the data first: '
+                               f"`brainscore.data.package_data('{NAME}', part='sub-01')`, one call per participant "
+                               f'(see brainscore/data/cneuromod/README.md).')
+    return folder
+
+
+def load_trials(participant: str, region: str, root=None):
+    """The trial responses of ``participant`` in ``region`` (the packaged name: ``hV4``, ``FFA``,
+    ``cortex``), every session in time order: a ``presentation`` x ``neuroid`` array with the
+    presentation coordinates of ``trials.nc`` (``stimulus_id``, ``response``, ...)."""
+    import xarray as xr
+    folder = packaged(root) / participant
+    paths = sorted(folder.glob('ses-*/trials.nc'))
+    if not paths:
+        raise FileNotFoundError(f'no ses-*/trials.nc under {folder}: package {participant} '
+                                f"(`package_data('{NAME}', part='{participant}')`).")
+    sessions = []
+    for path in paths:
+        session = xr.open_dataarray(path)
+        keep = session['region'].values == region
+        if not keep.any():
+            raise ValueError(f'{participant} has no voxel of region {region!r} in {path}; its regions are '
+                             f'{sorted(set(session["region"].values))}.')
+        sessions.append(session.isel(neuroid=keep).load())
+        session.close()
+    return xr.concat(sessions, dim='presentation')
+
+
+def load_stimulus_set(root=None):
+    """The images the packaged participants saw, from the THINGS images the user put at the
+    ``things-images`` place: one row per image, ``stimulus_id``, ``category``, ``image_path``."""
+    from brainscore.data import local
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    folder = packaged(root)
+    ids = sorted(set().union(*(pd.read_csv(path)['stimulus_id'].dropna().astype(str)
+                               for path in folder.glob('sub-*/ses-*/stimuli.csv'))))
+    images = local.path('things-images')
+    table = pd.DataFrame({'stimulus_id': ids, 'category': [i.rsplit('_', 1)[0] for i in ids]})
+    table['image_path'] = [str(images / category / f'{i}.jpg') for i, category in zip(ids, table['category'])]
+    missing = [path for path in table['image_path'] if not Path(path).is_file()]
+    if missing:
+        raise local.LocalDataMissing(f'{len(missing)} of {len(table)} THINGS images are not in {images} '
+                                     f'(for example {missing[0]}). {local.REGISTRY["things-images"].instructions()}')
+    stimuli = StimulusSet(table)
+    stimuli.identifier = NAME
+    stimuli.stimulus_paths = dict(zip(table['stimulus_id'], table['image_path']))
+    return stimuli
+

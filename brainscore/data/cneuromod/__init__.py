@@ -5,8 +5,21 @@ the masks and the ``cneuromod2026`` atlas, joins each TR to the run's event tabl
 files; one small module per data set (``things.py``, ``movie10.py``) gives what differs.
 Brain-Score hosts none of these files: a user packages them locally. See ``README.md``.
 """
-from brainscore import data_builder_registry
+from brainscore import data_builder_registry, data_registry, stimulus_set_registry
+from brainscore.data import local
 from brainscore.data.packaging import DataBuilder
+
+THINGS_IMAGES = local.register(local.LocalAsset(
+    name='things-images',
+    kind='stimuli',
+    why_local='The THINGS images are for academic use only, behind a password zip on OSF; Brain-Score hosts '
+              'no copy.',
+    source='https://osf.io/jum2f (THINGS database, Hebart et al. 2019)',
+    obtain='`images_THINGS.zip` under its terms; unzip it and put its `object_images` folder (one folder per '
+           'category: `aardvark/aardvark_01b.jpg`, ...) at the path above.',
+    used_by=[f'StLaurent2026-fMRI-things-{region}' for region in
+             ('V1', 'V2', 'V3', 'V4', 'FFA', 'OFA', 'pSTS', 'PPA', 'OPA', 'MPA', 'EBA')],
+))
 
 _COMMAND = ('python -m brainscore.data.cneuromod.data_packaging.package --dataset {dataset} --form {form} '
             '--source {{source}} --out {{output}} --part {{part}}')
@@ -55,3 +68,17 @@ for _dataset, _participants in (('things', 'sub-01, 02, 03 and 06'), ('movie10',
         build=_COMMAND.format(dataset=dataset, form='cneuromod2026'),
         fetches=True,
     )
+
+
+def _trials(participant, region, root=None):
+    from .data import load_trials
+    return load_trials(participant, region, root)
+
+
+def _stimuli(root=None):
+    from .data import load_stimulus_set
+    return load_stimulus_set(root)
+
+
+data_registry['cneuromod-things'] = _trials
+stimulus_set_registry['cneuromod-things'] = _stimuli
