@@ -12,7 +12,8 @@ same acts have the same acts and outcome in their traces (ours holds the frame l
 step holds the screen on ``vision:image`` ((H, W, 3) uint8, 1024 x 768 by default), the frames since the
 last turn on ``vision:video`` ((T, 384, 512, 3) uint8: one at each frame time the clock passed, 60 frames a
 second, at half the screen size, as a participant's screen showed them; their times are
-``observation['frame_t_ms']``; absent when the clock passed no frame time), nkl's briefing for the task on ``instruction`` (``system_prompt``: the screen, how
+``observation['frame_t_ms']``; absent when the clock passed no frame time; only for a subject that takes
+``vision:video``, so for another the trace is nkl's agent harness's line for line), nkl's briefing for the task on ``instruction`` (``system_prompt``: the screen, how
 acts take time and how the clock runs under the pacing, the limits, then the benchmark's instructions) and
 the facts of the turn on ``observation`` (``t_ms``: the screen's time; ``pointer`` in pixels,
 ``pointer_down``, ``keys_down``: the subject's own hands; ``turns_left``; ``acts_per_step``; ``act_form``:
@@ -28,7 +29,8 @@ The pacing (``PACINGS``, nkl's): ``frozen`` (the default) stops the task's clock
 answers; ``realtime`` lets the subject's answering time (the wall time from the screen to the acts) pass
 before its first act; ``dense`` moves the clock ``DENSE_STEP_US`` each step and takes one act a step. An
 empty list is a valid step with no act and None an answer that could not be read (counted in
-``invalid_steps``); under frozen or realtime pacing neither moves the clock. The run ends when the program
+``invalid_steps``); under frozen or realtime pacing neither moves the clock. ``MAX_INVALID_IN_A_ROW`` answers
+in a row with no act stop the run (``stop_cause``). The run ends when the program
 ends (``terminal``; ``result`` is then the program's result as value JSON); when its simulated time passes
 ``max_ms`` or its steps pass ``max_steps``, the harness stops it as nkl's agent harness does, and it ends
 ``truncated`` with no result; an nkl error stops the session with the error. Times in the result (response
@@ -69,6 +71,7 @@ COMMIT = '46ff367543ed5a209147ad9b8e6275ce81059d38'
 NKL_WHEEL = 'vendor/nkl-0.1.0-py3-none-any.whl'
 SCREEN = (1024, 768)
 PACINGS = ('frozen', 'realtime', 'dense')
+MAX_INVALID_IN_A_ROW = 20       # a run with this many answers in a row that give no act stops (truncated)
 DENSE_STEP_US = 16_667          # nkl's Dense step: one frame at 60 frames a second
 VIDEO = (512, 384)              # the size of a vision:video frame; frames at 60 a second (the worker's FRAME_US)
 # The participants' folder of each bundle in the task repository: the replay viewer's names.
@@ -152,8 +155,8 @@ class NodeKitEnvironment:
 
     def __init__(self, program, *, form: str, pacing: str = 'frozen', seed: int = 0, screen=SCREEN,
                  max_ms: float = 3_600_000, max_steps: int = 20000, instructions: str = '',
-                 record: Optional[Path] = None, name: str = 'run', folder: Optional[Path] = None,
-                 log_directory: Optional[Path] = None):
+                 frames: bool = False, record: Optional[Path] = None, name: str = 'run',
+                 folder: Optional[Path] = None, log_directory: Optional[Path] = None):
         self.program, self.seed, self.screen = Path(program), seed, tuple(screen)
         self.max_ms, self.max_steps, self.record, self.name = max_ms, max_steps, record, name
         if not (self.program / 'program.json').is_file():
@@ -162,11 +165,11 @@ class NodeKitEnvironment:
             raise ValueError(f'A NodeKit subject acts on {sorted(FORMS)}, not {form!r} (Contract Rules 5.15).')
         if pacing not in PACINGS:
             raise ValueError(f'pacing is one of {PACINGS} (nkl\'s Frozen, Realtime and Dense), not {pacing!r}.')
-        self.form, self.pacing, self.instructions = form, pacing, instructions
+        self.form, self.pacing, self.instructions, self.frames = form, pacing, instructions, frames
         self.folder = ready_folder(library(), f'NodeKit {self.program.name}', folder)
         self.log_directory = Path(log_directory) if log_directory else self.folder / 'logs'
         self._child, self.steps, self.t_ms, self.result, self.invalid_steps, self.trace = None, 0, 0.0, None, 0, None
-        self.system, self._shown = None, None
+        self.system, self._shown, self.invalid_in_a_row, self.stop_cause = None, None, 0, None
 
     def _row(self, answer: dict):
         self.t_ms = answer['t_ms']
@@ -179,9 +182,15 @@ class NodeKitEnvironment:
         def decoded(part):
             return np.frombuffer(base64.b64decode(part['data']), np.uint8).reshape(part['shape'])
         row = {'vision:image': decoded(picture), 'instruction': self.system, 'observation': observation}
-        if answer.get('frames'):
-            row['vision:video'] = decoded(answer['frames'])
-            observation['frame_t_ms'] = answer['frames']['at_ms']
+        frames = answer.get('frames')
+        if frames is not None:
+            file = Path(frames['file'])
+            if frames['shape'][0]:
+                row['vision:video'] = np.fromfile(file, np.uint8).reshape(frames['shape'])
+                observation['frame_t_ms'] = frames['at_ms']
+            if frames['not_sent']:
+                observation['frames_not_sent'] = frames['not_sent']
+            file.unlink(missing_ok=True)
         self._shown = time.monotonic()
         return row
 
@@ -224,17 +233,24 @@ class NodeKitEnvironment:
     def step(self, outputs):
         thought = time.monotonic() - self._shown
         acts = outputs[self.form]          # checked by the session (core's MOTOR_ACTS)
+        self.invalid_in_a_row = self.invalid_in_a_row + 1 if acts is None else 0
         if acts is None:
             self.invalid_steps += 1
         elif self.pacing == 'dense' and len(acts) > 1:
             raise ValueError(f'{self.program.name} runs with dense pacing: one act a step, not {len(acts)} '
                              f'({acts!r}). Send the acts in separate steps.')
-        answer = self._child.ask({'step': {'acts': acts or [], 'seconds': thought}})
+        frames = None
+        if self.frames:
+            (self.folder / 'frames').mkdir(exist_ok=True)
+            frames = str(self.folder / 'frames' / f'{os.getpid()}-{id(self)}.raw')
+        answer = self._child.ask({'step': {'acts': acts or [], 'seconds': thought, 'frames': frames}})
         self.steps += 1
         row = self._row(answer)
         if answer['ended']:
             return self._ended(row, 'terminal')
-        if self.t_ms >= self.max_ms or self.steps >= self.max_steps:
+        if self.t_ms >= self.max_ms or self.steps >= self.max_steps or self.invalid_in_a_row >= MAX_INVALID_IN_A_ROW:
+            self.stop_cause = ('time' if self.t_ms >= self.max_ms else 'steps' if self.steps >= self.max_steps
+                               else 'invalid answers in a row')
             return self._ended(row, 'truncated')
         return row, None
 
@@ -257,12 +273,15 @@ def play(subject, program, *, form: str, outputs=None, **settings):
     import time
     from brainscore_core.streaming_helpers import environment_session
     settings.setdefault('name', f"{getattr(subject, 'identifier', 'subject')}-{time.strftime('%Y%m%dT%H%M%S')}")
+    # The frames go only to a subject that takes them (a subject's declared inputs).
+    settings.setdefault('frames', 'vision:video' in set(getattr(subject, 'in_channels', ())))
     environment = NodeKitEnvironment(program, form=form, **settings)
     try:
         requested = list(outputs or (form,))
         if form not in requested:
             raise ValueError(f'outputs {requested} must hold the act form {form!r} the run reads.')
-        session = environment_session(environment, requested, action_channel=form)
+        # history_limit=0: the source keeps no copy of each screen and act; the session keeps the responses.
+        session = environment_session(environment, requested, action_channel=form, history_limit=0)
         subject.participate(session)
         return environment.result, environment, session
     finally:

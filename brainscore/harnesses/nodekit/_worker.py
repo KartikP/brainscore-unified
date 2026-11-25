@@ -4,22 +4,25 @@
 
 Standard library and nkl only. A step is one turn of nkl's agent harness (``nkl.agents``): the turn's
 acts as one schedule (``act``), then a look at the screen, under the run's pacing; the body (pointer, keys)
-follows the acts (``observe``). Beside nkl's schedule, the worker looks at each frame time the clock passes
-(60 frames a second, ``FRAME_US``, at the video size; each look is a frame line in the trace), so the frames
-since the last turn come back with the screen. Commands, one JSON line each:
+follows the acts (``observe``). When the step names a frames file, the worker also looks at each frame time
+the clock passes (60 frames a second, ``FRAME_US``, at the video size; each look is a frame line in the
+trace) and writes the frames there; without one, the trace is nkl's agent harness's line for line. Commands, one JSON line each:
 
 - ``{"reset": {"pacing": [kind, step µs], "limits": {...}, "seconds": s, "instructions": text}}`` starts
   the run (``begin``) and answers the first screen with nkl's briefing for it (``system_prompt``).
-- ``{"step": {"acts": [act, ...], "seconds": s}}``: the acts in the form of Brain-Score's ``motor:key`` and
+- ``{"step": {"acts": [act, ...], "seconds": s, "frames": file or null}}``: the acts in the form of Brain-Score's ``motor:key`` and
   ``motor:pointer`` (pixels of the screen, origin top left), ``seconds`` the subject's answering time (it
   passes in the run only under the Realtime pacing).
 - ``{"leave": true}`` stops a run that is still going, as nkl's agent harness does at its end.
 - ``{"result": true}``: the program's result as value JSON, or None when it did not complete.
 - ``{"trace": <file>}`` writes the run's trace lines to the file as one JSON array.
 
-A reset or a step answers ``{"done": screen}``: the picture (base64 RGB, top row first), the frames since
-the last turn with their times, the run's time in ms, whether it has ended, and the body and limits the
+A reset or a step answers ``{"done": screen}``: the picture (base64 RGB, top row first), the frames file
+with the frames' shape and times and the count not sent, the run's time in ms, whether it has ended, and the body and limits the
 subject's briefing shows.
+
+Limit: a step sends at most ``MAX_FRAMES`` frames (10 s); the frame times after that are counted
+(``not_sent``), not looked at.
 
 Limit: a frame is a look between two scheduled items: the positions of a pointer stroke between its
 samples are not frames of their own (a stroke is sampled at nkl's motor rate, 120 a second).
@@ -143,9 +146,31 @@ def frame_time(k):
     return round(k * FRAME_US)
 
 
-def with_frames(video, frames):
-    """``nkl.fsim.run`` with a look at each frame time the schedule passes, in requests of at most
-    ``LOOKS_PER_REQUEST`` looks; the frames go to ``frames`` and the schedule's own looks come back."""
+MAX_FRAMES = 600                # the most frames one step sends: 10 s at 60 a second
+
+
+class Frames:
+    """The frames of one step, written as they come to ``file`` (raw RGB, one after the other): at most
+    ``MAX_FRAMES``; the frame times after that are counted in ``not_sent`` and not looked at."""
+
+    def __init__(self, file):
+        self.file, self.at_ms, self.shape, self.not_sent = open(file, 'wb'), [], None, 0
+
+    def add(self, image):
+        self.file.write(image.data)
+        self.at_ms.append(image.at / 1000)
+        self.shape = [image.height, image.width, 3]
+
+    def answer(self):
+        self.file.close()
+        return {'file': self.file.name, 'shape': [len(self.at_ms), *(self.shape or [0, 0, 3])],
+                'at_ms': self.at_ms, 'not_sent': self.not_sent}
+
+
+def with_frames(video, frames: Frames):
+    """``nkl.fsim.run`` with a look at each frame time the schedule passes (after any item at that time), in
+    requests of at most ``LOOKS_PER_REQUEST`` looks, the last with the schedule's ``until``; no request after
+    the run ends. The frames go to ``frames``; the schedule's own looks come back."""
     import math
     from nkl import fsim
     real = fsim.run
@@ -154,33 +179,35 @@ def with_frames(video, frames):
         t, items, k = r.t, [], math.floor(r.t / FRAME_US) + 1
         while frame_time(k) <= r.t:
             k += 1
+        looked = len(frames.at_ms)
         for dt, item in schedule:
             at, previous = t + dt, t
-            while frame_time(k) <= at:
-                items.append((frame_time(k) - previous, fsim.Look(size=video), True))
-                previous, k = frame_time(k), k + 1
+            while frame_time(k) < at:
+                if looked < MAX_FRAMES:
+                    items.append((frame_time(k) - previous, fsim.Look(size=video), True))
+                    previous, looked = frame_time(k), looked + 1
+                else:
+                    frames.not_sent += 1
+                k += 1
             items.append((at - previous, item, False))
             t = at
-        own, part = [], []
-        for item in items:
-            part.append(item)
-            if sum(frame for *_, frame in part) >= LOOKS_PER_REQUEST or item is items[-1]:
-                r, images = real(r, [(dt, what) for dt, what, _ in part])
-                looks = [frame for _, what, frame in part if isinstance(what, fsim.Look)]
-                for image, frame in zip(images, looks):
-                    (frames if frame else own).append(image)
-                part = []
+        own, start = [], 0
+        while start < len(items) and r.outcome is None:
+            end, count = start, 0
+            while end < len(items) and count < LOOKS_PER_REQUEST:
+                count += items[end][2]
+                end += 1
+            part = items[start:end]
+            r, images = real(r, [(dt, what) for dt, what, _ in part], until if end == len(items) else None)
+            looks = [frame for _, what, frame in part if isinstance(what, fsim.Look)]
+            for image, frame in zip(images, looks):
+                frames.add(image) if frame else own.append(image)
+            start = end
         return r, own
     return run
 
 
-def encoded(images):
-    return {'data': base64.b64encode(b''.join(image.data for image in images)).decode(),
-            'shape': [len(images), images[0].height, images[0].width, 3],
-            'at_ms': [image.at / 1000 for image in images]}
-
-
-def screen(run, context, system=None, frames=()):
+def screen(run, context, system=None, frames=None):
     from nkl._core.host.agents import to_pixels
     ended = run.outcome is not None
     image, body = context.screen, context.body
@@ -192,8 +219,8 @@ def screen(run, context, system=None, frames=()):
     if not ended:
         answer['picture'] = {'data': base64.b64encode(image.data).decode(), 'shape': [image.height, image.width, 3],
                              'at_ms': image.at / 1000}
-    if frames:
-        answer['frames'] = encoded(frames)
+    if frames is not None:
+        answer['frames'] = frames.answer()
     if system is not None:
         answer['system'] = system
     return answer
@@ -224,8 +251,9 @@ def main():
                 made = actions(step['acts'], context)
                 response = agents.AgentResponse(tuple(made), (), (), '', None, agents.Usage(), float(step['seconds']),
                                                 1, '', '', '')
-                frames, run_schedule = [], fsim.run
-                fsim.run = with_frames(video, frames)
+                frames, run_schedule = Frames(step['frames']) if step.get('frames') else None, fsim.run
+                if frames is not None:
+                    fsim.run = with_frames(video, frames)
                 try:
                     run, images = agents.act(run, context, response, pacing, motor)
                 finally:
