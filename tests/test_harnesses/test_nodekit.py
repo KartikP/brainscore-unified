@@ -390,3 +390,10 @@ def test_a_cycle_needs_the_same_screens_too():
     assert nodekit.repeats_a_cycle(same)
     assert not nodekit.repeats_a_cycle([('a', f's{i}') for i in range(10)])      # the same acts, new screens
     assert not nodekit.repeats_a_cycle([('null', 's')] * 10)                     # no act: the invalid-answer rule
+
+
+def test_the_looks_nkl_keeps_are_a_stated_setting(stand_in):
+    environment = nodekit.NodeKitEnvironment(_program(stand_in / 'a'), form='motor:key', view='agent', looks_kept=2)
+    assert environment.looks_kept == 2
+    with pytest.raises(ValueError, match='looks_kept'):
+        nodekit.NodeKitEnvironment(_program(stand_in / 'b'), form='motor:key', looks_kept=-1)

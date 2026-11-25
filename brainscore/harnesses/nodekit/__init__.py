@@ -189,6 +189,7 @@ class NodeKitEnvironment:
     def __init__(self, program, *, form: str, pacing: str = 'frozen', seed: int = 0, screen=SCREEN,
                  max_ms: float = 3_600_000, max_steps: int = 20000, instructions: str = '',
                  dense_step_ms: float = DENSE_STEP_MS, view: str = 'participant', acts_per_step: Optional[int] = None,
+                 looks_kept: Optional[int] = None,
                  frames: bool = False, record: Optional[Path] = None, name: str = 'run',
                  folder: Optional[Path] = None, log_directory: Optional[Path] = None):
         self.program, self.seed, self.screen = Path(program), seed, tuple(screen)
@@ -209,6 +210,10 @@ class NodeKitEnvironment:
         # The agent view gives one picture a turn and the looks: no frames.
         self.form, self.pacing, self.instructions, self.frames = form, pacing, instructions, frames and view == 'participant'
         self.view = view
+        # nkl's Limits.looks (None: nkl's own, 4): a provider that takes fewer pictures a request needs fewer.
+        if looks_kept is not None and (isinstance(looks_kept, bool) or not isinstance(looks_kept, int) or looks_kept < 0):
+            raise ValueError(f'looks_kept is the looks nkl keeps, 0 or more, not {looks_kept!r}.')
+        self.looks_kept = looks_kept
         # The participant view keeps 20 acts a step under every pacing; the agent view nkl's own limits.
         self._acts_per_step = acts_per_step if acts_per_step is not None else (
             PARTICIPANT_ACTS_PER_STEP if view == 'participant' else None)
@@ -279,7 +284,7 @@ class NodeKitEnvironment:
         # The arguments of nkl's briefing, also in each row (observation['briefing']): a subject that reads
         # positions on its own grid has nkl write the same briefing for its screen.
         self.briefing = {'pacing': [self.pacing.capitalize(), round(self.dense_step_ms * 1000)],
-                         'limits': {'turns': self.max_steps, 'actions': self._acts_per_step},
+                         'limits': {'turns': self.max_steps, 'actions': self._acts_per_step, 'looks': self.looks_kept},
                          'seconds': self.max_ms / 1000, 'instructions': f'{words}\n\n{self.instructions}'.strip()}
         answer = self._child.ask({'reset': self.briefing})
         self.system, self.acts_per_step = answer['system'], answer['acts_per_step']
