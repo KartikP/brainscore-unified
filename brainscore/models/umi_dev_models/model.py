@@ -304,6 +304,19 @@ SCREEN_FORMS = ('motor:key', 'motor:pointer')
 SCREEN_INPUTS = ('vision:image', 'vision:video', 'instruction', 'observation')
 
 
+# How a model writes positions in its answers, when not in pixels (its own convention; the act policy scales them
+# to the pixels of the picture, Contract Rules 5.15, and states the grid on the score). Qwen3-VL: a 0-1000 grid of
+# the picture, measured on 2026-11-25 (NodeKit faces, the Next button at about (754, 528) of 1024 x 768 pixels):
+# qwen3-vl-8b clicked (738, 692) and qwen3-vl-30b-a3b (733, 703) at every turn, that is (755, 531) and (750, 540)
+# on a 0-1000 grid.
+POSITION_GRID = {'qwen3-vl': 1000}
+
+
+def _position_settings(identifier: str) -> dict:
+    grid = next((size for family, size in POSITION_GRID.items() if identifier.startswith(family)), None)
+    return {'position_grid': grid} if grid else {}
+
+
 def _policy(reply, identifier, turn_settings):
     """One policy for the study's two closed loops, chosen by the row's inputs: a screen (``vision:image``, a
     task on a screen) goes to NodeKit's act policy with ``turn_settings``; the grid game's ``observation``
@@ -385,7 +398,7 @@ def get_model(identifier: str, turn_settings: Optional[dict] = None):
         identifier, model, region_layer_map, extractor=extractor, reply=reply, likelihood=likelihood,
         behavioral_readout_layer=region_layer_map['IT'],
         # A model without video takes the screen task's last screen only (no vision:video).
-        policy=_policy(reply, identifier, dict(turn_settings or {})),
+        policy=_policy(reply, identifier, {**_position_settings(identifier), **(turn_settings or {})}),
         policy_in_channels=('reward', *(c for c in SCREEN_INPUTS if config['video'] or c != 'vision:video')),
         policy_out_channels=('motor', *SCREEN_FORMS),
         answer_owners={'behavior:rating': 'generation', 'behavior:probabilities': 'readout'},

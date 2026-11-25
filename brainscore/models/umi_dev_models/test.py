@@ -859,3 +859,9 @@ def test_all_frames_registration_differs_only_in_the_frame_setting(base):
     assert _frames_kept(16, 30, variant['video_sampling']) == 16
     assert {k: v for k, v in variant['video_sampling'].items() if k not in ('min_frames', 'source')} == \
         {k: v for k, v in default['video_sampling'].items() if k not in ('min_frames', 'source')}
+
+
+
+def test_qwen3_vl_states_its_position_grid():
+    assert study._position_settings('qwen3-vl-8b_UMI-dev') == {'position_grid': 1000}
+    assert study._position_settings('qwen2.5-vl-7b_UMI-dev') == {}

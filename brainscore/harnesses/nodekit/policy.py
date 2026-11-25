@@ -83,11 +83,15 @@ def changed_frames(video, times, last, most: int):
 
 
 def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int = TURNS_KEPT, max_tokens: int = 4096,
-               temperature: Optional[float] = None, seed: Optional[int] = None) -> Callable:
+               temperature: Optional[float] = None, seed: Optional[int] = None,
+               position_grid: Optional[int] = None) -> Callable:
     """A ``policy(row) -> {act form: acts}`` that asks ``reply`` (a ``reply(prompt)`` part) each turn and
     reads its answer with nkl's reader. ``max_tokens``, ``temperature`` and ``seed`` are the ``Text`` response
     settings of each turn (None: the model's default, greedy for a local model); with a seed, turn ``n`` uses
-    ``seed + n``, so a repeated run with the same seed asks the same."""
+    ``seed + n``, so a repeated run with the same seed asks the same. ``position_grid``: the model writes
+    positions on a grid of that many positions a side of the picture (its own convention, stated by its plugin),
+    not in pixels; the policy scales them to pixels and states the grid with its settings (the score's
+    provenance). None (the default): pixels."""
     from brainscore_core.responses import Prompt, Text
     from brainscore_core.streaming import StreamEvent
     reader = _Reader()
@@ -137,10 +141,10 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
         kept = 0 if seen.get('view') == 'agent' else turns_kept
         history = tuple(state['history'][-kept:]) if kept else ()
         answer = reply(Prompt(parts=tuple(parts), names=tuple(names), response=settings, history=history))
-        _state_as(policy, reply)
+        _state_as(policy, reply, {'position_grid': position_grid} if position_grid else None)
         text = answer.payload if isinstance(answer, StreamEvent) else answer
         meta = answer.meta if isinstance(answer, StreamEvent) else {}
-        read = reader.ask({'read': {**turn, 'text': text, 'form': seen['act_form']}})
+        read = reader.ask({'read': {**turn, 'text': text, 'form': seen['act_form'], 'grid': position_grid}})
         said = [(part, name) for part, name in zip(parts, names) if part[0] == 'text' and name != 'instruction']
         state['history'].append((Prompt(parts=tuple(p for p, _ in said), names=tuple(n for _, n in said)), text))
         state.update(memories=read['memories'], problems=read['problems'], turn=state['turn'] + 1,
@@ -167,10 +171,13 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
     return policy
 
 
-def _state_as(policy, reply) -> None:
+def _state_as(policy, reply, own=None) -> None:
     """The settings ``reply`` stated in the running session's part log (an API part: provider, model, generation
     settings), stated for ``policy`` too: the policy is the part the session notes (the score's provenance)."""
     from brainscore._model import parts
+    import json
     log = parts.active()
     if log is not None and id(reply) in log.settings:
         log.settings.setdefault(id(policy), set()).update(log.settings[id(reply)])
+    if log is not None and own:
+        log.settings.setdefault(id(policy), set()).add(json.dumps(own, sort_keys=True))
