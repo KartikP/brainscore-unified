@@ -27,7 +27,7 @@ def source() -> Path:
             clone.parent.mkdir(parents=True, exist_ok=True)
             subprocess.run(['git', 'clone', '--quiet', '--no-checkout', REPOSITORY, str(clone)],
                            check=True, capture_output=True, text=True)
-        if git('rev-parse', 'HEAD', check=False).stdout.strip() != COMMIT:
+        if git('rev-parse', 'HEAD', check=False).stdout.strip() != COMMIT or not (clone / 'stimuli').is_dir():
             git('-c', 'core.hooksPath=/dev/null', 'checkout', '--quiet', COMMIT)
     except subprocess.CalledProcessError as error:
         raise RuntimeError(
