@@ -1,6 +1,7 @@
 # CNeuroMod mario fMRI benchmark (Paugam et al. 2025)
 
-Registered identifier, version 1: `Paugam2025-fMRI-mario-cortex`.
+Registered identifiers, version 1: `Paugam2025-fMRI-mario-cortex` (brain) and
+`Paugam2025-behavior-mario-buttons` (behavior).
 
 Five participants of the Courtois NeuroMod project played Super Mario Bros. (NES, 22 levels) in
 the scanner, about 15 hours each, and heard the game sound (TR 1.49 s). The data set paper is
@@ -38,3 +39,14 @@ Pearson r per parcel (1134 parcels of the participant's own cneuromod2026 atlas)
 test runs. The value is the median r over parcels, raw: no ceiling is measured. The benchmark
 value is the mean over the five participants; each participant's median r and per-parcel r are on
 the score (`per_participant`).
+
+## The behavior form
+
+`Paugam2025-behavior-mario-buttons` asks `behavior:choice` on the same input rows: which buttons
+the participant held in each TR. The label of a TR is the set of buttons held for at least half of
+the TR, joined by `+` in the order A, B, LEFT, RIGHT, UP, DOWN (`none`: no button); a label under 1
+percent of the training TRs of all participants is `other`. Per participant, one session over the
+TRs of the test runs (the same `test_runs.txt`), with every 8th TR of the training runs as the
+fitting stimuli (a readout fits on them). The value is the accuracy on the test TRs, raw, mean over
+the participants. Chance is on the score: the rate of the most frequent label (`chance_most_frequent`),
+a guess drawn from the training label rates (`chance_by_rates`) and a uniform guess (`chance_uniform`).

@@ -8,7 +8,7 @@ import pytest
 import brainscore
 from brainscore import BrainScoreModel
 from brainscore.benchmarks.paugam2025 import benchmark as mario_benchmark
-from brainscore.benchmarks.paugam2025.benchmark import TEST_RUNS, Paugam2025Mario
+from brainscore.benchmarks.paugam2025.benchmark import TEST_RUNS, Paugam2025Mario, Paugam2025MarioButtons
 from brainscore.data.cneuromod.data_packaging import mario, shared
 from brainscore.temporal import hrf_convolve
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
@@ -57,7 +57,10 @@ def _package(root, participant, seed):
                           'audio_path': f'{participant}/media/ses-001/{name}.wav'})
         values.append(hrf_convolve(latent @ weights, 1 / 1.49) + 0.3 * rng.standard_normal((N_TRS, N_PARCELS)))
         presentations.append(pd.DataFrame({'participant': participant, 'session': session, 'run': run,
-                                           'tr': np.arange(N_TRS), 'stimulus_id': ''}))
+                                           'tr': np.arange(N_TRS), 'stimulus_id': '',
+                                           # the player holds RIGHT when latent 0 is high, A when latent 1 is
+                                           'button_RIGHT': 1.2 * (latent[:, 0] > 0), 'button_A': 1.0 * (latent[:, 1] > 0.5),
+                                           **{f'button_{b}': 0.0 for b in ('B', 'LEFT', 'UP', 'DOWN')}}))
     neuroid = pd.DataFrame({'parcel': np.arange(1, N_PARCELS + 1), 'parcel_name': [f'P{i}' for i in range(N_PARCELS)]})
     shared.write_assembly(np.concatenate(values), pd.concat(presentations, ignore_index=True), neuroid,
                           root / participant / 'ses-01' / 'timeseries_cneuromod2026.nc')
@@ -77,7 +80,8 @@ def packaged(tmp_path, monkeypatch):
 def _model(key='vision', cortex=('early', 'late')):
     from brainscore.selection import CompositeSelector
     layers = {'cortex': CompositeSelector(tuple((layer, None) for layer in cortex))}
-    return BrainScoreModel('made-up-mario', region_layer_map=layers, extractor={key: _Extractor()})
+    return BrainScoreModel('made-up-mario', region_layer_map=layers, extractor={key: _Extractor()},
+                           behavioral_readout_layer='early', answer_owners={'behavior:choice': ('readout', 'argmax')})
 
 
 def _benchmark(root):
@@ -136,3 +140,29 @@ def test_the_registered_benchmark_asks_cortex_on_the_play_and_holds_out_about_a_
     by_participant = pd.Series([label.split('_')[0] for label in TEST_RUNS]).value_counts()
     assert set(by_participant.index) == {'sub-01', 'sub-02', 'sub-03', 'sub-05', 'sub-06'}
     assert (by_participant >= 10).all()
+
+
+def _buttons(root):
+    return Paugam2025MarioButtons(('sub-01', 'sub-02'), identifier='Paugam2025-behavior-mario-buttons', root=root)
+
+
+def test_a_readout_on_layers_that_carry_the_play_names_the_held_buttons_above_chance(packaged, monkeypatch):
+    monkeypatch.setattr(mario_benchmark, 'FIT_EVERY', 1)    # 300 fitting TRs here; the real runs give thousands
+    score = brainscore.score(_model(), _buttons(packaged), check_mem=False)
+    assert 'RIGHT' in score.attrs['choices'] and score.attrs['choices'][-1] == 'other'
+    assert float(score) > score.attrs['chance_most_frequent'] + 0.1
+    facts = score.attrs['per_participant']['sub-01']
+    assert facts['n_test_trs'] == 2 * 50 and facts['n_fitting_trs'] == 6 * 50
+    assert score.attrs['n_trials'] == 200 and score.attrs['answer_policy']
+
+
+def test_the_chance_floor_is_not_above_the_most_frequent_label(packaged):
+    score = brainscore.score(brainscore.load_model('chance-baseline'), _buttons(packaged), check_mem=False)
+    assert float(score) <= score.attrs['chance_most_frequent'] + 0.05
+    assert score.attrs['chance_uniform'] == 1 / len(score.attrs['choices'])
+
+
+def test_the_registered_buttons_benchmark_asks_a_choice_on_the_play():
+    benchmark = brainscore.load_benchmark('Paugam2025-behavior-mario-buttons')
+    assert benchmark.requested_output_channels == {'behavior:choice'}
+    assert 'vision:video' in benchmark.required_input_channels

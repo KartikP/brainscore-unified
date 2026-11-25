@@ -26,6 +26,15 @@ participant's own play, it does not play. For each participant:
 6. Score: the median r over parcels, raw (no ceiling: no play is repeated frame for frame); the
    benchmark value is the mean over the participants. Each participant's median r and per-parcel r
    are on the score.
+
+``Paugam2025-behavior-mario-buttons`` asks ``behavior:choice``: which buttons the participant held in
+each TR, on the same input rows. The answer is one label per TR: the buttons held for at least half
+of the TR, joined by ``+`` in the order A, B, LEFT, RIGHT, UP, DOWN (``none``: no button); a label
+seen in fewer than 1 percent of the training TRs of all participants is ``other``. Per participant,
+one session over the TRs of the test runs (the same ``test_runs.txt``), with every 8th training TR as
+the fitting stimuli. Score: the accuracy on the test TRs, raw, mean over the participants; chance is
+stated (the rate of the most frequent label of the test TRs, the expected accuracy of a guess drawn
+from the training label rates, and of a uniform guess).
 """
 from functools import lru_cache, partial
 from pathlib import Path
@@ -33,6 +42,8 @@ from pathlib import Path
 import numpy as np
 
 from brainscore_core.benchmarks import BenchmarkBase
+from brainscore_core.contract import TaskContext
+from brainscore_core.responses import Choice
 from brainscore_core.execution_plan import ExecutionPlan
 from brainscore_core.metrics import Score
 from brainscore import load_dataset, load_stimulus_set
@@ -72,6 +83,15 @@ STATED = {
              'penalty on one held-out fold of training runs. The paper used 80/10/10 of the plays by level',
     'ceiling_method': 'none: the score is the raw median per-parcel Pearson r',
 }
+
+
+BUTTONS = ('A', 'B', 'LEFT', 'RIGHT', 'UP', 'DOWN')
+HELD_SECONDS = TR_SECONDS / 2
+RARE_LABEL = 0.01
+FIT_EVERY = 8
+ANSWER_POLICY = 'invalid: wrong, counted; missing: wrong, counted'
+INSTRUCTION = ('This is one moment (1.49 s) of a person playing Super Mario Bros. Which buttons does the player '
+               'hold for most of this moment?')
 
 
 def run_label(participant: str, session: int, run: int) -> str:
@@ -188,3 +208,88 @@ class Paugam2025Mario(BenchmarkBase):
         return benchmark_score(self, raw=float(np.mean(medians)), metric='median_per_parcel_pearson_r',
                                participants=list(by_participant), per_participant=by_participant,
                                band_cap=MAX_BANDS, **STATED)
+
+
+def button_labels(series) -> np.ndarray:
+    """Per TR: the buttons held for at least half of the TR, joined by ``+`` (``none``: no button)."""
+    held = np.stack([series[f'button_{button}'].values >= HELD_SECONDS for button in BUTTONS], axis=1)
+    return np.array(['+'.join(b for b, on in zip(BUTTONS, row) if on) or 'none' for row in held])
+
+
+class Paugam2025MarioButtons(BenchmarkBase):
+    """Name the buttons the participant held in each TR of the play (module docstring)."""
+
+    trial_memory = 'none'
+    required_input_channels = frozenset({'vision:video', 'vision:image', 'audio'})
+    requested_output_channels = frozenset({'behavior:choice'})
+
+    def __init__(self, participants=PARTICIPANTS, *, identifier: str, root=None):
+        self._participants = tuple(participants)
+        self._root = root
+        super().__init__(identifier=identifier, version=1, parent='behavioral', ceiling=not_estimated(),
+                         bibtex=BIBTEX)
+
+    @property
+    def execution_plan(self) -> ExecutionPlan:
+        media = load_stimulus_set(DATA, self._participants[0], root=self._root)
+        return ExecutionPlan(n_extraction_presentations=len(media), metric_category='classifier',
+                             runs_ceiling_metric=False, probe_stimuli=media.iloc[:1])
+
+    def _rows(self, participant):
+        """``(media rows with label and test columns)``: the label of each media row's TR."""
+        series = load_dataset(DATA, participant, root=self._root)
+        media = load_stimulus_set(DATA, participant, root=self._root)
+        tr_row = {(s, r, t): i for i, (s, r, t) in enumerate(zip(
+            series['session'].values.astype(int), series['run'].values.astype(int), series['tr'].values.astype(int)))}
+        rows = [tr_row[(s, r, t)] for s, r, t in zip(media['session'], media['run'], media['tr'])]
+        media['label'] = button_labels(series)[rows]
+        media['test'] = [run_label(participant, s, r) in TEST_RUNS for s, r in zip(media['session'], media['run'])]
+        return media
+
+    def __call__(self, subject) -> Score:
+        tables = {participant: self._rows(participant) for participant in self._participants}
+        training = np.concatenate([table.loc[~table['test'], 'label'].values for table in tables.values()])
+        labels, counts = np.unique(training, return_counts=True)
+        kept = sorted(labels[counts >= RARE_LABEL * len(training)])
+        choices = kept + ['other']
+        rates = {label: float(np.mean(training == label)) for label in kept}
+        rates['other'] = 1.0 - sum(rates.values())
+        by_participant, accuracies, answers = {}, [], {}
+        for participant, table in tables.items():
+            table['label'] = np.where(np.isin(table['label'], kept), table['label'], 'other')
+            fitting = table[~table['test']].iloc[::FIT_EVERY].reset_index(drop=True)
+            test = table[table['test']].reset_index(drop=True)
+            fitting = type(table)(fitting)
+            fitting.identifier = f'{table.identifier}-fit{FIT_EVERY}'
+            fitting.stimulus_paths = dict(zip(fitting['stimulus_id'], fitting['video_path']))
+            stimuli = type(table)(test.drop(columns=['label']))
+            stimuli.identifier = f'{table.identifier}-test'
+            stimuli.stimulus_paths = dict(zip(stimuli['stimulus_id'], stimuli['video_path']))
+            from brainscore_core.streaming_helpers import stimulus_session
+            session = stimulus_session(stimuli, ['behavior:choice'], TaskContext(
+                fitting_stimuli=fitting, instruction=INSTRUCTION, response=Choice(choices)))
+            subject.participate(session)
+            predictions = answers[participant] = session.collect('behavior:choice')
+            options = list(predictions['choice'].values)
+            valid = predictions['response_state'].values == 'valid'
+            picked = np.nan_to_num(predictions.values, nan=-1).argmax(axis=1)
+            truth = dict(zip(test['stimulus_id'], test['label']))
+            answered = [options[i] if ok else None for i, ok in zip(picked, valid)]
+            correct = np.array([a == truth[s] for a, s in zip(answered, predictions['stimulus_id'].values)])
+            test_labels = test['label'].values
+            accuracies.append(float(correct.mean()))
+            by_participant[participant] = {
+                'accuracy': accuracies[-1], 'n_test_trs': int(len(test)), 'n_fitting_trs': int(len(fitting)),
+                'chance_most_frequent': float(max(np.mean(test_labels == label) for label in choices)),
+                'chance_by_rates': float(sum(rates[label] * np.mean(test_labels == label) for label in choices)),
+                'n_invalid': int((~valid).sum())}
+        return benchmark_score(
+            self, raw=float(np.mean(accuracies)), metric='accuracy', answers=answers, answer_policy=ANSWER_POLICY,
+            participants=list(by_participant),
+            per_participant=by_participant, choices=choices, label_rates_training=rates,
+            chance_most_frequent=float(np.mean([p['chance_most_frequent'] for p in by_participant.values()])),
+            chance_by_rates=float(np.mean([p['chance_by_rates'] for p in by_participant.values()])),
+            chance_uniform=1 / len(choices),
+            label=f'buttons held for at least {HELD_SECONDS:g} s of the TR, in the order {"+".join(BUTTONS)}; '
+                  f'a label under {RARE_LABEL:.0%} of the training TRs is other',
+            fitting=f'every {FIT_EVERY}th TR of the training runs', split=STATED['split'])
