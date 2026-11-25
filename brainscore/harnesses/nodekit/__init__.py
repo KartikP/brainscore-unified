@@ -15,7 +15,8 @@ second, at half the screen size, as a participant's screen showed them; their ti
 ``observation['frame_t_ms']``; absent when the clock passed no frame time; only for a subject that takes
 ``vision:video``, so for another the trace is nkl's agent harness's line for line), nkl's briefing for the task on ``instruction`` (``system_prompt``: the screen, how
 acts take time and how the clock runs under the pacing, the limits, then the benchmark's instructions) and
-the facts of the turn on ``observation`` (``t_ms``: the screen's time; ``pointer`` in pixels,
+the facts of the turn on ``observation`` (``task``: the harness's own words that end nkl's briefing, the act
+form and the benchmark's instructions, for a subject with its own trained action format; ``t_ms``: the screen's time; ``pointer`` in pixels,
 ``pointer_down``, ``keys_down``: the subject's own hands; ``turns_left``; ``acts_per_step``; ``act_form``:
 the channel the run reads). The subject answers on the act form the benchmark asks for (``form``,
 Contract Rules 5.15), ``motor:key`` or ``motor:pointer``, with a list of acts (core's ``MOTOR_ACTS``,
@@ -211,7 +212,7 @@ class NodeKitEnvironment:
             return {}
         picture = answer['picture']
         observation = {'t_ms': picture['at_ms'], **answer['body'], 'turns_left': self.max_steps - self.steps,
-                       'acts_per_step': answer['acts_per_step'], 'act_form': self.form}
+                       'acts_per_step': answer['acts_per_step'], 'act_form': self.form, 'task': self.task}
 
         def decoded(part):
             return np.frombuffer(base64.b64decode(part['data']), np.uint8).reshape(part['shape'])
@@ -258,6 +259,7 @@ class NodeKitEnvironment:
                                    idle_timeout_s=_CHILD_SILENCE_S).__enter__()
         self.steps, self.result, self.invalid_steps, self.trace = 0, None, 0, None
         words = _SESSION_WORDS[self.form] + (f' {_NO_LOOK}' if self.view == 'participant' else '')
+        self.task = f'{_SESSION_WORDS[self.form]}\n\n{self.instructions}'.strip()
         answer = self._child.ask({'reset': {'pacing': [self.pacing.capitalize(), round(self.dense_step_ms * 1000)],
                                             'limits': {'turns': self.max_steps, 'actions': self._acts_per_step},
                                             'seconds': self.max_ms / 1000,

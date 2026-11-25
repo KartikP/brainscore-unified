@@ -319,11 +319,19 @@ def _position_settings(identifier: str) -> dict:
 
 def _policy(reply, identifier, turn_settings):
     """One policy for the study's two closed loops, chosen by the row's inputs: a screen (``vision:image``, a
-    task on a screen) goes to NodeKit's act policy with ``turn_settings``; the grid game's ``observation``
+    task on a screen) goes to NodeKit's act policy with ``turn_settings`` (or, with ``action_format:
+    'computer_use'``, to Qwen3-VL's own trained interface, ``computer_use.py``); the grid game's ``observation``
     frame goes to ``api_policy`` as before. ``reset()`` and ``close()`` reach both."""
     from brainscore.harnesses.nodekit.policy import act_policy
     from brainscore.model_helpers.api_behavioral import api_policy
-    screen, grid = act_policy(reply, **turn_settings), api_policy(_reply_client(reply), identifier)
+    turn_settings = dict(turn_settings)
+    if turn_settings.pop('action_format', None) == 'computer_use':    # the model's own trained interface
+        from .computer_use import computer_use_policy
+        turn_settings.pop('position_grid', None)                       # the format states its own grid
+        screen = computer_use_policy(reply, **turn_settings)
+    else:
+        screen = act_policy(reply, **turn_settings)
+    grid = api_policy(_reply_client(reply), identifier)
 
     def policy(row):
         return (screen if 'vision:image' in row else grid)(row)
