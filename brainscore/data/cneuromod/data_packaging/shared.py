@@ -115,12 +115,19 @@ def annex_size(path: Path) -> int:
     return path.stat().st_size if path.exists() else 0
 
 
+_INSTALL = ('Install DataLad and git-annex 10.20230126 or later, for example `pipx install datalad` and '
+            '`pipx inject --include-apps datalad git-annex`, then run the same command again.')
+
+
 def check_prerequisites() -> None:
     missing = [program for program in ('datalad', 'git-annex') if shutil.which(program) is None]
     if missing:
-        raise RuntimeError(f'{" and ".join(missing)} not found. Install DataLad and git-annex 10.20230126 or '
-                           'later, for example `pipx install datalad` and `pipx inject --include-apps datalad '
-                           'git-annex`, then run the same command again.')
+        raise RuntimeError(f'{" and ".join(missing)} not found. {_INSTALL}')
+    version = subprocess.run(['git-annex', 'version', '--raw'], capture_output=True, text=True).stdout.strip()
+    found = re.match(r'(\d+)\.(\d+)', version)
+    if found is None or (int(found.group(1)), int(found.group(2))) < (10, 20230126):
+        raise RuntimeError(f'git-annex {version or "of unknown version"} found; this command needs '
+                           f'10.20230126 or later. {_INSTALL}')
 
 
 def plan(paths: list, cache: Path) -> int:

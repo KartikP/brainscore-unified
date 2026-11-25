@@ -1,4 +1,5 @@
 """The CNeuroMod data plugin on a tiny made-up source (no download): the shared part and two data sets."""
+import subprocess
 import sys
 import types
 
@@ -272,6 +273,18 @@ def test_a_store_at_another_address_is_not_confirmed(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match='example.org'):
         shared.clone(tmp_path, 'things')
     assert not [call for call in calls if call[:2] == ['git-annex', 'verifyremote']]
+
+
+@pytest.mark.parametrize('version, accepted', [('10.20230126', True), ('10.20261026-g1a2b', True),
+                                               ('8.20210223', False), ('', False)])
+def test_git_annex_older_than_10_20230126_is_refused_with_the_remedy(monkeypatch, version, accepted):
+    monkeypatch.setattr(shared.shutil, 'which', lambda program: f'/bin/{program}')
+    monkeypatch.setattr(subprocess, 'run', lambda *a, **k: types.SimpleNamespace(returncode=0, stdout=version, stderr=''))
+    if accepted:
+        shared.check_prerequisites()
+    else:
+        with pytest.raises(RuntimeError, match='pipx inject'):
+            shared.check_prerequisites()
 
 
 def test_the_viewing_order_counts_the_answered_trials_of_an_image_in_time_and_not_the_released_label():
