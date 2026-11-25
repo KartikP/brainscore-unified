@@ -133,8 +133,8 @@ def stand_in(monkeypatch, code_commit=extraction.CODE_COMMIT, short=(), missing=
                 content = Path(str(path.readlink()).removesuffix('.absent'))
                 path.unlink()
                 path.write_bytes(content.read_bytes())
-        elif argv[:2] == ['datalad', 'drop']:
-            for relative in argv[2:]:           # the content goes; the annex link stays
+        elif argv[:4] == ['datalad', 'drop', '--reckless', 'availability']:
+            for relative in argv[4:]:           # the content goes; the annex link stays
                 path = Path(kwargs['cwd']) / relative
                 path.unlink()
                 path.symlink_to('.git/annex/objects/gone')

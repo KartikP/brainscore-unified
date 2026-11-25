@@ -76,8 +76,9 @@ def build(module, form: str, root: Path, participant: str, session: str | None) 
                        cwd=code, env=environ, check=True)
         import nibabel
         check_runs(func, {run: nibabel.load(bold).shape[3] for run, bold in runs.items()}, columns(func, config))
-        subprocess.run(['datalad', 'drop', *(str(bold.relative_to(fmriprep)) for bold in bolds)],
-                       cwd=fmriprep, check=True)
+        # The public store is read over https, where git-annex cannot confirm a copy; the files came from it.
+        subprocess.run(['datalad', 'drop', '--reckless', 'availability',
+                        *(str(bold.relative_to(fmriprep)) for bold in bolds)], cwd=fmriprep, check=True)
     return released(func, base / 'timeseries' / module.NAME / form / participant, renames)
 
 
