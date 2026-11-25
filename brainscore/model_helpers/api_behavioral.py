@@ -226,7 +226,9 @@ def _call_bedrock(model, system, messages, settings):
     kwargs = dict(modelId=model, messages=[{'role': m['role'], 'content': content(m['content'])} for m in messages],
                   inferenceConfig={names[name]: value for name, value in request.items()})
     if system:
-        kwargs['system'] = [{'text': system}]
+        # A Claude model keeps the system text in Bedrock's prompt cache: a task's turns repeat it.
+        kwargs['system'] = [{'text': system}] + ([{'cachePoint': {'type': 'default'}}]
+                                                 if _samples_only(_call_bedrock, model) else [])
     try:
         resp = _bedrock_client(os.getenv('AWS_REGION')).converse(**kwargs)
     except botocore.exceptions.NoCredentialsError as e:
@@ -238,7 +240,10 @@ def _call_bedrock(model, system, messages, settings):
                         for b in blocks if 'reasoningContent' in b) or None
     usage = resp.get('usage', {})
     return _with_meta(text, reasoning, {'input_tokens': usage.get('inputTokens', 0),
-                                        'output_tokens': usage.get('outputTokens', 0)} if usage else None)
+                                        'output_tokens': usage.get('outputTokens', 0),
+                                        'cache_read_tokens': usage.get('cacheReadInputTokens', 0),
+                                        'cache_write_tokens': usage.get('cacheWriteInputTokens', 0)}
+                      if usage else None)
 
 
 @functools.lru_cache(maxsize=None)

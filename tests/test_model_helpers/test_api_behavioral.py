@@ -765,9 +765,10 @@ class TestBedrock:
         answer = reply(Prompt(parts=(('text', 'You take part.'), ('text', 'Now:'), ('image', str(tmp_path / 'screen.png'))),
                               names=('instruction', 'turn', 'screen'), response=Text(max_tokens=64)))
         assert isinstance(answer, StreamEvent) and answer.payload == 'press Space'
-        assert answer.meta['token_usage'] == {'input_tokens': 12, 'output_tokens': 3}
+        assert answer.meta['token_usage'] == {'input_tokens': 12, 'output_tokens': 3, 'cache_read_tokens': 0,
+                                              'cache_write_tokens': 0}
         request = calls[0]
-        assert request['system'] == [{'text': 'You take part.'}]
+        assert request['system'] == [{'text': 'You take part.'}, {'cachePoint': {'type': 'default'}}]
         assert request['inferenceConfig'] == {'maxTokens': 64}                 # no temperature for Claude
         assert request['messages'][0]['content'][1]['image']['format'] == 'png'
         with pytest.raises(Exception, match='temperature'):
