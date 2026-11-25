@@ -126,3 +126,11 @@ Then prove that the model complies, in three steps from the folder `unified`:
 
 Change anything outside this folder. An ability that needs shared code is listed above and not
 declared until that change exists.
+
+## A face localizer (a named selection beside the depth table)
+
+`face_localizer.py` finds a model's face-selective units in one region, as an fMRI
+localizer does: `FunctionalSelection` keeps the top 50 units by Cohen's d of faces against
+the other categories on the odd-numbered pictures; the even-numbered pictures test them;
+`RandomSelection.matched_to` gives as many random units of the same layer. The stimuli are
+fLoc (`load_stimulus_set('fLoc')`, Stigliani et al. 2015). The depth table does not change.
