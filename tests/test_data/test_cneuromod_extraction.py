@@ -257,6 +257,20 @@ def test_another_code_commit_is_refused(tmp_path, monkeypatch):
         extraction.build(things, 'cneuromod2026', tmp_path, 'sub-01', None)
 
 
+def test_a_release_commit_that_is_not_public_is_made_with_the_pinned_commit_when_the_data_set_names_it(
+        tmp_path, monkeypatch, capsys):
+    from brainscore.data.cneuromod.data_packaging import mario
+    monkeypatch.setitem(BOLD, 'mario', '{p}_{s}_task-mario_run-{r}_space-{space}_desc-preproc_bold.nii.gz')
+    make_tree(tmp_path, 'mario')
+    calls = stand_in(monkeypatch, code_commit=mario.UNPUBLISHED_RELEASE_CODE)
+    files = extraction.build(mario, 'cneuromod2026', tmp_path, 'sub-01', None)
+    assert any(path.name.endswith('_timeseries.h5') for path in files)
+    assert any(extraction.CODE_COMMIT in call.argv for call in calls if 'checkout' in call.argv)
+    assert 'not public' in capsys.readouterr().out
+    with pytest.raises(RuntimeError, match='4492c476'):         # only the data set that names it
+        extraction.sources(things, tmp_path)
+
+
 def test_package_data_reads_the_made_time_series_with_the_per_tr_reader(tmp_path, monkeypatch):
     """Run 2 has a non-steady first volume, which the code leaves out: its rows are volumes 1 to 8."""
     from brainscore.data import package_data, packaging

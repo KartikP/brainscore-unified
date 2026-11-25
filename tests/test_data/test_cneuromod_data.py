@@ -309,3 +309,20 @@ def test_the_viewing_order_counts_the_answered_trials_of_an_image_in_time_and_no
     image = np.array(['a', 'b', 'a', 'a', 'b', 'a'])
     response = np.array([1.0, -1.0, np.nan, 2.0, 1.0, -2.0])     # the 2nd trial of 'a' has no response
     assert things.answered_viewing(image, response).tolist() == [1, 1, 0, 2, 2, 3]
+
+
+def test_a_mario_tr_has_its_repetition_its_video_frames_and_the_seconds_each_button_was_held(source, tmp_path):
+    out = _build('cneuromod-mario-timeseries', source, tmp_path, part='sub-01')
+    series = xr.open_dataarray(out / 'sub-01' / 'ses-01' / 'timeseries_cneuromod2026.nc')
+    # TR starts 0, 1.49, ..., 11.92; w1l1 holds [0.5, 6.5), w1l2 [8, 12)
+    assert series['stimulus_id'].values[[0, 1, 5, 6]].tolist() == [
+        '', 'sub-01_ses-001_task-mario_level-w1l1_rep-000', '', 'sub-01_ses-001_task-mario_level-w1l2_rep-001']
+    assert series['level'].values[[0, 1, 6]].tolist() == ['', 'w1l1', 'w1l2']
+    assert (series['frame_start'].values[1], series['frame_stop'].values[1]) == (59, 148)   # 60 frames per second
+    assert series['frame_stop'].values[4] == 360          # the TR ends after its repetition: its last frame
+    assert series['frame_start'].values[0] == -1
+    assert series['button_A'].values[:3] == pytest.approx([0.49, 0.51, 0.0])
+    assert series['button_RIGHT'].values[5] == pytest.approx(0.2)
+    stimuli = pd.read_csv(out / 'sub-01' / 'ses-01' / 'stimuli.csv')
+    assert stimuli['video'].tolist() == [f'sub-01/ses-001/beh/videos/{name}.mp4' for name in stimuli['stimulus_id']]
+    assert set(stimuli['level']) == {'w1l1', 'w1l2'}

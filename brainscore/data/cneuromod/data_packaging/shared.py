@@ -2,7 +2,8 @@
 
 A data set module (``things.py``, ``movie10.py``) gives only what differs: its participants,
 its repetition time, the repository of its event files, how one run's event table is read and
-which stimulus identifier each event has. Everything else is here: the download with DataLad,
+which stimulus identifier each event has; optionally ``tr_columns(clone, participant, run)``, more
+values per TR (``mario.py``). Everything else is here: the download with DataLad,
 the reading of the time series, masks and atlas, the TR-to-event join and the written files.
 """
 import os
@@ -349,6 +350,8 @@ def timeseries_assembly(module, clone: Path, participant: str, h5: Path, neuroid
             'tr': run['volumes'], 'time': starts, 'event': rows,
             'stimulus_id': [events['stimulus_id'].iloc[r] if r >= 0 else '' for r in rows],
             'time_in_event': starts - onsets})
+        if hasattr(module, 'tr_columns'):       # a data set with more per-TR values (mario: frames, buttons)
+            presentation = presentation.assign(**module.tr_columns(clone, participant, run))
         values = array if columns is None else array[:, columns]
         by_session.setdefault(run['session'], []).append((values, presentation, events))
     for number_, parts in sorted(by_session.items()):

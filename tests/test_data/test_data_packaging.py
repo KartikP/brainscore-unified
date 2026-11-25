@@ -852,7 +852,8 @@ SOURCES = {'ewok': _ewok_source, 'lebel2023': _lebel_source, 'algonauts2025': _a
            'lahner2024-sound': _lahner_clips_source, 'lahner2024-timeresolved': _lahner_series_source,
            'lahner2024-motion': _lahner_motion_source, 'rajalingham2018-2afc': _rajalingham_source,
            'sun2025': _sun2025_source, 'cneuromod-things': _cneuromod_source,
-           'cneuromod-things-timeseries': _cneuromod_source, 'cneuromod-movie10-timeseries': _cneuromod_source}
+           'cneuromod-things-timeseries': _cneuromod_source, 'cneuromod-movie10-timeseries': _cneuromod_source,
+           'cneuromod-mario-timeseries': _cneuromod_source}
 UPLOAD_FLAGS = {'lebel2023': '--upload', 'lahner2024-timeresolved': '--upload-to-s3',
                 'lahner2024-motion': '--upload-to-s3'}
 

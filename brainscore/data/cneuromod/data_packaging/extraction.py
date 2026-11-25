@@ -123,9 +123,11 @@ def sources(module, root: Path) -> dict:
         subprocess.run(['git', 'clone', '-q', shared.GITHUB.format(release.name), str(release)], check=True)
     fmriprep = f'{module.NAME}.fmriprep'
     named = submodule_commit(release, f'code/{CODE}')
-    if named != CODE_COMMIT:
+    if named != CODE_COMMIT and named != getattr(module, 'UNPUBLISHED_RELEASE_CODE', None):
         raise RuntimeError(f'{release.name} names {CODE} at {named}, not {CODE_COMMIT}, the commit whose '
                            'environment this builder makes. Add that commit here only after a check of its pins.')
+    if named != CODE_COMMIT:
+        print(f'{release.name} names {CODE} at {named}, a commit that is not public: made with {CODE_COMMIT}.')
     pins = {CODE: CODE_COMMIT, fmriprep: submodule_commit(release, f'sourcedata/{fmriprep}')}
     code = base / CODE
     if not (code / '.git').exists():

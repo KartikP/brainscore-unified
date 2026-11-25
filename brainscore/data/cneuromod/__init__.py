@@ -53,7 +53,8 @@ data_builder_registry['cneuromod-things'] = lambda: DataBuilder(
     fetches=True,
 )
 
-for _dataset, _participants in (('things', 'sub-01, 02, 03 and 06'), ('movie10', 'sub-01, 02, 03, 05 and 06')):
+for _dataset, _participants in (('things', 'sub-01, 02, 03 and 06'), ('movie10', 'sub-01, 02, 03, 05 and 06'),
+                                ('mario', 'sub-01, 02, 03, 05 and 06')):
     data_builder_registry[f'cneuromod-{_dataset}-timeseries'] = lambda dataset=_dataset, who=_participants: DataBuilder(
         source=_SOURCE + ' Made with CNeuroMod\'s extraction code (https://github.com/courtois-neuromod/'
                          'cneuromod_extract_tseries, MIT licence) at ae310a53, the commit of the released time series.',
@@ -67,7 +68,9 @@ for _dataset, _participants in (('things', 'sub-01, 02, 03 and 06'), ('movie10',
               'of the code and never installs into the calling environment; one session of fMRIPrep outputs on '
               'the disk at a time (dropped after its check). Measured for THINGS sub-01 ses-02 on a cloud machine: '
               '4.76 GB of input, 131 s, 4.2 GB of memory. THINGS: about 169 GB of input and 2 h per participant; '
-              'movie10: 475 GB for the 5 participants (estimates from the file sizes).',
+              'movie10: 475 GB for the 5 participants; mario: 564 GB for the 5 participants (estimates from the '
+              'file sizes). Mario: the events are the annotated event files of mario.annotations, and each TR '
+              'also has the level, the frame range of its play video and the seconds each button was held.',
         writes=_FILES + '`timeseries_cneuromod2026.nc` (one row per TR: participant, session, task, run, tr, '
                'time, the event and stimulus identifier of the TR), `events.csv`, `stimuli.csv` (identifiers '
                'only), and `sub-XX/atlas/parcels.csv` (the parcels of the participant\'s own atlas). ' + _PART,

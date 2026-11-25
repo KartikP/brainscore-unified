@@ -1,6 +1,6 @@
 """A tiny made-up CNeuroMod source in the layout of the DataLad clones (no download).
 
-``make_source(root)`` writes, for every public participant of THINGS and movie10: event files,
+``make_source(root)`` writes, for every public participant of THINGS, movie10 and mario: event files,
 masks and the atlas (``anat.atlases``), THINGS GLMsingle trial responses, the fMRIPrep
 segmentation of a THINGS run and ``cneuromod2026`` time series. sub-06 has no own masks (only the
 Kanwisher group parcels), as in the release. A 4 x 4 x 4 voxel grid; 3 trials per THINGS run, 2 runs, 1 session.
@@ -117,4 +117,26 @@ def make_source(root: Path) -> Path:
         _timeseries(series / f'{stem}_timeseries.h5',
                     {('ses-001', 'ses-001_task-bourne01_timeseries'): 1,
                      ('ses-001', 'ses-001_task-life01_run-2_timeseries'): 2}, 2)
+    for participant in MOVIE10:         # mario has the same public participants
+        func = root / 'mario.annotations' / participant / 'ses-001' / 'func'
+        func.mkdir(parents=True, exist_ok=True)
+        mario_events(participant).to_csv(
+            func / f'{participant}_ses-001_task-mario_run-01_desc-annotated_events.tsv', sep='\t', index=False)
+        series = root / 'mario.timeseries' / 'timeseries' / 'cneuromod2026' / participant
+        stem = f'{participant}_task-mario_space-MNI152NLin2009cAsym_atlas-cneuromod26_desc-1134Parcels'
+        _nifti(dseg, series / f'{stem}_dseg.nii.gz', np.int16)
+        _timeseries(series / f'{stem}_timeseries.h5', {('ses-001', 'ses-001_task-mario_run-1_timeseries'): 3}, 2)
     return root
+
+
+def mario_events(participant: str) -> pd.DataFrame:
+    """Two repetitions (w1l1 at 0.5 s for 6 s, w1l2 at 8 s for 4 s), a button A held 1.0-2.0 s, RIGHT
+    held 8.5-8.7 s and a death, in the columns of an annotated event file."""
+    game = 'sub-XX/ses-001/gamelogs/sub-XX_ses-001_task-mario_level-{}_rep-00{}.bk2'.replace('sub-XX', participant)
+    return pd.DataFrame({
+        'rep_index': [0.0, np.nan, np.nan, 1.0, np.nan],
+        'trial_type': ['gym-retro_game', 'A', 'Hit/life_lost', 'gym-retro_game', 'RIGHT'],
+        'onset': [0.5, 1.0, 6.4, 8.0, 8.5], 'level': ['w1l1', 'w1l1', 'w1l1', 'w1l2', 'w1l2'],
+        'stim_file': [game.format('w1l1', 0), np.nan, np.nan, game.format('w1l2', 1), np.nan],
+        'frame_start': [0.0, 30.0, 354.0, 0.0, 30.0], 'frame_stop': [360.0, 90.0, 354.0, 240.0, 42.0],
+        'duration': [6.0, 1.0, 0.0, 4.0, 0.2], 'phase': ['discovery', np.nan, np.nan, 'discovery', np.nan]})
