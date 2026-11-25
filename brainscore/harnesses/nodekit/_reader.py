@@ -6,13 +6,14 @@ Standard library and nkl only; no run, no server. Commands, one JSON line each, 
 (``turn``: the screen size, the harness's ``observation`` row entry, the memories and the problems of the
 last reply):
 
-- ``{"brief": turn}`` answers nkl's briefing of the turn as parts ``[text, image]`` (``image`` true where the
-  screen goes).
+- ``{"brief": turn}`` answers nkl's briefing of the turn as parts ``[text, picture]`` (the picture's name
+  where one goes: ``screen`` or ``look:<id>``).
 - ``{"read": {"text": reply, "form": "motor:key" | "motor:pointer", **turn}}`` reads the reply with nkl's
   ``parse`` and answers ``{"acts": [...] or None, "memories": [...], "problems": [...]}``: the acts in the
   form of Brain-Score's ``motor:key`` or ``motor:pointer`` (pixels: the numbers the reply wrote), or None
-  and nkl's problems with the command and the rule broken. A reply that asks for a look (not offered) or
-  for an act of the other form has a problem; as in nkl, nothing of such a reply is done.
+  and nkl's problems with the command and the rule broken. In the agent view a look is an act
+  (``{'act': 'look', 'id'}``); in the participant view a reply that asks for one has a problem, as has one
+  with an act of the other form; as in nkl, nothing of such a reply is done.
 
 Limit: the briefing and the reader are nkl 0.1.0's ``briefing``, ``parse``, ``written`` and ``remember`` (names
 inside ``nkl._core.host.agents``); another nkl version must be checked again.
@@ -42,13 +43,19 @@ def context_of(turn):
     body = agents.Body(fsim.Pointer.State(x, y, seen['pointer_down'], seen['pointer_connected']),
                        fsim.Keyboard.State(tuple(seen['keys_down']), True))
     limits = agents.Limits(actions=seen['acts_per_step'])
-    return agents.AgentContext(screen, extent, tuple(map(tuple, turn['memories'])), (), body,
+    looks = tuple((name, fsim.Image(width, height, 'rgb', round(at * 1000), 0, b''))
+                  for name, at in seen.get('looks', {}).items())
+    return agents.AgentContext(screen, extent, tuple(map(tuple, turn['memories'])), looks, body,
                                tuple(turn['problems']), limits, seen['turns_left'])
 
 
 def brief(turn):
+    """nkl's briefing as parts ``[text, picture name]``: ``screen``, ``look:<id>`` or None."""
     from nkl._core.host.agents import briefing
-    return [[text, image is not None] for text, image in briefing(context_of(turn))]
+    context = context_of(turn)
+    names = {id(image): f'look:{name}' for name, image in context.looks}
+    names[id(context.screen)] = 'screen'
+    return [[text, None if image is None else names[id(image)]] for text, image in briefing(context)]
 
 
 KEY_ACTS = {'Press': 'press', 'Release': 'release'}
@@ -67,7 +74,9 @@ def read(turn):
                    if isinstance(command, dict) and command.get('do') == 'pointer_move'])
     acts = []
     for action in actions:
-        if isinstance(action, TakeLook):
+        if isinstance(action, TakeLook) and turn['observation'].get('view') == 'agent':
+            acts.append({'act': 'look', 'id': action.id})
+        elif isinstance(action, TakeLook):
             problems.append(f'look ({action.id}) is not offered here: you see the screen when the reply has played out')
         elif isinstance(action, agents.Wait):
             acts.append({'act': 'wait', 'ms': action.us / 1000})
@@ -81,7 +90,8 @@ def read(turn):
     kinds = {'key': {'press', 'release'}, 'pointer': {'stroke', 'down', 'up'}}
     wanted = form.split(':')[1]
     for act in acts:
-        other = next(kind for kind, names in kinds.items() if act['act'] in names) if act['act'] != 'wait' else wanted
+        other = next(kind for kind, names in kinds.items() if act['act'] in names) if act['act'] not in (
+            'wait', 'look') else wanted
         if other != wanted:
             problems.append(f'{act["act"]} is a {other} action; this task takes {wanted} actions only')
             break

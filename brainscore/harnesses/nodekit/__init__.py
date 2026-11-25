@@ -28,9 +28,16 @@ ms, a stroke as nkl's motor allows, a wait its time; then the subject sees the s
 The pacing (``PACINGS``, nkl's): ``frozen`` (the default) stops the task's clock while the subject
 answers; ``realtime`` lets the subject's answering time (the wall time from the screen to the acts) pass
 before its first act; ``dense`` moves the clock at least ``dense_step_ms`` each step (by default ``DENSE_STEP_MS``, nkl's: one frame;
-nkl's own ``act`` timing): a fixed answering time that does not depend on the machine. It keeps nkl's normal
-action limit (``acts_per_step``, 20 a reply, as frozen); nkl's own Dense harness allows one action a reply, so
-a key press and its release would need two turns. The score states the step and the action limit. An
+nkl's own ``act`` timing): a fixed answering time that does not depend on the machine.
+
+The view (``VIEWS``): ``participant`` (the default) is what a participant saw: the frames since the last step
+on ``vision:video`` and the screen; ``acts_per_step`` is 20 under every pacing (nkl's own Dense harness allows
+one action a turn, so a key press and its release would need two turns). ``agent`` is what nkl's agent harness
+gives its agents, under nkl's own rules: one picture a turn and nkl's ``look`` act (``{'act': 'look', 'id'}``,
+a picture during the acts); the next row carries ``vision:image`` as named pictures (``screen`` and
+``look:<id>`` for each look nkl keeps, ``Limits.looks``), their times in ``observation['looks']``, no frames;
+``acts_per_step`` is nkl's (one a turn under dense). A caller may state another ``acts_per_step``. The score
+states the view, the pacing, the dense step and the action limit. An
 empty list is a valid step with no act and None an answer that could not be read (counted in
 ``invalid_steps``); under frozen or realtime pacing neither moves the clock. ``MAX_INVALID_IN_A_ROW`` answers
 in a row with no act stop the run (``stop_cause``). The run ends when the program
@@ -64,6 +71,7 @@ from typing import Optional
 
 import numpy as np
 
+from brainscore_core.streaming import NamedStreams
 from brainscore.harnesses._child_process import ChildProcess
 from brainscore.harnesses._environment_folder import Library, _RUNTIME_VARIABLES, environment_python, ready_folder
 
@@ -74,6 +82,8 @@ COMMIT = '46ff367543ed5a209147ad9b8e6275ce81059d38'
 NKL_WHEEL = 'vendor/nkl-0.1.0-py3-none-any.whl'
 SCREEN = (1024, 768)
 PACINGS = ('frozen', 'realtime', 'dense')
+VIEWS = ('participant', 'agent')
+PARTICIPANT_ACTS_PER_STEP = 20  # the acts of one step in the participant view, under every pacing
 MAX_INVALID_IN_A_ROW = 20       # a run with this many answers in a row that give no act stops (truncated)
 DENSE_STEP_MS = 16.667          # nkl's Dense step: one frame at 60 frames a second
 VIDEO = (512, 384)              # the size of a vision:video frame; frames at 60 a second (the worker's FRAME_US)
@@ -158,7 +168,8 @@ class NodeKitEnvironment:
 
     def __init__(self, program, *, form: str, pacing: str = 'frozen', seed: int = 0, screen=SCREEN,
                  max_ms: float = 3_600_000, max_steps: int = 20000, instructions: str = '',
-                 dense_step_ms: float = DENSE_STEP_MS, frames: bool = False, record: Optional[Path] = None, name: str = 'run',
+                 dense_step_ms: float = DENSE_STEP_MS, view: str = 'participant', acts_per_step: Optional[int] = None,
+                 frames: bool = False, record: Optional[Path] = None, name: str = 'run',
                  folder: Optional[Path] = None, log_directory: Optional[Path] = None):
         self.program, self.seed, self.screen = Path(program), seed, tuple(screen)
         self.max_ms, self.max_steps, self.record, self.name = max_ms, max_steps, record, name
@@ -170,7 +181,17 @@ class NodeKitEnvironment:
             raise ValueError(f'pacing is one of {PACINGS} (nkl\'s Frozen, Realtime and Dense), not {pacing!r}.')
         if not (isinstance(dense_step_ms, (int, float)) and not isinstance(dense_step_ms, bool) and dense_step_ms > 0):
             raise ValueError(f'dense_step_ms is the time of one dense step in ms, above 0, not {dense_step_ms!r}.')
-        self.form, self.pacing, self.instructions, self.frames = form, pacing, instructions, frames
+        if view not in VIEWS:
+            raise ValueError(f'view is one of {VIEWS}, not {view!r}.')
+        if acts_per_step is not None and (isinstance(acts_per_step, bool) or not isinstance(acts_per_step, int)
+                                          or acts_per_step < 1):
+            raise ValueError(f'acts_per_step is the most acts of one step, 1 or more, not {acts_per_step!r}.')
+        # The agent view gives one picture a turn and the looks: no frames.
+        self.form, self.pacing, self.instructions, self.frames = form, pacing, instructions, frames and view == 'participant'
+        self.view = view
+        # The participant view keeps 20 acts a step under every pacing; the agent view nkl's own limits.
+        self._acts_per_step = acts_per_step if acts_per_step is not None else (
+            PARTICIPANT_ACTS_PER_STEP if view == 'participant' else None)
         self.dense_step_ms = dense_step_ms
         self.folder = ready_folder(library(), f'NodeKit {self.program.name}', folder)
         self.log_directory = Path(log_directory) if log_directory else self.folder / 'logs'
@@ -188,7 +209,13 @@ class NodeKitEnvironment:
 
         def decoded(part):
             return np.frombuffer(base64.b64decode(part['data']), np.uint8).reshape(part['shape'])
-        row = {'vision:image': decoded(picture), 'instruction': self.system, 'observation': observation}
+        observation['view'] = self.view
+        screen = decoded(picture)
+        if self.view == 'agent':           # the screen and each kept look, by name
+            screen = NamedStreams({'screen': screen, **{f'look:{look["id"]}': decoded(look)
+                                                        for look in answer.get('looks', ())}})
+            observation['looks'] = {look['id']: look['at_ms'] for look in answer.get('looks', ())}
+        row = {'vision:image': screen, 'instruction': self.system, 'observation': observation}
         frames = answer.get('frames')
         if frames is not None:
             file = Path(frames['file'])
@@ -226,10 +253,11 @@ class NodeKitEnvironment:
                                    env=environment, log_directory=self.log_directory,
                                    idle_timeout_s=_CHILD_SILENCE_S).__enter__()
         self.steps, self.result, self.invalid_steps, self.trace = 0, None, 0, None
+        words = _SESSION_WORDS[self.form] + (f' {_NO_LOOK}' if self.view == 'participant' else '')
         answer = self._child.ask({'reset': {'pacing': [self.pacing.capitalize(), round(self.dense_step_ms * 1000)],
-                                            'limits': {'turns': self.max_steps}, 'seconds': self.max_ms / 1000,
-                                            'instructions': f'{_SESSION_WORDS[self.form]} {_NO_LOOK}\n\n'
-                                                            f'{self.instructions}'.strip()}})
+                                            'limits': {'turns': self.max_steps, 'actions': self._acts_per_step},
+                                            'seconds': self.max_ms / 1000,
+                                            'instructions': f'{words}\n\n{self.instructions}'.strip()}})
         self.system, self.acts_per_step = answer['system'], answer['acts_per_step']
         if answer['extent'] != list(self.screen):
             raise RuntimeError(f'nkl shows the program on {answer["extent"]} scene units, not the {self.screen} '
@@ -240,6 +268,9 @@ class NodeKitEnvironment:
     def step(self, outputs):
         thought = time.monotonic() - self._shown
         acts = outputs[self.form]          # checked by the session (core's MOTOR_ACTS)
+        if self.view == 'participant' and any(act['act'] == 'look' for act in acts or ()):
+            raise ValueError(f'{self.program.name} runs in the participant view: a look is offered only in the '
+                             f'agent view (view="agent"); the frames since the last step are on vision:video.')
         self.invalid_in_a_row = self.invalid_in_a_row + 1 if acts is None else 0
         if acts is None:
             self.invalid_steps += 1
@@ -277,7 +308,7 @@ def play(subject, program, *, form: str, outputs=None, **settings):
     import time
     from brainscore_core.streaming_helpers import environment_session
     settings.setdefault('name', f"{getattr(subject, 'identifier', 'subject')}-{time.strftime('%Y%m%dT%H%M%S')}")
-    # The frames go only to a subject that takes them (a subject's declared inputs).
+    # The frames go only to a subject that takes them (a subject's declared inputs), in the participant view.
     settings.setdefault('frames', 'vision:video' in set(getattr(subject, 'in_channels', ())))
     environment = NodeKitEnvironment(program, form=form, **settings)
     try:

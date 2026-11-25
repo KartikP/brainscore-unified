@@ -8,7 +8,8 @@ follows the acts (``observe``). When the step names a frames file, the worker al
 the clock passes (60 frames a second, ``FRAME_US``, at the video size; each look is a frame line in the
 trace) and writes the frames there; without one, the trace is nkl's agent harness's line for line. Commands, one JSON line each:
 
-- ``{"reset": {"pacing": [kind, step µs], "limits": {...}, "seconds": s, "instructions": text}}`` starts
+- ``{"reset": {"pacing": [kind, step µs], "limits": {...}, "seconds": s, "instructions": text}}`` (an action
+  limit of None: nkl's own, one a turn under Dense) starts
   the run (``begin``) and answers the first screen with nkl's briefing for it (``system_prompt``).
 - ``{"step": {"acts": [act, ...], "seconds": s, "frames": file or null}}``: the acts in the form of Brain-Score's ``motor:key`` and
   ``motor:pointer`` (pixels of the screen, origin top left), ``seconds`` the subject's answering time (it
@@ -38,6 +39,7 @@ import json
 import os
 import sys
 import traceback
+from dataclasses import replace
 from pathlib import Path
 
 read_fd, write_fd = (int(fd) for fd in os.environ['BRAINSCORE_CHILD_FDS'].split(','))
@@ -106,7 +108,7 @@ def actions(acts, context):
     """nkl's agent actions for Brain-Score acts: pixels become scene units by nkl's ``to_scene``; a typed
     text becomes its key presses as nkl's reply reader makes them."""
     from nkl import agents, fsim
-    from nkl._core.host.agents import Stroke, to_scene
+    from nkl._core.host.agents import Stroke, TakeLook, to_scene
     made = []
 
     def scene(x, y):
@@ -130,6 +132,8 @@ def actions(acts, context):
             made.append(fsim.Pointer.Down())
         elif name == 'up':
             made.append(fsim.Pointer.Up())
+        elif name == 'look':
+            made.append(TakeLook(act['id']))
         elif name == 'stroke':
             made.append(Stroke(tuple(scene(*point) for point in act['points']), act.get('force', 1.0)))
         else:
@@ -220,6 +224,10 @@ def screen(run, context, system=None, frames=None):
                              'at_ms': image.at / 1000}
     if frames is not None:
         answer['frames'] = frames.answer()
+    if context.looks:               # the looks nkl keeps (Limits.looks), oldest first
+        answer['looks'] = [{'id': name, 'data': base64.b64encode(look.data).decode(),
+                            'shape': [look.height, look.width, 3], 'at_ms': look.at / 1000}
+                           for name, look in context.looks]
     if system is not None:
         answer['system'] = system
     return answer
@@ -237,9 +245,9 @@ def main():
             if 'reset' in command:
                 settings = command['reset']
                 pacing = pacing_of(*settings['pacing'])
-                limits = agents.Limits(**settings['limits'])
-                # Dense keeps nkl's normal action limit (nkl's own Dense harness allows one action a turn): a
-                # turn moves the clock at least the step, and a key press and its release fit in one turn.
+                limits = agents.Limits(**{key: value for key, value in settings['limits'].items() if value is not None})
+                if settings['limits'].get('actions') is None and isinstance(pacing, agents.Dense):
+                    limits = replace(limits, actions=1)       # nkl's own rule: one action a turn under Dense
                 run, context = agents.begin(start(folder, seed, (width, height)), limits=limits)
                 system = agents.system_prompt(
                     settings['instructions'], screen=(context.screen.width, context.screen.height),

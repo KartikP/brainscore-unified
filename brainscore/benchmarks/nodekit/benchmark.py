@@ -13,7 +13,9 @@ may last twice the participants' longest run in simulated time (``max_ms``, read
 20000 steps; then the harness stops it. The task's clock runs under nkl's pacing (``pacing``: ``frozen``,
 the default, stops it while the subject answers; ``realtime`` and ``dense`` (with its step ``dense_step_ms``) are
 a setting, stamped on the
-score). nkl gives the trial records only when the program completes, so a
+score). The view (``view``: ``participant``, the default, the frames since the last step and the screen;
+``agent``, nkl's agent harness: one picture a turn and the look act) and the action limit (``acts_per_step``)
+are settings, stamped on the score. nkl gives the trial records only when the program completes, so a
 run that does not complete has none: every test trial is missing and the result is invalid. The subject's
 response times are simulated times (``subject_response_ms``): recorded, not scored. Each run's trace is
 kept under ``record`` (``attrs['trace']``) and replays in the task repository's viewer
@@ -191,14 +193,18 @@ class NodeKitBenchmark(BenchmarkBase):
     trial_memory = 'none'       # one run of the task is one episode that starts empty
 
     def __init__(self, identifier: str, task: str, max_steps: int = 20000, pacing: str = 'frozen',
-                 dense_step_ms: Optional[float] = None, record=None):
+                 dense_step_ms: Optional[float] = None, view: str = 'participant', acts_per_step: Optional[int] = None,
+                 record=None):
         from brainscore.harnesses.nodekit import PACINGS
         if pacing not in PACINGS:
             raise ValueError(f'pacing is one of {PACINGS} (nkl\'s Frozen, Realtime and Dense), not {pacing!r}.')
         if dense_step_ms is not None and pacing != 'dense':
             raise ValueError(f'dense_step_ms is the step of dense pacing; this benchmark runs {pacing!r} pacing.')
         self.task, self.max_steps, self.pacing, self.record = task, max_steps, pacing, record
-        self.dense_step_ms = dense_step_ms
+        from brainscore.harnesses.nodekit import VIEWS
+        if view not in VIEWS:
+            raise ValueError(f'view is one of {VIEWS}, not {view!r}.')
+        self.dense_step_ms, self.view, self.acts_per_step = dense_step_ms, view, acts_per_step
         # Faces: the participants' ceiling (.174) is inside the random floor's interval, so the benchmark cannot
         # separate a subject from chance (owner, 2026-11-25: in the code, off the leaderboard).
         self.leaderboard_eligible = task != 'face-arrangement'
@@ -233,6 +239,7 @@ class NodeKitBenchmark(BenchmarkBase):
         record = self.record or data_home() / 'records' / 'nodekit'
         result, environment, session = play(subject, bundle(self.task), form=ACT_FORMS[self.task], pacing=self.pacing,
                                             **({} if self.dense_step_ms is None else {'dense_step_ms': self.dense_step_ms}),
+                                            view=self.view, acts_per_step=self.acts_per_step,
                                             instructions=INSTRUCTIONS.get(self.task, ''),
                                             max_steps=self.max_steps, max_ms=self.max_ms, record=record)
         return self.score_result(result, steps=environment.steps, invalid_steps=environment.invalid_steps,
@@ -268,7 +275,7 @@ class NodeKitBenchmark(BenchmarkBase):
         return benchmark_score(self, raw=measured['raw'], metric=measured['score_form'],
                                ceiling=self.ceiling, answers=pd.DataFrame({'response_state': states}),
                                answer_policy=ANSWER_POLICY, invalid_limit=0.1, max_ms=self.max_ms,
-                               max_steps=self.max_steps, pacing=self.pacing,
+                               max_steps=self.max_steps, pacing=self.pacing, view=self.view,
                                **({} if self.dense_step_ms is None else {'dense_step_ms': self.dense_step_ms}),
                                **run, **attrs,
                                **({'invalid_step_share': run['invalid_steps'] / run['steps']}

@@ -179,7 +179,7 @@ while line := commands.readline():
     command = json.loads(line)
     if 'brief' in command:
         turn = command['brief']
-        send({'done': [['problems: ' + '; '.join(turn['problems']), False], ['The screen now:', True]]})
+        send({'done': [['problems: ' + '; '.join(turn['problems']), None], ['The screen now:', 'screen']]})
     else:
         turn = command['read']
         if turn['text'] == 'look':
@@ -290,3 +290,18 @@ def test_the_act_policy_compares_frames_with_the_last_frame_and_cleans_its_pictu
     policy.reset()
     assert not pictures.exists()
     policy.close()
+
+
+def test_the_agent_view_names_its_pictures_and_a_look_is_refused_in_the_participant_view(stand_in):
+    seen = []
+
+    def policy(row):
+        seen.append(row)
+        return {'motor:key': [{'act': 'look', 'id': 'patch'}, {'act': 'press', 'key': 'ArrowLeft'}]}
+    subject = BrainScoreModel('looks', policy=policy, policy_in_channels=('vision:image', 'vision:video', 'observation'),
+                              policy_out_channels=('motor:key',))
+    nodekit.play(subject, _program(stand_in / 'keys'), form='motor:key', view='agent')
+    assert set(seen[0]['vision:image']) == {'screen'} and 'vision:video' not in seen[0]
+    assert seen[0]['observation']['view'] == 'agent'
+    with pytest.raises(ValueError, match='agent view'):
+        nodekit.play(subject, _program(stand_in / 'keys2'), form='motor:key')

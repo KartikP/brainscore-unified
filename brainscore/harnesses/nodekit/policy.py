@@ -109,7 +109,10 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
         state.update(folder=None, pictures=0)
 
     def policy(row):
-        seen, screen = row['observation'], row['vision:image']
+        seen, pictures = row['observation'], row['vision:image']
+        # The agent view names its pictures (the screen and each kept look); the participant view sends the screen.
+        pictures = dict(pictures) if isinstance(pictures, dict) else {'screen': pictures}
+        screen = pictures['screen']
         turn = {'screen': [screen.shape[1], screen.shape[0]], 'observation': seen,
                 'memories': state['memories'], 'problems': state['problems']}
         parts, names = [('text', row['instruction'])], ['instruction']
@@ -117,7 +120,7 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
         shown = changed_frames(video, seen.get('frame_t_ms', []), state['last'], frames)
         briefing = reader.ask({'brief': turn})
         for number, (text, image) in enumerate(briefing):
-            if image and shown:          # the screen comes last: the frames since the last turn before it
+            if image == 'screen' and shown:     # the frames since the last turn come before the screen
                 for at, frame in shown:
                     parts += [('text', f'A frame since your last turn, at {at / 1000:.3f} s:'),
                               ('image', picture(frame))]
@@ -125,8 +128,8 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
             parts.append(('text', text))
             names.append('turn')
             if image:
-                parts.append(('image', picture(screen)))
-                names.append('screen')
+                parts.append(('image', picture(pictures[image])))
+                names.append('screen' if image == 'screen' else 'look')
         settings = Text(max_tokens=max_tokens, temperature=temperature,
                         seed=None if seed is None else seed + state['turn'])
         history = tuple(state['history'][-turns_kept:]) if turns_kept else ()
