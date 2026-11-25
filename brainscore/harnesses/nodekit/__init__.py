@@ -52,6 +52,7 @@ import base64
 import json
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Optional
@@ -81,6 +82,25 @@ _NO_LOOK = 'The look action is not offered: you see the screen when each reply h
 _WORKER = Path(__file__).with_name('_worker.py')
 # Seconds the child may take for one command (a first reset starts nkl's server and Chrome).
 _CHILD_SILENCE_S = 600.0
+
+
+# Chrome's flags for a hardware WebGL2 on Linux: headless Chrome there renders with SwiftShader, which nkl's
+# runner refuses ("No GPU: WebGL2"); with these it renders on the GPU through Vulkan.
+_LINUX_GPU_FLAGS = ('--use-angle=vulkan', '--enable-features=Vulkan', '--ignore-gpu-blocklist')
+
+
+def gpu_chrome(chrome: Path) -> Path:
+    """Make nkl's Chrome ``chrome`` start with ``_LINUX_GPU_FLAGS``: the program moves to ``chrome.real`` and
+    ``chrome`` becomes a script that adds the flags (once; a second call changes nothing).
+
+    Limit: nkl 0.1.0 starts Chrome with no way to add flags, so the harness wraps the Chrome nkl downloaded
+    (``nkl._core.server.chrome.fetch_chrome``); another nkl version must be checked again."""
+    real = chrome.with_name('chrome.real')
+    if not real.exists():
+        chrome.rename(real)
+        chrome.write_text(f'#!/bin/sh\nexec "{real}" {" ".join(_LINUX_GPU_FLAGS)} "$@"\n')
+        chrome.chmod(0o755)
+    return chrome
 
 
 def source() -> Path:
@@ -180,6 +200,11 @@ class NodeKitEnvironment:
         home = self.folder.parent / 'nkl-home'      # nkl's data and its Chrome download
         environment = {name: os.environ[name] for name in _RUNTIME_VARIABLES if name in os.environ}
         environment.update(PYTHONNOUSERSITE='1', HOME=str(home), NKL_HOME=str(home / 'nkl'))
+        if sys.platform.startswith('linux'):
+            fetched = subprocess.run([str(environment_python(self.folder)), '-c', 'from nkl._core.server.chrome import '
+                                      'fetch_chrome; print(fetch_chrome())'], env=environment, capture_output=True,
+                                     text=True, check=True)
+            gpu_chrome(Path(fetched.stdout.strip().splitlines()[-1]))
         self._child = ChildProcess([environment_python(self.folder), _WORKER, self.program, self.seed, *self.screen,
                                     *VIDEO],
                                    env=environment, log_directory=self.log_directory,

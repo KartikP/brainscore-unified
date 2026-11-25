@@ -238,3 +238,12 @@ def test_the_act_policy_gives_each_turn_the_sampling_settings():
     from brainscore.harnesses.nodekit.policy import act_policy
     policy = act_policy(lambda prompt: '', temperature=0.7, seed=3)
     assert callable(policy.reset) and policy.trace == []
+
+
+def test_chrome_on_linux_is_wrapped_once_with_the_gpu_flags(tmp_path):
+    chrome = tmp_path / 'chrome'
+    chrome.write_text('the program')
+    nodekit.gpu_chrome(chrome)
+    nodekit.gpu_chrome(chrome)
+    assert (tmp_path / 'chrome.real').read_text() == 'the program'
+    assert '--use-angle=vulkan' in chrome.read_text() and 'chrome.real' in chrome.read_text()
