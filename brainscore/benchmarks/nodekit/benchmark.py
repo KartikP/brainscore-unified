@@ -11,7 +11,8 @@ did it (``trial_memory = 'none'``: each run starts empty; within the run a subje
 participant does; nkl's trace marks no trial starts, so there is no begin or end for each trial). The run
 may last twice the participants' longest run in simulated time (``max_ms``, read from their traces) and
 20000 steps; then the harness stops it. The task's clock runs under nkl's pacing (``pacing``: ``frozen``,
-the default, stops it while the subject answers; ``realtime`` and ``dense`` are a setting, stamped on the
+the default, stops it while the subject answers; ``realtime`` and ``dense`` (with its step ``dense_step_ms``) are
+a setting, stamped on the
 score). nkl gives the trial records only when the program completes, so a
 run that does not complete has none: every test trial is missing and the result is invalid. The subject's
 response times are simulated times (``subject_response_ms``): recorded, not scored. Each run's trace is
@@ -41,6 +42,7 @@ kept under ``record`` (``attrs['trace']``) and replays in the task repository's 
 from __future__ import annotations
 
 import functools
+from typing import Optional
 import json
 from functools import cached_property
 
@@ -188,11 +190,15 @@ class NodeKitBenchmark(BenchmarkBase):
 
     trial_memory = 'none'       # one run of the task is one episode that starts empty
 
-    def __init__(self, identifier: str, task: str, max_steps: int = 20000, pacing: str = 'frozen', record=None):
+    def __init__(self, identifier: str, task: str, max_steps: int = 20000, pacing: str = 'frozen',
+                 dense_step_ms: Optional[float] = None, record=None):
         from brainscore.harnesses.nodekit import PACINGS
         if pacing not in PACINGS:
             raise ValueError(f'pacing is one of {PACINGS} (nkl\'s Frozen, Realtime and Dense), not {pacing!r}.')
+        if dense_step_ms is not None and pacing != 'dense':
+            raise ValueError(f'dense_step_ms is the step of dense pacing; this benchmark runs {pacing!r} pacing.')
         self.task, self.max_steps, self.pacing, self.record = task, max_steps, pacing, record
+        self.dense_step_ms = dense_step_ms
         # Faces: the participants' ceiling (.174) is inside the random floor's interval, so the benchmark cannot
         # separate a subject from chance (owner, 2026-11-25: in the code, off the leaderboard).
         self.leaderboard_eligible = task != 'face-arrangement'
@@ -226,6 +232,7 @@ class NodeKitBenchmark(BenchmarkBase):
         from brainscore.harnesses.nodekit import bundle, play
         record = self.record or data_home() / 'records' / 'nodekit'
         result, environment, session = play(subject, bundle(self.task), form=ACT_FORMS[self.task], pacing=self.pacing,
+                                            **({} if self.dense_step_ms is None else {'dense_step_ms': self.dense_step_ms}),
                                             instructions=INSTRUCTIONS.get(self.task, ''),
                                             max_steps=self.max_steps, max_ms=self.max_ms, record=record)
         return self.score_result(result, steps=environment.steps, invalid_steps=environment.invalid_steps,
@@ -260,6 +267,8 @@ class NodeKitBenchmark(BenchmarkBase):
         return benchmark_score(self, raw=measured['raw'], metric=measured['score_form'],
                                ceiling=self.ceiling, answers=pd.DataFrame({'response_state': states}),
                                answer_policy=ANSWER_POLICY, invalid_limit=0.1, max_ms=self.max_ms,
-                               max_steps=self.max_steps, pacing=self.pacing, **run, **attrs,
+                               max_steps=self.max_steps, pacing=self.pacing,
+                               **({} if self.dense_step_ms is None else {'dense_step_ms': self.dense_step_ms}),
+                               **run, **attrs,
                                **({'invalid_step_share': run['invalid_steps'] / run['steps']}
                                   if run.get('steps') else {}))

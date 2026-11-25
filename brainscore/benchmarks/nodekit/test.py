@@ -220,3 +220,10 @@ def test_a_constant_arrangement_is_an_invalid_result(monkeypatch):
              'distances': [[0, 0.5, 0.5], [0.5, 0, 0.5], [0.5, 0.5, 0]]}]
     score = benchmark.score_result(flat, steps=10, invalid_steps=2)
     assert score.attrs['result_validity'] == 'invalid' and score.attrs['invalid_step_share'] == 0.2
+
+
+def test_the_dense_step_is_a_setting_of_dense_pacing_only(clone):
+    benchmark = NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor', pacing='dense', dense_step_ms=250)
+    assert benchmark.score_result(None).attrs['dense_step_ms'] == 250
+    with pytest.raises(ValueError, match='dense_step_ms'):
+        NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor', dense_step_ms=250)

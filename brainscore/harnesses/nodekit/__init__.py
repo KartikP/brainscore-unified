@@ -27,7 +27,8 @@ ms, a stroke as nkl's motor allows, a wait its time; then the subject sees the s
 
 The pacing (``PACINGS``, nkl's): ``frozen`` (the default) stops the task's clock while the subject
 answers; ``realtime`` lets the subject's answering time (the wall time from the screen to the acts) pass
-before its first act; ``dense`` moves the clock ``DENSE_STEP_US`` each step and takes one act a step. An
+before its first act; ``dense`` moves the clock ``dense_step_ms`` each step (by default ``DENSE_STEP_MS``, nkl's: one frame) and takes
+one act a step: a fixed answering time that does not depend on the machine. An
 empty list is a valid step with no act and None an answer that could not be read (counted in
 ``invalid_steps``); under frozen or realtime pacing neither moves the clock. ``MAX_INVALID_IN_A_ROW`` answers
 in a row with no act stop the run (``stop_cause``). The run ends when the program
@@ -72,7 +73,7 @@ NKL_WHEEL = 'vendor/nkl-0.1.0-py3-none-any.whl'
 SCREEN = (1024, 768)
 PACINGS = ('frozen', 'realtime', 'dense')
 MAX_INVALID_IN_A_ROW = 20       # a run with this many answers in a row that give no act stops (truncated)
-DENSE_STEP_US = 16_667          # nkl's Dense step: one frame at 60 frames a second
+DENSE_STEP_MS = 16.667          # nkl's Dense step: one frame at 60 frames a second
 VIDEO = (512, 384)              # the size of a vision:video frame; frames at 60 a second (the worker's FRAME_US)
 # The participants' folder of each bundle in the task repository: the replay viewer's names.
 VIEWER_FOLDERS = {'drifting-gabor': 'gabor', 'triplet-similarity': 'triplets', 'face-arrangement': 'faces'}
@@ -155,7 +156,7 @@ class NodeKitEnvironment:
 
     def __init__(self, program, *, form: str, pacing: str = 'frozen', seed: int = 0, screen=SCREEN,
                  max_ms: float = 3_600_000, max_steps: int = 20000, instructions: str = '',
-                 frames: bool = False, record: Optional[Path] = None, name: str = 'run',
+                 dense_step_ms: float = DENSE_STEP_MS, frames: bool = False, record: Optional[Path] = None, name: str = 'run',
                  folder: Optional[Path] = None, log_directory: Optional[Path] = None):
         self.program, self.seed, self.screen = Path(program), seed, tuple(screen)
         self.max_ms, self.max_steps, self.record, self.name = max_ms, max_steps, record, name
@@ -165,7 +166,10 @@ class NodeKitEnvironment:
             raise ValueError(f'A NodeKit subject acts on {sorted(FORMS)}, not {form!r} (Contract Rules 5.15).')
         if pacing not in PACINGS:
             raise ValueError(f'pacing is one of {PACINGS} (nkl\'s Frozen, Realtime and Dense), not {pacing!r}.')
+        if not (isinstance(dense_step_ms, (int, float)) and not isinstance(dense_step_ms, bool) and dense_step_ms > 0):
+            raise ValueError(f'dense_step_ms is the time of one dense step in ms, above 0, not {dense_step_ms!r}.')
         self.form, self.pacing, self.instructions, self.frames = form, pacing, instructions, frames
+        self.dense_step_ms = dense_step_ms
         self.folder = ready_folder(library(), f'NodeKit {self.program.name}', folder)
         self.log_directory = Path(log_directory) if log_directory else self.folder / 'logs'
         self._child, self.steps, self.t_ms, self.result, self.invalid_steps, self.trace = None, 0, 0.0, None, 0, None
@@ -219,7 +223,7 @@ class NodeKitEnvironment:
                                    env=environment, log_directory=self.log_directory,
                                    idle_timeout_s=_CHILD_SILENCE_S).__enter__()
         self.steps, self.result, self.invalid_steps, self.trace = 0, None, 0, None
-        answer = self._child.ask({'reset': {'pacing': [self.pacing.capitalize(), DENSE_STEP_US],
+        answer = self._child.ask({'reset': {'pacing': [self.pacing.capitalize(), round(self.dense_step_ms * 1000)],
                                             'limits': {'turns': self.max_steps}, 'seconds': self.max_ms / 1000,
                                             'instructions': f'{_SESSION_WORDS[self.form]} {_NO_LOOK}\n\n'
                                                             f'{self.instructions}'.strip()}})
