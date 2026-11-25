@@ -13,6 +13,7 @@ Folders, all under the download root (``$BRAINSCORE_DATA_HOME/sources/cneuromod`
 ``sourcedata/<data set>.fmriprep``, ``output/<data set>/<form>`` (the files as the code writes
 them) and ``timeseries/<data set>/<form>/sub-XX`` (the same files under the released names).
 """
+import contextlib
 import glob
 import os
 import subprocess
@@ -67,7 +68,7 @@ def build(module, form: str, root: Path, participant: str, session: str | None) 
             continue
         inputs = [path for bold in bolds for path in (
             bold, bold.with_name(bold.name.replace('_desc-preproc_bold', '_desc-brain_mask')),
-            bold.with_name(bold.name.split('_space-')[0] + '_desc-confounds_timeseries.tsv'))]
+            confounds_of(bold))]
         shared.plan(inputs, base)
         shared.get(inputs)
         # Relative atlas paths in the configuration: run from the code folder. Quoted: a path may hold a space.
@@ -75,11 +76,42 @@ def build(module, form: str, root: Path, participant: str, session: str | None) 
                         f'subject_list=["{short}"]', f"output_dir='{work}'", f"data_dir='{base / 'sourcedata'}'"],
                        cwd=code, env=environ, check=True)
         import nibabel
-        check_runs(func, {run: nibabel.load(bold).shape[3] for run, bold in runs.items()}, columns(func, config))
+        confounds = {run: confounds_of(bold) for run, bold in runs.items()}
+        for run, bold in runs.items():          # fMRIPrep writes one confounds row per BOLD volume
+            if len(shared.read_tsv(confounds[run])) != nibabel.load(bold).shape[3]:
+                raise RuntimeError(f'run {run}: its confounds table and its BOLD file differ in volumes')
+        check_runs(func, confounds, columns(func, config))
         # The public store is read over https, where git-annex cannot confirm a copy; the files came from it.
         subprocess.run(['datalad', 'drop', '--reckless', 'availability',
                         *(str(bold.relative_to(fmriprep)) for bold in bolds)], cwd=fmriprep, check=True)
+    # a run extracted before its volumes were stored (an older build): stored now, from its confounds
+    unstamped = set(stamped(func, False))
+    check_runs(func, {run_name(path): path for path in map(Path, glob.glob(str(
+        fmriprep / participant / 'ses-*' / 'func' / '*_desc-confounds_timeseries.tsv')))
+        if run_name(path) in unstamped}, columns(func, config))
     return released(func, base / 'timeseries' / module.NAME / form / participant, renames)
+
+
+def confounds_of(bold: Path) -> Path:
+    return bold.with_name(bold.name.split('_space-')[0] + '_desc-confounds_timeseries.tsv')
+
+
+def kept_volumes(confounds: Path) -> np.ndarray:
+    """The volumes the code keeps: each volume (one confounds row) but those fMRIPrep marks non-steady
+    (``non_steady_state_outlier*``), which the denoise strategy (``simple``) leaves out."""
+    flags = shared.read_tsv(confounds).filter(like='non_steady_state_outlier').to_numpy()
+    return np.flatnonzero(~(flags > 0).any(axis=1)) if flags.size else np.arange(len(shared.read_tsv(confounds)))
+
+
+def stamped(func: Path, value: bool) -> list:
+    """The runs of the HDF5 file that have (``value`` True) or lack the stored ``volumes``."""
+    import h5py
+    h5 = _h5(func)
+    if h5 is None:
+        return []
+    with h5py.File(h5, 'r') as handle:
+        return [name.removesuffix('_timeseries') for group in handle for name in handle[group]
+                if ('volumes' in handle[group][name].attrs) == value]
 
 
 def sources(module, root: Path) -> dict:
@@ -176,21 +208,26 @@ def columns(func: Path, config: dict) -> int:
     return int((data > 0).sum()) if kind == 'mask' else len(np.unique(data[data > 0]))
 
 
-def check_runs(func: Path, volumes: dict, width: int) -> None:
-    """Each run is in the HDF5 file with one row per BOLD volume and ``width`` columns. The code catches
-    every error of a run and goes on, so a run that failed is found here, by its name."""
+def check_runs(func: Path, confounds: dict, width: int) -> None:
+    """Each run is in the HDF5 file with one row per kept volume (``kept_volumes`` of its confounds table) and
+    ``width`` columns; then the kept volumes are stored on the run (attribute ``volumes``), where the per-TR
+    reader times each row. The code catches every error of a run and goes on, so a failed run is found here."""
     import h5py
-    h5, shapes = _h5(func), {}
-    if h5 is not None:
-        with h5py.File(h5, 'r') as handle:
-            shapes = {name.removesuffix('_timeseries'): handle[group][name].shape for group in handle
-                      for name in handle[group]}
-    for run, rows in volumes.items():
-        if shapes.get(run) != (rows, width):
-            found = 'missing' if run not in shapes else f'{shapes[run][0]} rows x {shapes[run][1]} columns'
-            raise RuntimeError(f'run {run}: {found}, expected {rows} rows (its BOLD volumes) x {width} columns, in '
-                               f'{func}. The extraction printed the cause above ("could not process file"). Delete '
-                               'the HDF5 file in that folder to extract every run again, then run the same command.')
+    if not confounds:
+        return
+    h5 = _h5(func)
+    with h5py.File(h5, 'a') if h5 is not None else contextlib.nullcontext({}) as handle:
+        datasets = {name.removesuffix('_timeseries'): handle[group][name] for group in handle for name in handle[group]}
+        for run, table in sorted(confounds.items()):
+            kept = kept_volumes(table)
+            shape = datasets[run].shape if run in datasets else None
+            if shape != (len(kept), width):
+                found = 'missing' if shape is None else f'{shape[0]} rows x {shape[1]} columns'
+                raise RuntimeError(
+                    f'run {run}: {found}, expected {len(kept)} rows (its kept volumes) x {width} columns, in {func}. '
+                    'The extraction printed the cause above ("could not process file"). Delete the HDF5 file in that '
+                    'folder to extract every run again, then run the same command.')
+            datasets[run].attrs['volumes'] = kept
 
 
 def released(func: Path, folder: Path, renames: dict) -> list:

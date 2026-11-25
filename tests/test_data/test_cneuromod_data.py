@@ -29,7 +29,7 @@ def _build(name, source, tmp_path, part=None):
 
 def test_each_tr_takes_the_event_that_holds_its_start_and_none_at_the_run_edges():
     events = pd.DataFrame({'onset': [0.0, 4.47, 12.0], 'duration': [2.98, 2.98, 5.0]})
-    rows = shared.tr_events(9, 1.49, events)       # TR starts 0, 1.49, ..., 11.92
+    rows = shared.tr_events(np.arange(9), 1.49, events)       # TR starts 0, 1.49, ..., 11.92
     assert rows.tolist() == [0, 0, -1, 1, 1, -1, -1, -1, -1]   # 2.98 ends trial 0; 12.0 starts after the last TR
 
 

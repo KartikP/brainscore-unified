@@ -190,15 +190,19 @@ def read_timeseries(path: Path):
     """Each run of a CNeuroMod time series HDF5, any form: ``(entities, array TRs x columns)``.
 
     Group = session, dataset = run (``ses-02_task-things_run-1_timeseries``); ``entities`` has
-    ``session`` (int), ``task`` and ``run`` (int, 1 when the name has no run).
+    ``session`` (int), ``task``, ``run`` (int, 1 when the name has no run) and ``volumes``: the BOLD
+    volume of each row, stored by the builder (the extraction leaves out non-steady volumes); a file
+    without it (a released file): every volume, 0, 1, 2, ...
     """
     import h5py
     with h5py.File(path, 'r') as handle:
         for group in sorted(handle, key=number):
             for name in sorted(handle[group]):
                 found = entities(name)
-                run = {'session': number(group), 'task': found.get('task', ''), 'run': int(found.get('run', 1))}
-                yield run, np.asarray(handle[group][name], dtype=np.float32)
+                array = np.asarray(handle[group][name], dtype=np.float32)
+                run = {'session': number(group), 'task': found.get('task', ''), 'run': int(found.get('run', 1)),
+                       'volumes': np.asarray(handle[group][name].attrs.get('volumes', np.arange(len(array))))}
+                yield run, array
 
 
 def region_columns(mask, grid) -> np.ndarray:
@@ -261,11 +265,11 @@ def atlas_parcels(dseg: Path, labels: Path) -> pd.DataFrame:
     return pd.DataFrame({'parcel': present, 'parcel_name': [names.get(i, '') for i in present]})
 
 
-def tr_events(n_trs: int, tr_seconds: float, events: pd.DataFrame) -> np.ndarray:
-    """For each TR, the row of ``events`` whose ``[onset, onset + duration)`` holds the TR start
-    (TR n starts at n x TR: the extraction drops no volume), else -1. A later event wins."""
-    starts = np.arange(n_trs) * tr_seconds
-    rows = np.full(n_trs, -1)
+def tr_events(volumes: np.ndarray, tr_seconds: float, events: pd.DataFrame) -> np.ndarray:
+    """For each row (BOLD volume ``volumes[i]``, which starts at volume x TR), the row of ``events`` whose
+    ``[onset, onset + duration)`` holds the volume start, else -1. A later event wins."""
+    starts = np.asarray(volumes) * tr_seconds
+    rows = np.full(len(starts), -1)
     for row, (onset, duration) in enumerate(zip(events['onset'], events['duration'])):
         rows[(starts >= onset - 1e-6) & (starts < onset + duration - 1e-6)] = row
     return rows
@@ -336,13 +340,13 @@ def timeseries_assembly(module, clone: Path, participant: str, h5: Path, neuroid
         if session is not None and run['session'] != session:
             continue
         events = run_table(module, clone, participant, run)
-        rows = tr_events(len(array), module.TR_SECONDS, events)
-        starts = np.arange(len(array)) * module.TR_SECONDS
+        rows = tr_events(run['volumes'], module.TR_SECONDS, events)
+        starts = run['volumes'] * module.TR_SECONDS
         onset_of = events['onset'].to_numpy(dtype=float)
         onsets = np.array([onset_of[row] if row >= 0 else np.nan for row in rows])
         presentation = pd.DataFrame({
             'participant': participant, 'session': run['session'], 'task': run['task'], 'run': run['run'],
-            'tr': np.arange(len(array)), 'time': starts, 'event': rows,
+            'tr': run['volumes'], 'time': starts, 'event': rows,
             'stimulus_id': [events['stimulus_id'].iloc[r] if r >= 0 else '' for r in rows],
             'time_in_event': starts - onsets})
         values = array if columns is None else array[:, columns]

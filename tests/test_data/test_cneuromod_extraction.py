@@ -12,6 +12,7 @@ from pathlib import Path
 import h5py
 import nibabel
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 
@@ -77,8 +78,9 @@ def _annexed(path: Path, write) -> None:
     path.symlink_to(f'{content}.absent')
 
 
-def make_tree(root: Path, dataset: str, sessions=('ses-01',)) -> Path:
-    """The clones the builder reads, with every file present: code, atlases, fMRIPrep outputs."""
+def make_tree(root: Path, dataset: str, sessions=('ses-01',), non_steady=()) -> Path:
+    """The clones the builder reads: code, atlases, fMRIPrep outputs (annexed, not downloaded yet). The runs
+    in ``non_steady`` have their first volume marked non-steady in the confounds table, as fMRIPrep marks it."""
     base = root / 'extraction'
     code = base / extraction.CODE
     (code / '.git').mkdir(parents=True, exist_ok=True)
@@ -107,8 +109,10 @@ def make_tree(root: Path, dataset: str, sessions=('ses-01',)) -> Path:
                 _annexed(bold, nibabel.Nifti1Image(np.zeros((2, 2, 2, N_TRS), np.float32), np.eye(4)).to_filename)
                 _annexed(bold.with_name(bold.name.replace('_desc-preproc_bold', '_desc-brain_mask')),
                          lambda content: _nifti(np.ones((2, 2, 2)), content))
+            flags = [int(volume == 0 and run in non_steady) for volume in range(N_TRS)]
             _annexed(func / (bold.name.split('_space-')[0] + '_desc-confounds_timeseries.tsv'),
-                     lambda content: content.write_text('a\n'))
+                     lambda content, flags=flags: content.write_text(
+                         'a\tnon_steady_state_outlier00\n' + ''.join(f'0.5\t{flag}\n' for flag in flags)))
     return base
 
 
@@ -167,7 +171,8 @@ def _extract(options: dict, short, missing) -> None:
             group = handle.require_group(run.split('_')[0])
             if f'{run}_timeseries' in group or run in missing:
                 continue
-            rows = nibabel.load(bold).shape[3] - (run in short)
+            confounds = pd.read_csv(extraction.confounds_of(bold), sep='\t')     # non-steady volumes are left out
+            rows = nibabel.load(bold).shape[3] - int(confounds['non_steady_state_outlier00'].sum()) - (run in short)
             group.create_dataset(f'{run}_timeseries', data=np.zeros((rows, width), np.float32))
 
 
@@ -253,18 +258,21 @@ def test_another_code_commit_is_refused(tmp_path, monkeypatch):
 
 
 def test_package_data_reads_the_made_time_series_with_the_per_tr_reader(tmp_path, monkeypatch):
+    """Run 2 has a non-steady first volume, which the code leaves out: its rows are volumes 1 to 8."""
     from brainscore.data import package_data, packaging
     monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path / 'home'))
     monkeypatch.setattr(packaging, '_expected', lambda name, builder: {})
     monkeypatch.setattr(shared, 'check_prerequisites', lambda: None)
     root = make_source(tmp_path / 'home' / 'sources' / 'cneuromod')
-    make_tree(root, 'things')
+    make_tree(root, 'things', non_steady=(2,))
     calls = stand_in(monkeypatch)
     out = package_data('cneuromod-things-timeseries', output=tmp_path / 'out', part='sub-01/ses-01')
     enabled = {Path(call.argv[3]).name for call in calls if call.argv[:2] == ['datalad', 'siblings']}
     assert 'things.timeseries' not in enabled     # its files are not on the public store: read for its commits
     series = xr.open_dataarray(out / 'sub-01' / 'ses-01' / 'timeseries_cneuromod2026.nc')
-    assert series.shape == (2 * N_TRS, 2)                          # 2 runs x their volumes, 2 parcels
-    assert sorted(set(series['run'].values)) == [1, 2]
+    assert series.shape == (2 * N_TRS - 1, 2)                      # 2 runs x their kept volumes, 2 parcels
+    second = series.sel(presentation=series['run'] == 2)
+    assert second['tr'].values.tolist() == list(range(1, N_TRS))   # each row at the start of its own volume
+    assert np.allclose(second['time'].values, np.arange(1, N_TRS) * 1.49)
     assert (out / 'sub-01' / 'atlas' / 'parcels.csv').read_text().splitlines()[1:] == ['1,LH_Vis_1', '1001,HIP-head-m-rh']
     assert package.extraction is extraction

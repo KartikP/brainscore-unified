@@ -49,8 +49,12 @@ with the checksums below. Participant sub-04 is restricted and never packaged.
 - Time series: `sub-XX/atlas/parcels.csv`, the parcels of the participant's own
   atlas in the column order of its time series, and `ses-NN/timeseries_cneuromod2026.nc`, one row per TR (participant,
   session, task, run, tr, time = tr x 1.49 s, event, stimulus_id, time_in_event) x one column per
-  parcel. The extraction (`cneuromod_extract_tseries`, denoise `simple+gsr`) drops no volume, so
-  TR n starts at n x 1.49 s; a TR takes the event whose [onset, onset + duration) holds its start.
+  parcel. The extraction (`cneuromod_extract_tseries`, denoise `simple+gsr`) leaves out the volumes
+  that fMRIPrep marks non-steady (`non_steady_state_outlier*`; for example sub-01 movie10
+  `ses-006_task-wolf16`: 405 of 406 volumes); `tr` is the BOLD volume of a row and it starts at
+  tr x 1.49 s; a row takes the event whose [onset, onset + duration) holds its start. The builder
+  stores the kept volumes on each run; a released file has no such record and is read as every
+  volume kept, so a run of a released file with a non-steady volume is timed wrong.
 
 ## Time series made from the fMRIPrep outputs
 
