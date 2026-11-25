@@ -352,3 +352,22 @@ def test_the_mario_media_of_a_tr_are_its_frames_its_middle_frame_and_the_sound_o
     rate, sound = wavfile.read(out / first['audio_path'])
     assert rate == 16000 and len(sound) == pytest.approx(first['frames'] / 60 * 16000, abs=1)
     assert table.loc[table['tr'] == 4, 'frames'].item() == 360 - 327     # stops at the repetition's last frame
+
+
+def test_the_mario_hand_contrast_is_positive_where_the_left_thumb_drives_the_parcel(tmp_path):
+    from brainscore.data.cneuromod.validation import mario_checks
+    from brainscore.temporal import hrf_convolve
+    rng = np.random.default_rng(0)
+    n = 200
+    left, right = rng.uniform(0, 1.49, n) * (rng.random(n) < 0.5), rng.uniform(0, 1.49, n) * (rng.random(n) < 0.5)
+    presentation = pd.DataFrame({'session': 1, 'run': np.repeat([1, 2], n // 2), 'tr': np.tile(np.arange(n // 2), 2),
+                                 'frame_start': 0, 'frame_stop': 89, **{f'button_{b}': 0.0 for b in 'A B UP DOWN LEFT RIGHT'.split()}})
+    presentation['button_LEFT'], presentation['button_A'] = left, right
+    drive = {'7Networks_RH_SomMot_1': left, '7Networks_LH_SomMot_1': right, '7Networks_LH_Vis_1': np.zeros(n)}
+    values = np.stack([np.concatenate([hrf_convolve(d[:n // 2, None], 1 / 1.49)[:, 0], hrf_convolve(d[n // 2:, None], 1 / 1.49)[:, 0]])
+                       for d in drive.values()], axis=1) + 0.1 * rng.standard_normal((n, 3))
+    neuroid = pd.DataFrame({'parcel': [1, 2, 3], 'parcel_name': list(drive)})
+    shared.write_assembly(values, presentation, neuroid, tmp_path / 'sub-01' / 'ses-01' / 'timeseries_cneuromod2026.nc')
+    table = mario_checks.glm(tmp_path, tmp_path / 'out').set_index('hemisphere')
+    assert table.loc['RH', 'mean_t'] > 5 and table.loc['LH', 'mean_t'] < -5
+    assert mario_checks.network('7Networks_LH_DorsAttn_Post_3') == 'DorsAttn' and mario_checks.network('HIP-head-m-rh') != 'HIP'
