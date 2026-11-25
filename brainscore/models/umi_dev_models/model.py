@@ -24,11 +24,15 @@ REQUIREMENTS = [re.split(r'[<>=!~;\[ ]', line.strip())[0] for line in
 
 # The depth hypothesis: a region's layer is the block at f * (N - 1) of a part's N blocks,
 # rounded half up. No data chose these values; a change of a value takes a new version word.
-DEPTH_HYPOTHESIS = 'depth hypothesis v1'
+# v2 adds V3 and the fLoc category regions (as IT and VWFA) and the cortex rule; the v1 depths hold.
+DEPTH_HYPOTHESIS = 'depth hypothesis v2'
 DEPTH_TABLE = {
-    'vision': {'V1': 0.10, 'V2': 0.25, 'V4': 0.50, 'IT': 0.90, 'VWFA': 0.90},
+    'vision': {'V1': 0.10, 'V2': 0.25, 'V3': 0.35, 'V4': 0.50, 'IT': 0.90, 'VWFA': 0.90,
+               **dict.fromkeys(('FFA', 'OFA', 'pSTS', 'PPA', 'OPA', 'MPA', 'EBA'), 0.90)},
     'language': {'language_system': 0.67},
 }
+# The cortex region: every k-th block of the vision part, at most this many (one band each).
+CORTEX_BANDS = 12
 # Share of each accelerator given over to weights under device_map='auto'; the rest holds activations.
 WEIGHT_FRACTION = 0.78
 
@@ -38,6 +42,12 @@ def depth_layers(block_paths, depths):
     n = len(block_paths)
     return {} if n == 0 else {region: block_paths[int((Decimal(str(f)) * (n - 1)).quantize(Decimal(1), ROUND_HALF_UP))]
                               for region, f in depths.items()}
+
+
+def cortex_layers(block_paths, n_max=CORTEX_BANDS):
+    """Every k-th block of ``block_paths`` (the k-th, 2k-th, ...), k the smallest step that gives at most ``n_max``."""
+    k = -(-len(block_paths) // n_max)
+    return list(block_paths[k - 1::k])
 
 
 class _StudySubject(ProvenanceSubject):
@@ -293,7 +303,7 @@ def get_model(identifier: str):
     from brainscore.model_helpers.api_behavioral import api_policy
     from brainscore.model_helpers.replies import chat_parts
     from brainscore.model_helpers.text_wrapper import TextWrapper
-    from brainscore.selection import LayerSelector
+    from brainscore.selection import CompositeSelector, LayerSelector
 
     config = MODEL_CONFIGS[identifier]
     _refuse(identifier, config)
@@ -301,6 +311,7 @@ def get_model(identifier: str):
     vision_module, vision_blocks = _blocks(model, config['vision'])
     language_module, language_blocks = _blocks(model, config['language'])
     region_layer_map = depth_layers(vision_blocks, DEPTH_TABLE['vision'])
+    region_layer_map['cortex'] = CompositeSelector(tuple((block, None) for block in cortex_layers(vision_blocks)))
     language_layer = depth_layers(language_blocks, DEPTH_TABLE['language'])['language_system']
     # Recorded from text, in a session without an answer (README: one session for regions, one for an answer).
     region_layer_map['language_system'] = LayerSelector(name=language_layer, modality='text')
@@ -337,6 +348,7 @@ def get_model(identifier: str):
         answer_owners={'behavior:rating': 'generation', 'behavior:probabilities': 'readout'},
         **parts)
     depths = ', '.join(f'{region} {f:.2f}' for table in DEPTH_TABLE.values() for region, f in table.items())
+    depths += f"; cortex {', '.join(cortex_layers(vision_blocks))}"
     return _StudySubject(subject, {
         'study': 'umi_dev_models', 'checkpoint': config['hf_id'], 'revision': config['revision'],
         'dtype': config['dtype'],

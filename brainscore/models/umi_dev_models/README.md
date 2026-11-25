@@ -20,9 +20,13 @@ text to a text prompt (`use_default_system_prompt` in the checkpoint's settings)
 ## The rules every model follows
 
 - **Layers: a stated depth hypothesis, no search.** A part with N blocks gives a region the
-  block at index f * (N - 1), rounded half up: the vision part V1 0.10, V2 0.25, V4 0.50,
-  IT 0.90, VWFA 0.90 (the IT layer); the language model language_system 0.67. The version word
-  is `depth hypothesis v1` (`DEPTH_TABLE` in `model.py`); each score's provenance names it. No
+  block at index f * (N - 1), rounded half up: the vision part V1 0.10, V2 0.25, V3 0.35,
+  V4 0.50, IT 0.90, VWFA 0.90 (the IT layer), and the fLoc category regions FFA, OFA, pSTS, PPA,
+  OPA, MPA and EBA 0.90 (as IT); the language model language_system 0.67. The region `cortex`
+  is every k-th block of the vision part (the k-th, 2k-th, ...), k the smallest step that gives at
+  most 12 blocks (`CORTEX_BANDS`). The version word is `depth hypothesis v2` (`DEPTH_TABLE` in
+  `model.py`; v2 added V3, the fLoc regions and `cortex`, the v1 depths hold); each score's
+  provenance names it. No
   data chose a layer, so a score is a lower bound for the model, and a difference between two
   models can come from the layer and not from the model.
 - **Precision:** bfloat16. Activity is exported as float32.

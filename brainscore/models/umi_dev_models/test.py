@@ -198,9 +198,17 @@ def _collect(subject, stimuli, outputs, task):
 
 def test_the_depth_rule():
     vision = study.depth_layers([f'blocks.{i}' for i in range(32)], study.DEPTH_TABLE['vision'])
-    assert vision == {'V1': 'blocks.3', 'V2': 'blocks.8', 'V4': 'blocks.16', 'IT': 'blocks.28', 'VWFA': 'blocks.28'}
+    expected = {'V1': 'blocks.3', 'V2': 'blocks.8', 'V3': 'blocks.11', 'V4': 'blocks.16', 'IT': 'blocks.28'}
+    assert {region: vision[region] for region in expected} == expected
+    assert {vision[region] for region in ('VWFA', 'FFA', 'OFA', 'pSTS', 'PPA', 'OPA', 'MPA', 'EBA')} == {'blocks.28'}
     assert study.depth_layers([f'l{i}' for i in range(36)], study.DEPTH_TABLE['language']) == {'language_system': 'l23'}
     assert study.depth_layers([f'l{i}' for i in range(26)], {'V1': 0.10}) == {'V1': 'l3'}     # 2.5 rounds up
+
+
+def test_the_cortex_rule_takes_every_kth_block_and_at_most_12():
+    assert study.cortex_layers([f'b{i}' for i in range(32)]) == [f'b{i}' for i in range(2, 32, 3)]
+    assert study.cortex_layers([f'b{i}' for i in range(6)]) == [f'b{i}' for i in range(6)]
+    assert all(len(study.cortex_layers(list(range(n)))) <= 12 for n in range(1, 100))
 
 
 def test_the_token_pool_averages_blocks_of_the_patch_grid():
@@ -361,7 +369,7 @@ def test_the_fit_of_one_layer_at_a_time_gives_the_bits_of_the_fit_of_the_layers_
         fit = pca_class(extractor, 2)
         fit.handle = extractor.register_batch_activations_hook(fit)
         return extractor(pictures, layers=layers).values
-    assert len(layers) == 4
+    assert len(layers) > 1
     assert np.array_equal(projected(study._one_layer_pca()), projected(LayerPCA))
 
 
