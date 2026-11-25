@@ -166,3 +166,8 @@ def test_the_pacing_is_frozen_by_default_stamped_and_checked(clone):
     assert NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor', pacing='dense').pacing == 'dense'
     with pytest.raises(ValueError, match='pacing'):
         NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor', pacing='fast')
+
+
+def test_the_gabor_briefing_names_the_key_that_turns_a_page():
+    from brainscore.benchmarks.nodekit.benchmark import INSTRUCTIONS
+    assert 'Enter' in INSTRUCTIONS['drifting-gabor']

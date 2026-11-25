@@ -141,6 +141,10 @@ def faces(subject: pd.DataFrame, participants: pd.DataFrame) -> dict:
 # The act form each task's participants used (Contract Rules 5.15): the Gabor answer is a key press; the
 # triplet and face answers are pointer acts.
 ACT_FORMS = {'drifting-gabor': 'motor:key', 'triplet-similarity': 'motor:pointer', 'face-arrangement': 'motor:pointer'}
+# The benchmark's instructions at the end of nkl's briefing: what the participants could do that the act form
+# does not show. Gabor's pages have a Next button for the pointer; in the key form, Enter or the right arrow
+# key does what it does (checked on the first page).
+INSTRUCTIONS = {'drifting-gabor': 'Enter or the right arrow key turns an instruction page, as the Next button does.'}
 # Each task's metric and ceiling: metric(subject, participants) -> {'raw', 'score_form', ...}; ceiling(participants).
 METRICS = {'drifting-gabor': (gabor, gabor_ceiling), 'triplet-similarity': (triplets, triplets_ceiling),
            'face-arrangement': (faces, faces_ceiling)}
@@ -188,6 +192,7 @@ class NodeKitBenchmark(BenchmarkBase):
         from brainscore.harnesses.nodekit import bundle, play
         record = self.record or data_home() / 'records' / 'nodekit'
         result, environment, session = play(subject, bundle(self.task), form=ACT_FORMS[self.task], pacing=self.pacing,
+                                            instructions=INSTRUCTIONS.get(self.task, ''),
                                             max_steps=self.max_steps, max_ms=self.max_ms, record=record)
         return self.score_result(result, steps=environment.steps, invalid_steps=environment.invalid_steps,
                                  run_ms=environment.t_ms, end_reason=session.source.end_reason,
