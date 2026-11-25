@@ -346,12 +346,16 @@ def test_the_mario_media_of_a_tr_are_its_frames_its_middle_frame_and_the_sound_o
     assert table['tr'].tolist() == [1, 2, 3, 4, 6, 7, 8]                  # the TRs that show a repetition
     first = table.iloc[0]
     capture = cv2.VideoCapture(str(out / first['video_path']))
-    assert int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) == first['frames'] == 148 - 59
+    assert first['frames'] == 148 - 59
+    assert int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) == mario.CLIP_FRAMES == 89   # every clip lasts one TR
     assert capture.get(cv2.CAP_PROP_FPS) == pytest.approx(60)
     assert cv2.imread(str(out / first['image_path'])).shape == (224, 240, 3)
     rate, sound = wavfile.read(out / first['audio_path'])
-    assert rate == 16000 and len(sound) == pytest.approx(first['frames'] / 60 * 16000, abs=1)
-    assert table.loc[table['tr'] == 4, 'frames'].item() == 360 - 327     # stops at the repetition's last frame
+    assert rate == 16000 and len(sound) == 89 * 16000 // 60 and np.abs(sound).max() > 0
+    last = table.loc[table['tr'] == 4].iloc[0]
+    assert last['frames'] == 360 - 327                                    # the play ends inside the TR
+    _, sound = wavfile.read(out / last['audio_path'])
+    assert np.abs(sound[last['frames'] * 16000 // 60 + 1:]).max() == 0     # silent after the play
 
 
 def test_the_mario_hand_contrast_is_positive_where_the_left_thumb_drives_the_parcel(tmp_path):

@@ -33,6 +33,7 @@ STIMULUS_SOURCE = ('the play videos of CNeuroMod mario.replays (https://github.c
 STIMULUS_COLUMNS = ('level', 'replay_video')     # not ``video``: a path relative to mario.replays, not a file here
 REPLAYS = 'mario.replays'
 SOUND_RATE_HZ = 16000           # the sound of a TR: mono, as the other sound benchmarks give it
+CLIP_FRAMES = round(TR_SECONDS * FRAMES_PER_SECOND)     # 89: every clip lasts one TR
 _GAME = 'gym-retro_game'
 # Limit: mario.timeseries names cneuromod_extract_tseries at this commit, which is not in its public
 # repository; the time series are made with extraction.CODE_COMMIT (the THINGS and movie10 commit, which
@@ -104,7 +105,9 @@ def tr_identifier(participant: str, session: int, run: int, tr: int) -> str:
 def write_media(packaged: Path, participant: str, replays: Path) -> Path:
     """The media of each TR of ``participant`` that shows a repetition (``frame_start`` < ``frame_stop``), from
     the play videos in the clone ``replays`` (``mario.replays``): the clip of its frames (``.mp4``, 60 frames per
-    second, 240 x 224), its middle frame (``.png``) and the sound of the same frames (``.wav``, 16 kHz, mono),
+    second, 240 x 224, ``CLIP_FRAMES`` frames: a TR that ends after its play repeats the play's last frame and
+    its sound is silent there; ``frames`` counts the frames of the play), its middle frame (``.png``) and the
+    sound of the same frames (``.wav``, 16 kHz, mono),
     in ``<participant>/media/``, with ``media.csv`` (one row per TR, paths relative to ``packaged``). The
     videos are fetched with DataLad, which checks each against the MD5 of its annex key."""
     import cv2
@@ -154,6 +157,8 @@ def _cut(video: Path, participant: str, trs: pd.DataFrame, packaged: Path, cv2, 
             frame += 1
         if not frames:
             continue
+        played = len(frames)
+        frames = (frames + [frames[-1]] * CLIP_FRAMES)[:CLIP_FRAMES]
         writer = cv2.VideoWriter(str(folder / f'{name}.mp4'), cv2.VideoWriter_fourcc(*'mp4v'), FRAMES_PER_SECOND,
                                  (frames[0].shape[1], frames[0].shape[0]))
         for image in frames:
@@ -161,11 +166,12 @@ def _cut(video: Path, participant: str, trs: pd.DataFrame, packaged: Path, cv2, 
         writer.release()
         cv2.imwrite(str(folder / f'{name}.png'), frames[len(frames) // 2])
         start = int(tr.frame_start) * SOUND_RATE_HZ // FRAMES_PER_SECOND
-        stop = (int(tr.frame_start) + len(frames)) * SOUND_RATE_HZ // FRAMES_PER_SECOND
-        wavfile.write(folder / f'{name}.wav', SOUND_RATE_HZ, sound[start:stop])
+        samples = CLIP_FRAMES * SOUND_RATE_HZ // FRAMES_PER_SECOND
+        heard = sound[start:(int(tr.frame_start) + min(played, CLIP_FRAMES)) * SOUND_RATE_HZ // FRAMES_PER_SECOND][:samples]
+        wavfile.write(folder / f'{name}.wav', SOUND_RATE_HZ, np.pad(heard, (0, samples - len(heard))))
         relative = folder.relative_to(packaged)
         rows.append({'stimulus_id': name, 'session': int(tr.session), 'run': int(tr.run), 'tr': int(tr.tr),
-                     'repetition_id': tr.stimulus_id, 'frames': len(frames),
+                     'repetition_id': tr.stimulus_id, 'frames': played,
                      'video_path': str(relative / f'{name}.mp4'), 'image_path': str(relative / f'{name}.png'),
                      'audio_path': str(relative / f'{name}.wav')})
     capture.release()
