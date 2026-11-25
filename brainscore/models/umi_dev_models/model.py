@@ -2,6 +2,7 @@
 ``model_configs.json``, by the rules of ``README.md``. Everything of the study is in this folder."""
 import json
 import re
+from typing import Optional
 from decimal import ROUND_HALF_UP, Decimal
 from functools import partial
 from pathlib import Path
@@ -303,21 +304,21 @@ SCREEN_FORMS = ('motor:key', 'motor:pointer')
 SCREEN_INPUTS = ('vision:image', 'vision:video', 'instruction', 'observation')
 
 
-def _policy(reply, identifier):
-    """One policy for the study's two closed loops: a task on a screen (its row's observation names the act
-    form) gets NodeKit's act policy; the grid game gets ``api_policy`` as before. ``reset()`` clears both. A run
-    with other turn settings (sampling, a seed) sets ``policy.screen`` to its own ``act_policy(reply, ...)``."""
+def _policy(reply, identifier, turn_settings):
+    """One policy for the study's two closed loops, chosen by the row's inputs: a screen (``vision:image``, a
+    task on a screen) goes to NodeKit's act policy with ``turn_settings``; the grid game's ``observation``
+    frame goes to ``api_policy`` as before. ``reset()`` and ``close()`` reach both."""
     from brainscore.harnesses.nodekit.policy import act_policy
     from brainscore.model_helpers.api_behavioral import api_policy
-    screen, grid = act_policy(reply), api_policy(_reply_client(reply), identifier)
+    screen, grid = act_policy(reply, **turn_settings), api_policy(_reply_client(reply), identifier)
 
     def policy(row):
-        return (policy.screen if 'act_form' in (row.get('observation') or {}) else policy.grid)(row)
+        return (screen if 'vision:image' in row else grid)(row)
 
     def reset():
-        policy.screen.reset()
-        policy.grid.reset()
-    policy.reset, policy.screen, policy.grid, policy.reply = reset, screen, grid, reply
+        screen.reset()
+        grid.reset()
+    policy.reset, policy.close = reset, screen.close
     return policy
 
 
@@ -336,7 +337,9 @@ def _intervention(model, vision, language):
     return pytorch_intervention(torch.nn.ModuleDict(roots))
 
 
-def get_model(identifier: str):
+def get_model(identifier: str, turn_settings: Optional[dict] = None):
+    """The study model ``identifier``. ``turn_settings`` are the act policy's settings for a task on a screen
+    (``brainscore.harnesses.nodekit.policy.act_policy``: ``temperature``, ``seed``, ``max_tokens``, ...)."""
     from brainscore import BrainScoreModel
     from brainscore.model_helpers.replies import chat_parts
     from brainscore.model_helpers.text_wrapper import TextWrapper
@@ -382,7 +385,7 @@ def get_model(identifier: str):
         identifier, model, region_layer_map, extractor=extractor, reply=reply, likelihood=likelihood,
         behavioral_readout_layer=region_layer_map['IT'],
         # A model without video takes the screen task's last screen only (no vision:video).
-        policy=_policy(reply, identifier),
+        policy=_policy(reply, identifier, dict(turn_settings or {})),
         policy_in_channels=('reward', *(c for c in SCREEN_INPUTS if config['video'] or c != 'vision:video')),
         policy_out_channels=('motor', *SCREEN_FORMS),
         answer_owners={'behavior:rating': 'generation', 'behavior:probabilities': 'readout'},
