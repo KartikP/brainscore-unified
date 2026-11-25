@@ -194,7 +194,10 @@ def main(argv=None) -> None:
         replays = shared.clone(data_home() / 'sources' / 'cneuromod', REPLAYS)
     participants, _ = shared.scope(sys.modules[__name__], args.part)
     for participant in participants:
-        if (packaged / participant).is_dir():
+        done = packaged / participant / 'media' / 'media.csv'     # written last: its media are complete
+        if done.is_file():
+            print(f'{participant}: media made already ({done}); delete that file to make them again')
+        elif (packaged / participant).is_dir():
             print(write_media(packaged, participant, replays))
 
 

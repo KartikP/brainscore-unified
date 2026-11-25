@@ -356,6 +356,9 @@ def test_the_mario_media_of_a_tr_are_its_frames_its_middle_frame_and_the_sound_o
     assert last['frames'] == 360 - 327                                    # the play ends inside the TR
     _, sound = wavfile.read(out / last['audio_path'])
     assert np.abs(sound[last['frames'] * 16000 // 60 + 1:]).max() == 0     # silent after the play
+    (out / first['video_path']).unlink()
+    mario.main(['--packaged', str(out), '--part', 'sub-01', '--replays', str(replays)])
+    assert not (out / first['video_path']).exists()                       # a finished participant is skipped
 
 
 def test_the_mario_hand_contrast_is_positive_where_the_left_thumb_drives_the_parcel(tmp_path):
