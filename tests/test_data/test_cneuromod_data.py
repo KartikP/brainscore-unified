@@ -287,6 +287,21 @@ def test_git_annex_older_than_10_20230126_is_refused_with_the_remedy(monkeypatch
             shared.check_prerequisites()
 
 
+def test_an_unlocked_annexed_file_without_its_content_is_fetched_and_sized(tmp_path, monkeypatch):
+    """Some CNeuroMod text files are unlocked: before the download the file holds its annex key."""
+    (tmp_path / '.datalad').mkdir()
+    pointer, here = tmp_path / 'run-1_desc-confounds_timeseries.tsv', tmp_path / 'events.tsv'
+    pointer.write_text('/annex/objects/MD5E-s718296--65d8a978149c2772ac92fb2a3569070b.tsv\n')
+    here.write_text('onset\tduration\n')
+    calls = []
+    monkeypatch.setattr(subprocess, 'run', lambda argv, **kwargs: calls.append(list(argv)))
+    shared.get([pointer, here])
+    assert calls == [['datalad', 'get', pointer.name]]
+    assert shared.annex_size(pointer) == 718296
+    with pytest.raises(FileNotFoundError, match='confounds'):
+        shared.existing([pointer])
+
+
 def test_the_viewing_order_counts_the_answered_trials_of_an_image_in_time_and_not_the_released_label():
     """The released ``repetition`` can be 4 or 5 (out-of-order sessions); the viewing order is 1, 2, 3 in time,
     over answered trials only."""

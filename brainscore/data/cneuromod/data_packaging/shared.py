@@ -106,12 +106,26 @@ def _enable_public_store(folder: Path) -> None:
     subprocess.run(enable, check=True)
 
 
+def _pointer(path: Path) -> str:
+    """The annex key an unlocked annexed file names while its content is not here (a small file that
+    holds ``/annex/objects/<key>``); '' for any other file."""
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > 1024:
+        return ''
+    text = path.read_bytes()
+    return text.decode(errors='replace').strip() if text.startswith(b'/annex/objects/') else ''
+
+
+def present(path: Path) -> bool:
+    """The file's content is here: not a dangling annex link and not an unlocked annex pointer file."""
+    return path.exists() and not _pointer(path)
+
+
 def annex_size(path: Path) -> int:
     """The size of an annexed file from its key (the file need not be present); a file in git: its size."""
-    if path.is_symlink():
-        found = _ANNEX_SIZE.search(os.readlink(path))
-        if found:
-            return int(found.group(1))
+    key = os.readlink(path) if path.is_symlink() else _pointer(path)
+    found = _ANNEX_SIZE.search(key)
+    if found:
+        return int(found.group(1))
     return path.stat().st_size if path.exists() else 0
 
 
@@ -132,7 +146,7 @@ def check_prerequisites() -> None:
 
 def plan(paths: list, cache: Path) -> int:
     """Print what the download needs before it starts; stop when the disk is too small. The bytes to get."""
-    missing = [path for path in paths if not path.exists()]
+    missing = [path for path in paths if not present(path)]
     total = sum(annex_size(path) for path in paths)
     to_get = sum(annex_size(path) for path in missing)
     free = shutil.disk_usage(cache).free
@@ -154,7 +168,7 @@ def get(paths: list) -> None:
     """``datalad get`` of the listed paths only, grouped by clone."""
     by_clone = {}
     for path in paths:
-        if not path.exists():
+        if not present(path):
             root = next(parent for parent in path.parents if (parent / '.datalad').exists())
             by_clone.setdefault(root, []).append(str(path.relative_to(root)))
     for root, relative in by_clone.items():
@@ -165,7 +179,7 @@ def get(paths: list) -> None:
 def existing(paths: list) -> list:
     """The paths, each present; a missing one raises FileNotFoundError that names it."""
     for path in paths:
-        if not path.exists():
+        if not present(path):
             raise FileNotFoundError(f'{path} is missing (its content was not downloaded)')
     return paths
 
