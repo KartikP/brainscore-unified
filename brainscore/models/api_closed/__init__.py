@@ -11,6 +11,7 @@ model_registry['claude-sonnet-5-5-bedrock'] = lambda: get_model('claude-sonnet-5
 model_registry['claude-sonnet-5-5-behavioral'] = lambda: get_model('claude-sonnet-5-5-behavioral')
 model_registry['claude-opus-5-5-bedrock'] = lambda: get_model('claude-opus-5-5-bedrock')
 model_registry['claude-opus-5-5-behavioral'] = lambda: get_model('claude-opus-5-5-behavioral')
+model_registry['qwen3-vl-235b-a22b-bedrock'] = lambda: get_model('qwen3-vl-235b-a22b-bedrock')
 model_registry['claude-haiku-behavioral'] = lambda: get_model('claude-haiku-behavioral')
 model_registry['gpt-4o-behavioral'] = lambda: get_model('gpt-4o-behavioral')
 model_registry['deepseek-chat-behavioral'] = lambda: get_model('deepseek-chat-behavioral')
