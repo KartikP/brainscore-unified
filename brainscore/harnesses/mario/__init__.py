@@ -40,6 +40,7 @@ NES_BUTTONS = ('B', None, 'SELECT', 'START', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'A')
 ACTIONS = ((), ('RIGHT',), ('RIGHT', 'A'), ('RIGHT', 'B'), ('RIGHT', 'A', 'B'), ('A',), ('LEFT',), ('LEFT', 'A'),
            ('LEFT', 'B'), ('LEFT', 'A', 'B'), ('DOWN',), ('UP',))
 FRAMES_PER_STEP = 4
+GAME = 'SuperMarioBros-Nes'
 INSTRUCTION = 'Play Super Mario Bros.: reach the flag at the end of the level.'
 _WORKER = Path(__file__).with_name('_worker.py')
 
@@ -59,7 +60,11 @@ def level_state(level: str) -> Path:
     return state
 
 
+ROM_SHA1 = 'facee9c577a5262dbe33ac4930bb0b58c8c037f7'     # rom.sha of the integration: Super Mario Bros. (NES)
+
+
 def buttons(action: int) -> list:
+    """The NES buttons held by ``action``, in stable-retro's order."""
     held = ACTIONS[action]
     return [int(name in held) for name in NES_BUTTONS]
 
@@ -69,17 +74,29 @@ def cleared(y_screen: int, lives: int, player_state: int) -> bool:
     return not (y_screen > 1 or lives == -1 or player_state in (6, 11))
 
 
-class MarioEnvironment:
-    """One play of ``level`` (a state of the integration, ``Level1-1``) with the ROM at ``rom``."""
+def check_rom(rom) -> Path:
+    """``rom`` when it is the Super Mario Bros. ROM of the integration (its SHA1); else a refusal before any work."""
+    import hashlib
+    rom = Path(rom)
+    if not rom.is_file():
+        raise FileNotFoundError(f'no ROM at {rom}: name the Super Mario Bros. (NES) ROM file you own; '
+                                'Brain-Score does not provide it.')
+    digest = hashlib.sha1(rom.read_bytes()).hexdigest()
+    if digest != ROM_SHA1:
+        raise ValueError(f'{rom} has SHA1 {digest}; the data set was recorded with the Super Mario Bros. (NES) ROM '
+                         f'of SHA1 {ROM_SHA1} (rom.sha of courtois-neuromod/mario.stimuli). Name that ROM file.')
+    return rom
 
-    def __init__(self, rom, level: str = 'Level1-1', *, max_steps: int = 3000, folder: Optional[Path] = None,
-                 log_directory: Optional[Path] = None):
-        self.rom, self.level, self.max_steps = Path(rom), level, max_steps
-        if not self.rom.is_file():
-            raise FileNotFoundError(f'no ROM at {self.rom}: name the Super Mario Bros. (NES) ROM file you own; '
-                                    'Brain-Score does not provide it.')
-        self.folder = ready_folder(MARIO, f'mario {level}', folder)
-        self.state = level_state(level)
+
+class RetroEnvironment:
+    """One play of ``state`` of a stable-retro ``game`` in the child process. ``integration`` is
+    ``(checkout, ROM, state file)`` for a game stable-retro does not ship (Super Mario Bros.); None for one it
+    ships with its ROM. The subject's action is one of ``ACTIONS`` (button names), held for 4 frames."""
+
+    def __init__(self, game: str, state: str, *, integration=None, max_steps: int = 3000,
+                 folder: Optional[Path] = None, log_directory: Optional[Path] = None):
+        self.game, self.state, self.integration, self.max_steps = game, state, integration, max_steps
+        self.folder = ready_folder(MARIO, f'{game} {state}', folder)
         self.log_directory = Path(log_directory) if log_directory else self.folder / 'logs'
         self._child, self.steps, self.trace = None, 0, []
 
@@ -90,24 +107,24 @@ class MarioEnvironment:
         frames = np.frombuffer(base64.b64decode(answer['frames']), np.uint8).reshape(answer['shape'])
         sound = np.frombuffer(base64.b64decode(answer['sound']), np.int16).astype(np.float32) / 32768
         self.sound_rate_hz = answer['sound_rate']
-        self.trace.append({key: answer[key] for key in ('scroll', 'lives', 'y_screen', 'player_state', 'done')})
+        self.trace.append({**answer['variables'], 'done': answer['done']})
         return {'vision:video': frames, 'audio': sound, 'instruction': INSTRUCTION}
 
     def reset(self, **_):
         self.close()
         environment = {name: os.environ[name] for name in _RUNTIME_VARIABLES if name in os.environ}
-        self._child = ChildProcess([environment_python(self.folder), _WORKER, self.folder / 'checkout', self.rom,
-                                    self.state],
+        extra = [str(part) for part in self.integration] if self.integration else []
+        self._child = ChildProcess([environment_python(self.folder), _WORKER, self.game, self.state, *extra],
                                    env={**environment, 'PYTHONNOUSERSITE': '1'}, log_directory=self.log_directory,
                                    idle_timeout_s=120).__enter__()
         self.steps, self.trace = 0, []
-        row = self._row(self._child.ask({'reset': self.level}))
+        row = self._row(self._child.ask({'reset': True}))
         row['vision:video'] = np.repeat(row['vision:video'], FRAMES_PER_STEP, axis=0)   # the first frame, 4 times
         return row
 
     def step(self, outputs):
         action = self.action_spec().validate(outputs['motor'])
-        row = self._row(self._child.ask({'step': buttons(action), 'frames': FRAMES_PER_STEP}))
+        row = self._row(self._child.ask({'step': list(ACTIONS[action]), 'frames': FRAMES_PER_STEP}))
         self.steps += 1
         if self.trace[-1]['done']:
             return row, 'terminal'
@@ -117,18 +134,30 @@ class MarioEnvironment:
         return {'t_ms': self.steps * FRAMES_PER_STEP * 1000 / 60, 'time_source': 'emulator frames',
                 'time_inferred': False}
 
-    def progress(self) -> dict:
-        """The participants' measures of this play, from its trace."""
-        first, last = self.trace[0], self.trace[-1]
-        return {'level': self.level, 'steps': self.steps, 'seconds': self.steps * FRAMES_PER_STEP / 60,
-                'x_traveled': last['scroll'] - first['scroll'], 'max_scroll': max(t['scroll'] for t in self.trace),
-                'cleared': bool(last['done'] and cleared(last['y_screen'], last['lives'], last['player_state'])),
-                'ended_by': 'scenario' if last['done'] else 'max_steps'}
-
     def close(self):
         if self._child is not None:
             self._child.__exit__(None, None, None)
             self._child = None
+
+
+class MarioEnvironment(RetroEnvironment):
+    """One play of ``level`` (a state of the integration, ``Level1-1``) with the ROM at ``rom`` (checked first)."""
+
+    def __init__(self, rom, level: str = 'Level1-1', **kwargs):
+        rom = check_rom(rom)
+        super().__init__(GAME, level, max_steps=kwargs.pop('max_steps', 3000), **kwargs)
+        self.level = level
+        self.integration = (self.folder / 'checkout', rom, level_state(level))
+
+    def progress(self) -> dict:
+        """The participants' measures of this play (mario.replays): scroll distance and the clear rule."""
+        def scroll(t):
+            return t['xscrollHi'] * 256 + t['xscrollLo']
+        first, last = self.trace[0], self.trace[-1]
+        return {'level': self.level, 'steps': self.steps, 'seconds': self.steps * FRAMES_PER_STEP / 60,
+                'x_traveled': scroll(last) - scroll(first), 'max_scroll': max(scroll(t) for t in self.trace),
+                'cleared': bool(last['done'] and cleared(last['player_y_screen'], last['lives'], last['player_state'])),
+                'ended_by': 'scenario' if last['done'] else 'max_steps'}
 
 
 def play_level(subject, rom, level: str = 'Level1-1', *, outputs=('motor',), max_steps: int = 3000,
@@ -143,3 +172,28 @@ def play_level(subject, rom, level: str = 'Level1-1', *, outputs=('motor',), max
         return environment.progress(), session
     finally:
         environment.close()
+
+
+def participants_progress(level: str = 'Level1-1') -> dict:
+    """Per participant, the plays of ``level`` in the scanner (the info files of ``mario.replays``, fetched with
+    DataLad): plays, share cleared, median and largest ``x_traveled``, median seconds."""
+    import glob
+    import json
+    import statistics
+    from brainscore.data.cneuromod.data_packaging import shared
+    from brainscore.data.local import data_home
+    shared.check_prerequisites()
+    clone = shared.clone(data_home() / 'sources' / 'cneuromod', 'mario.replays')
+    code = 'w{}l{}'.format(*level.removeprefix('Level').split('-'))
+    files = [Path(path) for path in sorted(glob.glob(str(clone / f'sub-*/ses-*/beh/infos/*_level-{code}_rep-*.json')))]
+    shared.get(files)
+    plays = [json.loads(path.read_text()) for path in files]
+    table = {}
+    for participant in sorted({play['Subject'] for play in plays}):
+        own = [play for play in plays if play['Subject'] == participant]
+        table[f'sub-{participant}'] = {
+            'plays': len(own), 'cleared': sum(play['Cleared'] for play in own) / len(own),
+            'median_x_traveled': statistics.median(play['X_Traveled'] for play in own),
+            'max_x_traveled': max(play['X_Traveled'] for play in own),
+            'median_seconds': statistics.median(play['Duration'] for play in own)}
+    return table
