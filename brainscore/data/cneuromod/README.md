@@ -31,8 +31,16 @@ with the checksums below. Participant sub-04 is restricted and never packaged.
 - THINGS: `ses-NN/trials.nc`, the GLMsingle trial responses (`things.glmsingle`, model
   FITHRF_GLMDENOISE_RR, betas z-scored per voxel over all trials), dims `presentation` (one per
   trial: participant, session, task, run, trial, onset, duration, stimulus_id, repetition,
-  condition, response, ...) x `neuroid` (one per region mask and voxel: region, atlas, voxel,
-  i, j, k); and `glmsingle/`, the released noise-ceiling map.
+  condition, response, ...) x `neuroid` (one per region and voxel: region, atlas, voxel,
+  i, j, k); and `glmsingle/`, the released noise-ceiling map. Select a region with
+  `trials.sel(region='FFA')` (a `region` coordinate, as in the vision assemblies). Each region has
+  one mask set: the participant's own pRF (`retinoVisionNpythy`) and fLoc localizer
+  (`fLocVisionTask`) masks; the Kanwisher group parcels (`fLocVisionKanwisher`) only for a region
+  without an own mask (sub-06). `atlas` names the source. A voxel in two masks (for example EBA
+  and hV4) is one row per region with the same `voxel`, `i`, `j`, `k`.
+  The rows with `region='cortex'`, `atlas='aparcaseg'` are the cortical voxels of the fMRIPrep
+  segmentation (`things.fmriprep`, `space-T1w_desc-aparcaseg_dseg` of the first THINGS run,
+  labels 1000 to 2999), on the GLMsingle grid without resampling (sub-01: 70900 voxels).
   The `repetition` column is the label of the released event files, unchanged. It is not always
   the viewing order: in out-of-order sessions it is 4 or 5 (18 trials of sub-01, sessions 14-15),
   and it counts trials without a response. For the viewing order use
@@ -57,16 +65,20 @@ the per-participant atlases are on the S3 store only.
 
 Built twice from the public files on a cloud machine on 2026-11-24, equal bytes both times. Every
 file's sha1 is in `data_packaging/expected.json`; the command compares each written file with it.
+On 2026-11-24 `trials.nc` changed (one mask set per region, the cortex rows added): rebuilt from the
+kept download, every other file had the recorded bytes; the earlier `trials.nc` sha1 was
+`20f7fd2cf977fc24cde56f878750d60380069e0e` (17290 region rows).
 
 | File | sha1 |
 | --- | --- |
-| `sub-01/ses-01/trials.nc` (180 trials x 17290 region voxels) | `20f7fd2cf977fc24cde56f878750d60380069e0e` |
+| `sub-01/ses-01/trials.nc` (180 trials x 84543 voxels: 13643 region rows, 70900 cortex rows) | `b0e5f02a398199191f9bd12195709d4358826b8a` |
 | `sub-01/ses-01/events.csv` | `6ccb86ffc4ba1808b15e0c19e104b47e4bb6fbf0` |
 | `sub-01/ses-01/stimuli.csv` (120 images) | `82bac6c9402245711e4a5c838fd24e6c694c56dd` |
 | `atlas/parcels.csv` | `73255080a671a6d875a7808ac0c2ce43ee1e824e` |
 
 Time and size: 11.32 GB downloaded (one trial-response file per participant holds all 36
-sessions), 403 s for the first build, 3 s for a rebuild from the kept download; 16 MB written.
+sessions), 403 s for the first build, 3 s for a rebuild from the kept download; 69 MB written
+for one session; 4.2 GB for the 36 sessions of sub-01 (19 s from the kept download).
 
 ## Validation: the paper's noise ceiling (Fig. 2a)
 
@@ -76,6 +88,9 @@ On the full packaging (2026-11-24) it equals the released noise-ceiling map on e
 voxel (largest difference 0.0011 percentage points; the betas are stored as float32) and gives
 the paper's image counts and maxima for sub-01, 02 and 03. sub-06 has no pRF masks; its FFA,
 EBA and PPA are the Kanwisher group parcels. The figure and tables are in `validation/`.
+After the change to one mask set per region (2026-11-24) the check on sub-01 gives the same image
+count (3247), maximum (56.51) and region medians; `voxels` in `fig2a_voxels.csv` still counts the
+earlier packaging, with the group parcels beside the own masks (sub-01 now: 12417 unique voxels).
 
 ## Stimuli and terms
 
@@ -110,10 +125,10 @@ neuroscience. Scientific Data 13, 141. https://doi.org/10.1038/s41597-026-06591-
 ### cneuromod-things
 
 - Source: Courtois NeuroMod, https://docs.cneuromod.ca (the repositories at https://github.com/courtois-neuromod); the documentation states CC0 for the public participants, and each repository README says "Redistribution of data outside of the Courtois NeuroMod data bank is prohibited": package locally, do not share the output. THINGS: St-Laurent et al. 2026, Scientific Data 13:141. The images are not included.
-- Access: public, no account: masks, atlas, event files and GLMsingle outputs of sub-01, 02, 03 and 06.
-- Needs: DataLad and git-annex 10.20230126 or later (tested: 10.20261026 and 10.20261113; from 10.20261113 git-annex asks to confirm the CONP store, which the command does); h5py, nibabel, nilearn; per participant 11.32 GB to download (the trial-response file holds every session, also for a one-session part) and about 12 GB of disk; measured for sub-01 on a cloud machine: 403 s, mostly the download (24 MB/s); a rebuild from the kept download: 3 s per session.
-- Command: `python -m brainscore.data package cneuromod-things`. Source folder: none: the script clones the repositories with DataLad (https, no recursion) and downloads only the files it needs into `$BRAINSCORE_DATA_HOME/sources/cneuromod`, kept so that a stopped run resumes. A folder of earlier clones (`things/`, `things.glmsingle/`, `anat.atlases/`) given as the source is read where it is. Output (or `--output <new folder>`): `~/brainscore-data/packaged/cneuromod-things`. One part only: add `--part <part>` (a part as Writes states).
-- Writes: `atlas/` (a copy of the group cneuromod2026 atlas and its labels, with `parcels.csv`, the parcels present); per participant `masks/` (copies of the region masks); per session `ses-NN/`: `trials.nc` (GLMsingle trial responses, region voxels from the masks), `events.csv` (the event files, each trial with its stimulus identifier), `stimuli.csv` (identifiers only); and `glmsingle/` (the released noise-ceiling map). A part: `sub-XX` (one participant) or `sub-XX/ses-NN` (one session); sub-04 is restricted and never packaged.
+- Access: public, no account: masks, atlas, event files, GLMsingle outputs and the fMRIPrep segmentation of sub-01, 02, 03 and 06.
+- Needs: DataLad and git-annex 10.20230126 or later (tested: 10.20261026 and 10.20261113; from 10.20261113 git-annex asks to confirm the CONP store, which the command does); h5py, nibabel, nilearn; per participant 11.32 GB to download (the trial-response file holds every session, also for a one-session part) and about 16 GB of disk; measured for sub-01 on a cloud machine: 403 s, mostly the download (24 MB/s); a rebuild from the kept download: 3 s per session.
+- Command: `python -m brainscore.data package cneuromod-things`. Source folder: none: the script clones the repositories with DataLad (https, no recursion) and downloads only the files it needs into `$BRAINSCORE_DATA_HOME/sources/cneuromod`, kept so that a stopped run resumes. A folder of earlier clones (`things/`, `things.glmsingle/`, `things.fmriprep/`, `anat.atlases/`) given as the source is read where it is. Output (or `--output <new folder>`): `~/brainscore-data/packaged/cneuromod-things`. One part only: add `--part <part>` (a part as Writes states).
+- Writes: `atlas/` (a copy of the group cneuromod2026 atlas and its labels, with `parcels.csv`, the parcels present); per participant `masks/` (copies of the region masks); per session `ses-NN/`: `trials.nc` (GLMsingle trial responses: the region voxels, one mask set per region, and the cortex voxels of the fMRIPrep segmentation, `region='cortex'`), `events.csv` (the event files, each trial with its stimulus identifier), `stimuli.csv` (identifiers only); and `glmsingle/` (the released noise-ceiling map). A part: `sub-XX` (one participant) or `sub-XX/ses-NN` (one session); sub-04 is restricted and never packaged.
 - Check: the sha1 and exact content digest of 47 files in `data_packaging/expected.json`; each other file: its counts or byte size in `build.json`
 
 ### cneuromod-things-timeseries

@@ -24,14 +24,16 @@ _FILES = ('`atlas/` (a copy of the group cneuromod2026 atlas and its labels, wit
 
 data_builder_registry['cneuromod-things'] = lambda: DataBuilder(
     source=_SOURCE + ' THINGS: St-Laurent et al. 2026, Scientific Data 13:141. The images are not included.',
-    access='public, no account: masks, atlas, event files and GLMsingle outputs of sub-01, 02, 03 and 06.',
-    layout=_LAYOUT.format(repositories='things/`, `things.glmsingle/`, `anat.atlases/') + '.',
+    access='public, no account: masks, atlas, event files, GLMsingle outputs and the fMRIPrep segmentation of '
+           'sub-01, 02, 03 and 06.',
+    layout=_LAYOUT.format(repositories='things/`, `things.glmsingle/`, `things.fmriprep/`, `anat.atlases/') + '.',
     needs='DataLad and git-annex 10.20230126 or later (tested: 10.20261026 and 10.20261113; from '
           '10.20261113 git-annex asks to confirm the CONP store, which the command does); h5py, nibabel, nilearn; per participant 11.32 GB to '
-          'download (the trial-response file holds every session, also for a one-session part) and about 12 GB '
+          'download (the trial-response file holds every session, also for a one-session part) and about 16 GB '
           'of disk; measured for sub-01 on a cloud machine: 403 s, mostly the download (24 MB/s); a '
           'rebuild from the kept download: 3 s per session.',
-    writes=_FILES + '`trials.nc` (GLMsingle trial responses, region voxels from the masks), `events.csv` (the '
+    writes=_FILES + '`trials.nc` (GLMsingle trial responses: the region voxels, one mask set per region, and '
+           'the cortex voxels of the fMRIPrep segmentation, `region=\'cortex\'`), `events.csv` (the '
            'event files, each trial with its stimulus identifier), `stimuli.csv` (identifiers only); and '
            '`glmsingle/` (the released noise-ceiling map). ' + _PART,
     build=_COMMAND.format(dataset='things', form='glmsingle'),

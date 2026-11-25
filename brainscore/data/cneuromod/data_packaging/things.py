@@ -20,8 +20,15 @@ STIMULUS_SOURCE = ('THINGS database images (Hebart et al. 2019), https://osf.io/
                    'a password zip; get them from OSF under its terms. Brain-Score does not host them.')
 STIMULUS_COLUMNS = ('image_path', 'image_nr', 'category_nr', 'exemplar_nr', 'things_category_nr',
                     'things_image_nr', 'things_exemplar_nr')
-MASK_ATLASES = ('retinoVisionNpythy', 'fLocVisionTask', 'fLocVisionKanwisher')   # region voxels of the trials
+# The region voxels of the trials, one mask set per region in this order: the participant's own pRF
+# and fLoc localizer masks; the Kanwisher group parcels (warped to the participant) only for a region
+# without an own mask (sub-06, which did no localizer). ``atlas`` names the source of each voxel.
+MASK_ATLASES = ('retinoVisionNpythy', 'fLocVisionTask', 'fLocVisionKanwisher')
 GLMSINGLE = 'things.glmsingle'
+ANATOMY = 'things.fmriprep'
+# The cortex rows: the cortical labels of the FreeSurfer aparc+aseg segmentation (1000-1999 left,
+# 2000-2999 right hemisphere), as fMRIPrep gives it on the grid of the BOLD runs.
+CORTEX_LABELS = (1000, 3000)
 _THIS = sys.modules[__name__]     # this module, as the shared functions take it
 _TRIAL_COLUMNS = ('participant', 'session', 'task', 'run', 'event', 'onset', 'duration', 'stimulus_id',
                   'repetition', 'condition', 'response', 'error', 'atypical', 'not_for_memory')
@@ -62,9 +69,31 @@ def glmsingle_patterns(participant: str) -> list:
     return [f'{base}_stat-trialBetas_desc-zscore_statseries.h5', f'{base}_stat-noiseCeilings_statmap.nii.gz']
 
 
-def glmsingle_trials(clones: Path, participant: str, session: int | None, masks: list, out: Path) -> list:
+def cortex_patterns(participant: str) -> list:
+    """The fMRIPrep segmentation of the BOLD runs (T1w space); every run gives the same one: one is read."""
+    return [f'{participant}/ses-*/func/{participant}_ses-*_task-things_run-*_space-T1w_desc-aparcaseg_dseg.nii.gz']
+
+
+def cortex_neuroids(dseg: Path, grid) -> tuple:
+    """``(neuroid table, grid columns)`` of the cortical voxels of the GLMsingle grid: rows with
+    ``region='cortex'``, ``atlas='aparcaseg'``. The segmentation must be on the grid (no resampling)."""
+    import nibabel
+    image = nibabel.load(dseg)
+    if image.shape[:3] != grid.shape[:3] or not np.allclose(image.affine, grid.affine):
+        raise ValueError(f'{dseg.name} is not on the grid of the trial responses (shape {image.shape[:3]} '
+                         f'against {grid.shape[:3]}): the cortex rows are read without resampling. '
+                         'Use the space-T1w segmentation of a THINGS run.')
+    labels = np.asarray(image.dataobj).astype(int)[np.asarray(grid.dataobj) > 0]
+    low, high = CORTEX_LABELS
+    inside = np.flatnonzero((labels >= low) & (labels < high))
+    return shared.voxel_rows('aparcaseg', 'cortex', inside, grid), inside
+
+
+def glmsingle_trials(clones: Path, participant: str, session: int | None, masks: list, cortex: Path,
+                     out: Path) -> list:
     """Write the per-trial response assembly of each session (one response per image per trial),
-    the region voxels from the masks of ``MASK_ATLASES``, with the run's event table beside it.
+    the region voxels from the masks of ``MASK_ATLASES`` and the cortex voxels of the segmentation
+    ``cortex`` (``cortex_neuroids``), with the run's event table beside it.
 
     The betas file: group = session, subgroup = run, dataset ``betas`` (60 trials x voxels of
     the file's own mask ``mask_array``/``mask_affine``), trials in onset order.
@@ -77,7 +106,10 @@ def glmsingle_trials(clones: Path, participant: str, session: int | None, masks:
     written = []
     with h5py.File(trials_file, 'r') as handle:
         grid = nibabel.Nifti1Image(np.asarray(handle['mask_array']).astype(np.uint8), np.asarray(handle['mask_affine']))
-        neuroid, columns = shared.region_neuroids(masks, grid, MASK_ATLASES)
+        regions, region_columns = shared.region_neuroids(masks, grid, MASK_ATLASES)
+        cortical, cortex_columns = cortex_neuroids(cortex, grid)
+        neuroid = pd.concat([regions, cortical], ignore_index=True)
+        columns = np.concatenate([region_columns, cortex_columns])
         for group in sorted((name for name in handle if name not in ('mask_array', 'mask_affine')), key=shared.number):
             if session is not None and shared.number(group) != session:
                 continue

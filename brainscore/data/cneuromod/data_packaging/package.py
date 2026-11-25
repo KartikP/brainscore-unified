@@ -54,7 +54,8 @@ def main(argv=None) -> None:
     form_repository = module.GLMSINGLE if args.form == 'glmsingle' else f'{module.NAME}.timeseries'
     if fetching:
         shared.check_prerequisites()
-        for repository in (module.REPOSITORY, shared.ATLASES, form_repository):
+        anatomy = (module.ANATOMY,) if args.form == 'glmsingle' else ()
+        for repository in (module.REPOSITORY, shared.ATLASES, form_repository, *anatomy):
             shared.clone(root, repository)
 
     needed = {}       # participant -> {kind: paths}
@@ -67,6 +68,8 @@ def main(argv=None) -> None:
                                                                for p in module.event_patterns(participant, name)})),
             'masks': _files(root, shared.ATLASES, _mask_patterns(participant)),
             'form': _files(root, form_repository, form)}
+        if args.form == 'glmsingle':
+            needed[participant]['cortex'] = _files(root, module.ANATOMY, module.cortex_patterns(participant))[:1]
     atlas = _files(root, shared.ATLASES, _ATLAS)
     paths = atlas + [path for kinds in needed.values() for group in kinds.values() for path in group]
     if fetching:
@@ -82,7 +85,7 @@ def main(argv=None) -> None:
     for participant, kinds in needed.items():
         masks = shared.copy_files(kinds['masks'], out / participant / 'masks')
         if args.form == 'glmsingle':
-            module.glmsingle_trials(root, participant, number, masks, out)
+            module.glmsingle_trials(root, participant, number, masks, kinds['cortex'][0], out)
             continue
         h5 = next(path for path in kinds['form'] if path.name.endswith('_timeseries.h5'))
         neuroid, columns = _timeseries_neuroids(args.form, kinds['form'], masks, labels)

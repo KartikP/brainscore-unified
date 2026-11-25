@@ -277,10 +277,10 @@
       "sha1": "82bac6c9402245711e4a5c838fd24e6c694c56dd"
     },
     "sub-01/ses-01/trials.nc": {
-      "bytes": 13676196,
-      "counts": "neuroid 17290, presentation 180",
-      "digest": "a47c5aba04a95eda855d65ff4d4e7ed9cc351a94",
-      "sha1": "20f7fd2cf977fc24cde56f878750d60380069e0e"
+      "bytes": 66721508,
+      "counts": "neuroid 84543, presentation 180",
+      "digest": "dec6278b9c78f33e3551e97369c87da46e58fd39",
+      "sha1": "b0e5f02a398199191f9bd12195709d4358826b8a"
     }
   }
 }

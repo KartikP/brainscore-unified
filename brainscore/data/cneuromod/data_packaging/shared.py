@@ -194,22 +194,30 @@ def region_columns(mask, grid) -> np.ndarray:
 
 def region_neuroids(masks: list, grid, atlases: tuple = ()) -> tuple:
     """One neuroid per (region mask, voxel) of a voxel grid: ``(neuroid table, grid column of each)``.
-    ``atlases`` keeps the masks of these atlases only (empty: all)."""
+    ``atlases`` keeps the masks of these atlases only, in this order of preference: a region takes
+    the mask of the first atlas that has it, so each region has one mask set (empty: every mask)."""
     import nibabel
-    ijk = np.argwhere(np.asarray(grid.dataobj) > 0)       # C order: the column order of the grid
-    tables, columns = [], []
-    for path in sorted(masks):
-        atlas, region = mask_region(path)
-        if atlases and atlas not in atlases:
+    tables, columns, taken = [], [], set()
+    rank = {atlas: place for place, atlas in enumerate(atlases)}
+    named = sorted((mask_region(path), path) for path in masks)
+    for (atlas, region), path in sorted(named, key=lambda item: rank.get(item[0][0], -1)):
+        if atlases and (atlas not in rank or region in taken):
             continue
+        taken.add(region)
         inside = region_columns(nibabel.load(path), grid)
-        tables.append(pd.DataFrame({'neuroid_id': [f'{atlas}.{region}.{c}' for c in inside], 'region': region,
-                                    'atlas': atlas, 'voxel': inside, 'i': ijk[inside, 0], 'j': ijk[inside, 1],
-                                    'k': ijk[inside, 2]}))
+        tables.append(voxel_rows(atlas, region, inside, grid))
         columns.append(inside)
     if not tables:
         raise FileNotFoundError(f'no mask of {", ".join(atlases) or "any atlas"} among {len(masks)} masks')
     return pd.concat(tables, ignore_index=True), np.concatenate(columns)
+
+
+def voxel_rows(atlas: str, region: str, inside: np.ndarray, grid) -> pd.DataFrame:
+    """The neuroid rows of the grid columns ``inside`` of one region: region, atlas, voxel (grid column)
+    and i, j, k (the voxel's place in the grid, C order: the column order of the grid)."""
+    ijk = np.argwhere(np.asarray(grid.dataobj) > 0)[inside]
+    return pd.DataFrame({'neuroid_id': [f'{atlas}.{region}.{c}' for c in inside], 'region': region,
+                         'atlas': atlas, 'voxel': inside, 'i': ijk[:, 0], 'j': ijk[:, 1], 'k': ijk[:, 2]})
 
 
 def mask_region(path: Path) -> tuple:

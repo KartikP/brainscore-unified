@@ -37,13 +37,40 @@ def test_one_participant_writes_only_that_participant(source, tmp_path):
     assert sorted(p.name for p in out.glob('sub-*')) == ['sub-02']
     trials = xr.open_dataarray(out / 'sub-02' / 'ses-01' / 'trials.nc')
     assert trials.sizes['presentation'] == 6                      # 2 runs x 3 trials
-    assert set(trials['region'].values) == {'V1', 'FFA'}          # masks of the visual atlases only
+    assert set(trials['region'].values) == {'V1', 'FFA', 'cortex'}   # visual masks and the cortex rows
     assert trials['stimulus_id'].values[0] == 'img110'
     assert trials['repetition'].values.tolist()[:3] == [1, 2, 1]
     # The response of a voxel is the beta of its own grid column (V1 voxel (1,1,1) is grid column 0).
     v1 = trials.where(trials['region'] == 'V1', drop=True)
     assert int(v1['voxel'].values[0]) == 0 and float(v1.values[0, 0]) == 1.0
     assert (out / 'sub-02' / 'masks').is_dir() and (out / 'atlas' / 'parcels.csv').exists()
+
+
+def test_each_region_has_one_mask_set_and_the_group_parcels_only_without_an_own_mask(source, tmp_path):
+    out = _build('cneuromod-things', source, tmp_path)
+    for participant, ffa_atlas in (('sub-01', 'fLocVisionTask'), ('sub-06', 'fLocVisionKanwisher')):
+        trials = xr.open_dataarray(out / participant / 'ses-01' / 'trials.nc')
+        regions = pd.DataFrame({name: trials[name].values for name in ('region', 'atlas')}).drop_duplicates()
+        assert regions['region'].is_unique
+        assert regions.set_index('region').loc['FFA', 'atlas'] == ffa_atlas
+
+
+def test_the_cortex_rows_are_the_cortical_labels_of_the_segmentation_on_the_trial_grid(source, tmp_path):
+    out = _build('cneuromod-things', source, tmp_path, part='sub-01')
+    trials = xr.open_dataarray(out / 'sub-01' / 'ses-01' / 'trials.nc')
+    cortex = trials.isel(neuroid=trials['region'].values == 'cortex')
+    assert set(cortex['atlas'].values) == {'aparcaseg'}
+    assert sorted(zip(cortex['i'].values, cortex['j'].values, cortex['k'].values)) == [(1, 1, 1), (1, 2, 1), (2, 1, 1)]
+    # The response of a cortex voxel is the beta of its own grid column.
+    np.testing.assert_array_equal(cortex.values[:3], np.arange(24, dtype=np.float32).reshape(3, 8)[:, cortex['voxel'].values] + 1)
+
+
+def test_a_segmentation_on_another_grid_is_refused(tmp_path):
+    import nibabel
+    grid = nibabel.Nifti1Image(np.ones((2, 2, 2), np.uint8), np.eye(4))
+    nibabel.Nifti1Image(np.full((3, 3, 3), 1001, np.int16), np.eye(4)).to_filename(tmp_path / 'dseg.nii.gz')
+    with pytest.raises(ValueError, match='not on the grid'):
+        things.cortex_neuroids(tmp_path / 'dseg.nii.gz', grid)
 
 
 def test_one_session_and_an_absent_session(source, tmp_path):

@@ -22,24 +22,23 @@ from brainscore.benchmarks import noise_ceiling
 from brainscore.data.cneuromod.data_packaging import things
 
 REGIONS = ('V1', 'V2', 'V3', 'FFA', 'EBA', 'PPA')
-# The participant's own masks first (pRF, fLoc localizer); sub-06 did no localizer and has only the
-# group parcels of the Kanwisher lab warped to its brain, not chosen by any THINGS measure.
-ATLASES = ('retinoVisionNpythy', 'fLocVisionTask', 'fLocVisionKanwisher')
+# Each region has one mask set in the packaging (``things.MASK_ATLASES``): the participant's own masks
+# (pRF, fLoc localizer); sub-06 did no localizer and has only the group parcels of the Kanwisher lab
+# warped to its brain, not chosen by any THINGS measure.
 
 
 def region_rows(table: pd.DataFrame, region: str) -> pd.DataFrame:
-    """The voxels of a region from the first atlas in ``ATLASES`` that has it (empty: none has)."""
-    for atlas in ATLASES:
-        rows = table[(table['atlas'] == atlas) & (table['region'] == region)]
-        if len(rows):
-            return rows
-    return table.iloc[:0]
+    """The voxels of a region (empty: the participant has no mask for it)."""
+    return table[table['region'] == region]
 
 
 def participant_ceiling(folder: Path) -> tuple:
     """``(voxel table with the noise ceiling, images used)`` of one participant's packaged sessions."""
     import xarray as xr
-    sessions = [xr.open_dataarray(path).load() for path in sorted(folder.glob('ses-*/trials.nc'))]
+    sessions = []
+    for path in sorted(folder.glob('ses-*/trials.nc')):
+        session = xr.open_dataarray(path)
+        sessions.append(session.isel(neuroid=session['region'].values != 'cortex').load())   # the masks only
     if not sessions:
         raise FileNotFoundError(f'no ses-*/trials.nc under {folder}: package the full participant first')
     neuroid = sessions[0]['neuroid']

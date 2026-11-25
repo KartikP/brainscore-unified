@@ -1,8 +1,9 @@
 """A tiny made-up CNeuroMod source in the layout of the DataLad clones (no download).
 
 ``make_source(root)`` writes, for every public participant of THINGS and movie10: event files,
-masks and the atlas (``anat.atlases``), THINGS GLMsingle trial responses and ``cneuromod2026``
-time series. A 4 x 4 x 4 voxel grid; 3 trials per THINGS run, 2 runs, 1 session.
+masks and the atlas (``anat.atlases``), THINGS GLMsingle trial responses, the fMRIPrep
+segmentation of a THINGS run and ``cneuromod2026`` time series. sub-06 has no own masks (only the
+Kanwisher group parcels), as in the release. A 4 x 4 x 4 voxel grid; 3 trials per THINGS run, 2 runs, 1 session.
 """
 from pathlib import Path
 
@@ -70,8 +71,10 @@ def make_source(root: Path) -> Path:
     for participant in sorted(set(THINGS) | set(MOVIE10)):
         short = participant.replace('-', '')
         folder = atlases / f'tpl-{short}T1w'
-        _nifti(v1, folder / f'tpl-{short}T1w_res-func_atlas-retinoVisionNpythy_label-V1_mask.nii.gz')
-        _nifti(ffa, folder / f'tpl-{short}T1w_res-func_atlas-fLocVisionTask_label-faceFFA_mask.nii.gz')
+        if participant != 'sub-06':
+            _nifti(v1, folder / f'tpl-{short}T1w_res-func_atlas-retinoVisionNpythy_label-V1_mask.nii.gz')
+            _nifti(ffa, folder / f'tpl-{short}T1w_res-func_atlas-fLocVisionTask_label-faceFFA_mask.nii.gz')
+        _nifti(grid, folder / f'tpl-{short}T1w_res-func_atlas-fLocVisionKanwisher_label-faceFFA_mask.nii.gz')
         _nifti(ffa, folder / f'tpl-{short}T1w_res-func_atlas-langToneva_label-IFG_mask.nii.gz')
         _nifti(dseg, atlases / 'tpl-MNI152NLin2009cAsym' /
                f'tpl-MNI152NLin2009cAsym_{participant}_res-func_atlas-Schaefer2018TianS3NettekovenAsym_'
@@ -86,6 +89,11 @@ def make_source(root: Path) -> Path:
                 handle.create_dataset(f'1/{run}/betas', data=np.arange(3 * 8, dtype=np.float32).reshape(3, 8) + run)
             handle.create_dataset('mask_array', data=grid.astype(float))
             handle.create_dataset('mask_affine', data=AFFINE)
+        aparcaseg = np.zeros((4, 4, 4), int)
+        aparcaseg[1:3, 1:3, 1] = [[1001, 2030], [1002, 3]]      # cortex: 3 of the 8 grid voxels
+        aparcaseg[1:3, 1:3, 2] = 2                               # white matter
+        _nifti(aparcaseg, root / 'things.fmriprep' / participant / 'ses-01' / 'func' /
+               f'{participant}_ses-01_task-things_run-1_part-mag_space-T1w_desc-aparcaseg_dseg.nii.gz', np.int16)
         func = root / 'things' / participant / 'ses-01' / 'func'
         func.mkdir(parents=True, exist_ok=True)
         for run in (1, 2):
