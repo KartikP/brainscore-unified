@@ -1,5 +1,5 @@
 """Any NodeKit (nkl) program as a closed-loop environment: a subject takes part as a person does, with the
-keyboard and the pointer, and sees only the screen.
+keyboard or the pointer, and sees only the screen.
 
 A program is an nkl bundle folder (its ``program.json``: the lowered program, its arguments and the
 files of its media). nkl runs it in a child process with its own environment (``_environment_folder``,
@@ -7,31 +7,37 @@ Python 3.13): the checkout is NodeKit's task repository at a pinned commit, whic
 and the bundles. nkl drives its own headless Chrome for Testing (downloaded by nkl at the first run).
 Nothing of nkl is imported here.
 
-Each step: the row holds the frames since the last step on ``vision:video`` ((T, 384, 512, 3) uint8: one at
-each frame time the clock passed, 60 frames a second (``FRAME_MS``; nkl states no display rate), at half
-the screen size), the screen at the end of the step on ``vision:image`` ((H, W, 3) uint8, 1024 x 768 by
-default) and the acts on ``instruction``; the subject answers on the act form the benchmark asks for
-(``form``, Contract Rules 5.15), ``motor:key`` or ``motor:pointer``, with a list of acts, each a mapping
-``{'act': <name>, <fields>}`` (core's ``MOTOR_ACTS``, which also checks them): key acts ``press``,
-``release`` (a W3C ``KeyboardEvent.code``, such as ``Space`` or ``ArrowLeft``) and ``type``; pointer acts
-``move``, ``down``, ``up`` and ``stroke``; ``wait`` on both. Positions are pixels of the last picture: the
-origin at the top left, x to the right, y down.
-``nkl_acts`` is the one place that turns them into nkl's acts (scene units: origin at the centre, y up).
-The program's clock moves only by the acts (``wait`` passes time; a key or button act takes 1 ms, a stroke
-as nkl's motor allows): the subject's own compute time is not counted. Each step runs to at least the next
-frame time (the worker adds the wait), so a step with no act (an empty list, valid) or with an answer that
-could not be read (None, counted in ``invalid_steps``) also moves the clock by one frame. The run ends
-when the program ends (``terminal``; ``result`` is then the program's result as value JSON); when its
-simulated time passes ``max_ms`` or its steps pass ``max_steps``, the harness leaves the run (nkl's Leave)
-and it ends ``truncated`` with no result; an nkl error stops the session with the error. Times in the
-result (response times) are simulated times.
+A step is one turn of nkl's own agent harness (``nkl.agents``), so a run here and a run there with the
+same acts have the same trace. The row of a step holds the screen on ``vision:image`` ((H, W, 3) uint8,
+1024 x 768 by default), nkl's briefing for the task on ``instruction`` (``system_prompt``: the screen, how
+acts take time and how the clock runs under the pacing, the limits, then the benchmark's instructions) and
+the facts of the turn on ``observation`` (``t_ms``: the screen's time; ``pointer`` in pixels,
+``pointer_down``, ``keys_down``: the subject's own hands; ``turns_left``; ``acts_per_step``; ``act_form``:
+the channel the run reads). The subject answers on the act form the benchmark asks for (``form``,
+Contract Rules 5.15), ``motor:key`` or ``motor:pointer``, with a list of acts (core's ``MOTOR_ACTS``,
+which also checks them): key acts ``press``, ``release`` (a W3C ``KeyboardEvent.code``, such as ``Space``
+or ``ArrowLeft``) and ``type``; pointer acts ``move``, ``down``, ``up`` and ``stroke``; ``wait`` on both.
+Positions are pixels of the last picture: the origin at the top left, x to the right, y down; the child
+converts them with nkl's own conversion. The acts of a step are one schedule: a key or button act takes 1
+ms, a stroke as nkl's motor allows, a wait its time; then the subject sees the screen again.
+
+The pacing (``PACINGS``, nkl's): ``frozen`` (the default) stops the task's clock while the subject
+answers; ``realtime`` lets the subject's answering time (the wall time from the screen to the acts) pass
+before its first act; ``dense`` moves the clock ``DENSE_STEP_US`` each step and takes one act a step. An
+empty list is a valid step with no act and None an answer that could not be read (counted in
+``invalid_steps``); under frozen or realtime pacing neither moves the clock. The run ends when the program
+ends (``terminal``; ``result`` is then the program's result as value JSON); when its simulated time passes
+``max_ms`` or its steps pass ``max_steps``, the harness stops it as nkl's agent harness does, and it ends
+``truncated`` with no result; an nkl error stops the session with the error. Times in the result (response
+times) are simulated times.
 
 Each run's nkl trace is written to ``<record>/<folder>/submissions/<name>.json``, the form of a
 participant's submission in the task repository, so ``python -m brainscore.harnesses.nodekit replay
 <record>`` opens the repository's replay viewer on it (``replay``), as on the participants' runs.
 
-Limit: a subject that takes ``vision:image`` and not ``vision:video`` sees only the screen at the end of
-each step: a stimulus shorter than its steps (a brief patch) can pass unseen.
+Limit: the subject sees the screen at the end of each step only (nkl's ``look`` act is not offered): under
+frozen or realtime pacing, a brief stimulus (the 45 ms Gabor patch) is seen only when a step ends while it
+is shown.
 
 Limit: a session takes its acts on one channel: a program that needs key and pointer acts in one run (type
 a text, then click) runs with the one form its benchmark asks for, and a step that needs the other form
@@ -43,12 +49,12 @@ import base64
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 
-from brainscore_core.io_catalog import MOTOR_ACTS
 from brainscore.harnesses._child_process import ChildProcess
 from brainscore.harnesses._environment_folder import Library, _RUNTIME_VARIABLES, environment_python, ready_folder
 
@@ -58,14 +64,16 @@ REPOSITORY = 'https://github.com/intelligence-observatory/umi-nkl.git'
 COMMIT = '46ff367543ed5a209147ad9b8e6275ce81059d38'
 NKL_WHEEL = 'vendor/nkl-0.1.0-py3-none-any.whl'
 SCREEN = (1024, 768)
-FRAME_MS = 1000 / 60            # the frame times of vision:video: 60 frames a second
-VIDEO = (512, 384)              # the size of a vision:video frame
+PACINGS = ('frozen', 'realtime', 'dense')
+DENSE_STEP_US = 16_667          # nkl's Dense step: one frame at 60 frames a second
 # The participants' folder of each bundle in the task repository: the replay viewer's names.
 VIEWER_FOLDERS = {'drifting-gabor': 'gabor', 'triplet-similarity': 'triplets', 'face-arrangement': 'faces'}
 FORMS = ('motor:key', 'motor:pointer')
-# The act of nkl.sim.actions for each act name.
-_NKL_ACTS = {'press': 'KeyPress', 'release': 'KeyRelease', 'type': 'TypeText', 'move': 'PointerMove',
-             'down': 'PointerDown', 'up': 'PointerUp', 'stroke': 'PointerStroke', 'wait': 'Wait'}
+# What the briefing adds before the benchmark's instructions: the one act form the run reads, and the
+# act it does not offer.
+_SESSION_WORDS = {'motor:key': 'This task takes keyboard actions only: a pointer action is not done.',
+                  'motor:pointer': 'This task takes pointer actions only: a keyboard action is not done.'}
+_NO_LOOK = 'The look action is not offered: you see the screen when each reply has played out.'
 _WORKER = Path(__file__).with_name('_worker.py')
 # Seconds the child may take for one command (a first reset starts nkl's server and Chrome).
 _CHILD_SILENCE_S = 600.0
@@ -113,30 +121,13 @@ def bundle(name: str) -> Path:
     return folder
 
 
-def nkl_acts(acts, screen) -> list:
-    """The acts as nkl's (``nkl.sim.actions`` names and fields): pixels of a ``screen`` (width, height)
-    picture, origin top left and y down, become scene units, origin at the centre and y up (device ratio 1)."""
-    width, height = screen
-
-    def scene(x, y):
-        return x - width / 2, height / 2 - y
-    converted = []
-    for act in acts:
-        fields = {key: value for key, value in act.items() if key != 'act'}
-        if 'x' in fields:
-            fields['x'], fields['y'] = scene(fields['x'], fields['y'])
-        if 'points' in fields:
-            fields['points'] = [list(scene(*point)) for point in fields['points']]
-        converted.append({'act': _NKL_ACTS[act['act']], **fields})
-    return converted
-
-
 class NodeKitEnvironment:
     """One run of the nkl program in the bundle folder ``program``, with ``seed`` (a bundle's trials are
     already dealt; the seed is nkl's run seed), on a screen of ``screen`` pixels; the subject acts on
-    ``form`` (``motor:key`` or ``motor:pointer``)."""
+    ``form`` (``motor:key`` or ``motor:pointer``) under ``pacing``; ``instructions`` end nkl's briefing."""
 
-    def __init__(self, program, *, form: str, seed: int = 0, screen=SCREEN, max_ms: float = 3_600_000, max_steps: int = 20000,
+    def __init__(self, program, *, form: str, pacing: str = 'frozen', seed: int = 0, screen=SCREEN,
+                 max_ms: float = 3_600_000, max_steps: int = 20000, instructions: str = '',
                  record: Optional[Path] = None, name: str = 'run', folder: Optional[Path] = None,
                  log_directory: Optional[Path] = None):
         self.program, self.seed, self.screen = Path(program), seed, tuple(screen)
@@ -145,31 +136,24 @@ class NodeKitEnvironment:
             raise ValueError(f'{self.program} is not an nkl bundle: it holds no program.json.')
         if form not in FORMS:
             raise ValueError(f'A NodeKit subject acts on {sorted(FORMS)}, not {form!r} (Contract Rules 5.15).')
-        self.form = form
+        if pacing not in PACINGS:
+            raise ValueError(f'pacing is one of {PACINGS} (nkl\'s Frozen, Realtime and Dense), not {pacing!r}.')
+        self.form, self.pacing, self.instructions = form, pacing, instructions
         self.folder = ready_folder(library(), f'NodeKit {self.program.name}', folder)
         self.log_directory = Path(log_directory) if log_directory else self.folder / 'logs'
         self._child, self.steps, self.t_ms, self.result, self.invalid_steps, self.trace = None, 0, 0.0, None, 0, None
-
-    def instruction(self) -> str:
-        acts = '; '.join(f'{name}({", ".join(sorted(required) + [f"{key} (optional)" for key in sorted(optional)])})'
-                         for name, (required, optional) in MOTOR_ACTS[self.form.split(':')[1]].items())
-        return (f'You take part in a task on a screen of {self.screen[0]} x {self.screen[1]} pixels; you see the '
-                f'screen as a picture. Act on {self.form} with a list of acts, each {{"act": name, fields}}: {acts}. '
-                f'Positions are pixels of the picture: the origin at the top left, x to the right, y down. Time '
-                f'passes only by your acts: wait(ms) lets time pass. Each step shows the frames since the last '
-                f'step and the screen now.')
+        self.system, self._shown = None, None
 
     def _row(self, answer: dict):
         self.t_ms = answer['t_ms']
         if answer['ended']:
             return {}
-
-        def decoded(part):
-            return np.frombuffer(base64.b64decode(part['data']), np.uint8).reshape(part['shape'])
-        row = {'vision:image': decoded(answer['picture'])[0], 'instruction': self.instruction()}
-        if answer['frames']:
-            row['vision:video'] = decoded(answer['frames'])
-        return row
+        picture = answer['picture']
+        observation = {'t_ms': picture['at_ms'], **answer['body'], 'turns_left': self.max_steps - self.steps,
+                       'acts_per_step': answer['acts_per_step'], 'act_form': self.form}
+        self._shown = time.monotonic()
+        return {'vision:image': np.frombuffer(base64.b64decode(picture['data']), np.uint8).reshape(picture['shape']),
+                'instruction': self.system, 'observation': observation}
 
     def _ended(self, row, reason):
         if reason == 'truncated':
@@ -186,20 +170,30 @@ class NodeKitEnvironment:
         home = self.folder.parent / 'nkl-home'      # nkl's data and its Chrome download
         environment = {name: os.environ[name] for name in _RUNTIME_VARIABLES if name in os.environ}
         environment.update(PYTHONNOUSERSITE='1', HOME=str(home), NKL_HOME=str(home / 'nkl'))
-        self._child = ChildProcess([environment_python(self.folder), _WORKER, self.program, self.seed, *self.screen,
-                                    FRAME_MS, *VIDEO],
+        self._child = ChildProcess([environment_python(self.folder), _WORKER, self.program, self.seed, *self.screen],
                                    env=environment, log_directory=self.log_directory,
                                    idle_timeout_s=_CHILD_SILENCE_S).__enter__()
         self.steps, self.result, self.invalid_steps, self.trace = 0, None, 0, None
-        answer = self._child.ask({'reset': True})
+        answer = self._child.ask({'reset': {'pacing': [self.pacing.capitalize(), DENSE_STEP_US],
+                                            'limits': {'turns': self.max_steps}, 'seconds': self.max_ms / 1000,
+                                            'instructions': f'{_SESSION_WORDS[self.form]} {_NO_LOOK}\n\n'
+                                                            f'{self.instructions}'.strip()}})
+        self.system = answer['system']
+        if answer['extent'] != list(self.screen):
+            raise RuntimeError(f'nkl shows the program on {answer["extent"]} scene units, not the {self.screen} '
+                               'pixels of the screen; the briefing and the act positions assume one unit a pixel.')
         row = self._row(answer)
         return self._ended(row, 'terminal') if answer['ended'] else row
 
     def step(self, outputs):
+        thought = time.monotonic() - self._shown
         acts = outputs[self.form]          # checked by the session (core's MOTOR_ACTS)
         if acts is None:
             self.invalid_steps += 1
-        answer = self._child.ask({'step': nkl_acts(acts or [], self.screen)})
+        elif self.pacing == 'dense' and len(acts) > 1:
+            raise ValueError(f'{self.program.name} runs with dense pacing: one act a step, not {len(acts)} '
+                             f'({acts!r}). Send the acts in separate steps.')
+        answer = self._child.ask({'step': {'acts': acts or [], 'seconds': thought}})
         self.steps += 1
         row = self._row(answer)
         if answer['ended']:

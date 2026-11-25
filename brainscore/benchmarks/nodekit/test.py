@@ -158,3 +158,11 @@ def test_the_subject_response_times_are_recorded_not_scored(clone):
 def test_the_three_benchmarks_are_registered():
     from brainscore import benchmark_registry
     assert {'NodeKit.DriftingGabor', 'NodeKit.TripletSimilarity', 'NodeKit.FaceArrangement'} <= set(benchmark_registry)
+
+
+def test_the_pacing_is_frozen_by_default_stamped_and_checked(clone):
+    benchmark = NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor')
+    assert benchmark.pacing == 'frozen' and benchmark.score_result(None).attrs['pacing'] == 'frozen'
+    assert NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor', pacing='dense').pacing == 'dense'
+    with pytest.raises(ValueError, match='pacing'):
+        NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor', pacing='fast')

@@ -13,46 +13,50 @@ from brainscore import BrainScoreModel
 pytestmark = pytest.mark.unit
 
 STAND_IN = '''
-import base64, json, math, os, sys
+import base64, json, os, sys
 read_fd, write_fd = (int(fd) for fd in os.environ['BRAINSCORE_CHILD_FDS'].split(','))
 commands, messages = os.fdopen(read_fd, 'rb'), os.fdopen(write_fd, 'wb')
-width, height, frame_ms, video = int(sys.argv[3]), int(sys.argv[4]), float(sys.argv[5]), (int(sys.argv[6]), int(sys.argv[7]))
-answer, t, left = None, 0.0, False
+width, height = int(sys.argv[3]), int(sys.argv[4])
+answer, t, left, settings, log = None, 0.0, False, None, []
 def send(message):
     messages.write((json.dumps(message) + '\\n').encode()); messages.flush()
-def pictures(n, w, h):
-    return {'data': base64.b64encode(bytes([128]) * (n * w * h * 3)).decode(), 'shape': [n, h, w, 3]}
-def screen(frames):
+def screen(system=None):
     ended = answer is not None or left
-    return {'frames': pictures(frames, *video) if frames else None,
-            'picture': None if ended else pictures(1, width, height), 't_ms': t, 'ended': ended}
+    reply = {'t_ms': t, 'ended': ended, 'body': {'pointer': [0.0, 0.0], 'pointer_down': False,
+             'pointer_connected': True, 'keys_down': []}, 'extent': [width, height],
+             'acts_per_step': 1 if settings['pacing'][0] == 'Dense' else 20}
+    if not ended:
+        reply['picture'] = {'data': base64.b64encode(bytes([128]) * (width * height * 3)).decode(),
+                            'shape': [height, width, 3], 'at_ms': t}
+    if system is not None:
+        reply['system'] = system
+    return reply
 while line := commands.readline():
     command = json.loads(line)
     if 'reset' in command:
-        answer, t, left = None, 0.0, False
-        send({'done': screen(0)})
+        answer, t, left, settings = None, 0.0, False, command['reset']
+        send({'done': screen(f"pacing {settings['pacing'][0]}; seconds {settings['seconds']}; " + settings['instructions'])})
     elif 'step' in command:
-        start = t
-        for act in command['step']:
+        step = command['step']
+        log.append(step)
+        t += step['seconds'] * 1000 if settings['pacing'][0] == 'Realtime' else 0.0
+        for act in step['acts']:
             t += act.get('ms', 1.0)
-            if act['act'] == 'KeyPress' and act['key'] in ('ArrowLeft', 'ArrowRight'):
+            if act['act'] == 'press' and act['key'] in ('ArrowLeft', 'ArrowRight'):
                 answer = act['key']
-        frames = math.floor(t / frame_ms + 1e-9) - math.floor(start / frame_ms + 1e-9)
-        if frames == 0:
-            t, frames = (math.floor(t / frame_ms + 1e-9) + 1) * frame_ms, 1
-        send({'done': screen(frames)})
+        send({'done': screen()})
     elif 'leave' in command:
         left = True
         send({'done': True})
     elif 'trace' in command:
-        open(command['trace'], 'w').write(json.dumps([[0, 0, 'TraceStart', {}], [1, int(t * 1000), 'TraceEnd', {}]]))
+        open(command['trace'], 'w').write(json.dumps([[0, 0, 'TraceStart', {}]] + [[1, 0, 'Step', s] for s in log]))
         send({'done': command['trace']})
     else:
         send({'done': [{'response': answer, 'program': sys.argv[1]}] if answer else None})
 '''
 
 
-def _program(folder: Path, imports) -> Path:
+def _program(folder: Path, imports=("keyboard.inputs",)) -> Path:
     folder.mkdir(parents=True)
     (folder / 'program.json').write_text(json.dumps({'program': {'format': 'nkl-ir/8', 'imports': imports},
                                                      'arguments': [], 'sidecar': {}}))
@@ -85,61 +89,65 @@ def _keys(answer):
     return policy, seen
 
 
+def _subject(identifier, policy, form='motor:key'):
+    return BrainScoreModel(identifier, policy=policy, policy_in_channels=('vision:image', 'instruction', 'observation'),
+                           policy_out_channels=(form,))
+
+
 def test_a_subject_takes_part_through_participate_and_the_program_result_comes_back(stand_in):
-    program = _program(stand_in / 'keys', ['keyboard.inputs', 'time.elapsed'])
+    program = _program(stand_in / 'keys')
     policy, seen = _keys('ArrowLeft')
-    subject = BrainScoreModel('keys', policy=policy, policy_in_channels=('vision:image', 'vision:video', 'instruction'),
-                              policy_out_channels=('motor:key',))
-    result, environment, session = nodekit.play(subject, program, form='motor:key')
+    result, environment, session = nodekit.play(_subject('keys', policy), program, form='motor:key',
+                                                instructions='Answer with an arrow key.')
     assert result == [{'response': 'ArrowLeft', 'program': str(program)}]
     assert session.source.end_reason == 'terminal'
     picture = seen[0]['vision:image']
     assert picture.shape == (768, 1024, 3) and picture.dtype == np.uint8
-    assert 'press' in seen[0]['instruction'] and 'stroke' not in seen[0]['instruction']
-    # The clock moved by the acts only, and each step to at least the next frame time.
-    assert seen[1]['vision:video'].shape == (15, 384, 512, 3)         # 250 ms at 60 frames a second
-    assert 'vision:video' not in seen[0]                              # the first screen has no frames before it
-    assert environment.t_ms >= 252.0
+    assert seen[0]['instruction'].endswith('Answer with an arrow key.')        # nkl's briefing, then the benchmark's
+    assert seen[1]['observation']['t_ms'] == 250.0 and seen[1]['observation']['act_form'] == 'motor:key'
+    assert seen[0]['observation']['turns_left'] == 20000 and seen[1]['observation']['turns_left'] == 19999
+
+
+def test_the_pacing_is_frozen_by_default_and_a_setting(stand_in):
+    program = _program(stand_in / 'keys')
+    policy, seen = _keys('ArrowLeft')
+    nodekit.play(_subject('keys', policy), program, form='motor:key')
+    assert seen[0]['instruction'].startswith('pacing Frozen')
+    policy, seen = _keys('ArrowLeft')
+    nodekit.play(_subject('keys', policy), program, form='motor:key', pacing='realtime')
+    assert seen[0]['instruction'].startswith('pacing Realtime') and seen[1]['observation']['t_ms'] > 250.0
+    with pytest.raises(ValueError, match='pacing'):
+        nodekit.play(_subject('keys', policy), program, form='motor:key', pacing='fast')
+
+
+def test_dense_pacing_takes_one_act_a_step(stand_in):
+    program = _program(stand_in / 'keys')
+    policy, seen = _keys('ArrowLeft')
+    with pytest.raises(ValueError, match='one act a step'):
+        nodekit.play(_subject('keys', policy), program, form='motor:key', pacing='dense')
+    assert seen[0]['observation']['acts_per_step'] == 1
 
 
 def test_an_act_of_the_other_form_is_refused_before_the_program_gets_it(stand_in):
-    program = _program(stand_in / 'keys-only', ['keyboard.inputs'])
-    subject = BrainScoreModel('pointer', policy=lambda row: {'motor:key': [{'act': 'down'}]},
-                              policy_in_channels=('vision:image',), policy_out_channels=('motor:key',))
+    program = _program(stand_in / 'keys-only')
     with pytest.raises(ValueError, match='down'):
-        nodekit.play(subject, program, form='motor:key')
+        nodekit.play(_subject('pointer', lambda row: {'motor:key': [{'act': 'down'}]}), program, form='motor:key')
 
 
 def test_a_run_that_does_not_end_is_truncated_and_has_no_result(stand_in):
-    program = _program(stand_in / 'waits', ['keyboard.inputs'])
-    subject = BrainScoreModel('waits', policy=lambda row: {'motor:key': [{'act': 'wait', 'ms': 10}]},
-                              policy_in_channels=('vision:image',), policy_out_channels=('motor:key',))
-    result, environment, session = nodekit.play(subject, program, form='motor:key', max_steps=3, record=stand_in / 'record',
-                                                name='waits-run')
+    program = _program(stand_in / 'waits')
+    subject = _subject('waits', lambda row: {'motor:key': [{'act': 'wait', 'ms': 10}]})
+    result, environment, session = nodekit.play(subject, program, form='motor:key', max_steps=3,
+                                                record=stand_in / 'record', name='waits-run')
     assert result is None and session.source.end_reason == 'truncated' and environment.steps == 3
     assert environment.trace == stand_in / 'record' / 'waits' / 'submissions' / 'waits-run.json'
     assert json.loads(environment.trace.read_text())[0][2] == 'TraceStart'
 
 
-def test_an_empty_answer_is_a_valid_no_act_and_none_is_invalid_and_both_move_one_frame(stand_in):
-    program = _program(stand_in / 'idle', ['keyboard.inputs'])
+def test_an_empty_answer_is_a_valid_no_act_and_none_is_invalid(stand_in):
+    program = _program(stand_in / 'idle')
     answers = iter([[], None, [], None])
-    subject = BrainScoreModel('idle', policy=lambda row: {'motor:key': next(answers)}, policy_in_channels=('vision:image',), policy_out_channels=('motor:key',))
-    result, environment, session = nodekit.play(subject, program, form='motor:key', max_ms=60)
+    subject = _subject('idle', lambda row: {'motor:key': next(answers)})
+    result, environment, session = nodekit.play(subject, program, form='motor:key', max_steps=4)
     assert session.source.end_reason == 'truncated' and environment.invalid_steps == 2
-    assert environment.steps == 4 and environment.t_ms == pytest.approx(4 * 1000 / 60)
-
-
-def test_a_subject_that_takes_only_pictures_gets_the_last_screen_only(stand_in):
-    program = _program(stand_in / 'keys', ['keyboard.inputs'])
-    policy, seen = _keys('ArrowRight')
-    nodekit.play(BrainScoreModel('pictures', policy=policy, policy_in_channels=('vision:image',), policy_out_channels=('motor:key',)), program, form='motor:key')
-    assert all('vision:video' not in row and row['vision:image'].shape == (768, 1024, 3) for row in seen)
-
-
-def test_pixels_of_the_picture_become_nkl_scene_units_in_one_place():
-    acts = nodekit.nkl_acts([{'act': 'move', 'x': 952, 'y': 734}, {'act': 'down'},
-                             {'act': 'stroke', 'points': [[512, 384]]}, {'act': 'press', 'key': 'Space'}],
-                            (1024, 768))
-    assert acts == [{'act': 'PointerMove', 'x': 440, 'y': -350}, {'act': 'PointerDown'},
-                    {'act': 'PointerStroke', 'points': [[0, 0]]}, {'act': 'KeyPress', 'key': 'Space'}]
+    assert environment.steps == 4 and environment.t_ms == 0.0         # frozen: no act, no time

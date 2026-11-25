@@ -10,7 +10,9 @@ One episode is one whole run of the task, with its instructions, practice and fe
 did it (``trial_memory = 'none'``: each run starts empty; within the run a subject keeps what it keeps, as a
 participant does; nkl's trace marks no trial starts, so there is no begin or end for each trial). The run
 may last twice the participants' longest run in simulated time (``max_ms``, read from their traces) and
-20000 steps; then the harness leaves it. nkl gives the trial records only when the program completes, so a
+20000 steps; then the harness stops it. The task's clock runs under nkl's pacing (``pacing``: ``frozen``,
+the default, stops it while the subject answers; ``realtime`` and ``dense`` are a setting, stamped on the
+score). nkl gives the trial records only when the program completes, so a
 run that does not complete has none: every test trial is missing and the result is invalid. The subject's
 response times are simulated times (``subject_response_ms``): recorded, not scored. Each run's trace is
 kept under ``record`` (``attrs['trace']``) and replays in the task repository's viewer
@@ -151,12 +153,15 @@ class NodeKitBenchmark(BenchmarkBase):
 
     trial_memory = 'none'       # one run of the task is one episode that starts empty
 
-    def __init__(self, identifier: str, task: str, max_steps: int = 20000, record=None):
-        self.task, self.max_steps, self.record = task, max_steps, record
+    def __init__(self, identifier: str, task: str, max_steps: int = 20000, pacing: str = 'frozen', record=None):
+        from brainscore.harnesses.nodekit import PACINGS
+        if pacing not in PACINGS:
+            raise ValueError(f'pacing is one of {PACINGS} (nkl\'s Frozen, Realtime and Dense), not {pacing!r}.')
+        self.task, self.max_steps, self.pacing, self.record = task, max_steps, pacing, record
         # The screen is the stimulus: a subject that cannot take it never sees the task (N/A, Rule 5.1).
-        # The frames since the last step go on vision:video as well; a subject without it sees the screen only.
+        # nkl's briefing goes on instruction and the facts of each turn (time, hands, turns left) on observation.
         self.essential_input_channels = frozenset({'vision:image'})
-        self.required_input_channels = self.essential_input_channels | {'vision:video', 'instruction'}
+        self.required_input_channels = self.essential_input_channels | {'instruction', 'observation'}
         self.requested_output_channels = frozenset({ACT_FORMS[task]})
         super().__init__(identifier=identifier, version=1, parent='behavior', ceiling=None, bibtex='')
 
@@ -181,8 +186,8 @@ class NodeKitBenchmark(BenchmarkBase):
         from brainscore.data.local import data_home
         from brainscore.harnesses.nodekit import bundle, play
         record = self.record or data_home() / 'records' / 'nodekit'
-        result, environment, session = play(subject, bundle(self.task), form=ACT_FORMS[self.task], max_steps=self.max_steps,
-                                            max_ms=self.max_ms, record=record)
+        result, environment, session = play(subject, bundle(self.task), form=ACT_FORMS[self.task], pacing=self.pacing,
+                                            max_steps=self.max_steps, max_ms=self.max_ms, record=record)
         return self.score_result(result, steps=environment.steps, invalid_steps=environment.invalid_steps,
                                  run_ms=environment.t_ms, end_reason=session.source.end_reason,
                                  trace=str(environment.trace))
@@ -203,4 +208,4 @@ class NodeKitBenchmark(BenchmarkBase):
         return benchmark_score(self, raw=measured['raw'], metric=measured['score_form'],
                                ceiling=self.ceiling, answers=pd.DataFrame({'response_state': states}),
                                answer_policy=ANSWER_POLICY, invalid_limit=0.1, max_ms=self.max_ms,
-                               max_steps=self.max_steps, **run, **attrs)
+                               max_steps=self.max_steps, pacing=self.pacing, **run, **attrs)

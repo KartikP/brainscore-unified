@@ -1,31 +1,35 @@
 """One nkl program (a bundle's ``program.json``) as a simulated participant, in nkl's own environment.
 
-    <environment python> _worker.py <bundle folder> <seed> <screen width> <screen height> <frame ms> <video width> <video height>
+    <environment python> _worker.py <bundle folder> <seed> <screen width> <screen height>
 
-Standard library and nkl only. Commands, one JSON line each: ``{"reset": true}``, ``{"step": [act, ...]}``
-(each act ``{"act": <a class name of nkl.sim.actions>, <its fields>}``), ``{"leave": true}``,
-``{"result": true}`` and ``{"trace": <file>}``. A reset or a step answers ``{"done": screen}``: the frames
-since the last step (one at each frame time the clock passed, at the video size), the picture of the
-screen at the end at full size (base64 RGB, top row first), the run's time in ms and whether the run has
-ended. A step's time runs to at least the next frame time: when its acts take less, a wait is added, so
-every step (also one with no act) gives one frame or more. A result answers the program's result as value
-JSON (the form nkl writes in a trace), or None when the run has not completed; a trace writes the run's
-trace lines to the file as one JSON array (the form of a participant's submission).
+Standard library and nkl only. A step is one turn of nkl's agent harness (``nkl.agents``): the turn's
+acts as one schedule (``act``), then a look at the screen, under the run's pacing; the body (pointer, keys)
+follows the acts (``observe``). Commands, one JSON line each:
 
-Limit: a frame is taken after an act, not during it: the frames of a pointer stroke that spans several
-frame times are one frame at its end.
+- ``{"reset": {"pacing": [kind, step µs], "limits": {...}, "seconds": s, "instructions": text}}`` starts
+  the run (``begin``) and answers the first screen with nkl's briefing for it (``system_prompt``).
+- ``{"step": {"acts": [act, ...], "seconds": s}}``: the acts in the form of Brain-Score's ``motor:key`` and
+  ``motor:pointer`` (pixels of the screen, origin top left), ``seconds`` the subject's answering time (it
+  passes in the run only under the Realtime pacing).
+- ``{"leave": true}`` stops a run that is still going, as nkl's agent harness does at its end.
+- ``{"result": true}``: the program's result as value JSON, or None when it did not complete.
+- ``{"trace": <file>}`` writes the run's trace lines to the file as one JSON array.
+
+A reset or a step answers ``{"done": screen}``: the picture (base64 RGB, top row first), the run's time
+in ms, whether it has ended, and the body and limits the subject's briefing shows.
 
 Limit: nkl 0.1.0 starts a run from a ``Call`` of Python code; a bundle holds the lowered program
 instead. ``BundleCall`` gives the program, its arguments and its media as a ``Call`` does, and the
-worker lets ``nkl.sim`` take it (``op_call``) and finds the bundle's media files (``nkl.media._files``).
-Both are names inside nkl 0.1.0; another nkl version must be checked again.
+worker lets ``nkl.fsim`` take it (``op_call``) and finds the bundle's media files (``nkl.media._files``).
+It converts pixels with nkl's own ``to_scene`` and ``to_pixels`` and makes strokes with its ``Stroke``. These are names inside nkl 0.1.0;
+another nkl version must be checked again.
 """
 import base64
 import json
-import math
 import os
 import sys
 import traceback
+from dataclasses import replace
 from pathlib import Path
 
 read_fd, write_fd = (int(fd) for fd in os.environ['BRAINSCORE_CHILD_FDS'].split(','))
@@ -43,7 +47,7 @@ class _Hashed:
 
 
 class BundleCall:
-    """A bundle's program and arguments in the form ``nkl.sim.Simulation`` reads from a ``Call``."""
+    """A bundle's program and arguments in the form ``nkl.fsim.start`` reads from a ``Call``."""
 
     def __init__(self, folder: Path):
         import nkl.media
@@ -72,121 +76,113 @@ class BundleCall:
         return value            # value JSON, as a trace holds it
 
 
-def encoded(pictures):
-    return {'data': base64.b64encode(b''.join(p.data for p in pictures)).decode(),
-            'shape': [len(pictures), pictures[0].height, pictures[0].width, 3]} if pictures else None
-
-
-def screen(simulation, frames):
-    ended = simulation.done()
-    picture = None if ended else simulation.look()
-    return {'frames': encoded(frames), 'picture': encoded([picture]) if picture else None,
-            't_ms': simulation.time_ms(), 'ended': ended}
-
-
-def duration_ms(act, simulation, pointer):
-    """How long nkl takes for ``act`` (``Simulation.step_many``): a key or button act the motor's press time,
-    a typed text its presses, a stroke as its motor allows; a move none. ``pointer`` is (x, y) before it."""
-    from nkl.sim import Motor, actions, stroke_samples
-    press = Motor().press_ms
-    if isinstance(act, (actions.KeyPress, actions.KeyRelease, actions.PointerDown, actions.PointerUp)):
-        return press
-    if isinstance(act, actions.TypeText):
-        return sum(4 if actions.TYPED[c][1] else 2 for c in act.text) * press
-    if isinstance(act, actions.PointerStroke):
-        return stroke_samples(pointer, act, Motor())[1] / 1000
-    return 0.0
-
-
-def next_frame(now, frame_ms):
-    """The first frame time after ``now``; nkl's clock counts whole microseconds, so a time within 2 us of a
-    frame time is that time."""
-    following = (math.floor(now / frame_ms) + 1) * frame_ms
-    return following + frame_ms if following - now < 0.002 else following
-
-
-def run(simulation, plan, looks_per_request=20):
-    """The plan in requests of at most ``looks_per_request`` looks each (nkl's answer to one request holds
-    every picture of it); the pictures in order."""
-    from nkl.sim import actions
-    pictures, part = [], []
-    for item in plan:
-        part.append(item)
-        if isinstance(item, actions.Look) and sum(isinstance(i, actions.Look) for i in part) >= looks_per_request:
-            pictures += simulation.step_many(part)
-            part = []
-    return pictures + (simulation.step_many(part) if part else [])
-
-
-def planned(acts, simulation, frame_ms, video):
-    """The acts with a look at each frame time the clock passes, and a wait to the next frame time when
-    the acts end before it."""
-    from nkl.sim import actions
-    now = simulation.time_ms()
-    following = next_frame(now, frame_ms)
-    plan, looks = [], 0
-    state = simulation.pointer()
-    pointer = (state.x, state.y)
-
-    def wait(ms):
-        nonlocal now, following, looks
-        end = now + ms
-        while following <= end + 1e-9:
-            plan.extend([actions.Wait(ms=following - now), actions.Look(size=video)])
-            now, following, looks = following, following + frame_ms, looks + 1
-        if end > now:
-            plan.append(actions.Wait(ms=end - now))
-            now = end
-    for act in acts:
-        if isinstance(act, actions.Wait):
-            wait(act.ms)
-            continue
-        now += duration_ms(act, simulation, pointer)
-        plan.append(act)
-        if isinstance(act, (actions.PointerMove, actions.PointerStroke)):
-            pointer = (act.x, act.y) if isinstance(act, actions.PointerMove) else act.points[-1]
-        if now >= following - 1e-9:
-            plan.append(actions.Look(size=video))
-            following, looks = next_frame(now, frame_ms), looks + 1
-    if not looks:
-        wait(following - now)
-    return plan
-
-
-def main():
+def start(folder: Path, seed: int, screen):
+    """A fresh run of the bundle, as ``nkl.fsim.start`` makes one for nkl's agent harness."""
     import nkl._core.frontend.program as program
-    from nkl.sim import Display, Simulation, actions
-    folder, seed, width, height = Path(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])
-    frame_ms, video = float(sys.argv[5]), (int(sys.argv[6]), int(sys.argv[7]))
+    from nkl import fsim
     call = BundleCall(folder)
     op_call = program.op_call
     program.op_call = lambda value, use: value if value is call else op_call(value, use)
-    simulation = Simulation(call, seed=seed, display=Display(screen=(width, height)), channels='rgb')
+    try:
+        return fsim.start(call, seed=seed, display=fsim.Display(screen=screen), look=fsim.Look(channels='rgb'))
+    finally:
+        program.op_call = op_call
+
+
+def pacing_of(kind, step):
+    from nkl import agents
+    return {'Frozen': agents.Frozen(), 'Realtime': agents.Realtime(), 'Dense': agents.Dense(step)}[kind]
+
+
+def actions(acts, context):
+    """nkl's agent actions for Brain-Score acts: pixels become scene units by nkl's ``to_scene``; a typed
+    text becomes its key presses as nkl's reply reader makes them."""
+    from nkl import agents, fsim
+    from nkl._core.host.agents import Stroke, to_scene
+    made = []
+
+    def scene(x, y):
+        return to_scene(x, y, context.screen, context.extent)
+    for act in acts:
+        name = act['act']
+        if name == 'press':
+            made.append(fsim.Keyboard.Press(act['key']))
+        elif name == 'release':
+            made.append(fsim.Keyboard.Release(act['key']))
+        elif name == 'type':
+            typed, _, problems = agents.parse(json.dumps({'do': 'type', 'text': act['text']}), context)
+            if problems:
+                raise ValueError('; '.join(problems))
+            made.extend(typed)
+        elif name == 'wait':
+            made.append(agents.Wait(round(act['ms'] * 1000)))
+        elif name == 'move':
+            made.append(fsim.Pointer.Move(*scene(act['x'], act['y'])))
+        elif name == 'down':
+            made.append(fsim.Pointer.Down())
+        elif name == 'up':
+            made.append(fsim.Pointer.Up())
+        elif name == 'stroke':
+            made.append(Stroke(tuple(scene(*point) for point in act['points']), act.get('force', 1.0)))
+        else:
+            raise ValueError(f'{name!r} is not an act of motor:key or motor:pointer')
+    return made
+
+
+def screen(run, context, system=None):
+    from nkl._core.host.agents import to_pixels
+    ended = run.outcome is not None
+    image, body = context.screen, context.body
+    x, y = to_pixels(body.pointer.x, body.pointer.y, image, context.extent)
+    answer = {'t_ms': run.t / 1000, 'ended': ended,
+              'body': {'pointer': [x, y], 'pointer_down': body.pointer.down, 'pointer_connected': body.pointer.connected,
+                       'keys_down': list(body.keyboard.down)},
+              'extent': list(context.extent), 'acts_per_step': context.limits.actions}
+    if not ended:
+        answer['picture'] = {'data': base64.b64encode(image.data).decode(), 'shape': [image.height, image.width, 3],
+                             'at_ms': image.at / 1000}
+    if system is not None:
+        answer['system'] = system
+    return answer
+
+
+def main():
+    from nkl import agents, fsim
+    folder, seed, width, height = Path(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])
+    run = context = pacing = None
+    motor = agents.Motor()
     while line := commands.readline():
         command = json.loads(line)
         try:
             if 'reset' in command:
-                simulation.reset()
-                send({'done': screen(simulation, [])})
+                settings = command['reset']
+                pacing = pacing_of(*settings['pacing'])
+                limits = agents.Limits(**settings['limits'])
+                if isinstance(pacing, agents.Dense):
+                    limits = replace(limits, actions=1)       # as nkl's agent harness: one action a turn
+                run, context = agents.begin(start(folder, seed, (width, height)), limits=limits)
+                system = agents.system_prompt(
+                    settings['instructions'], screen=(context.screen.width, context.screen.height),
+                    extent=context.extent, limits=limits, pacing=pacing, motor=motor, seconds=settings['seconds'])
+                send({'done': screen(run, context, system)})
             elif 'step' in command:
-                acts = []
-                for act in command['step']:
-                    fields = {key: value for key, value in act.items() if key != 'act'}
-                    if 'points' in fields:
-                        fields['points'] = tuple(tuple(point) for point in fields['points'])
-                    acts.append(getattr(actions, act['act'])(**fields))
-                frames = run(simulation, planned(acts, simulation, frame_ms, video))
-                send({'done': screen(simulation, frames)})
+                step = command['step']
+                made = actions(step['acts'], context)
+                response = agents.AgentResponse(tuple(made), (), (), '', None, agents.Usage(), float(step['seconds']),
+                                                1, '', '', '')
+                run, images = agents.act(run, context, response, pacing, motor)
+                context = agents.observe(context, response, images)
+                send({'done': screen(run, context)})
             elif 'leave' in command:
-                if not simulation.done():
-                    simulation.leave()
+                if run.outcome is None:
+                    run = fsim.stop(run)
                 send({'done': True})
             elif 'trace' in command:
-                Path(command['trace']).write_text(json.dumps(simulation.trace()))
+                Path(command['trace']).write_text(json.dumps(fsim.trace(run)))
                 send({'done': command['trace']})
             else:
-                send({'done': simulation.result() if simulation.done()
-                      and simulation.outcome().get('kind') == 'completed' else None})
+                send({'done': run.outcome.get('value') if run.outcome is not None
+                      and run.outcome.get('kind') == 'completed' else None})
         except Exception as error:
             send({'failed': {'type': type(error).__name__, 'message': str(error),
                              'traceback': traceback.format_exc()}})
