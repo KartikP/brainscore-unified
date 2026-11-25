@@ -13,8 +13,8 @@ Deterministic seed so re-runs are reproducible.
 """
 
 from brainscore.model_helpers.text_wrapper import TextWrapper
-from brainscore import BrainScoreModel, LayerSelector
-from brainscore.models.clip_vit_b_32.model import REGION_LAYER_MAP, load_clip, picture_extractor
+from brainscore import BrainScoreModel
+from brainscore.models.clip_vit_b_32.model import load_clip, picture_extractor, region_layers
 
 
 def get_model(identifier: str) -> BrainScoreModel:
@@ -38,13 +38,7 @@ def get_model(identifier: str) -> BrainScoreModel:
         model=clip_model,
         # language_system is recorded from the text tower, every other region from
         # the vision tower: the towers each layer path is relative to.
-        region_layer_map={
-            region: LayerSelector(
-                name=layer,
-                modality='text' if region == 'language_system' else 'vision',
-            )
-            for region, layer in REGION_LAYER_MAP.items()
-        },
+        region_layer_map=region_layers(),
         extractor={
             'vision': vision_wrapper,
             'text': text_wrapper,
