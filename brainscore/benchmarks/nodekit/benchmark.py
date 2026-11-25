@@ -18,10 +18,15 @@ response times are simulated times (``subject_response_ms``): recorded, not scor
 kept under ``record`` (``attrs['trace']``) and replays in the task repository's viewer
 (``python -m brainscore.harnesses.nodekit replay <record>``).
 
-- ``NodeKit.DriftingGabor`` (after Tadin et al. 2003): the subject's proportion correct, as the mean
-  over the 10 conditions (patch size x duration; one contrast, 0.95), divided by the participants' mean
-  proportion correct over the same conditions. Chance is 0.5 (raw). Per condition, the subject's and the
-  participants' proportions are in ``attrs['by_condition']``.
+- ``NodeKit.DriftingGabor`` (after Tadin et al. 2003; owner, 2026-11-25): the Pearson correlation of the
+  subject's proportion correct in each of the 10 conditions (patch size x duration; one contrast, 0.95) with
+  the participants' mean proportions, divided by the ceiling: each participant's profile against the mean of
+  the others (leave one participant out), the mean over participants. Chance is 0 (a responder at chance has
+  no profile). One run has 5 test trials a condition, so one run's proportions move in steps of 0.2 (noise);
+  repeated runs of a subject are scored together (``score_result`` with a list of runs). A profile that is the
+  same in every condition, or a condition with no trial, has no correlation: the score states it and is not a
+  number. Extra values: the overall proportion correct (``proportion_correct``, the participants'
+  ``proportion_correct_participants``) and the per-condition table (``by_condition``).
 - ``NodeKit.TripletSimilarity`` (NIGHTS triplets): for each test trial of the subject, the share of the
   participants' answers to the same triplet that chose the same candidate; the mean over trials, divided
   by the ceiling. Chance is 0.5 (raw) for any participants' answers. Ceiling: each participant against the
@@ -69,17 +74,34 @@ def _gabor_people(participants: pd.DataFrame) -> pd.Series:
     return participants.groupby('participant').apply(gabor_by_condition).mean()      # by condition
 
 
+def _profile_correlation(own: pd.Series, reference: pd.Series) -> float:
+    """Pearson correlation of two per-condition profiles; NaN when one is constant or has a missing condition."""
+    if own.isna().any() or own.nunique() < 2 or reference.nunique() < 2:
+        return float('nan')
+    return float(np.corrcoef(own.values, reference.values)[0, 1])
+
+
 def gabor_ceiling(participants: pd.DataFrame) -> float:
-    return float(_gabor_people(participants).mean())
+    each = participants.groupby('participant').apply(gabor_by_condition)
+    return float(np.nanmean([_profile_correlation(each.loc[p], each.drop(p).mean()) for p in each.index]))
 
 
 def gabor(subject: pd.DataFrame, participants: pd.DataFrame) -> dict:
     people = _gabor_people(participants)
     own = gabor_by_condition(subject).reindex(people.index)
-    return {'raw': float(own.mean()), 'chance': 0.5,
-            'score_form': 'proportion correct (mean over size x duration conditions) / participants\' proportion',
-            'by_condition': [{'size_degrees': size, 'duration_milliseconds': duration, 'subject': float(own[size, duration]),
-                              'participants': float(people[size, duration])} for size, duration in people.index]}
+    raw = _profile_correlation(own, people)
+    measured = {'raw': raw, 'chance': 0.0,
+                'score_form': 'Pearson correlation of the per-condition proportion correct (size x duration) with '
+                              'the participants\' mean / leave-one-participant-out',
+                'proportion_correct': float(test_rows(subject)['correct'].astype(float).mean()),
+                'proportion_correct_participants': float(people.mean()),
+                'by_condition': [{'size_degrees': size, 'duration_milliseconds': duration,
+                                  'subject': float(own[size, duration]), 'participants': float(people[size, duration])}
+                                 for size, duration in people.index]}
+    if not np.isfinite(raw):
+        measured['score_note'] = ('no correlation: the subject\'s proportion is the same in every condition'
+                                  if not own.isna().any() else 'no correlation: a condition has no trial')
+    return measured
 
 
 # --- Triplet similarity -------------------------------------------------------------------------------------
@@ -211,8 +233,18 @@ class NodeKitBenchmark(BenchmarkBase):
                                  trace=str(environment.trace))
 
     def score_result(self, result, **run) -> Score:
-        """The score of one run's result (None for a run that did not complete)."""
-        tests = int(test_rows(self.participants).groupby('participant').size().max())
+        """The score of one run's result (None for a run that did not complete), or of repeated runs of one
+        subject scored together: a list of results (their test trials together; the test-trial count is that of
+        all the runs)."""
+        if result is not None and result and isinstance(result[0], (list, type(None))):
+            runs = result
+            done = [records for records in runs if records is not None]
+            result = [record for records in done for record in records] if done else None
+            tests = int(test_rows(self.participants).groupby('participant').size().max()) * len(runs)
+            return self._scored(result, tests, runs=len(runs), **run)
+        return self._scored(result, int(test_rows(self.participants).groupby('participant').size().max()), **run)
+
+    def _scored(self, result, tests: int, **run) -> Score:
         if result is None:
             measured = {'raw': float('nan'), 'score_form': 'no trial record'}
             states = ['missing'] * tests
