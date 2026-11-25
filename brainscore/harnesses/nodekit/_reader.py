@@ -10,8 +10,8 @@ last reply):
   where one goes: ``screen`` or ``look:<id>``).
 - ``{"read": {"text": reply, "form": "motor:key" | "motor:pointer", **turn}}`` reads the reply with nkl's
   ``parse`` and answers ``{"acts": [...] or None, "memories": [...], "problems": [...]}``: the acts in the
-  form of Brain-Score's ``motor:key`` or ``motor:pointer`` (pixels: the numbers the reply wrote; with ``grid``,
-  the subject's grid of that many positions a side, scaled to the screen), or None
+  form of Brain-Score's ``motor:key`` or ``motor:pointer`` (the numbers the reply wrote, in the units of the
+  turn's screen), or None
   and nkl's problems with the command and the rule broken. In the agent view a look is an act
   (``{'act': 'look', 'id'}``); in the participant view a reply that asks for one has a problem, as has one
   with an act of the other form; as in nkl, nothing of such a reply is done.
@@ -66,17 +66,12 @@ POINTER_ACTS = {'Down': 'down', 'Up': 'up'}
 def read(turn):
     from nkl import agents, fsim
     from nkl._core.host.agents import Stroke, TakeLook, remember, written
-    # A subject that writes positions on a grid of ``grid`` per side (its own convention) is read on that grid,
-    # and its positions become pixels of the screen.
-    grid = turn.get('grid')
-    width, height = turn['screen']
-    context = context_of(dict(turn, screen=[grid, grid]) if grid else turn)
+    context = context_of(turn)
     text, form = turn['text'], turn['form']
     actions, changes, problems = agents.parse(text, context)
     problems = list(problems)
     # The numbers the reply wrote for each pointer move, in order: a stroke's points are these pixels.
-    scale = (width / grid, height / grid) if grid else (1, 1)
-    pixels = iter([[command['x'] * scale[0], command['y'] * scale[1]] for _, command in written(text)
+    pixels = iter([[command['x'], command['y']] for _, command in written(text)
                    if isinstance(command, dict) and command.get('do') == 'pointer_move'])
     acts = []
     for action in actions:

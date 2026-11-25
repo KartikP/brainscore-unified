@@ -182,9 +182,7 @@ while line := commands.readline():
         send({'done': [['problems: ' + '; '.join(turn['problems']), None], ['The screen now:', 'screen']]})
     else:
         turn = command['read']
-        if turn['text'] == 'grid?':
-            send({'done': {'acts': [{'act': 'wait', 'ms': turn.get('grid') or 0}], 'memories': [], 'problems': []}})
-        elif turn['text'] == 'look':
+        if turn['text'] == 'look':
             send({'done': {'acts': None, 'memories': [], 'problems': ['command 1 (look): look is not offered here']}})
         else:
             send({'done': {'acts': json.loads(turn['text']), 'memories': [], 'problems': []}})
@@ -326,19 +324,16 @@ def test_the_act_policy_shows_no_earlier_turn_in_the_agent_view(stand_in, monkey
     policy.close()
 
 
-def test_the_act_policy_reads_positions_on_the_model_s_grid(stand_in, monkeypatch):
-    import brainscore.harnesses._environment_folder as environment_folder
-    import brainscore.harnesses.nodekit.policy as act
-    reader = stand_in / 'stand_in_reader.py'
-    reader.write_text(READER)
-    monkeypatch.setattr(act, '_READER', reader)
-    monkeypatch.setattr(environment_folder, 'ready_folder', nodekit.ready_folder)
-    row = {'vision:image': np.zeros((768, 1024, 3), np.uint8), 'instruction': 'brief',
-           'observation': {'t_ms': 0.0, 'act_form': 'motor:key'}}
-    for grid, sent in ((1000, 1000), (None, 0)):
-        policy = act.act_policy(lambda prompt: 'grid?', position_grid=grid)
-        assert policy(row)['motor:key'].payload == [{'act': 'wait', 'ms': sent}]
-        policy.close()
+def test_positions_on_the_model_s_grid_are_one_convention():
+    from brainscore.harnesses.nodekit.policy import on_grid, to_pixels
+    # The 30B's two cases: a target it wrote on the grid stays on face 2; a pointer number it copies back from
+    # its briefing lands where the pointer is.
+    assert to_pixels([{'act': 'stroke', 'points': [[680, 170]]}], 1000, 1024, 768)[0]['points'] == [[696.32, 130.56]]
+    turn = on_grid({'screen': [1024, 768], 'observation': {'pointer': [328.704, 130.56]}}, 1000)
+    assert turn['screen'] == [1000, 1000]
+    shown = turn['observation']['pointer']
+    back = to_pixels([{'act': 'stroke', 'points': [shown]}], 1000, 1024, 768)[0]['points'][0]
+    assert back == pytest.approx([328.704, 130.56])
 
 
 def test_each_run_has_nkl_data_of_its_own_and_a_shared_home(stand_in):

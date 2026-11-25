@@ -69,6 +69,30 @@ class _Reader:
             self._child = None
 
 
+def on_grid(turn: dict, grid: int) -> dict:
+    """The turn as the model's grid shows it: a screen of ``grid`` x ``grid`` and the pointer in grid units."""
+    width, height = turn['screen']
+    seen = dict(turn['observation'])
+    if 'pointer' in seen:
+        seen['pointer'] = [seen['pointer'][0] * grid / width, seen['pointer'][1] * grid / height]
+    return dict(turn, screen=[grid, grid], observation=seen)
+
+
+def to_pixels(acts: list, grid: int, width: int, height: int) -> list:
+    """The acts' positions on the model's grid as pixels of a ``width`` x ``height`` picture."""
+    def pixel(x, y):
+        return x * width / grid, y * height / grid
+    converted = []
+    for act in acts:
+        act = dict(act)
+        if 'x' in act:
+            act['x'], act['y'] = pixel(act['x'], act['y'])
+        if 'points' in act:
+            act['points'] = [list(pixel(*point)) for point in act['points']]
+        converted.append(act)
+    return converted
+
+
 def changed_frames(video, times, last, most: int):
     """The frames of ``video`` that differ from the frame before them (the first from ``last``), at most
     ``most`` of them, spread evenly: ``[(time ms, frame)]``."""
@@ -92,8 +116,10 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
     settings of each turn (None: the model's default, greedy for a local model); with a seed, turn ``n`` uses
     ``seed + n``, so a repeated run with the same seed asks the same. ``position_grid``: the model writes
     positions on a grid of that many positions a side of the picture (its own convention, stated by its plugin),
-    not in pixels; the policy scales them to pixels and states the grid with its settings (the score's
-    provenance). None (the default): pixels."""
+    not in pixels; every position the turn's briefing shows (the pointer) is on that grid too, so what the model
+    reads and writes is one convention, and the policy scales its acts to pixels and states the grid with its
+    settings (the score's provenance). nkl's system prompt (on ``instruction``) keeps nkl's pixel words. None
+    (the default): pixels."""
     from brainscore_core.responses import Prompt, Text
     from brainscore_core.streaming import StreamEvent
     reader = _Reader()
@@ -122,6 +148,8 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
         screen = pictures['screen']
         turn = {'screen': [screen.shape[1], screen.shape[0]], 'observation': seen,
                 'memories': state['memories'], 'problems': state['problems']}
+        if position_grid:        # every position the turn shows and reads is on the model's grid
+            turn = on_grid(turn, position_grid)
         parts, names = [('text', row['instruction'])], ['instruction']
         video = row.get('vision:video')
         shown = changed_frames(video, seen.get('frame_t_ms', []), state['last'], frames)
@@ -146,7 +174,9 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
         state_settings_as(policy, reply, {'position_grid': position_grid} if position_grid else None)
         text = answer.payload if isinstance(answer, StreamEvent) else answer
         meta = answer.meta if isinstance(answer, StreamEvent) else {}
-        read = reader.ask({'read': {**turn, 'text': text, 'form': seen['act_form'], 'grid': position_grid}})
+        read = reader.ask({'read': {**turn, 'text': text, 'form': seen['act_form']}})
+        if position_grid and read['acts']:
+            read['acts'] = to_pixels(read['acts'], position_grid, screen.shape[1], screen.shape[0])
         said = [(part, name) for part, name in zip(parts, names) if part[0] == 'text' and name != 'instruction']
         state['history'].append((Prompt(parts=tuple(p for p, _ in said), names=tuple(n for _, n in said)), text))
         state.update(memories=read['memories'], problems=read['problems'], turn=state['turn'] + 1,
