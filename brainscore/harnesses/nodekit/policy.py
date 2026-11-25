@@ -11,7 +11,8 @@ of them in this file): the harness's ``instruction`` is the system text (nkl's `
 turn is nkl's ``briefing`` (turns left, the problems of the last reply, the memories, the pointer and keys,
 the screen now), made in a child process in nkl's environment (``_reader.py``). Before the screen, the turn
 shows at most ``frames`` frames of ``vision:video`` that changed (a frame that differs from the one before
-it; the first is compared with the last screen), spread evenly over the changed ones, each with its time.
+it; the first is compared with the last frame of the turn before), spread evenly over the changed ones, each
+with its time; the trace states the times shown.
 The reply is read with nkl's ``parse`` in the same child; its acts go out on the act form the run reads
 (``observation['act_form']``) in the numbers the reply wrote. A reply with a problem (nkl's rules, a look,
 an act of the other form) gives no act (None, an invalid step) and its problems with the command and the
@@ -27,7 +28,9 @@ Limit: the policy needs NodeKit's task repository (private) for nkl's environmen
 """
 from __future__ import annotations
 
+import shutil
 import tempfile
+import weakref
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -86,22 +89,32 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
     ``seed + n``, so a repeated run with the same seed asks the same."""
     from brainscore_core.responses import Prompt, Text
     from brainscore_core.streaming import StreamEvent
-    reader, folder = _Reader(), Path(tempfile.mkdtemp(prefix='nodekit-turns-'))
-    state = {'memories': [], 'problems': [], 'last': None, 'turn': 0, 'history': []}
+    reader = _Reader()
+    state = {'memories': [], 'problems': [], 'last': None, 'turn': 0, 'history': [], 'folder': None, 'pictures': 0}
     trace: list = []
 
     def picture(array) -> str:
+        """The picture as a file for the reply part, in the episode's folder (made at its first picture)."""
         from PIL import Image
-        path = folder / f'{state["turn"]:05d}-{len(list(folder.iterdir()))}.png'
+        if state['folder'] is None:
+            state['folder'] = Path(tempfile.mkdtemp(prefix='nodekit-turns-'))
+        state['pictures'] += 1
+        path = state['folder'] / f'{state["pictures"]:06d}.png'
         Image.fromarray(np.asarray(array)).save(path)
         return str(path)
+
+    def clear():
+        if state['folder'] is not None:
+            shutil.rmtree(state['folder'], ignore_errors=True)
+        state.update(folder=None, pictures=0)
 
     def policy(row):
         seen, screen = row['observation'], row['vision:image']
         turn = {'screen': [screen.shape[1], screen.shape[0]], 'observation': seen,
                 'memories': state['memories'], 'problems': state['problems']}
         parts, names = [('text', row['instruction'])], ['instruction']
-        shown = changed_frames(row.get('vision:video'), seen.get('frame_t_ms', []), state['last'], frames)
+        video = row.get('vision:video')
+        shown = changed_frames(video, seen.get('frame_t_ms', []), state['last'], frames)
         briefing = reader.ask({'brief': turn})
         for number, (text, image) in enumerate(briefing):
             if image and shown:          # the screen comes last: the frames since the last turn before it
@@ -118,12 +131,14 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
                         seed=None if seed is None else seed + state['turn'])
         history = tuple(state['history'][-turns_kept:]) if turns_kept else ()
         answer = reply(Prompt(parts=tuple(parts), names=tuple(names), response=settings, history=history))
+        _state_as(policy, reply)
         text = answer.payload if isinstance(answer, StreamEvent) else answer
         meta = answer.meta if isinstance(answer, StreamEvent) else {}
         read = reader.ask({'read': {**turn, 'text': text, 'form': seen['act_form']}})
         said = [(part, name) for part, name in zip(parts, names) if part[0] == 'text' and name != 'instruction']
         state['history'].append((Prompt(parts=tuple(p for p, _ in said), names=tuple(n for _, n in said)), text))
-        state.update(memories=read['memories'], problems=read['problems'], last=screen, turn=state['turn'] + 1)
+        state.update(memories=read['memories'], problems=read['problems'], turn=state['turn'] + 1,
+                     last=video[-1] if video is not None and len(video) else state['last'])
         trace.append({'turn': state['turn'], 't_ms': seen['t_ms'], 'frames_shown': [at for at, _ in shown],
                       'reply': text, 'problems': read['problems'], 'acts': read['acts'],
                       'token_usage': meta.get('token_usage'), 'reasoning': meta.get('reasoning')})
@@ -133,8 +148,23 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
             'parse_error': None if problems is None else f'the reply broke nkl\'s rules: {problems}'})}
 
     def reset():
+        clear()
         state.update(memories=[], problems=[], last=None, turn=0, history=[])
         trace.clear()
 
-    policy.reset, policy.trace, policy.close = reset, trace, reader.close
+    def close():
+        clear()
+        reader.close()
+
+    policy.reset, policy.trace, policy.close = reset, trace, close
+    weakref.finalize(policy, close)       # the reader child and the pictures go with the policy
     return policy
+
+
+def _state_as(policy, reply) -> None:
+    """The settings ``reply`` stated in the running session's part log (an API part: provider, model, generation
+    settings), stated for ``policy`` too: the policy is the part the session notes (the score's provenance)."""
+    from brainscore._model import parts
+    log = parts.active()
+    if log is not None and id(reply) in log.settings:
+        log.settings.setdefault(id(policy), set()).update(log.settings[id(reply)])

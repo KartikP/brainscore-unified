@@ -20,7 +20,7 @@ width, height = int(sys.argv[3]), int(sys.argv[4])
 answer, t, left, settings, log = None, 0.0, False, None, []
 def send(message):
     messages.write((json.dumps(message) + '\\n').encode()); messages.flush()
-def screen(system=None, start=None):
+def screen(system=None, start=None, file=None):
     ended = answer is not None or left
     reply = {'t_ms': t, 'ended': ended, 'body': {'pointer': [0.0, 0.0], 'pointer_down': False,
              'pointer_connected': True, 'keys_down': []}, 'extent': [width, height],
@@ -28,10 +28,10 @@ def screen(system=None, start=None):
     if not ended:
         reply['picture'] = {'data': base64.b64encode(bytes([128]) * (width * height * 3)).decode(),
                             'shape': [height, width, 3], 'at_ms': t}
-    times = [k * 1000 / 60 for k in range(1, 100000) if start is not None and start < k * 1000 / 60 <= t]
-    if times:
-        reply['frames'] = {'data': base64.b64encode(bytes([64]) * (len(times) * 512 * 384 * 3)).decode(),
-                           'shape': [len(times), 384, 512, 3], 'at_ms': times}
+    if file:
+        times = [k * 1000 / 60 for k in range(1, 100000) if start < k * 1000 / 60 < t]
+        open(file, 'wb').write(bytes([64]) * (len(times) * 512 * 384 * 3))
+        reply['frames'] = {'file': file, 'shape': [len(times), 384, 512, 3], 'at_ms': times, 'not_sent': 0}
     if system is not None:
         reply['system'] = system
     return reply
@@ -48,7 +48,7 @@ while line := commands.readline():
             t += act.get('ms', 1.0)
             if act['act'] == 'press' and act['key'] in ('ArrowLeft', 'ArrowRight'):
                 answer = act['key']
-        send({'done': screen(start=start)})
+        send({'done': screen(start=start, file=step.get('frames'))})
     elif 'leave' in command:
         left = True
         send({'done': True})
@@ -110,7 +110,7 @@ def test_a_subject_takes_part_through_participate_and_the_program_result_comes_b
     assert seen[0]['instruction'].endswith('Answer with an arrow key.')        # nkl's briefing, then the benchmark's
     assert seen[1]['observation']['t_ms'] == 250.0 and seen[1]['observation']['act_form'] == 'motor:key'
     # The frames since the last turn: one at each frame time the clock passed, at half size, with their times.
-    assert seen[1]['vision:video'].shape == (15, 384, 512, 3) and len(seen[1]['observation']['frame_t_ms']) == 15
+    assert seen[1]['vision:video'].shape == (14, 384, 512, 3) and len(seen[1]['observation']['frame_t_ms']) == 14
     assert 'vision:video' not in seen[0]
     assert seen[0]['observation']['turns_left'] == 20000 and seen[1]['observation']['turns_left'] == 19999
 
@@ -251,3 +251,42 @@ def test_chrome_on_linux_is_wrapped_once_with_the_gpu_flags(tmp_path):
     nodekit.gpu_chrome(chrome)
     assert (tmp_path / 'chrome.real').read_text() == 'the program'
     assert '--use-angle=vulkan' in chrome.read_text() and 'chrome.real' in chrome.read_text()
+
+
+def test_a_run_stops_after_answers_in_a_row_that_give_no_act(stand_in):
+    subject = _subject('mute', lambda row: {'motor:key': None})
+    result, environment, session = nodekit.play(subject, _program(stand_in / 'mute'), form='motor:key')
+    assert session.source.end_reason == 'truncated' and environment.stop_cause == 'invalid answers in a row'
+    assert environment.steps == nodekit.MAX_INVALID_IN_A_ROW
+
+
+def test_the_policy_states_the_settings_its_reply_stated():
+    from brainscore._model import parts
+    from brainscore.harnesses.nodekit.policy import _state_as
+    reply, policy = object(), object()
+    with parts.session_log() as log:
+        log.settings[id(reply)] = {'{"model": "m", "provider": "bedrock"}'}
+        _state_as(policy, reply)
+        assert log.settings[id(policy)] == {'{"model": "m", "provider": "bedrock"}'}
+
+
+def test_the_act_policy_compares_frames_with_the_last_frame_and_cleans_its_pictures(stand_in, monkeypatch):
+    import brainscore.harnesses._environment_folder as environment_folder
+    import brainscore.harnesses.nodekit.policy as act
+    reader = stand_in / 'stand_in_reader.py'
+    reader.write_text(READER)
+    monkeypatch.setattr(act, '_READER', reader)
+    monkeypatch.setattr(environment_folder, 'ready_folder', nodekit.ready_folder)
+    prompts = []
+    policy = act.act_policy(lambda prompt: prompts.append(prompt) or '[{"act": "wait", "ms": 100}]')
+    still = np.zeros((3, 384, 512, 3), np.uint8)
+    row = {'vision:image': np.zeros((768, 1024, 3), np.uint8), 'vision:video': still, 'instruction': 'brief',
+           'observation': {'t_ms': 0.0, 'frame_t_ms': [1.0, 2.0, 3.0], 'act_form': 'motor:key'}}
+    policy(row)
+    policy(row)                         # the same frames as the last frame before: none changed
+    assert prompts[0].names.count('frame') == 2 and prompts[1].names.count('frame') == 0
+    pictures = Path(prompts[0].parts[-1][1]).parent
+    assert pictures.is_dir()
+    policy.reset()
+    assert not pictures.exists()
+    policy.close()
