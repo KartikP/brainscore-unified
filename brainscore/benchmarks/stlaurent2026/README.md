@@ -1,7 +1,7 @@
 # CNeuroMod-THINGS fMRI benchmarks (St-Laurent et al. 2026)
 
 Registered identifiers, version 1: `StLaurent2026-fMRI-things-<region>` for V1, V2, V3, V4, FFA,
-OFA, pSTS, PPA, OPA, MPA and EBA.
+OFA, pSTS, PPA, OPA, MPA and EBA, and `StLaurent2026-fMRI-things-cortex`.
 
 Participants of the Courtois NeuroMod project saw 4320 THINGS images (720 categories, 6 exemplars
 each), each image three times, while they were scanned with fMRI (St-Laurent et al. 2026,
@@ -32,3 +32,14 @@ penalty chosen on held-out training categories; Pearson r per voxel on the test 
 is the median over voxels of r / c, c = sqrt(noise ceiling / 100) of the voxel on the test images.
 The benchmark value is the mean over the participants; each participant's value, raw median r,
 median ceiling and counts are on the score (`per_participant`).
+
+## The cortex form
+
+`StLaurent2026-fMRI-things-cortex` asks `neural:cortex`. The target is the cortical voxels of each
+participant's fMRIPrep segmentation (`aparcaseg`, native space; sub-01: 70900 voxels), for sub-01,
+02, 03 and 06. The model names its layers for `cortex` (for example a `CompositeSelector`); each
+layer is one band, reduced to at most 100 components on the training images, at most 12 bands. A
+banded ridge (our own solver, `brainscore.metrics.encoding`) gives each band its penalty, one
+penalty tuple for all voxels, chosen on one held-out fold of training categories from 60 tuples of
+the grid. Voxel selection, target, split, ceiling and score are those of the region form, so the
+value is also ceiling-normalized.

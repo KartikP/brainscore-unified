@@ -11,6 +11,14 @@ One benchmark per region, the participants pooled: ``StLaurent2026-fMRI-things-<
 in other scans than THINGS. Participants sub-01, 02 and 03 (sub-04 is restricted; sub-06 has no
 own masks).
 
+The cortex form, ``StLaurent2026-fMRI-things-cortex``, asks ``neural:cortex``: the target is the
+cortical voxels of the participant's fMRIPrep segmentation (``aparcaseg``, native space), for
+sub-01, 02, 03 and 06. The model's ``cortex`` selector names its layers; each layer is one band,
+reduced to at most 100 components on the training images (``prepare_bands`` of Algonauts2025), at
+most 12 bands; a banded ridge (one penalty per band, one penalty tuple for all voxels, chosen on
+one held-out fold of training categories from a random search of the grid). The other steps are
+those of the region form.
+
 For each participant:
 
 1. Images: those with three answered trials (``things.answered_viewing``), as the paper's noise
@@ -42,7 +50,9 @@ from brainscore_core.metrics import Score
 from brainscore import load_dataset, load_stimulus_set
 from brainscore.benchmarks._score import benchmark_score, noise_ceiling, not_estimated, voxel_score
 from brainscore.data.cneuromod.data_packaging.things import answered_viewing
-from brainscore.metrics.encoding import NormalEquations, cross_validated_r, grid_search, group_kfold, ridge
+from brainscore.benchmarks.algonauts2025.scoring import prepare_bands
+from brainscore.metrics.encoding import (
+    NormalEquations, cross_validated_r, grid_search, group_kfold, penalty_grid, ridge)
 
 BIBTEX = """@article{stlaurent2026things,
   title={CNeuroMod-THINGS, a densely-sampled fMRI dataset for visual neuroscience},
@@ -63,6 +73,9 @@ VIEWINGS = 3
 NC_THRESHOLD = 10.0                 # percent, on the training images (ceiling r 0.32)
 MIN_VOXELS = 50
 ALPHA_GRID = tuple(float(10.0 ** e) for e in range(-2, 9))
+MAX_BANDS = 12                      # the cortex form: one band per layer of the model's cortex selector
+BAND_COMPONENTS = 100
+BANDED_CANDIDATES = 60
 STATED = {
     'responses': 'GLMsingle FITHRF_GLMDENOISE_RR trial responses, z-scored per voxel (things.glmsingle)',
     'target': 'mean of the three answered viewings of each image; each viewing z-scored per voxel with the mean '
@@ -144,25 +157,42 @@ class StLaurent2026Things(BenchmarkBase):
                 'target': cube.mean(axis=1), 'ceiling': ceiling}
 
     def _features(self, subject) -> tuple:
-        """``(features, stimulus ids)``: the model's response for the region, one session over every image."""
+        """``(features, stimulus ids, layer of each feature)``: the model's response for the region, one
+        session over every image. A response without a ``layer`` coordinate is one layer."""
         from brainscore_core.streaming_helpers import neural_response
         response = neural_response(subject, self.stimulus_set, [f'neural:{self._region}'])
         if 'time_bin' in response.dims:
             response = response.mean('time_bin')
         response = response.transpose('presentation', 'neuroid')
-        return np.asarray(response.values), np.asarray(response['stimulus_id'].values).astype(str)
+        try:                        # a coordinate, or a level of the neuroid index
+            layers = np.asarray(response['layer'].values).astype(str)
+        except KeyError:
+            layers = np.full(response.sizes['neuroid'], 'response')
+        if self._region == 'cortex' and len(set(layers)) > MAX_BANDS:
+            raise ValueError(f'the response for neural:cortex comes from {len(set(layers))} layers; the benchmark '
+                             f'fits at most {MAX_BANDS} bands, one per layer. Map cortex to at most {MAX_BANDS} '
+                             f'layers (for example every k-th block).')
+        return np.asarray(response.values), np.asarray(response['stimulus_id'].values).astype(str), layers
 
-    def _fit(self, features, part) -> np.ndarray:
-        """Held-out r per selected voxel: one ridge on the training images, r on the test images (step 4)."""
-        groups = category(part['images'])
-        fit = ridge(grid_search([(alpha,) for alpha in ALPHA_GRID], partial(group_kfold, n_splits=5)),
-                    NormalEquations(shape_aware=True))
-        r, _ = cross_validated_r(features, part['target'], [(~part['test'], part['test'])], fit, groups=groups)
-        return r
+    def _fit(self, features, layers, part) -> tuple:
+        """``(held-out r per selected voxel, components per band)``: one fit on the training images, r on the
+        test images (step 4); the cortex form fits one band per layer."""
+        groups, train, test = category(part['images']), ~part['test'], part['test']
+        if self._region != 'cortex':
+            fit = ridge(grid_search([(alpha,) for alpha in ALPHA_GRID], partial(group_kfold, n_splits=5)),
+                        NormalEquations(shape_aware=True))
+            return cross_validated_r(features, part['target'], [(train, test)], fit, groups=groups)[0], None
+        bands = {layer: (features[:, layers == layer], np.flatnonzero(layers == layer))
+                 for layer in dict.fromkeys(layers)}
+        prepared, _ = prepare_bands(bands, train, BAND_COMPONENTS)
+        fit = ridge(grid_search(penalty_grid(ALPHA_GRID, len(prepared), BANDED_CANDIDATES),
+                                partial(group_kfold, n_splits=5, n_used=1)), NormalEquations())
+        r, _ = cross_validated_r(list(prepared.values()), part['target'], [(train, test)], fit, groups=groups)
+        return r, {layer: int(band.shape[1]) for layer, band in prepared.items()}
 
     def __call__(self, subject) -> Score:
         parts = {participant: self._target(participant) for participant in self._participants}  # data before the run
-        features, ids = self._features(subject)
+        features, ids, layers = self._features(subject)
         rows = {stimulus_id: row for row, stimulus_id in enumerate(ids)}
         scores, by_participant = {}, {}
         for participant, part in parts.items():
@@ -175,8 +205,10 @@ class StLaurent2026Things(BenchmarkBase):
             if missing:
                 raise ValueError(f'the response has no row for {len(missing)} images of {participant} '
                                  f'(for example {missing[0]}); a response answers every image shown.')
-            score = voxel_score(self, self._fit(features[[rows[image] for image in part['images']]], part),
-                                part['ceiling'])
+            r, components = self._fit(features[[rows[image] for image in part['images']]], layers, part)
+            score = voxel_score(self, r, part['ceiling'])
+            if components is not None:
+                by_participant[participant]['components_per_band'] = components
             scores[participant] = score
             by_participant[participant].update(
                 value=float(score), raw=float(score.attrs['raw']), median_ceiling=float(score.attrs['ceiling']),
@@ -191,6 +223,9 @@ class StLaurent2026Things(BenchmarkBase):
             metric='median_per_voxel_pearson_r', ceiling_aggregation='per_voxel',
             participants=sorted(scores), per_participant=by_participant, region=self._region,
             **STATED)
+        if self._region == 'cortex':
+            result.attrs.update(bands=list(dict.fromkeys(layers)), band_cap=MAX_BANDS, components_cap=BAND_COMPONENTS,
+                                fit='banded ridge, one band per layer, one penalty tuple for all voxels')
         if self._region in PACKAGED_REGION:
             result.attrs['region_note'] = f'{self._region} = {PACKAGED_REGION[self._region]}, the human homolog (pRF mask)'
         return result

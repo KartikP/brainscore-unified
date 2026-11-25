@@ -1,4 +1,6 @@
 """The THINGS benchmarks on a small made-up packaged folder (no download, no real model)."""
+import zlib
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -24,9 +26,9 @@ class _Extractor:
     identifier = 'made-up-things-extractor'
 
     def __call__(self, stimuli, layers):
-        rng = np.random.default_rng(1)
-        maps = {layer: rng.standard_normal((N_LATENT, 12)) for layer in ('early', 'late')}
-        blocks = [np.array([LATENT[i] for i in stimuli['stimulus_id']]) @ maps[layer] for layer in layers]
+        latent = np.array([LATENT[i] for i in stimuli['stimulus_id']])
+        blocks = [latent @ np.random.default_rng(zlib.crc32(layer.encode())).standard_normal((N_LATENT, 12))
+                  for layer in layers]
         return NeuroidAssembly(np.concatenate(blocks, axis=1), dims=['presentation', 'neuroid'], coords={
             **{column: ('presentation', list(stimuli[column])) for column in stimuli.columns},
             'layer': ('neuroid', [layer for layer in layers for _ in range(12)]),
@@ -69,16 +71,20 @@ def packaged(tmp_path, monkeypatch):
     _package(root, 'sub-01', [_region(rng, 'V1', 'retinoVisionNpythy', 60), _region(rng, 'hV4', 'retinoVisionNpythy', 60),
                               _region(rng, 'FFA', 'fLocVisionTask', 60),
                               _region(rng, 'EBA', 'fLocVisionTask', 60, signal=False),
-                              _region(rng, 'PPA', 'fLocVisionTask', 60, test_only=True)], seed=3)
+                              _region(rng, 'PPA', 'fLocVisionTask', 60, test_only=True),
+                              _region(rng, 'cortex', 'aparcaseg', 80)], seed=3)
     _package(root, 'sub-02', [_region(rng, 'V1', 'retinoVisionNpythy', 60), _region(rng, 'hV4', 'retinoVisionNpythy', 60),
                               _region(rng, 'FFA', 'fLocVisionTask', 20), _region(rng, 'EBA', 'fLocVisionTask', 60),
-                              _region(rng, 'PPA', 'fLocVisionTask', 60)], seed=4)
+                              _region(rng, 'PPA', 'fLocVisionTask', 60), _region(rng, 'cortex', 'aparcaseg', 80)],
+             seed=4)
     return root
 
 
-def _model(regions=('V1', 'V4', 'FFA', 'EBA', 'PPA')):
-    return BrainScoreModel('made-up-things', region_layer_map={region: 'early' for region in regions},
-                           extractor={'vision': _Extractor()})
+def _model(regions=('V1', 'V4', 'FFA', 'EBA', 'PPA'), cortex=('early', 'late')):
+    from brainscore.selection import CompositeSelector
+    layers = {region: 'early' for region in regions}
+    layers['cortex'] = CompositeSelector(tuple((layer, None) for layer in cortex))
+    return BrainScoreModel('made-up-things', region_layer_map=layers, extractor={'vision': _Extractor()})
 
 
 def _benchmark(region, root, participants=('sub-01', 'sub-02')):
@@ -146,8 +152,21 @@ def test_a_model_without_a_layer_for_the_region_is_not_applicable_before_any_dat
     assert 'neural:FFA' in str(score.attrs)
 
 
+def test_the_cortex_form_fits_one_band_per_layer_of_the_cortex_selector(packaged):
+    score = brainscore.score(_model(), _benchmark('cortex', packaged), check_mem=False)
+    assert score.attrs['bands'] == ['early', 'late']
+    assert score.attrs['per_participant']['sub-01']['components_per_band'] == {'early': 12, 'late': 12}
+    assert float(score) > 0.8 and score.attrs['per_participant']['sub-01']['atlas'] == 'aparcaseg'
+
+
+def test_the_cortex_form_refuses_more_than_12_layers(packaged):
+    model = _model(cortex=tuple(f'layer{i}' for i in range(13)))
+    with pytest.raises(ValueError, match='at most 12'):
+        brainscore.score(model, _benchmark('cortex', packaged), check_mem=False)
+
+
 def test_every_region_is_registered_with_its_request():
-    for region in ('V1', 'V2', 'V3', 'V4', 'FFA', 'OFA', 'pSTS', 'PPA', 'OPA', 'MPA', 'EBA'):
+    for region in ('V1', 'V2', 'V3', 'V4', 'FFA', 'OFA', 'pSTS', 'PPA', 'OPA', 'MPA', 'EBA', 'cortex'):
         benchmark = brainscore.load_benchmark(f'StLaurent2026-fMRI-things-{region}')
         assert benchmark.requested_output_channels == {f'neural:{region}'}
         assert benchmark.required_input_channels == {'vision:image'}

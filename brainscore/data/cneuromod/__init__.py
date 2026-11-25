@@ -18,7 +18,7 @@ THINGS_IMAGES = local.register(local.LocalAsset(
     obtain='`images_THINGS.zip` under its terms; unzip it and put its `object_images` folder (one folder per '
            'category: `aardvark/aardvark_01b.jpg`, ...) at the path above.',
     used_by=[f'StLaurent2026-fMRI-things-{region}' for region in
-             ('V1', 'V2', 'V3', 'V4', 'FFA', 'OFA', 'pSTS', 'PPA', 'OPA', 'MPA', 'EBA')],
+             ('V1', 'V2', 'V3', 'V4', 'FFA', 'OFA', 'pSTS', 'PPA', 'OPA', 'MPA', 'EBA', 'cortex')],
 ))
 
 _COMMAND = ('python -m brainscore.data.cneuromod.data_packaging.package --dataset {dataset} --form {form} '

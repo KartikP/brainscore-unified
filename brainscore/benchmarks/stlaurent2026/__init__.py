@@ -32,3 +32,7 @@ benchmark_registry['StLaurent2026-fMRI-things-MPA'] = partial(
     _load, region='MPA', identifier='StLaurent2026-fMRI-things-MPA')
 benchmark_registry['StLaurent2026-fMRI-things-EBA'] = partial(
     _load, region='EBA', identifier='StLaurent2026-fMRI-things-EBA')
+# The cortex form: the cortical voxels of each participant's fMRIPrep segmentation, sub-06 too.
+benchmark_registry['StLaurent2026-fMRI-things-cortex'] = partial(
+    _load, region='cortex', participants=('sub-01', 'sub-02', 'sub-03', 'sub-06'),
+    identifier='StLaurent2026-fMRI-things-cortex')
