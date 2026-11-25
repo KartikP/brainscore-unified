@@ -40,7 +40,7 @@ FORMS = {
 
 def build(module, form: str, root: Path, participant: str, session: str | None) -> list:
     """Make the time series of ``participant`` (all sessions, or ``session``) in ``form``; the released
-    files of the participant. ``root`` holds the clone of ``<data set>.timeseries`` (for its pins)."""
+    files of the participant. ``<data set>.timeseries`` is cloned in ``root`` (git only) for its commits."""
     if form not in FORMS:
         raise ValueError(f'form {form!r} is not made from the fMRIPrep outputs; the forms are {", ".join(FORMS)}')
     parcellation, renames = FORMS[form]
@@ -86,6 +86,8 @@ def sources(module, root: Path) -> dict:
     (the submodules of ``<data set>.timeseries``, and ``atlases`` of the code). ``{repository: commit}``."""
     base = root / 'extraction'
     release = root / f'{module.NAME}.timeseries'
+    if not (release / '.git').exists():     # git only: its files are not on the public store
+        subprocess.run(['git', 'clone', '-q', shared.GITHUB.format(release.name), str(release)], check=True)
     fmriprep = f'{module.NAME}.fmriprep'
     named = submodule_commit(release, f'code/{CODE}')
     if named != CODE_COMMIT:

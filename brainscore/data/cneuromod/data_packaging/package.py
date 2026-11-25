@@ -54,8 +54,9 @@ def main(argv=None) -> None:
     form_repository = module.GLMSINGLE if args.form == 'glmsingle' else f'{module.NAME}.timeseries'
     if fetching:
         shared.check_prerequisites()
-        anatomy = (module.ANATOMY,) if args.form == 'glmsingle' else ()
-        for repository in (module.REPOSITORY, shared.ATLASES, form_repository, *anatomy):
+        # a time series is made (extraction.py): its release repository is read for its commits only
+        own = (form_repository, module.ANATOMY) if args.form == 'glmsingle' else ()
+        for repository in (module.REPOSITORY, shared.ATLASES, *own):
             shared.clone(root, repository)
 
     needed = {}       # participant -> {kind: paths}

@@ -97,7 +97,7 @@ def make_tree(root: Path, dataset: str, sessions=('ses-01',)) -> Path:
     for folder in (base / shared.ATLASES, base / 'sourcedata' / f'{dataset}.fmriprep'):
         (folder / '.git').mkdir(parents=True, exist_ok=True)
         (folder / '.datalad').mkdir(exist_ok=True)
-    (root / f'{dataset}.timeseries').mkdir(parents=True, exist_ok=True)
+    (root / f'{dataset}.timeseries' / '.git').mkdir(parents=True, exist_ok=True)
     for session in sessions:
         func = base / 'sourcedata' / f'{dataset}.fmriprep' / 'sub-01' / session / 'func'
         for run in (1, 2):
@@ -259,8 +259,10 @@ def test_package_data_reads_the_made_time_series_with_the_per_tr_reader(tmp_path
     monkeypatch.setattr(shared, 'check_prerequisites', lambda: None)
     root = make_source(tmp_path / 'home' / 'sources' / 'cneuromod')
     make_tree(root, 'things')
-    stand_in(monkeypatch)
+    calls = stand_in(monkeypatch)
     out = package_data('cneuromod-things-timeseries', output=tmp_path / 'out', part='sub-01/ses-01')
+    enabled = {Path(call.argv[3]).name for call in calls if call.argv[:2] == ['datalad', 'siblings']}
+    assert 'things.timeseries' not in enabled     # its files are not on the public store: read for its commits
     series = xr.open_dataarray(out / 'sub-01' / 'ses-01' / 'timeseries_cneuromod2026.nc')
     assert series.shape == (2 * N_TRS, 2)                          # 2 runs x their volumes, 2 parcels
     assert sorted(set(series['run'].values)) == [1, 2]
