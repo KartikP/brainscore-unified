@@ -1,0 +1,7 @@
+# Every package of the environment Brain-Score makes for NodeKit's nkl, installed with --no-deps and
+# checked with pip check. nkl 0.1.0 has no dependencies; it is the wheel the pinned task repository
+# carries (a line that starts with ./ names a file of that checkout). pip and setuptools: as the other
+# harnesses. nkl needs Python 3.13 or later.
+./vendor/nkl-0.1.0-py3-none-any.whl
+pip==24.0
+setuptools==79.0.1
