@@ -226,9 +226,10 @@ def _call_bedrock(model, system, messages, settings):
     kwargs = dict(modelId=model, messages=[{'role': m['role'], 'content': content(m['content'])} for m in messages],
                   inferenceConfig={names[name]: value for name, value in request.items()})
     if system:
-        # A Claude model keeps the system text in Bedrock's prompt cache: a task's turns repeat it.
+        # A Claude model keeps the system text in Bedrock's prompt cache: a task's turns repeat it (Kimi K3
+        # refuses the cache point).
         kwargs['system'] = [{'text': system}] + ([{'cachePoint': {'type': 'default'}}]
-                                                 if _samples_only(_call_bedrock, model) else [])
+                                                 if 'anthropic.' in str(model) else [])
     try:
         resp = _bedrock_client(os.getenv('AWS_REGION')).converse(**kwargs)
     except botocore.exceptions.NoCredentialsError as e:
