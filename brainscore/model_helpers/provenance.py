@@ -89,6 +89,21 @@ class ProvenanceSubject(Subject):
 NOT_STATED = 'not stated'
 
 
+def state_settings_as(part, source=None, settings=None) -> None:
+    """State, in the running session's part log, the settings ``source`` stated (an API part: provider, model,
+    generation settings) and ``settings`` (a mapping) for ``part``: for a part such as a policy that answers
+    through another part, so the score's provenance names them. Nothing outside a session."""
+    import json
+    from brainscore._model import parts
+    log = parts.active()
+    if log is None:
+        return
+    if source is not None and id(source) in log.settings:
+        log.settings.setdefault(id(part), set()).update(log.settings[id(source)])
+    if settings:
+        log.settings.setdefault(id(part), set()).add(json.dumps(settings, sort_keys=True))
+
+
 def _kind(part) -> str:
     """``<module>.<qualname>`` of a function or method, or of the class of any other part."""
     import inspect

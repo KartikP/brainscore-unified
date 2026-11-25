@@ -35,6 +35,8 @@ import weakref
 from pathlib import Path
 from typing import Callable, Optional
 
+from brainscore.model_helpers.provenance import state_settings_as
+
 import numpy as np
 
 FRAMES_SHOWN = 4          # the most frames of vision:video one turn shows the model
@@ -141,7 +143,7 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
         kept = 0 if seen.get('view') == 'agent' else turns_kept
         history = tuple(state['history'][-kept:]) if kept else ()
         answer = reply(Prompt(parts=tuple(parts), names=tuple(names), response=settings, history=history))
-        _state_as(policy, reply, {'position_grid': position_grid} if position_grid else None)
+        state_settings_as(policy, reply, {'position_grid': position_grid} if position_grid else None)
         text = answer.payload if isinstance(answer, StreamEvent) else answer
         meta = answer.meta if isinstance(answer, StreamEvent) else {}
         read = reader.ask({'read': {**turn, 'text': text, 'form': seen['act_form'], 'grid': position_grid}})
@@ -169,15 +171,3 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
     policy.reset, policy.trace, policy.close = reset, trace, close
     weakref.finalize(policy, close)       # the reader child and the pictures go with the policy
     return policy
-
-
-def _state_as(policy, reply, own=None) -> None:
-    """The settings ``reply`` stated in the running session's part log (an API part: provider, model, generation
-    settings), stated for ``policy`` too: the policy is the part the session notes (the score's provenance)."""
-    from brainscore._model import parts
-    import json
-    log = parts.active()
-    if log is not None and id(reply) in log.settings:
-        log.settings.setdefault(id(policy), set()).update(log.settings[id(reply)])
-    if log is not None and own:
-        log.settings.setdefault(id(policy), set()).add(json.dumps(own, sort_keys=True))

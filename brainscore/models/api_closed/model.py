@@ -62,6 +62,12 @@ REGISTRY = {
         in_channels=('vision:image', 'text')),
 }
 
+# A task on a screen (NodeKit): the act policy reads these and acts on these forms.
+SCREEN_INPUTS = ('vision:image', 'vision:video', 'instruction', 'observation')
+SCREEN_FORMS = ('motor:key', 'motor:pointer')
+# The behavior outputs the answer and reply parts give (their inputs are stated for a model with a screen policy).
+ANSWERED = ('behavior', 'behavior:choice', 'behavior:rating', 'behavior:text')
+
 # Cache lives on disk so re-scoring a benchmark doesn't re-bill the API and the
 # scored result reproduces even though the live model may change behind the API.
 # The two Anthropic registrations store no reply: each is a sample with no seed.
@@ -83,14 +89,18 @@ def get_model(identifier: str) -> BrainScoreModel:
         cache_dir=f"{_CACHE_ROOT}/{identifier}",
     )
     reply = build_api_reply(cfg['provider'], cfg['model'], cache_dir=f"{_CACHE_ROOT}/{identifier}")
-    screen = {}
-    if 'vision:image' in cfg['in_channels']:
+    screen = 'vision:image' in cfg['in_channels']
+    if screen:
         from brainscore.harnesses.nodekit.policy import act_policy
-        screen = dict(policy=act_policy(reply),
-                      policy_in_channels=('vision:image', 'vision:video', 'instruction', 'observation'),
-                      policy_out_channels=('motor:key', 'motor:pointer'))
-    parts = dict(identifier=identifier, in_channels=set(cfg['in_channels']), answer=answer, reply=reply, **screen)
-    # The frames of a screen task (vision:video) reach the act policy only: every other output is answered
-    # from the model's own inputs (the reply refuses a video part).
-    answers = {output for output in BrainScoreModel(**parts).out_channels if output.startswith('behavior')}
-    return BrainScoreModel(**parts, output_inputs={output: set(cfg['in_channels']) for output in answers})
+    return BrainScoreModel(
+        identifier=identifier,
+        in_channels=set(cfg['in_channels']),
+        answer=answer,
+        reply=reply,
+        policy=act_policy(reply) if screen else None,
+        policy_in_channels=SCREEN_INPUTS if screen else ('observation',),
+        policy_out_channels=SCREEN_FORMS if screen else ('motor',),
+        # The frames of a screen task (vision:video) reach the act policy only: the answer and reply parts
+        # answer from the model's own inputs (the reply refuses a video part).
+        output_inputs={output: set(cfg['in_channels']) for output in ANSWERED} if screen else None,
+    )
