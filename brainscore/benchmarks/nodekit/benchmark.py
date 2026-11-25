@@ -136,6 +136,9 @@ def faces(subject: pd.DataFrame, participants: pd.DataFrame) -> dict:
             'score_form': 'Spearman of pair distances with the participants\' mean / leave-one-participant-out'}
 
 
+# The act form each task's participants used (Contract Rules 5.15): the Gabor answer is a key press; the
+# triplet and face answers are pointer acts.
+ACT_FORMS = {'drifting-gabor': 'motor:key', 'triplet-similarity': 'motor:pointer', 'face-arrangement': 'motor:pointer'}
 # Each task's metric and ceiling: metric(subject, participants) -> {'raw', 'score_form', ...}; ceiling(participants).
 METRICS = {'drifting-gabor': (gabor, gabor_ceiling), 'triplet-similarity': (triplets, triplets_ceiling),
            'face-arrangement': (faces, faces_ceiling)}
@@ -143,7 +146,8 @@ METRICS = {'drifting-gabor': (gabor, gabor_ceiling), 'triplet-similarity': (trip
 
 class NodeKitBenchmark(BenchmarkBase):
     """One NodeKit task (a bundle of the task repository) as a behavior benchmark. The subject sees the
-    screen on ``vision:image`` (and the act forms on ``instruction``) and acts on ``motor``."""
+    screen on ``vision:image`` (and the acts on ``instruction``) and acts on the form its participants used
+    (``ACT_FORMS``): a subject that does not declare that form is N/A before any compute."""
 
     trial_memory = 'none'       # one run of the task is one episode that starts empty
 
@@ -153,7 +157,7 @@ class NodeKitBenchmark(BenchmarkBase):
         # The frames since the last step go on vision:video as well; a subject without it sees the screen only.
         self.essential_input_channels = frozenset({'vision:image'})
         self.required_input_channels = self.essential_input_channels | {'vision:video', 'instruction'}
-        self.requested_output_channels = frozenset({'motor'})
+        self.requested_output_channels = frozenset({ACT_FORMS[task]})
         super().__init__(identifier=identifier, version=1, parent='behavior', ceiling=None, bibtex='')
 
     @cached_property
@@ -177,7 +181,7 @@ class NodeKitBenchmark(BenchmarkBase):
         from brainscore.data.local import data_home
         from brainscore.harnesses.nodekit import bundle, play
         record = self.record or data_home() / 'records' / 'nodekit'
-        result, environment, session = play(subject, bundle(self.task), max_steps=self.max_steps,
+        result, environment, session = play(subject, bundle(self.task), form=ACT_FORMS[self.task], max_steps=self.max_steps,
                                             max_ms=self.max_ms, record=record)
         return self.score_result(result, steps=environment.steps, invalid_steps=environment.invalid_steps,
                                  run_ms=environment.t_ms, end_reason=session.source.end_reason,

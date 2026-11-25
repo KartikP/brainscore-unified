@@ -117,17 +117,27 @@ def test_face_arrangement_correlates_pair_distances_with_the_participants():
     assert faces_ceiling(people) == pytest.approx(1.0)
 
 
-def test_a_subject_without_the_screen_or_without_motor_is_na_before_any_compute(monkeypatch):
+@pytest.mark.parametrize('identifier, task, form', [('NodeKit.DriftingGabor', 'drifting-gabor', 'motor:key'),
+                                                    ('NodeKit.TripletSimilarity', 'triplet-similarity', 'motor:pointer'),
+                                                    ('NodeKit.FaceArrangement', 'face-arrangement', 'motor:pointer')])
+def test_a_subject_without_the_screen_or_the_act_form_is_na_before_any_compute(monkeypatch, identifier, task, form):
     import brainscore
+    from brainscore import BrainScoreModel
     from brainscore_core.compatibility import CompatibilityError, check_compatibility
     from tests.benchmark_declarations import Declared
-    benchmark = NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor')
+    benchmark = NodeKitBenchmark(identifier, task)
+    assert benchmark.requested_output_channels == {form}
     with pytest.raises(CompatibilityError, match='motor'):
         check_compatibility(Declared({'vision:image', 'instruction'}, {'behavior:choice'}), benchmark)
     with pytest.raises(CompatibilityError):
-        check_compatibility(Declared({'instruction'}, {'motor'}), benchmark)
+        check_compatibility(Declared({'instruction'}, {form}), benchmark)
     monkeypatch.setattr(nodekit, 'source', lambda: pytest.fail('N/A must clone and run nothing'))
-    assert np.isnan(float(brainscore.score(brainscore.load_model('chance-baseline'), benchmark)))
+    called = []
+    bare = BrainScoreModel('bare-motor', policy=lambda row: called.append(row) or {'motor': 0},
+                           policy_in_channels=('vision:image', 'instruction'))
+    for subject in (brainscore.load_model('chance-baseline'), bare):
+        assert np.isnan(float(brainscore.score(subject, benchmark)))
+    assert called == []
 
 
 def test_a_run_that_does_not_complete_is_invalid_with_every_test_trial_missing(clone):

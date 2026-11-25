@@ -10,10 +10,12 @@ Nothing of nkl is imported here.
 Each step: the row holds the frames since the last step on ``vision:video`` ((T, 384, 512, 3) uint8: one at
 each frame time the clock passed, 60 frames a second (``FRAME_MS``; nkl states no display rate), at half
 the screen size), the screen at the end of the step on ``vision:image`` ((H, W, 3) uint8, 1024 x 768 by
-default) and the act forms on ``instruction``; the subject answers on ``motor`` with a list of acts, each a mapping
-``{'act': <name>, <fields>}`` (``ACTS``): key acts ``press``, ``release`` (a W3C ``KeyboardEvent.code``,
-such as ``Space`` or ``ArrowLeft``) and ``type``; pointer acts ``move``, ``down``, ``up`` and ``stroke``;
-``wait``. Positions are pixels of the last picture: the origin at the top left, x to the right, y down.
+default) and the acts on ``instruction``; the subject answers on the act form the benchmark asks for
+(``form``, Contract Rules 5.15), ``motor:key`` or ``motor:pointer``, with a list of acts, each a mapping
+``{'act': <name>, <fields>}`` (core's ``MOTOR_ACTS``, which also checks them): key acts ``press``,
+``release`` (a W3C ``KeyboardEvent.code``, such as ``Space`` or ``ArrowLeft``) and ``type``; pointer acts
+``move``, ``down``, ``up`` and ``stroke``; ``wait`` on both. Positions are pixels of the last picture: the
+origin at the top left, x to the right, y down.
 ``nkl_acts`` is the one place that turns them into nkl's acts (scene units: origin at the centre, y up).
 The program's clock moves only by the acts (``wait`` passes time; a key or button act takes 1 ms, a stroke
 as nkl's motor allows): the subject's own compute time is not counted. Each step runs to at least the next
@@ -31,18 +33,14 @@ participant's submission in the task repository, so ``python -m brainscore.harne
 Limit: a subject that takes ``vision:image`` and not ``vision:video`` sees only the screen at the end of
 each step: a stimulus shorter than its steps (a brief patch) can pass unseen.
 
-``program_needs`` is the one place that reads what a program needs (key acts, pointer acts) from the
-program itself; the act form of the environment follows from it, and a subject that sends an act the
-program does not read fails at its first action with the forms the program takes.
-
-Limit: the act forms are not declared by a channel: a subject that answers on ``motor`` with an act the
-program does not take fails at its first action (an error, not N/A).
+Limit: a session takes its acts on one channel: a program that needs key and pointer acts in one run (type
+a text, then click) runs with the one form its benchmark asks for, and a step that needs the other form
+cannot be taken.
 """
 from __future__ import annotations
 
 import base64
 import json
-import math
 import os
 import subprocess
 from pathlib import Path
@@ -50,6 +48,7 @@ from typing import Optional
 
 import numpy as np
 
+from brainscore_core.io_catalog import MOTOR_ACTS
 from brainscore.harnesses._child_process import ChildProcess
 from brainscore.harnesses._environment_folder import Library, _RUNTIME_VARIABLES, environment_python, ready_folder
 
@@ -63,13 +62,7 @@ FRAME_MS = 1000 / 60            # the frame times of vision:video: 60 frames a s
 VIDEO = (512, 384)              # the size of a vision:video frame
 # The participants' folder of each bundle in the task repository: the replay viewer's names.
 VIEWER_FOLDERS = {'drifting-gabor': 'gabor', 'triplet-similarity': 'triplets', 'face-arrangement': 'faces'}
-# nkl's act names (nkl.sim.actions) by the input they need, with their fields: name -> (required, optional).
-ACTS = {
-    'key': {'press': ({'key'}, set()), 'release': ({'key'}, set()), 'type': ({'text'}, set())},
-    'pointer': {'move': ({'x', 'y'}, set()), 'down': (set(), set()), 'up': (set(), set()),
-                'stroke': ({'points'}, {'force'})},
-    'time': {'wait': ({'ms'}, set())},
-}
+FORMS = ('motor:key', 'motor:pointer')
 # The act of nkl.sim.actions for each act name.
 _NKL_ACTS = {'press': 'KeyPress', 'release': 'KeyRelease', 'type': 'TypeText', 'move': 'PointerMove',
              'down': 'PointerDown', 'up': 'PointerUp', 'stroke': 'PointerStroke', 'wait': 'Wait'}
@@ -120,13 +113,6 @@ def bundle(name: str) -> Path:
     return folder
 
 
-def program_needs(program: Path) -> frozenset:
-    """The inputs a program reads, from its own imports: ``'key'`` (keyboard), ``'pointer'``; time always."""
-    imports = set(json.loads((Path(program) / 'program.json').read_text())['program']['imports'])
-    reads = {'key': {'keyboard.inputs', 'keyboard.state'}, 'pointer': {'pointer.inputs', 'pointer.state'}}
-    return frozenset({'time'} | {need for need, names in reads.items() if imports & names})
-
-
 def nkl_acts(acts, screen) -> list:
     """The acts as nkl's (``nkl.sim.actions`` names and fields): pixels of a ``screen`` (width, height)
     picture, origin top left and y down, become scene units, origin at the centre and y up (device ratio 1)."""
@@ -145,75 +131,30 @@ def nkl_acts(acts, screen) -> list:
     return converted
 
 
-class NodeKitActs:
-    """The ``motor`` payload of a program: a list of acts (or one act), each ``{'act': name, fields}``
-    with a name of ``ACTS`` for an input the program reads; None is no act (an answer that could not be
-    read). The key names and the values are checked by nkl.
-
-    Limit: a session takes its acts on one output channel; key and pointer acts share bare ``motor`` here.
-    With one channel for each form (``motor:key``, ``motor:pointer``), a program that needs both in one run
-    (type a text, then click) cannot run until a session takes acts on two channels."""
-
-    def __init__(self, needs: frozenset, task: str):
-        self.forms = {name: fields for need in sorted(needs) for name, fields in ACTS[need].items()}
-        self.task = task
-
-    def validate(self, value):
-        if value is None:
-            return None
-        acts = [value] if isinstance(value, dict) else value
-        if not isinstance(acts, (list, tuple)):
-            raise ValueError(self._expected(f'a {type(value).__name__}'))
-        checked = []
-        for act in acts:
-            name = act.get('act') if isinstance(act, dict) else None
-            if name not in self.forms:
-                raise ValueError(self._expected(repr(act)))
-            required, optional = self.forms[name]
-            fields = set(act) - {'act'}
-            if not required <= fields <= required | optional:
-                raise ValueError(self._expected(f'{name} with fields {sorted(fields)}'))
-            for key in fields & {'x', 'y', 'ms', 'force'}:
-                if isinstance(act[key], bool) or not isinstance(act[key], (int, float)) or not math.isfinite(act[key]):
-                    raise ValueError(self._expected(f'{name} with {key}={act[key]!r}'))
-            checked.append(dict(act))
-        return checked
-
-    def _expected(self, got: str) -> str:
-        return (f'{self.task} takes acts {self.describe()["acts"]} (a list of '
-                f'{{"act": name, fields}}); got {got}.')
-
-    def describe(self):
-        return {'kind': 'nodekit acts', 'task': self.task,
-                'acts': {name: sorted(required) + [f'{key} (optional)' for key in sorted(optional)]
-                         for name, (required, optional) in self.forms.items()},
-                'positions': 'pixels of the last picture: origin at the top left, x right, y down'}
-
-
 class NodeKitEnvironment:
     """One run of the nkl program in the bundle folder ``program``, with ``seed`` (a bundle's trials are
-    already dealt; the seed is nkl's run seed), on a screen of ``screen`` pixels."""
+    already dealt; the seed is nkl's run seed), on a screen of ``screen`` pixels; the subject acts on
+    ``form`` (``motor:key`` or ``motor:pointer``)."""
 
-    def __init__(self, program, *, seed: int = 0, screen=SCREEN, max_ms: float = 3_600_000, max_steps: int = 20000,
+    def __init__(self, program, *, form: str, seed: int = 0, screen=SCREEN, max_ms: float = 3_600_000, max_steps: int = 20000,
                  record: Optional[Path] = None, name: str = 'run', folder: Optional[Path] = None,
                  log_directory: Optional[Path] = None):
         self.program, self.seed, self.screen = Path(program), seed, tuple(screen)
         self.max_ms, self.max_steps, self.record, self.name = max_ms, max_steps, record, name
         if not (self.program / 'program.json').is_file():
             raise ValueError(f'{self.program} is not an nkl bundle: it holds no program.json.')
-        self.needs = program_needs(self.program)
-        self._acts = NodeKitActs(self.needs, self.program.name)
+        if form not in FORMS:
+            raise ValueError(f'A NodeKit subject acts on {sorted(FORMS)}, not {form!r} (Contract Rules 5.15).')
+        self.form = form
         self.folder = ready_folder(library(), f'NodeKit {self.program.name}', folder)
         self.log_directory = Path(log_directory) if log_directory else self.folder / 'logs'
         self._child, self.steps, self.t_ms, self.result, self.invalid_steps, self.trace = None, 0, 0.0, None, 0, None
 
-    def action_spec(self):
-        return self._acts
-
     def instruction(self) -> str:
-        acts = '; '.join(f'{name}({", ".join(fields)})' for name, fields in self._acts.describe()['acts'].items())
+        acts = '; '.join(f'{name}({", ".join(sorted(required) + [f"{key} (optional)" for key in sorted(optional)])})'
+                         for name, (required, optional) in MOTOR_ACTS[self.form.split(':')[1]].items())
         return (f'You take part in a task on a screen of {self.screen[0]} x {self.screen[1]} pixels; you see the '
-                f'screen as a picture. Act on motor with a list of acts, each {{"act": name, fields}}: {acts}. '
+                f'screen as a picture. Act on {self.form} with a list of acts, each {{"act": name, fields}}: {acts}. '
                 f'Positions are pixels of the picture: the origin at the top left, x to the right, y down. Time '
                 f'passes only by your acts: wait(ms) lets time pass. Each step shows the frames since the last '
                 f'step and the screen now.')
@@ -255,7 +196,7 @@ class NodeKitEnvironment:
         return self._ended(row, 'terminal') if answer['ended'] else row
 
     def step(self, outputs):
-        acts = self._acts.validate(outputs['motor'])
+        acts = outputs[self.form]          # checked by the session (core's MOTOR_ACTS)
         if acts is None:
             self.invalid_steps += 1
         answer = self._child.ask({'step': nkl_acts(acts or [], self.screen)})
@@ -276,16 +217,17 @@ class NodeKitEnvironment:
             self._child = None
 
 
-def play(subject, program, *, outputs=('motor',), **settings):
-    """One run of ``program`` (a bundle folder) by ``subject`` through ``environment_session``:
+def play(subject, program, *, form: str, **settings):
+    """One run of ``program`` (a bundle folder) by ``subject`` on the act form ``form`` through
+    ``environment_session``:
     ``(result, environment, session)``; ``result`` is None when the run did not complete. With ``record=``
     the run's trace is kept there under the subject's identifier and the time."""
     import time
     from brainscore_core.streaming_helpers import environment_session
     settings.setdefault('name', f"{getattr(subject, 'identifier', 'subject')}-{time.strftime('%Y%m%dT%H%M%S')}")
-    environment = NodeKitEnvironment(program, **settings)
+    environment = NodeKitEnvironment(program, form=form, **settings)
     try:
-        session = environment_session(environment, list(outputs))
+        session = environment_session(environment, [form], action_channel=form)
         subject.participate(session)
         return environment.result, environment, session
     finally:

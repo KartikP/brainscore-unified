@@ -80,16 +80,17 @@ def _keys(answer):
     def policy(row):
         seen.append(row)
         if len(seen) == 1:
-            return {'motor': [{'act': 'wait', 'ms': 250}]}
-        return {'motor': [{'act': 'press', 'key': answer}, {'act': 'release', 'key': answer}]}
+            return {'motor:key': [{'act': 'wait', 'ms': 250}]}
+        return {'motor:key': [{'act': 'press', 'key': answer}, {'act': 'release', 'key': answer}]}
     return policy, seen
 
 
 def test_a_subject_takes_part_through_participate_and_the_program_result_comes_back(stand_in):
     program = _program(stand_in / 'keys', ['keyboard.inputs', 'time.elapsed'])
     policy, seen = _keys('ArrowLeft')
-    subject = BrainScoreModel('keys', policy=policy, policy_in_channels=('vision:image', 'vision:video', 'instruction'))
-    result, environment, session = nodekit.play(subject, program)
+    subject = BrainScoreModel('keys', policy=policy, policy_in_channels=('vision:image', 'vision:video', 'instruction'),
+                              policy_out_channels=('motor:key',))
+    result, environment, session = nodekit.play(subject, program, form='motor:key')
     assert result == [{'response': 'ArrowLeft', 'program': str(program)}]
     assert session.source.end_reason == 'terminal'
     picture = seen[0]['vision:image']
@@ -101,20 +102,19 @@ def test_a_subject_takes_part_through_participate_and_the_program_result_comes_b
     assert environment.t_ms >= 252.0
 
 
-def test_an_act_the_program_does_not_read_fails_at_the_first_action_with_the_forms_it_takes(stand_in):
+def test_an_act_of_the_other_form_is_refused_before_the_program_gets_it(stand_in):
     program = _program(stand_in / 'keys-only', ['keyboard.inputs'])
-    subject = BrainScoreModel('pointer', policy=lambda row: {'motor': [{'act': 'down'}]},
-                              policy_in_channels=('vision:image',))
-    with pytest.raises(Exception, match='keys-only takes acts') as error:
-        nodekit.play(subject, program)
-    assert "'press'" in str(error.value)
+    subject = BrainScoreModel('pointer', policy=lambda row: {'motor:key': [{'act': 'down'}]},
+                              policy_in_channels=('vision:image',), policy_out_channels=('motor:key',))
+    with pytest.raises(ValueError, match='down'):
+        nodekit.play(subject, program, form='motor:key')
 
 
 def test_a_run_that_does_not_end_is_truncated_and_has_no_result(stand_in):
     program = _program(stand_in / 'waits', ['keyboard.inputs'])
-    subject = BrainScoreModel('waits', policy=lambda row: {'motor': [{'act': 'wait', 'ms': 10}]},
-                              policy_in_channels=('vision:image',))
-    result, environment, session = nodekit.play(subject, program, max_steps=3, record=stand_in / 'record',
+    subject = BrainScoreModel('waits', policy=lambda row: {'motor:key': [{'act': 'wait', 'ms': 10}]},
+                              policy_in_channels=('vision:image',), policy_out_channels=('motor:key',))
+    result, environment, session = nodekit.play(subject, program, form='motor:key', max_steps=3, record=stand_in / 'record',
                                                 name='waits-run')
     assert result is None and session.source.end_reason == 'truncated' and environment.steps == 3
     assert environment.trace == stand_in / 'record' / 'waits' / 'submissions' / 'waits-run.json'
@@ -124,8 +124,8 @@ def test_a_run_that_does_not_end_is_truncated_and_has_no_result(stand_in):
 def test_an_empty_answer_is_a_valid_no_act_and_none_is_invalid_and_both_move_one_frame(stand_in):
     program = _program(stand_in / 'idle', ['keyboard.inputs'])
     answers = iter([[], None, [], None])
-    subject = BrainScoreModel('idle', policy=lambda row: {'motor': next(answers)}, policy_in_channels=('vision:image',))
-    result, environment, session = nodekit.play(subject, program, max_ms=60)
+    subject = BrainScoreModel('idle', policy=lambda row: {'motor:key': next(answers)}, policy_in_channels=('vision:image',), policy_out_channels=('motor:key',))
+    result, environment, session = nodekit.play(subject, program, form='motor:key', max_ms=60)
     assert session.source.end_reason == 'truncated' and environment.invalid_steps == 2
     assert environment.steps == 4 and environment.t_ms == pytest.approx(4 * 1000 / 60)
 
@@ -133,15 +133,8 @@ def test_an_empty_answer_is_a_valid_no_act_and_none_is_invalid_and_both_move_one
 def test_a_subject_that_takes_only_pictures_gets_the_last_screen_only(stand_in):
     program = _program(stand_in / 'keys', ['keyboard.inputs'])
     policy, seen = _keys('ArrowRight')
-    nodekit.play(BrainScoreModel('pictures', policy=policy, policy_in_channels=('vision:image',)), program)
+    nodekit.play(BrainScoreModel('pictures', policy=policy, policy_in_channels=('vision:image',), policy_out_channels=('motor:key',)), program, form='motor:key')
     assert all('vision:video' not in row and row['vision:image'].shape == (768, 1024, 3) for row in seen)
-
-
-def test_what_a_program_needs_is_read_from_its_imports(tmp_path):
-    assert nodekit.program_needs(_program(tmp_path / 'a', ['keyboard.inputs'])) == {'key', 'time'}
-    assert nodekit.program_needs(_program(tmp_path / 'b', ['pointer.state'])) == {'pointer', 'time'}
-    both = nodekit.program_needs(_program(tmp_path / 'c', ['pointer.inputs', 'keyboard.inputs']))
-    assert {'key', 'pointer'} <= both
 
 
 def test_pixels_of_the_picture_become_nkl_scene_units_in_one_place():
