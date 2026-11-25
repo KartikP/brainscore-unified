@@ -188,3 +188,24 @@ def test_above_ten_percent_invalid_steps_the_result_is_invalid_and_returned(benc
     assert score.attrs['n_invalid'] == 3 * bench.n_episodes
     assert score.attrs['result_validity'] == 'invalid'
     assert np.isfinite(float(score))
+
+
+def test_a_subject_without_the_observation_is_na_before_compute(bench):
+    # The reward alone is not the board: a subject that cannot take the observation
+    # never sees the game, so the pair is N/A (Contract Rule 5.1).
+    from brainscore_core.compatibility import CompatibilityError, check_compatibility
+    from tests.benchmark_declarations import Declared
+    with pytest.raises(CompatibilityError, match='observation'):
+        check_compatibility(Declared({'reward'}, {'motor'}), bench)
+
+
+def test_a_subject_with_only_the_observation_still_runs(bench):
+    mover = _Mover()
+    mover.in_channels = {'observation', 'control'}
+    assert check_kind(mover, bench) == 'partial'
+    assert 0.0 <= bench(mover).attrs['raw'] <= 1.0
+
+
+def check_kind(subject, benchmark):
+    from brainscore_core.compatibility import check_compatibility
+    return check_compatibility(subject, benchmark).kind
