@@ -37,7 +37,8 @@ kept under ``record`` (``attrs['trace']``) and replays in the task repository's 
   by the ceiling. Chance is 0.5 (raw) for any participants' answers. Ceiling: each participant against the
   other participants in the same way (leave one participant out), the mean over participants.
 - ``NodeKit.FaceArrangement`` (after Kriegeskorte and Mur 2012; each score states the arrangements' spread, the
-  largest distance between two faces in arena radii, beside the participants'): the distances of the subject's final
+  largest distance between two faces in arena radii, beside the participants'; a test trial whose spread is under
+  0.5 arena radius is an invalid answer, the faces were not arranged, owner 2026-11-25): the distances of the subject's final
   arrangements, one per pair of faces shown together (100 pairs), against the mean distances of the
   participants: Spearman correlation, divided by the ceiling. Ceiling: each participant against the mean
   of the others (leave one participant out), the mean over participants. Floor: the mean Spearman
@@ -231,6 +232,9 @@ AUTHOR_MOTOR = {'top_speed': 5.0, 'top_acceleration': 0.08}
 AUTHOR_TASKS = {'drifting-gabor': {'shown': 10, 'max_steps': 160, 'max_ms': 900_000},
                 'triplet-similarity': {'shown': 10, 'max_steps': 260, 'max_ms': 1_200_000},
                 'face-arrangement': {'shown': None, 'max_steps': 60, 'max_ms': 1_500_000}}
+# Faces (owner, 2026-11-25): a test trial whose largest distance between two faces is under this many arena radii is
+# an invalid answer (the faces were not arranged); the invalid limit (10 percent) then makes such a run invalid.
+UNARRANGED_SPREAD = 0.5
 
 
 class NodeKitBenchmark(BenchmarkBase):
@@ -353,6 +357,11 @@ class NodeKitBenchmark(BenchmarkBase):
             # A raw that is not a number (a constant arrangement has no rank order) is no measurement.
             state = 'valid' if np.isfinite(measured['raw']) else 'invalid'
             states = [state] * len(own)
+            if self.task == 'face-arrangement':         # a pile of faces is no arrangement (UNARRANGED_SPREAD)
+                states = [state if value is None or value >= UNARRANGED_SPREAD else 'invalid'
+                          for value in _spreads(own)]
+                measured['unarranged_rule'] = (f'a test trial whose largest distance between two faces is under '
+                                               f'{UNARRANGED_SPREAD} arena radius is an invalid answer')
             states += ['missing'] * max(0, tests - len(own))
             if 'response_milliseconds' in own:
                 measured['subject_response_ms'] = [float(t) for t in own['response_milliseconds']]

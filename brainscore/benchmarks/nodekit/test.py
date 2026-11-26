@@ -260,3 +260,21 @@ def test_the_slice_compares_the_participants_first_test_trials_and_trials_all_th
     with pytest.raises(ValueError, match='trials'):
         NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor', trials=5)
 
+
+def _arranged(radius_share):
+    """One trial of three faces whose largest distance is ``radius_share`` arena radii."""
+    d = radius_share
+    return {'face_arrangement_trial': {'phase': 'test', 'face_ids': ['1', '2', '3']}, 'arena_radius': 100.0,
+            'positions': [{'x': 0.0, 'y': 0.0}, {'x': 100.0 * d, 'y': 0.0}, {'x': 50.0 * d, 'y': 20.0 * d}],
+            'distances': [[0, 0.3, 0.5], [0.3, 0, 0.9], [0.5, 0.9, 0]]}
+
+
+def test_a_pile_of_faces_is_an_invalid_answer(monkeypatch):
+    people = pd.concat([_faces(0.1, 'p1'), _faces(0.2, 'p2'), _faces(0.3, 'p3')], ignore_index=True)
+    monkeypatch.setattr(NodeKitBenchmark, 'participants', people)
+    monkeypatch.setattr(NodeKitBenchmark, 'ceiling', Score(1.0))
+    benchmark = NodeKitBenchmark('NodeKit.FaceArrangement', 'face-arrangement')
+    pile = benchmark.score_result([_arranged(0.2)] + [_arranged(1.0)] * 2)
+    assert pile.attrs['n_invalid'] == 1 and pile.attrs['result_validity'] == 'invalid'
+    assert 'arena radius' in pile.attrs['unarranged_rule']
+    assert benchmark.score_result([_arranged(1.0)] * 3).attrs['n_invalid'] == 0
