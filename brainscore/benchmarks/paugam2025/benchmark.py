@@ -30,7 +30,8 @@ participant's own play, it does not play. For each participant:
 ``Paugam2025-behavior-mario-buttons`` asks ``behavior:choice``: which buttons the participant held in
 each TR, on the same input rows. The answer is one label per TR: the buttons held for at least half
 of the TR, joined by ``+`` in the order A, B, LEFT, RIGHT, UP, DOWN (``none``: no button); a label
-seen in fewer than 1 percent of the training TRs of all participants is ``other``. Per participant,
+seen in fewer than 1 percent of the training TRs of all participants is ``other``. The choices are in the
+order of their training frequency, the most frequent first. Per participant,
 one session over the TRs of the test runs (the same ``test_runs.txt``), with every 8th training TR as
 the fitting stimuli. Score: the accuracy on the test TRs, raw, mean over the participants; chance is
 stated (the rate of the most frequent label of the test TRs, the expected accuracy of a guess drawn
@@ -250,7 +251,10 @@ class Paugam2025MarioButtons(BenchmarkBase):
         tables = {participant: self._rows(participant) for participant in self._participants}
         training = np.concatenate([table.loc[~table['test'], 'label'].values for table in tables.values()])
         labels, counts = np.unique(training, return_counts=True)
-        kept = sorted(labels[counts >= RARE_LABEL * len(training)])
+        # most frequent first: an answer that ties every label (chance-baseline, core's argmax) is the most
+        # frequent label, the stated floor chance_most_frequent; chance_uniform is a uniform guess
+        order = np.argsort(-counts, kind='stable')
+        kept = [str(label) for label, count in zip(labels[order], counts[order]) if count >= RARE_LABEL * len(training)]
         choices = kept + ['other']
         rates = {label: float(np.mean(training == label)) for label in kept}
         rates['other'] = 1.0 - sum(rates.values())

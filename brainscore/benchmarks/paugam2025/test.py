@@ -156,10 +156,10 @@ def test_a_readout_on_layers_that_carry_the_play_names_the_held_buttons_above_ch
     assert score.attrs['n_trials'] == 200 and score.attrs['answer_policy']
 
 
-def test_the_chance_floor_is_not_above_the_most_frequent_label(packaged):
+def test_the_chance_floor_lands_at_the_most_frequent_label(packaged):
     assert _buttons(packaged).execution_plan.metric_category == 'behavioral'
     score = brainscore.score(brainscore.load_model('chance-baseline'), _buttons(packaged), check_mem=False)
-    assert float(score) <= score.attrs['chance_most_frequent'] + 0.05
+    assert float(score) == pytest.approx(score.attrs['chance_most_frequent'], abs=0.05)
     assert score.attrs['chance_uniform'] == 1 / len(score.attrs['choices'])
 
 

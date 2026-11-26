@@ -45,8 +45,11 @@ the score (`per_participant`).
 `Paugam2025-behavior-mario-buttons` asks `behavior:choice` on the same input rows: which buttons
 the participant held in each TR. The label of a TR is the set of buttons held for at least half of
 the TR, joined by `+` in the order A, B, LEFT, RIGHT, UP, DOWN (`none`: no button); a label under 1
-percent of the training TRs of all participants is `other`. Per participant, one session over the
+percent of the training TRs of all participants is `other`; the choices are in the order of their
+training frequency, the most frequent first. Per participant, one session over the
 TRs of the test runs (the same `test_runs.txt`), with every 8th TR of the training runs as the
 fitting stimuli (a readout fits on them). The value is the accuracy on the test TRs, raw, mean over
 the participants. Chance is on the score: the rate of the most frequent label (`chance_most_frequent`),
 a guess drawn from the training label rates (`chance_by_rates`) and a uniform guess (`chance_uniform`).
+`chance-baseline` answers every TR with the first choice (its probabilities tie; ties go to the first
+label), so it lands on `chance_most_frequent`.
