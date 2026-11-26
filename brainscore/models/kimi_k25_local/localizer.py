@@ -1,7 +1,7 @@
 """Face localizers in the vision part of Kimi K2.5 (MoonViT), run in our own process on one GPU.
 
 The vision part is built from the authors' remote code and the released weights (``moonshotai/Kimi-K2.5`` at
-``REVISION``; the vision weights are in BF16, shard 64). Each picture goes through the authors' image processor,
+``REVISION``; the vision weights are in BF16, shard 64). Each picture goes through the authors' image processing (written out in ``preprocess``),
 one picture per call. A unit is one channel of a block's output, averaged over the picture's tokens.
 
 Four selections, each set before any lesion run of the task, each with a held-out test and matched random
@@ -60,11 +60,11 @@ def sdpa_packed(q, k, v, q_cu_seqlens=None, k_cu_seqlens=None, **kwargs):
 
 
 def load_vision(folder: Path, device: str = 'cuda'):
-    """The vision part (BF16, eval) and the image processor from the authors' code and weights at REVISION."""
+    """The vision part (BF16, eval) and the image processing, from the authors' code and weights at REVISION."""
     import sys as _sys
     from huggingface_hub import hf_hub_download
     from safetensors.torch import load_file
-    from transformers import AutoConfig, AutoImageProcessor
+    from transformers import AutoConfig
     from transformers.dynamic_module_utils import get_class_from_dynamic_module
     for name in CODE_FILES + (VISION_SHARD,):
         hf_hub_download(REPOSITORY, name, revision=REVISION, local_dir=folder)
@@ -82,8 +82,33 @@ def load_vision(folder: Path, device: str = 'cuda'):
     for block in tower.encoder.blocks:
         block.attn_implementation = 'sdpa'
     assert len(tower.encoder.blocks) == N_BLOCKS
-    processor = AutoImageProcessor.from_pretrained(folder, trust_remote_code=True)
-    return tower.to(device=device, dtype=torch.bfloat16).eval(), processor
+    return tower.to(device=device, dtype=torch.bfloat16).eval(), preprocess
+
+
+# The authors' image processing (preprocessor_config.json and media_utils.py at REVISION), written out here
+# because their processor module needs pydantic only for its type declarations.
+PATCH, MERGE, IN_PATCH_LIMIT, SIDE_LIMIT = 14, 2, 16384, 512
+
+
+def preprocess(image):
+    """(pixel values: patches x 3 x 14 x 14, grid_thws: 1 x 3) of one picture, as the authors' processor."""
+    import math
+    from PIL import Image
+    image = image.convert('RGB')
+    width, height = image.size
+    scale = min(1.0, math.sqrt(IN_PATCH_LIMIT / (max(1.0, width // PATCH) * max(1.0, height // PATCH))),
+                SIDE_LIMIT * PATCH / width, SIDE_LIMIT * PATCH / height)
+    new_w = min(max(1, int(width * scale)), SIDE_LIMIT * PATCH)
+    new_h = min(max(1, int(height * scale)), SIDE_LIMIT * PATCH)
+    factor = MERGE * PATCH
+    pad_h, pad_w = (factor - new_h % factor) % factor, (factor - new_w % factor) % factor
+    pixels = np.asarray(image.resize((new_w, new_h), resample=Image.Resampling.BICUBIC))
+    pixels = np.pad(pixels, ((0, pad_h), (0, pad_w), (0, 0)), mode='constant', constant_values=0)
+    pixels = ((pixels / 255.0).astype(np.float32) - 0.5) * 2.0
+    rows, cols = pixels.shape[0] // PATCH, pixels.shape[1] // PATCH
+    patches = pixels[None].reshape(1, rows, PATCH, cols, PATCH, 3).transpose(0, 1, 3, 5, 2, 4)
+    return {'pixel_values': torch.from_numpy(np.ascontiguousarray(patches.reshape(-1, 3, PATCH, PATCH))),
+            'grid_thws': torch.tensor([[1, rows, cols]], dtype=torch.int64)}
 
 
 class Vision:
@@ -94,7 +119,7 @@ class Vision:
         self.tower, self.processor, self.device = tower, processor, device
 
     def inputs(self, image):
-        batch = self.processor.preprocess([{'type': 'image', 'image': image}], return_tensors='pt')
+        batch = self.processor(image)
         grid = batch['grid_thws'].to(self.device)
         encoder = self.tower.encoder
         rope = encoder.rope_2d.get_freqs_cis(grid_thws=grid, device=self.device)
