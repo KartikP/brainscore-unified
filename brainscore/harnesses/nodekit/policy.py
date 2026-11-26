@@ -69,15 +69,6 @@ class _Reader:
             self._child = None
 
 
-def on_grid(turn: dict, grid: int) -> dict:
-    """The turn as the model's grid shows it: a screen of ``grid`` x ``grid`` and the pointer in grid units."""
-    width, height = turn['screen']
-    seen = dict(turn['observation'])
-    if 'pointer' in seen:
-        seen['pointer'] = [seen['pointer'][0] * grid / width, seen['pointer'][1] * grid / height]
-    return dict(turn, screen=[grid, grid], observation=seen)
-
-
 def to_pixels(acts: list, grid: int, width: int, height: int) -> list:
     """The acts' positions on the model's grid as pixels of a ``width`` x ``height`` picture."""
     def pixel(x, y):
@@ -108,7 +99,7 @@ def changed_frames(video, times, last, most: int):
     return [changed[round(i * (len(changed) - 1) / (most - 1))] for i in range(most)] if most > 1 else changed[-1:]
 
 
-def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int = TURNS_KEPT, max_tokens: int = 4096,
+def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int = TURNS_KEPT, max_tokens: int = 8000,
                temperature: Optional[float] = None, seed: Optional[int] = None,
                position_grid: Optional[int] = None) -> Callable:
     """A ``policy(row) -> {act form: acts}`` that asks ``reply`` (a ``reply(prompt)`` part) each turn and
@@ -116,10 +107,11 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
     settings of each turn (None: the model's default, greedy for a local model); with a seed, turn ``n`` uses
     ``seed + n``, so a repeated run with the same seed asks the same. ``position_grid``: the model writes
     positions on a grid of that many positions a side of the picture (its own convention, stated by its plugin),
-    not in pixels; nkl's system briefing is written by nkl for a screen of that grid (its own sentences, from the
-    harness's arguments in ``observation['briefing']``) and every position the turn's briefing shows (the
-    pointer) is on that grid too, so what the model reads and writes is one convention; the policy scales its
-    acts to pixels and states the grid with its settings (the score's provenance). None (the default): pixels.
+    not in pixels; the briefing and the reader use nkl's own ``grid`` (the system briefing in nkl's words for a
+    grid laid over the picture, from the harness's arguments in ``observation['briefing']``; the pointer the turn
+    shows and the positions it reads on that grid), so what the model reads and writes is one convention; the
+    policy scales its acts to pixels and states the grid with its settings (the score's provenance). None (the
+    default): pixels.
 
     Limit: the grid scales x and y differently (1024 -> 1000, 768 -> 1000): nkl's stroke times ('120 ms for 50
     pixels') are stated for distances across the screen's width; a vertical grid unit is shorter (0.768 px
@@ -127,7 +119,7 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
     from brainscore_core.responses import Prompt, Text
     from brainscore_core.streaming import StreamEvent
     reader = _Reader()
-    state = {'memories': [], 'problems': [], 'last': None, 'turn': 0, 'history': [], 'folder': None, 'pictures': 0}
+    state = {'memories': [], 'problems': [], 'dropped': 0, 'last': None, 'turn': 0, 'history': [], 'folder': None, 'pictures': 0}
     trace: list = []
 
     def picture(array) -> str:
@@ -151,14 +143,16 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
         pictures = dict(pictures) if isinstance(pictures, dict) else {'screen': pictures}
         screen = pictures['screen']
         turn = {'screen': [screen.shape[1], screen.shape[0]], 'observation': seen,
-                'memories': state['memories'], 'problems': state['problems']}
-        if position_grid:        # every position the turn shows and reads is on the model's grid
-            turn = on_grid(turn, position_grid)
+                'memories': state['memories'], 'problems': state['problems'], 'dropped': state['dropped']}
+        if position_grid:        # every position the turn shows and reads is on the model's grid (nkl's own grid)
+            turn['grid'] = [position_grid] * 2
         system = row['instruction']
         if position_grid and 'briefing' in seen:     # nkl's briefing written for the model's grid, by nkl
             if state.get('system_for') != seen['briefing']:
-                state['system'] = reader.ask({'system': {'briefing': seen['briefing'], 'screen': [position_grid] * 2,
-                                                         'extent': [screen.shape[1], screen.shape[0]]}})
+                state['system'] = reader.ask({'system': {
+                    'briefing': seen['briefing'], 'screen': [screen.shape[1], screen.shape[0]],
+                    'grid': [position_grid] * 2,
+                    'extent': seen['briefing'].get('extent', [screen.shape[1], screen.shape[0]])}})
                 state['system_for'] = seen['briefing']
             system = state['system']
         parts, names = [('text', system)], ['instruction']
@@ -183,7 +177,7 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
         history = tuple(state['history'][-kept:]) if kept else ()
         answer = reply(Prompt(parts=tuple(parts), names=tuple(names), response=settings, history=history))
         state_settings_as(policy, reply, {'position_grid': position_grid,
-                                          'system_briefing': f'written for a {position_grid} x {position_grid} screen'}
+                                          'system_briefing': f"nkl's grid of {position_grid} x {position_grid}"}
                           if position_grid else None)
         text = answer.payload if isinstance(answer, StreamEvent) else answer
         meta = answer.meta if isinstance(answer, StreamEvent) else {}
@@ -192,10 +186,12 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
             read['acts'] = to_pixels(read['acts'], position_grid, screen.shape[1], screen.shape[0])
         said = [(part, name) for part, name in zip(parts, names) if part[0] == 'text' and name != 'instruction']
         state['history'].append((Prompt(parts=tuple(p for p, _ in said), names=tuple(n for _, n in said)), text))
-        state.update(memories=read['memories'], problems=read['problems'], turn=state['turn'] + 1,
+        state.update(memories=read['memories'], problems=read['problems'], dropped=read.get('dropped', 0),
+                     turn=state['turn'] + 1,
                      last=video[-1] if video is not None and len(video) else state['last'])
         trace.append({'turn': state['turn'], 't_ms': seen['t_ms'], 'frames_shown': [at for at, _ in shown],
                       'reply': text, 'problems': read['problems'], 'acts': read['acts'],
+                      'dropped': read.get('dropped', 0),
                       'token_usage': meta.get('token_usage'), 'reasoning': meta.get('reasoning')})
         problems = '; '.join(read['problems']) or None
         return {seen['act_form']: StreamEvent(seen['act_form'], read['acts'], None, {
@@ -204,7 +200,7 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
 
     def reset():
         clear()
-        state.update(memories=[], problems=[], last=None, turn=0, history=[])
+        state.update(memories=[], problems=[], dropped=0, last=None, turn=0, history=[])
         trace.clear()
 
     def close():

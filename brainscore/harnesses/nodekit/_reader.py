@@ -3,23 +3,23 @@
     <environment python> _reader.py
 
 Standard library and nkl only; no run, no server. Commands, one JSON line each, with the facts of the turn
-(``turn``: the screen size, the harness's ``observation`` row entry, the memories and the problems of the
-last reply):
+(``turn``: the screen size, the subject's own ``grid`` or none, the harness's ``observation`` row entry, the memories, the problems of the
+last reply and ``dropped``, the count of its commands left undone beyond the action limit):
 
 - ``{"brief": turn}`` answers nkl's briefing of the turn as parts ``[text, picture]`` (the picture's name
   where one goes: ``screen`` or ``look:<id>``).
-- ``{"system": {"briefing": ..., "screen": [w, h], "extent": [w, h]}}`` answers nkl's system briefing written
-  for that screen (a subject's own grid).
+- ``{"system": {"briefing": ..., "screen": [w, h], "grid": [w, h], "extent": [w, h]}}`` answers nkl's system
+  briefing for that picture with positions on the subject's own grid (nkl's ``grid``).
 - ``{"read": {"text": reply, "form": "motor:key" | "motor:pointer", **turn}}`` reads the reply with nkl's
-  ``parse`` and answers ``{"acts": [...] or None, "memories": [...], "problems": [...]}``: the acts in the
+  ``parse`` and answers ``{"acts": [...] or None, "memories": [...], "problems": [...], "dropped": n}``: the acts in the
   form of Brain-Score's ``motor:key`` or ``motor:pointer`` (the numbers the reply wrote, in the units of the
   turn's screen), or None
   and nkl's problems with the command and the rule broken. In the agent view a look is an act
   (``{'act': 'look', 'id'}``); in the participant view a reply that asks for one has a problem, as has one
   with an act of the other form; as in nkl, nothing of such a reply is done.
 
-Limit: the briefing and the reader are nkl 0.1.0's ``briefing``, ``parse``, ``written`` and ``remember`` (names
-inside ``nkl._core.host.agents``); another nkl version must be checked again.
+Limit: the briefing and the reader are the pinned nkl's ``briefing``, ``parse``, ``written`` and ``remember``
+(names inside ``nkl._core.host.agents``); another nkl version must be checked again.
 """
 import json
 import os
@@ -42,14 +42,15 @@ def context_of(turn):
     seen = turn['observation']
     screen = fsim.Image(width, height, 'rgb', round(seen['t_ms'] * 1000), 0, b'')
     extent = (float(width), float(height))
-    x, y = to_scene(*seen['pointer'], screen, extent)
+    x, y = to_scene(*seen['pointer'], (width, height), extent)
     body = agents.Body(fsim.Pointer.State(x, y, seen['pointer_down'], seen['pointer_connected']),
                        fsim.Keyboard.State(tuple(seen['keys_down']), True))
     limits = agents.Limits(actions=seen['acts_per_step'])
     looks = tuple((name, fsim.Image(width, height, 'rgb', round(at * 1000), 0, b''))
                   for name, at in seen.get('looks', {}).items())
+    grid = tuple(turn['grid']) if turn.get('grid') else None      # a subject's own grid: nkl's grid option
     return agents.AgentContext(screen, extent, tuple(map(tuple, turn['memories'])), looks, body,
-                               tuple(turn['problems']), limits, seen['turns_left'])
+                               tuple(turn['problems']), limits, seen['turns_left'], turn.get('dropped', 0), grid)
 
 
 def brief(turn):
@@ -70,7 +71,7 @@ def read(turn):
     from nkl._core.host.agents import Stroke, TakeLook, remember, written
     context = context_of(turn)
     text, form = turn['text'], turn['form']
-    actions, changes, problems = agents.parse(text, context)
+    actions, changes, problems, dropped = agents.parse(text, context)
     problems = list(problems)
     # The numbers the reply wrote for each pointer move, in order: a stroke's points are these pixels.
     pixels = iter([[command['x'], command['y']] for _, command in written(text)
@@ -85,8 +86,7 @@ def read(turn):
         elif isinstance(action, agents.Wait):
             acts.append({'act': 'wait', 'ms': action.us / 1000})
         elif isinstance(action, Stroke):
-            acts.append({'act': 'stroke', 'points': [next(pixels) for _ in action.points],
-                         **({} if action.force == 1.0 else {'force': action.force})})
+            acts.append({'act': 'stroke', 'points': [next(pixels) for _ in action.points]})
         elif isinstance(action, (fsim.Keyboard.Press, fsim.Keyboard.Release)):
             acts.append({'act': KEY_ACTS[type(action).__name__], 'key': action.key})
         else:
@@ -100,15 +100,15 @@ def read(turn):
             problems.append(f'{act["act"]} is a {other} action; this task takes {wanted} actions only')
             break
     if problems:
-        return {'acts': None, 'memories': turn['memories'], 'problems': problems}
+        return {'acts': None, 'memories': turn['memories'], 'problems': problems, 'dropped': 0}
     return {'acts': acts, 'memories': [list(m) for m in remember(context.memories, changes, context.limits)],
-            'problems': []}
+            'problems': [], 'dropped': dropped}
 
 
 def system(command):
-    """nkl's system briefing for the harness's arguments (``observation['briefing']``) on a screen of
-    ``command['screen']`` (a subject's grid): nkl writes its own sentences for that screen; the stroke times
-    are for ``command['extent']`` scene units across the screen's width."""
+    """nkl's system briefing for the harness's arguments (``observation['briefing']``) for a picture of
+    ``command['screen']`` with positions on ``command['grid']`` (a subject's own grid): nkl writes its own
+    sentences for that grid; the stroke times are for ``command['extent']`` scene units across the screen."""
     from dataclasses import replace
     from nkl import agents
     settings = command['briefing']
@@ -119,7 +119,7 @@ def system(command):
         limits = replace(limits, actions=1)
     return agents.system_prompt(settings['instructions'], screen=tuple(command['screen']),
                                 extent=tuple(command['extent']), limits=limits, pacing=pacing,
-                                motor=agents.Motor(), seconds=settings['seconds'])
+                                motor=agents.Motor(**(settings.get('motor') or {})), grid=tuple(command['grid']))
 
 
 def main():

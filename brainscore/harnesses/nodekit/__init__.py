@@ -9,7 +9,7 @@ Nothing of nkl is imported here.
 
 A step is one turn of nkl's own agent harness (``nkl.agents``), so a run here and a run there with the
 same acts have the same acts and outcome in their traces (ours holds the frame looks as well). The row of a
-step holds the screen on ``vision:image`` ((H, W, 3) uint8, 1024 x 768 by default), the frames since the
+step holds the screen on ``vision:image`` ((H, W, 3) uint8, 1024 x 768 by default; ``picture`` sets its size), the frames since the
 last turn on ``vision:video`` ((T, 384, 512, 3) uint8: one at each frame time the clock passed, 60 frames a
 second, at half the screen size, as a participant's screen showed them; their times are
 ``observation['frame_t_ms']``; absent when the clock passed no frame time; only for a subject that takes
@@ -84,7 +84,7 @@ from brainscore.harnesses._environment_folder import Library, _RUNTIME_VARIABLES
 # NodeKit's task repository: the nkl wheel (vendor/), the bundles (bundles/) and the participants' trials
 # (prolific/processed/). Private: the user needs read access. Nothing of it is copied into Brain-Score.
 REPOSITORY = 'https://github.com/intelligence-observatory/umi-nkl.git'
-COMMIT = '46ff367543ed5a209147ad9b8e6275ce81059d38'
+COMMIT = '0ef05183eb65e57b7b5735f980dc0a819f6ed819'
 NKL_WHEEL = 'vendor/nkl-0.1.0-py3-none-any.whl'
 SCREEN = (1024, 768)
 PACINGS = ('frozen', 'realtime', 'dense')
@@ -110,6 +110,9 @@ VIDEO = (512, 384)              # the size of a vision:video frame; frames at 60
 # The participants' folder of each bundle in the task repository: the replay viewer's names.
 VIEWER_FOLDERS = {'drifting-gabor': 'gabor', 'triplet-similarity': 'triplets', 'face-arrangement': 'faces'}
 FORMS = ('motor:key', 'motor:pointer')
+# The arguments of each bundle that are the main block's parallel lists of trials (the trials and their media):
+# ``shown`` keeps their first n, as the task code's own ``shown`` does (the practice block stays whole).
+MAIN_BLOCK = {'drifting-gabor': (5,), 'triplet-similarity': (8, 9, 10, 11)}
 # What the briefing adds before the benchmark's instructions: the one act form the run reads, and the
 # act it does not offer.
 _SESSION_WORDS = {'motor:key': 'This task takes keyboard actions only: a pointer action is not done.',
@@ -184,12 +187,17 @@ def bundle(name: str) -> Path:
 class NodeKitEnvironment:
     """One run of the nkl program in the bundle folder ``program``, with ``seed`` (a bundle's trials are
     already dealt; the seed is nkl's run seed), on a screen of ``screen`` pixels; the subject acts on
-    ``form`` (``motor:key`` or ``motor:pointer``) under ``pacing``; ``instructions`` end nkl's briefing."""
+    ``form`` (``motor:key`` or ``motor:pointer``) under ``pacing``; ``instructions`` end nkl's briefing.
+    ``picture``: the size of the picture the subject sees, (w, h) pixels of the screen read back (None: the
+    screen's size); positions are pixels of that picture. ``motor``: nkl's ``Motor`` settings (``top_speed``,
+    ``top_acceleration``, ``press``, ``rate``; None: nkl's own). ``shown``: the main block ends after its first
+    ``shown`` trials (``MAIN_BLOCK``; the practice block stays whole); None: the whole program."""
 
     def __init__(self, program, *, form: str, pacing: str = 'frozen', seed: int = 0, screen=SCREEN,
                  max_ms: float = 3_600_000, max_steps: int = 20000, instructions: str = '',
                  dense_step_ms: float = DENSE_STEP_MS, view: str = 'participant', acts_per_step: Optional[int] = None,
-                 looks_kept: Optional[int] = None,
+                 looks_kept: Optional[int] = None, picture=None, motor: Optional[dict] = None,
+                 shown: Optional[int] = None,
                  frames: bool = False, record: Optional[Path] = None, name: str = 'run',
                  folder: Optional[Path] = None, log_directory: Optional[Path] = None):
         self.program, self.seed, self.screen = Path(program), seed, tuple(screen)
@@ -204,6 +212,13 @@ class NodeKitEnvironment:
             raise ValueError(f'dense_step_ms is the time of one dense step in ms, above 0, not {dense_step_ms!r}.')
         if view not in VIEWS:
             raise ValueError(f'view is one of {VIEWS}, not {view!r}.')
+        if shown is not None and (self.program.name not in MAIN_BLOCK or isinstance(shown, bool)
+                                  or not isinstance(shown, int) or shown < 1):
+            raise ValueError(f'shown is the main block\'s first trials, 1 or more, for the bundles {sorted(MAIN_BLOCK)}; '
+                             f'not {shown!r} for {self.program.name!r}.')
+        if picture is not None and (len(picture) != 2 or any(not isinstance(v, int) or v < 1 for v in picture)):
+            raise ValueError(f'picture is (width, height) in pixels, not {picture!r}.')
+        self.picture, self.motor, self.shown = None if picture is None else tuple(picture), motor, shown
         if acts_per_step is not None and (isinstance(acts_per_step, bool) or not isinstance(acts_per_step, int)
                                           or acts_per_step < 1):
             raise ValueError(f'acts_per_step is the most acts of one step, 1 or more, not {acts_per_step!r}.')
@@ -285,10 +300,13 @@ class NodeKitEnvironment:
         # positions on its own grid has nkl write the same briefing for its screen.
         self.briefing = {'pacing': [self.pacing.capitalize(), round(self.dense_step_ms * 1000)],
                          'limits': {'turns': self.max_steps, 'actions': self._acts_per_step, 'looks': self.looks_kept},
-                         'seconds': self.max_ms / 1000, 'instructions': f'{words}\n\n{self.instructions}'.strip()}
-        answer = self._child.ask({'reset': self.briefing})
+                         'seconds': self.max_ms / 1000, 'instructions': f'{words}\n\n{self.instructions}'.strip(),
+                         'motor': self.motor}
+        answer = self._child.ask({'reset': {**self.briefing, 'picture': self.picture, 'shown': self.shown,
+                                            'main': MAIN_BLOCK.get(self.program.name, ())}})
+        self.briefing['extent'] = answer['extent']
         self.system, self.acts_per_step = answer['system'], answer['acts_per_step']
-        if answer['extent'] != list(self.screen):
+        if list(answer['extent']) != list(self.screen):
             raise RuntimeError(f'nkl shows the program on {answer["extent"]} scene units, not the {self.screen} '
                                'pixels of the screen; the briefing and the act positions assume one unit a pixel.')
         row = self._row(answer)

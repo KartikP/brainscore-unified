@@ -8,8 +8,10 @@ follows the acts (``observe``). When the step names a frames file, the worker al
 the clock passes (60 frames a second, ``FRAME_US``, at the video size; each look is a frame line in the
 trace) and writes the frames there; without one, the trace is nkl's agent harness's line for line. Commands, one JSON line each:
 
-- ``{"reset": {"pacing": [kind, step µs], "limits": {...}, "seconds": s, "instructions": text}}`` (an action
-  limit of None: nkl's own, one a turn under Dense) starts
+- ``{"reset": {"pacing": [kind, step µs], "limits": {...}, "seconds": s, "instructions": text, "picture": [w, h]
+  or null, "motor": {...} or null, "shown": n or null, "main": [argument, ...]}}`` (an action
+  limit of None: nkl's own, one a turn under Dense; a picture of None: the screen's size; a motor of None: nkl's
+  own; with ``shown``, the bundle arguments ``main`` (the main block's lists of trials) keep their first n) starts
   the run (``begin``) and answers the first screen with nkl's briefing for it (``system_prompt``).
 - ``{"step": {"acts": [act, ...], "seconds": s, "frames": file or null}}``: the acts in the form of Brain-Score's ``motor:key`` and
   ``motor:pointer`` (pixels of the screen, origin top left), ``seconds`` the subject's answering time (it
@@ -31,8 +33,12 @@ samples are not frames of their own (a stroke is sampled at nkl's motor rate, 12
 Limit: nkl 0.1.0 starts a run from a ``Call`` of Python code; a bundle holds the lowered program
 instead. ``BundleCall`` gives the program, its arguments and its media as a ``Call`` does, and the
 worker lets ``nkl.fsim`` take it (``op_call``) and finds the bundle's media files (``nkl.media._files``).
-It converts pixels with nkl's own ``to_scene`` and ``to_pixels`` and makes strokes with its ``Stroke``. These are names inside nkl 0.1.0;
+It converts pixels with nkl's own ``to_scene`` and ``to_frame`` and makes strokes with its ``Stroke``. These are
+names inside the nkl of the pinned task repository (``NKL_COMMIT`` site-20261119-230637-272-gd9538ac6ef10);
 another nkl version must be checked again.
+
+Limit: ``shown`` cuts the bundle's main-block trial lists; the task code's own ``shown`` (a newer task file) also
+keeps the Gabor trial counter at the full count ("3 of 50"), the cut bundle counts the trials kept ("3 of 10").
 """
 import base64
 import json
@@ -59,10 +65,13 @@ class _Hashed:
 class BundleCall:
     """A bundle's program and arguments in the form ``nkl.fsim.start`` reads from a ``Call``."""
 
-    def __init__(self, folder: Path):
+    def __init__(self, folder: Path, shown=None, main=()):
         import nkl.media
         document = json.loads((folder / 'program.json').read_text())
         self._program, self._arguments = document['program'], document['arguments']
+        if shown is not None:          # the main block's first trials only: each of its parallel lists is cut
+            self._arguments = [value[:shown] if number in main else value
+                               for number, value in enumerate(self._arguments)]
         sidecar = document.get('sidecar', {})
         self._media = [_Hashed(sha) for sha in sidecar.get('media', {})]
         self._fonts = [_Hashed(sha) for sha in sidecar.get('fonts', {})]
@@ -86,15 +95,17 @@ class BundleCall:
         return value            # value JSON, as a trace holds it
 
 
-def start(folder: Path, seed: int, screen):
-    """A fresh run of the bundle, as ``nkl.fsim.start`` makes one for nkl's agent harness."""
+def start(folder: Path, seed: int, screen, picture=None, shown=None, main=()):
+    """A fresh run of the bundle, as ``nkl.fsim.start`` makes one for nkl's agent harness; its looks are
+    ``picture`` pixels (None: the screen's)."""
     import nkl._core.frontend.program as program
     from nkl import fsim
-    call = BundleCall(folder)
+    call = BundleCall(folder, shown, main)
     op_call = program.op_call
     program.op_call = lambda value, use: value if value is call else op_call(value, use)
     try:
-        return fsim.start(call, seed=seed, display=fsim.Display(screen=screen), look=fsim.Look(channels='rgb'))
+        return fsim.start(call, seed=seed, display=fsim.Display(screen=screen),
+                          look=fsim.Look(size=tuple(picture) if picture else None, channels='rgb'))
     finally:
         program.op_call = op_call
 
@@ -112,7 +123,7 @@ def actions(acts, context):
     made = []
 
     def scene(x, y):
-        return to_scene(x, y, context.screen, context.extent)
+        return to_scene(x, y, (context.screen.width, context.screen.height), context.extent)
     for act in acts:
         name = act['act']
         if name == 'press':
@@ -120,7 +131,7 @@ def actions(acts, context):
         elif name == 'release':
             made.append(fsim.Keyboard.Release(act['key']))
         elif name == 'type':
-            typed, _, problems = agents.parse(json.dumps({'do': 'type', 'text': act['text']}), context)
+            typed, _, problems, _ = agents.parse(json.dumps({'do': 'type', 'text': act['text']}), context)
             if problems:
                 raise ValueError('; '.join(problems))
             made.extend(typed)
@@ -135,7 +146,7 @@ def actions(acts, context):
         elif name == 'look':
             made.append(TakeLook(act['id']))
         elif name == 'stroke':
-            made.append(Stroke(tuple(scene(*point) for point in act['points']), act.get('force', 1.0)))
+            made.append(Stroke(tuple(scene(*point) for point in act['points'])))
         else:
             raise ValueError(f'{name!r} is not an act of motor:key or motor:pointer')
     return made
@@ -211,10 +222,10 @@ def with_frames(video, frames: Frames):
 
 
 def screen(run, context, system=None, frames=None):
-    from nkl._core.host.agents import to_pixels
+    from nkl._core.host.agents import to_frame
     ended = run.outcome is not None
     image, body = context.screen, context.body
-    x, y = to_pixels(body.pointer.x, body.pointer.y, image, context.extent)
+    x, y = to_frame(body.pointer.x, body.pointer.y, (image.width, image.height), context.extent)
     answer = {'t_ms': run.t / 1000, 'ended': ended,
               'body': {'pointer': [x, y], 'pointer_down': body.pointer.down, 'pointer_connected': body.pointer.connected,
                        'keys_down': list(body.keyboard.down)},
@@ -238,7 +249,7 @@ def main():
     folder, seed, width, height = Path(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])
     video = (int(sys.argv[5]), int(sys.argv[6]))
     run = context = pacing = None
-    motor = agents.Motor()
+    motor = None
     while line := commands.readline():
         command = json.loads(line)
         try:
@@ -248,10 +259,12 @@ def main():
                 limits = agents.Limits(**{key: value for key, value in settings['limits'].items() if value is not None})
                 if settings['limits'].get('actions') is None and isinstance(pacing, agents.Dense):
                     limits = replace(limits, actions=1)       # nkl's own rule: one action a turn under Dense
-                run, context = agents.begin(start(folder, seed, (width, height)), limits=limits)
+                motor = agents.Motor(**(settings.get('motor') or {}))
+                run, context = agents.begin(start(folder, seed, (width, height), settings.get('picture'),
+                                                  settings.get('shown'), settings.get('main', ())), limits=limits)
                 system = agents.system_prompt(
                     settings['instructions'], screen=(context.screen.width, context.screen.height),
-                    extent=context.extent, limits=limits, pacing=pacing, motor=motor, seconds=settings['seconds'])
+                    extent=context.extent, limits=limits, pacing=pacing, motor=motor)
                 send({'done': screen(run, context, system)})
             elif 'step' in command:
                 step = command['step']

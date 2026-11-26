@@ -178,8 +178,8 @@ def send(message):
 while line := commands.readline():
     command = json.loads(line)
     if 'system' in command:
-        width, height = command['system']['screen']
-        send({'done': f'The screen image is {width} x {height} pixels.'})
+        width, height = command['system']['grid']
+        send({'done': f'Positions are on a grid laid over it: {width} x {height}.'})
     elif 'brief' in command:
         turn = command['brief']
         send({'done': [['problems: ' + '; '.join(turn['problems']), None], ['The screen now:', 'screen']]})
@@ -327,16 +327,10 @@ def test_the_act_policy_shows_no_earlier_turn_in_the_agent_view(stand_in, monkey
     policy.close()
 
 
-def test_positions_on_the_model_s_grid_are_one_convention():
-    from brainscore.harnesses.nodekit.policy import on_grid, to_pixels
-    # The 30B's two cases: a target it wrote on the grid stays on face 2; a pointer number it copies back from
-    # its briefing lands where the pointer is.
+def test_positions_on_the_model_s_grid_become_pixels():
+    from brainscore.harnesses.nodekit.policy import to_pixels
+    # The 30B's case: a target it wrote on the grid stays on face 2 (nkl's grid option shows and reads the grid).
     assert to_pixels([{'act': 'stroke', 'points': [[680, 170]]}], 1000, 1024, 768)[0]['points'] == [[696.32, 130.56]]
-    turn = on_grid({'screen': [1024, 768], 'observation': {'pointer': [328.704, 130.56]}}, 1000)
-    assert turn['screen'] == [1000, 1000]
-    shown = turn['observation']['pointer']
-    back = to_pixels([{'act': 'stroke', 'points': [shown]}], 1000, 1024, 768)[0]['points'][0]
-    assert back == pytest.approx([328.704, 130.56])
 
 
 def test_each_run_has_nkl_data_of_its_own_and_a_shared_home(stand_in):
@@ -354,7 +348,7 @@ def test_a_run_stops_after_the_same_acts_in_a_row(stand_in):
     assert environment.steps == nodekit.CYCLE_REPEATS
 
 
-def test_under_a_grid_the_system_briefing_is_nkl_s_written_for_the_grid(stand_in, monkeypatch):
+def test_under_a_grid_the_system_briefing_is_nkl_s_for_its_grid(stand_in, monkeypatch):
     import brainscore.harnesses._environment_folder as environment_folder
     import brainscore.harnesses.nodekit.policy as act
     reader = stand_in / 'stand_in_reader.py'
@@ -369,7 +363,7 @@ def test_under_a_grid_the_system_briefing_is_nkl_s_written_for_the_grid(stand_in
                                         'instructions': ''}}}
     policy(row)
     system = prompts[0].parts[0][1]
-    assert '1000 x 1000' in system and '1024' not in system and '768' not in system
+    assert '1000 x 1000' in system and system != row['instruction']
     policy.close()
 
 
