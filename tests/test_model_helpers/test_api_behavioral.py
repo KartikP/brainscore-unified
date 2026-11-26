@@ -680,8 +680,8 @@ def build_messages(trial, experiment):
     'brainscore.models.api_closed.model', fromlist=['REGISTRY']).REGISTRY))
 def test_every_request_of_a_registered_api_model_states_its_temperature(identifier, tmp_path,
                                                                         monkeypatch):
-    """A provider that takes a temperature gets one in every request, for every response
-    kind; the Anthropic client takes none (its default is sampling), so its sampled
+    """A provider that takes a temperature gets the stated one in every request, for every response
+    kind (a registration may state none: the provider's default); the Anthropic client takes none (its default is sampling), so its sampled
     reply with no seed is never stored. A new model, provider or path is covered here."""
     import sys
     import types
@@ -728,7 +728,13 @@ def test_every_request_of_a_registered_api_model_states_its_temperature(identifi
         # Sampled with no seed, by the answer part and the reply part: asked again each time.
         assert all(count == 2 for count in sent.values()), sent
     else:
-        assert requests and all(r.get('temperature') == 0 for r in requests)
+        # The answer part sends 0; the reply part the registration's temperature (None: none sent, the
+        # provider's own sampling, so the reply is asked again each time).
+        cfg = REGISTRY[identifier]
+        stated = cfg.get('temperature', None if cfg.get('request_fields') else 0)
+        assert requests and all(r.get('temperature') in (0, stated) for r in requests)
+        if stated is None:
+            assert sent['behavior:text', 0] == 2, sent
 
 
 class TestBedrock:
@@ -783,6 +789,17 @@ class TestBedrock:
                                                              response=Text(max_tokens=8)))
         assert calls[0]['inferenceConfig'] == {'maxTokens': 8, 'temperature': 0}
 
+    def test_request_fields_go_by_their_provider_names_and_a_registration_may_send_no_temperature(self, monkeypatch):
+        from brainscore_core.responses import Prompt, Text
+        from brainscore.model_helpers.api_behavioral import build_api_reply
+        calls = []
+        self._boto3(monkeypatch, calls)
+        prompt = Prompt(parts=(('text', 'x'),), names=('turn',), response=Text(max_tokens=8))
+        build_api_reply('bedrock', 'moonshotai.kimi-k2.5', request_fields={'reasoning_config': 'high'},
+                        temperature=None)(prompt)
+        assert calls[0]['additionalModelRequestFields'] == {'reasoning_config': 'high'}
+        assert calls[0]['inferenceConfig'] == {'maxTokens': 8}                 # the provider's own temperature
+
 
 def test_an_api_model_takes_frames_only_for_a_task_on_a_screen():
     from brainscore.models.api_closed.model import get_model
@@ -795,3 +812,9 @@ def test_a_bedrock_model_that_refuses_a_temperature_gets_none():
     from brainscore.model_helpers.api_behavioral import _call_bedrock, _samples_only
     assert _samples_only(_call_bedrock, 'us.moonshotai.kimi-k3.1') and _samples_only(_call_bedrock, 'us.anthropic.x')
     assert not _samples_only(_call_bedrock, 'moonshotai.kimi-k2.5')
+
+
+def test_an_api_registration_states_its_reasoning_fields():
+    from brainscore.models.api_closed.model import REGISTRY
+    assert REGISTRY['claude-opus-5-5-bedrock']['request_fields']['output_config'] == {'effort': 'medium'}
+    assert REGISTRY['kimi-k2.5-bedrock']['request_fields'] == {'reasoning_config': 'high'}

@@ -98,7 +98,9 @@ def answer_text(instruction: Optional[str], label_set: Sequence[str]) -> str:
 # the text as payload and extra data (reasoning, token counts) as meta.
 # messages are [{'role': 'user'|'assistant', 'content': [part, ...]}] with parts
 # {'type': 'text', 'text': ...} or {'type': 'image', 'media_type': ..., 'data': <base64>};
-# settings hold max_tokens and any of temperature, top_p, seed. SDKs are
+# settings hold max_tokens and any of temperature, top_p, seed, and request_fields: the provider's own request
+# fields (for example reasoning), sent by their provider names (Bedrock's additionalModelRequestFields, the
+# Anthropic API's top-level fields, an OpenAI-compatible endpoint's extra body). SDKs are
 # imported lazily so `unified` has no hard dependency on anthropic / openai; a
 # missing SDK or key raises a clear error only when a call is made.
 
@@ -135,7 +137,7 @@ def _call_anthropic(model, system, messages, settings):
         {'type': 'image', 'source': {'type': 'base64', 'media_type': p['media_type'], 'data': p['data']}}
         for p in parts]
     kwargs = dict(model=model, messages=[{'role': m['role'], 'content': content(m['content'])}
-                                         for m in messages], **request)
+                                         for m in messages], **request, **(settings.get('request_fields') or {}))
     if system:
         kwargs['system'] = system
     resp = client.messages.create(**kwargs)
@@ -177,7 +179,9 @@ def _make_openai_compatible(base_url=None, api_key_env='OPENAI_API_KEY', label='
         request = {name: settings[name] for name in ('max_tokens', 'temperature', 'top_p', 'seed')
                    if settings.get(name) is not None}
         try:
-            resp = client.chat.completions.create(model=model, messages=chat, **request)
+            resp = client.chat.completions.create(model=model, messages=chat, **request,
+                                                  **({'extra_body': settings['request_fields']}
+                                                     if settings.get('request_fields') else {}))
         except Exception as e:
             # A text-only model (e.g. DeepSeek-V3, Llama-3.3) sent an image gets
             # a cryptic provider 404 ("no endpoints found that support image
@@ -225,6 +229,8 @@ def _call_bedrock(model, system, messages, settings):
         for p in parts]
     kwargs = dict(modelId=model, messages=[{'role': m['role'], 'content': content(m['content'])} for m in messages],
                   inferenceConfig={names[name]: value for name, value in request.items()})
+    if settings.get('request_fields'):
+        kwargs['additionalModelRequestFields'] = settings['request_fields']
     if system:
         # A Claude model keeps the system text in Bedrock's prompt cache: a task's turns repeat it (Kimi K3
         # refuses the cache point).
@@ -463,6 +469,8 @@ def build_api_reply(
     *,
     max_tokens: int = 512,
     cache_dir: Optional[Union[str, Path]] = None,
+    request_fields: Optional[dict] = None,
+    temperature: Optional[float] = 0,
 ) -> Callable:
     """Build a ``reply(prompt)`` part for a hosted model API.
 
@@ -488,6 +496,11 @@ def build_api_reply(
         user's AWS credentials), or a callable client
         ``(model, system, messages, settings)`` that returns the text, or a
         ``StreamEvent`` with the text as payload and the extra data as meta.
+    :param request_fields: the provider's own request fields, sent with every request by their provider
+        names (Bedrock's ``additionalModelRequestFields``, such as Claude's ``thinking`` and
+        ``output_config``, or ``reasoning_config``) and stated with the settings on the score.
+    :param temperature: the temperature sent when the task gives none (a model that samples only, such as
+        Claude, sends none); None: none is sent and the provider samples at its own default (stated as null).
     :param cache_dir: if set, replies are cached per trial, keyed on the
         provider, the model, the system text, the turns and the settings. A
         sampled call (temperature above 0) with no seed is never cached.
@@ -506,9 +519,12 @@ def build_api_reply(
                      'top_p': response.top_p, 'seed': response.seed}
             settings.update({name: value for name, value in given.items() if value is not None})
         # The temperature is stated: the Anthropic client sends none and samples at its
-        # default; any other client gets 0 when the task gives none.
+        # default; any other client gets the registration's temperature (0 unless it states another or None, the
+        # provider's own default) when the task gives none.
         settings.setdefault('temperature', _ANTHROPIC_DEFAULT_TEMPERATURE
-                            if _samples_only(call, model) else 0)
+                            if _samples_only(call, model) else temperature)
+        if request_fields:
+            settings['request_fields'] = request_fields
         if _samples_only(call, model):
             _anthropic_settings(settings)   # fail before the cache or a request
         _state_settings(reply, provider_name, model,
@@ -518,7 +534,7 @@ def build_api_reply(
                                          _CACHE_FORM], sort_keys=True).encode('utf-8')).hexdigest()
         # A sampled call without a seed differs on each repetition: do not cache it.
         use_cache = cache is not None and not (
-            settings['temperature'] > 0 and settings.get('seed') is None)
+            (settings['temperature'] is None or settings['temperature'] > 0) and settings.get('seed') is None)
         answer = cache.get(key) if use_cache else None
         if answer is None:
             answer = call(model, system, messages, settings)

@@ -17,6 +17,12 @@ from brainscore.model_helpers.api_behavioral import api_answer, build_api_reply
 # where the provider offers them (OpenAI) so behavioral scores reproduce. Claude
 # uses the canonical alias; its replies are samples (no temperature, no seed),
 # so the response store keeps none of them.
+# The request fields of a model on a task (stated on the score by their Bedrock names), as the NodeKit author's
+# evaluation grid sends them (umi-nkl 0ef0518, src/umi_nkl/evaluations/full.toml): Claude 5.5 thinks adaptively with
+# a summarized display at effort medium; Kimi reasons at high (it offers none, low, high, max); Qwen3-VL sends none.
+# A registration with request fields sends no temperature (the provider's default) unless it states one.
+CLAUDE_EFFORT_MEDIUM = {'thinking': {'type': 'adaptive', 'display': 'summarized'}, 'output_config': {'effort': 'medium'}}
+KIMI_REASONING_HIGH = {'reasoning_config': 'high'}
 REGISTRY = {
     'claude-opus-behavioral': dict(
         provider='anthropic', model='claude-opus-4-8',
@@ -25,14 +31,22 @@ REGISTRY = {
     # the Anthropic API (ANTHROPIC_API_KEY); the registration picks the way.
     'claude-sonnet-5-5-bedrock': dict(
         provider='bedrock', model='us.anthropic.claude-sonnet-5-5',
-        in_channels=('vision:image', 'text')),
+        in_channels=('vision:image', 'text'), request_fields=CLAUDE_EFFORT_MEDIUM),
     'claude-sonnet-5-5-behavioral': dict(
         provider='anthropic', model='claude-sonnet-5-5',
         in_channels=('vision:image', 'text')),
-    # Claude Opus 5.5, both ways (Sonnet 5.5 answered NodeKit's briefing with empty tool markup on 2026-11-25).
+    # Claude Opus 5.5, both ways (without the request fields, Sonnet 5.5 answered NodeKit's briefing with empty
+    # tool markup on 2026-11-25; with them, plain acts).
     'claude-opus-5-5-bedrock': dict(
         provider='bedrock', model='us.anthropic.claude-opus-5-5',
-        in_channels=('vision:image', 'text')),
+        in_channels=('vision:image', 'text'), request_fields=CLAUDE_EFFORT_MEDIUM),
+    # Kimi K2.5 and K3.1 through Amazon Bedrock (us-east-1): reasoning at high.
+    'kimi-k2.5-bedrock': dict(
+        provider='bedrock', model='moonshotai.kimi-k2.5',
+        in_channels=('vision:image', 'text'), request_fields=KIMI_REASONING_HIGH),
+    'kimi-k3.1-bedrock': dict(
+        provider='bedrock', model='global.moonshotai.kimi-k3.1',
+        in_channels=('vision:image', 'text'), request_fields=KIMI_REASONING_HIGH),
     'claude-opus-5-5-behavioral': dict(
         provider='anthropic', model='claude-opus-5-5',
         in_channels=('vision:image', 'text')),
@@ -42,7 +56,7 @@ REGISTRY = {
     # nkl writes its briefing for a 1000 x 1000 screen.
     'qwen3-vl-235b-a22b-bedrock': dict(
         provider='bedrock', model='qwen.qwen3-vl-235b-a22b',
-        in_channels=('vision:image', 'text'), position_grid=1000),
+        in_channels=('vision:image', 'text'), position_grid=1000, temperature=None),
     'claude-haiku-behavioral': dict(
         provider='anthropic', model='claude-haiku-4-5',
         in_channels=('vision:image', 'text')),
@@ -95,7 +109,9 @@ def get_model(identifier: str) -> BrainScoreModel:
         max_tokens=16,
         cache_dir=f"{_CACHE_ROOT}/{identifier}",
     )
-    reply = build_api_reply(cfg['provider'], cfg['model'], cache_dir=f"{_CACHE_ROOT}/{identifier}")
+    reply = build_api_reply(cfg['provider'], cfg['model'], cache_dir=f"{_CACHE_ROOT}/{identifier}",
+                            request_fields=cfg.get('request_fields'),
+                            temperature=cfg.get('temperature', None if cfg.get('request_fields') else 0))
     screen = 'vision:image' in cfg['in_channels']
     if screen:
         from brainscore.harnesses.nodekit.policy import act_policy
