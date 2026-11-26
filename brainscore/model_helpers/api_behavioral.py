@@ -156,10 +156,13 @@ def _with_meta(text, reasoning, token_usage):
     return StreamEvent('behavior:text', text, None, meta) if meta else text
 
 
-def _make_openai_compatible(base_url=None, api_key_env='OPENAI_API_KEY', label='openai') -> Callable:
+def _make_openai_compatible(base_url=None, api_key_env='OPENAI_API_KEY', label='openai',
+                            base_url_env=None) -> Callable:
     """Client for any OpenAI-compatible chat-completions endpoint. DeepSeek,
     Together, Fireworks, vLLM, etc. all speak this protocol — only the base_url
-    and key env var differ. ``base_url=None`` is OpenAI itself. It takes every setting."""
+    and key env var differ. ``base_url=None`` is OpenAI itself. It takes every setting.
+    ``base_url_env=(variable, default)``: the address is read from that variable at each call (a server
+    on the user's own machine), and the key may be absent (such a server needs none)."""
     def call(model, system, messages, settings):
         try:
             from openai import OpenAI
@@ -167,7 +170,9 @@ def _make_openai_compatible(base_url=None, api_key_env='OPENAI_API_KEY', label='
             raise RuntimeError(
                 f"openai SDK not installed — `pip install openai` to score "
                 f"{label} models behaviorally.") from e
-        client = OpenAI(api_key=os.getenv(api_key_env), base_url=base_url)
+        url = os.getenv(*base_url_env) if base_url_env else base_url
+        key = os.getenv(api_key_env) or ('none' if base_url_env else None)
+        client = OpenAI(api_key=key, base_url=url)
         content = lambda parts: [
             {'type': 'text', 'text': p['text']} if p['type'] == 'text' else
             {'type': 'image_url', 'image_url': {'url': f"data:{p['media_type']};base64,{p['data']}"}}
@@ -289,6 +294,11 @@ PROVIDERS = {
     'openrouter': _make_openai_compatible(
         base_url='https://openrouter.ai/api/v1',
         api_key_env='OPENROUTER_API_KEY', label='openrouter'),
+    # A model served by vLLM's OpenAI-compatible server on the user's own machine: the address is
+    # BRAINSCORE_VLLM_URL (default http://localhost:8000/v1); a key only if the server was started with one.
+    'vllm': _make_openai_compatible(
+        base_url_env=('BRAINSCORE_VLLM_URL', 'http://localhost:8000/v1'),
+        api_key_env='BRAINSCORE_VLLM_KEY', label='vllm'),
 }
 
 

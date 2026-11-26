@@ -43,6 +43,14 @@ REGISTRY = {
     'qwen3-vl-235b-a22b-bedrock': dict(
         provider='bedrock', model='qwen.qwen3-vl-235b-a22b',
         in_channels=('vision:image', 'text'), position_grid=1000),
+    # Kimi K2.5 on the user's own GPUs: the released weights (moonshotai/Kimi-K2.5 at revision 94b44e57, the native
+    # INT4 of the routed experts; the vision part and attention in BF16) served by vLLM's OpenAI-compatible server at
+    # BRAINSCORE_VLLM_URL. It writes positions in pixels. No activations through this path: the server's vision
+    # hooks record and lesion (`brainscore/models/kimi_k25_local`). Its replies are never stored, because the
+    # served state (a lesion) can change behind the same address.
+    'kimi-k2.5-local': dict(
+        provider='vllm', model='moonshotai/Kimi-K2.5',
+        in_channels=('vision:image', 'text'), store=False),
     'claude-haiku-behavioral': dict(
         provider='anthropic', model='claude-haiku-4-5',
         in_channels=('vision:image', 'text')),
@@ -89,13 +97,14 @@ def get_model(identifier: str) -> BrainScoreModel:
         raise ValueError(f"unknown closed-API model '{identifier}'; "
                          f"known: {sorted(REGISTRY)}")
     cfg = REGISTRY[identifier]
+    store = f"{_CACHE_ROOT}/{identifier}" if cfg.get('store', True) else None
     answer = api_answer(
         provider=cfg['provider'],
         model=cfg['model'],
         max_tokens=16,
-        cache_dir=f"{_CACHE_ROOT}/{identifier}",
+        cache_dir=store,
     )
-    reply = build_api_reply(cfg['provider'], cfg['model'], cache_dir=f"{_CACHE_ROOT}/{identifier}")
+    reply = build_api_reply(cfg['provider'], cfg['model'], cache_dir=store)
     screen = 'vision:image' in cfg['in_channels']
     if screen:
         from brainscore.harnesses.nodekit.policy import act_policy
