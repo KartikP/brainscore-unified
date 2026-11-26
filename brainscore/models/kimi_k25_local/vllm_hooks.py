@@ -19,9 +19,12 @@ not encoded again. Lesion file forms (JSON)::
     {"name": "intact"}
     {"name": "selected-K50", "block": 23, "channels": [12, 40, ...]}
     {"name": "L4", "block": 23, "direction": [1152 numbers]}
+    {"name": "L1-mean", "block": 23, "channels": [...], "values": [one number per channel]}
+    {"name": "L4-mean", "block": 23, "direction": [...], "value": 0.42}
 
 One rule of inactivation: the output of block ``block`` is changed for every token of every picture: the
-listed channels are set to 0, or the component along the (normalized) direction is removed. Each encoder call
+listed channels are set to 0 (or to the given ``values``: a mean ablation), or the component along the
+(normalized) direction is removed (or set to the given ``value``). Each encoder call
 writes one line to ``<record_dir>/calls-rank<r>.jsonl`` with the lesion name it ran with.
 
 Limit: this lesion is a hook inside a serving program for one experiment; it is not the library's lesion
@@ -51,15 +54,19 @@ def read_lesion(path: str) -> dict:
 
 
 def apply_lesion(output: torch.Tensor, lesion: dict) -> torch.Tensor:
-    """``output`` (tokens x channels) with the lesion's channels set to 0, or its direction projected out."""
+    """``output`` (tokens x channels) with the lesion's channels set to 0 (or to ``values``), or its direction's
+    component removed (or set to ``value``)."""
     if 'channels' in lesion:
         changed = output.clone()
-        changed[..., torch.as_tensor(lesion['channels'], dtype=torch.long, device=output.device)] = 0
+        index = torch.as_tensor(lesion['channels'], dtype=torch.long, device=output.device)
+        changed[..., index] = (0 if 'values' not in lesion else
+                               torch.as_tensor(lesion['values'], dtype=output.dtype, device=output.device))
         return changed
     direction = torch.as_tensor(lesion['direction'], dtype=torch.float32, device=output.device)
     direction = direction / direction.norm()
     values = output.float()
-    return (values - (values @ direction)[..., None] * direction).to(output.dtype)
+    kept = float(lesion.get('value', 0.0))
+    return (values - ((values @ direction)[..., None] - kept) * direction).to(output.dtype)
 
 
 def picture_means(output: torch.Tensor, cu_seqlens: torch.Tensor) -> torch.Tensor:

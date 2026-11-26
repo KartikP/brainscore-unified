@@ -27,6 +27,15 @@ def test_a_direction_lesion_leaves_no_component_along_the_direction():
     assert torch.allclose(project_out(output, direction), changed, atol=1e-6)
 
 
+def test_a_mean_ablation_sets_each_channel_to_its_value_and_a_direction_to_its_value():
+    output, direction = torch.randn(7, 6), torch.randn(6)
+    changed = apply_lesion(output, {'name': 'x', 'block': 0, 'channels': [1, 4], 'values': [0.5, -2.0]})
+    assert torch.equal(changed[:, 1], torch.full((7,), 0.5)) and torch.equal(changed[:, 4], torch.full((7,), -2.0))
+    assert torch.equal(changed[:, [0, 2, 3, 5]], output[:, [0, 2, 3, 5]])
+    moved = apply_lesion(output, {'name': 'x', 'block': 0, 'direction': direction.tolist(), 'value': 0.7})
+    assert torch.allclose(moved @ (direction / direction.norm()), torch.full((7,), 0.7), atol=1e-5)
+
+
 def test_a_missing_or_malformed_lesion_file_is_an_error_never_intact(tmp_path):
     with pytest.raises(RuntimeError, match='cannot be read'):
         read_lesion(str(tmp_path / 'none.json'))
