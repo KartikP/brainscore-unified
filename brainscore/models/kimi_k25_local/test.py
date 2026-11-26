@@ -89,6 +89,20 @@ def test_the_hook_reads_the_condition_at_each_call_and_records_with_its_name(tmp
     assert worker.kimi_hooks_status() == {'rank': 0, 'calls': 2, 'lesion': 'c1'}
 
 
+def test_one_lesion_file_can_change_several_blocks(tmp_path):
+    worker, blocks = _worker()
+    lesion = tmp_path / 'lesion.json'
+    lesion.write_text(json.dumps({'name': 'two', 'lesions': [{'block': 0, 'channels': [0]},
+                                                              {'block': 2, 'channels': [2]}]}))
+    worker.kimi_hooks_install(json.dumps({'lesion_file': str(lesion)}))
+    out = _encode(blocks, torch.zeros(5, 3), torch.tensor([0, 5]))
+    assert torch.equal(out[:, 0], torch.full((5,), 3.0)) and torch.equal(out[:, 2], torch.ones(5))
+    assert torch.equal(out[:, 1], torch.full((5,), 4.0))
+    lesion.write_text(json.dumps({'name': 'twice', 'lesions': [{'block': 1, 'channels': [0]}, {'block': 1, 'channels': [1]}]}))
+    with pytest.raises(RuntimeError, match='twice'):
+        read_lesion(str(lesion))
+
+
 def test_installing_again_replaces_the_hooks(tmp_path):
     worker, blocks = _worker()
     lesion = tmp_path / 'lesion.json'

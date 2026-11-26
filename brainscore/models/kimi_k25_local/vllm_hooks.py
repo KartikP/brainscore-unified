@@ -21,6 +21,7 @@ not encoded again. Lesion file forms (JSON)::
     {"name": "L4", "block": 23, "direction": [1152 numbers]}
     {"name": "L1-mean", "block": 23, "channels": [...], "values": [one number per channel]}
     {"name": "L4-mean", "block": 23, "direction": [...], "value": 0.42}
+    {"name": "W1-K50", "lesions": [{"block": 9, "channels": [...]}, {"block": 23, "channels": [...]}]}
 
 One rule of inactivation: the output of block ``block`` is changed for every token of every picture: the
 listed channels are set to 0 (or to the given ``values``: a mean ablation), or the component along the
@@ -47,10 +48,17 @@ def read_lesion(path: str) -> dict:
     except (OSError, ValueError) as error:
         raise RuntimeError(f'The lesion file {path} cannot be read ({error}). Next step: write it '
                            '(for no lesion: {"name": "intact"}) before the next request.') from error
-    if 'name' not in lesion or ('block' in lesion) != ('channels' in lesion or 'direction' in lesion):
+    parts = lesion.get('lesions', [lesion] if 'block' in lesion else [])
+    loose = 'lesions' not in lesion and 'block' not in lesion and ('channels' in lesion or 'direction' in lesion)
+    if 'name' not in lesion or loose or any('block' not in part or not ('channels' in part or 'direction' in part)
+                                            for part in parts):
         raise RuntimeError(f'The lesion file {path} needs a "name", and a "block" with "channels" or '
-                           f'"direction" (or neither for no lesion); it holds {sorted(lesion)}.')
-    return lesion
+                           f'"direction" (or a list "lesions" of such parts, or neither for no lesion); '
+                           f'it holds {sorted(lesion)}.')
+    blocks = [part['block'] for part in parts]
+    if len(blocks) != len(set(blocks)):
+        raise RuntimeError(f'The lesion file {path} names a block twice: {blocks}.')
+    return {**lesion, 'by_block': {part['block']: part for part in parts}}
 
 
 def apply_lesion(output: torch.Tensor, lesion: dict) -> torch.Tensor:
@@ -107,8 +115,9 @@ class VisionHooks:
             state['tokens'] = int(output.shape[0])
             self._kimi_log(args)
         lesion = state['lesion']
-        if lesion.get('block') == index:
-            output = apply_lesion(output, lesion)
+        part = lesion['by_block'].get(index)
+        if part is not None:
+            output = apply_lesion(output, part)
         if state['record_dir'] and (index in state['record_blocks'] or index in state['full_blocks']):
             stem = Path(state['record_dir']) / f"rank{self.rank}-call{state['calls']:06d}-block{index:02d}"
             record = {'lesion': lesion['name'], 'cu_seqlens': args[1].cpu(),
@@ -116,7 +125,7 @@ class VisionHooks:
             if index in state['full_blocks']:
                 record['output'] = output.detach().cpu()
             torch.save(record, f'{stem}.pt')
-        return output if lesion.get('block') == index else None
+        return output if part is not None else None
 
     def _kimi_log(self, args) -> None:
         if not self._kimi['record_dir']:
