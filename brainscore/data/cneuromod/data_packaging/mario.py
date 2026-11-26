@@ -71,10 +71,10 @@ def run_events(clone: Path, participant: str, run: dict) -> pd.DataFrame:
 
 
 def tr_columns(clone: Path, participant: str, run: dict) -> dict:
-    """Per TR of ``run`` (``[start, start + TR)`` in run time, ``start`` = volume x TR): the level and the frame range of its repetition's
-    video (``frame_start`` included, ``frame_stop`` excluded; both -1 without a repetition), and per button
-    the seconds it was held in the TR (``button_A``, ...). A TR may end after its repetition: its frames
-    stop at the repetition's last frame."""
+    """Per TR of ``run`` (``[start, start + TR)`` in run time, ``start`` = volume x TR): the level and the frame
+    range of its repetition's video (``frame_start`` included, ``frame_stop`` excluded; both -1 without a
+    repetition), and per button the seconds it was held in the TR (``button_A``, ...) and the presses that start
+    in it (``presses_A``, ...). A TR may end after its repetition: its frames stop at the repetition's last frame."""
     events = _annotated(clone, participant, run)
     games = run_events(clone, participant, run)
     starts = run['volumes'] * TR_SECONDS
@@ -94,6 +94,8 @@ def tr_columns(clone: Path, participant: str, run: dict) -> dict:
         columns[f'button_{button}'] = np.array([
             np.clip(np.minimum(ends, start + TR_SECONDS) - np.maximum(presses['onset'], start), 0, None).sum()
             for start in starts])
+        columns[f'presses_{button}'] = np.array([          # the presses that start in the TR
+            int(((presses['onset'] >= start) & (presses['onset'] < start + TR_SECONDS)).sum()) for start in starts])
     return columns
 
 

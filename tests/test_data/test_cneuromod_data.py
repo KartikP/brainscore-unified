@@ -323,6 +323,7 @@ def test_a_mario_tr_has_its_repetition_its_video_frames_and_the_seconds_each_but
     assert series['frame_start'].values[0] == -1
     assert series['button_A'].values[:3] == pytest.approx([0.49, 0.51, 0.0])
     assert series['button_RIGHT'].values[5] == pytest.approx(0.2)
+    assert series['presses_A'].values[:3].tolist() == [1, 0, 0]               # a press counts in the TR where it starts
     stimuli = pd.read_csv(out / 'sub-01' / 'ses-01' / 'stimuli.csv')
     assert stimuli['replay_video'].tolist() == [f'sub-01/ses-001/beh/videos/{name}.mp4'
                                                for name in stimuli['stimulus_id']]
@@ -369,10 +370,10 @@ def test_the_mario_hand_contrast_is_positive_where_the_left_thumb_drives_the_par
     from brainscore.temporal import hrf_convolve
     rng = np.random.default_rng(0)
     n = 200
-    left, right = rng.uniform(0, 1.49, n) * (rng.random(n) < 0.5), rng.uniform(0, 1.49, n) * (rng.random(n) < 0.5)
+    left, right = rng.integers(0, 4, n) * (rng.random(n) < 0.5), rng.integers(0, 4, n) * (rng.random(n) < 0.5)
     presentation = pd.DataFrame({'session': 1, 'run': np.repeat([1, 2], n // 2), 'tr': np.tile(np.arange(n // 2), 2),
-                                 'frame_start': 0, 'frame_stop': 89, **{f'button_{b}': 0.0 for b in 'A B UP DOWN LEFT RIGHT'.split()}})
-    presentation['button_LEFT'], presentation['button_A'] = left, right
+                                 'frame_start': 0, 'frame_stop': 89, **{f'presses_{b}': 0 for b in 'A B UP DOWN LEFT RIGHT'.split()}})
+    presentation['presses_LEFT'], presentation['presses_A'] = left, right
     drive = {'7Networks_RH_SomMot_1': left, '7Networks_LH_SomMot_1': right, '7Networks_LH_Vis_1': np.zeros(n)}
     values = np.stack([np.concatenate([hrf_convolve(d[:n // 2, None], 1 / 1.49)[:, 0], hrf_convolve(d[n // 2:, None], 1 / 1.49)[:, 0]])
                        for d in drive.values()], axis=1) + 0.1 * rng.standard_normal((n, 3))

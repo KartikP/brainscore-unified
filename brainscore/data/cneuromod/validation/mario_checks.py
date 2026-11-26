@@ -1,8 +1,8 @@
 """Mario checks from the packaged time series (Paugam et al. 2025, bioRxiv 10.1101/2025.11.28.691119).
 
 1. ``glm``, a check of the data and of the per-TR button columns (not a figure of the paper): per
-   participant, a linear model of each parcel on the seconds of left-thumb buttons (LEFT, RIGHT, UP, DOWN)
-   and right-thumb buttons (A, B) in each TR and the seconds of play, each convolved with the SPM HRF per
+   participant, a linear model of each parcel on the presses of left-thumb buttons (LEFT, RIGHT, UP, DOWN)
+   and of right-thumb buttons (A, B) in each TR and the seconds of play, each convolved with the SPM HRF per
    run, one intercept per run, each parcel z-scored within each run. The contrast left - right thumb must be
    positive in the right somatomotor parcels and negative in the left ones (contralateral motor cortex).
 2. ``map``, the check of the paper's Fig. 2c (encoding maps of their untrained network, highest in "the
@@ -36,8 +36,10 @@ def network(parcel_name: str) -> str:
 def design(series) -> tuple:
     """``(regressors TR x 3, run label per TR)``: left thumb, right thumb, play; HRF per run."""
     from brainscore.temporal import hrf_convolve
-    left = sum(series[f'button_{b}'].values for b in LEFT_THUMB)
-    right = sum(series[f'button_{b}'].values for b in RIGHT_THUMB)
+    # presses, not seconds held: a participant who holds a button most of the time (sub-01 holds B in 79 % of
+    # its play) has a nearly constant held-seconds regressor
+    left = sum(series[f'presses_{b}'].values for b in LEFT_THUMB)
+    right = sum(series[f'presses_{b}'].values for b in RIGHT_THUMB)
     play = np.clip(series['frame_stop'].values - series['frame_start'].values, 0, None) / 60.0
     X = np.stack([left, right, play], axis=1).astype(float)
     runs = np.array([f'{s}-{r}' for s, r in zip(series['session'].values, series['run'].values)])
