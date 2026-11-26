@@ -755,7 +755,7 @@ class TestBedrock:
         botocore.exceptions = types.SimpleNamespace(NoCredentialsError=type('NoCredentialsError', (Exception,), {}))
         monkeypatch.setitem(sys.modules, 'botocore', botocore)
         monkeypatch.setitem(sys.modules, 'botocore.exceptions', botocore.exceptions)
-        monkeypatch.setitem(sys.modules, 'boto3', types.SimpleNamespace(client=lambda service, region_name=None: Client()))
+        monkeypatch.setitem(sys.modules, 'boto3', types.SimpleNamespace(client=lambda service, region_name=None, **settings: Client()))
         from brainscore.model_helpers.api_behavioral import _bedrock_client
         _bedrock_client.cache_clear()
 
@@ -818,3 +818,17 @@ def test_an_api_registration_states_its_reasoning_fields():
     from brainscore.models.api_closed.model import REGISTRY
     assert REGISTRY['claude-opus-5-5-bedrock']['request_fields']['output_config'] == {'effort': 'medium'}
     assert REGISTRY['kimi-k2.5-bedrock']['request_fields'] == {'reasoning_config': 'high'}
+
+
+def test_the_bedrock_client_waits_for_a_reasoning_model(monkeypatch):
+    import sys
+    import types
+    from brainscore.model_helpers import api_behavioral
+    made = {}
+    monkeypatch.setitem(sys.modules, 'boto3', types.SimpleNamespace(client=lambda *a, **k: made.update(k) or 'client'))
+    api_behavioral._bedrock_client.cache_clear()
+    try:
+        api_behavioral._bedrock_client('us-east-1')
+    finally:
+        api_behavioral._bedrock_client.cache_clear()
+    assert made['config'].read_timeout >= 300

@@ -255,9 +255,16 @@ def _call_bedrock(model, system, messages, settings):
 
 @functools.lru_cache(maxsize=None)
 def _bedrock_client(region):
-    """One Bedrock runtime client for each region (None: the configured one)."""
+    """One Bedrock runtime client for each region (None: the configured one). A reasoning model can take minutes
+    to answer: the client waits ``_BEDROCK_READ_TIMEOUT_S`` for a reply and retries throttling, as nkl's own
+    Bedrock backend does (300 s, adaptive retries)."""
     import boto3
-    return boto3.client('bedrock-runtime', region_name=region)
+    from botocore.config import Config
+    return boto3.client('bedrock-runtime', region_name=region,
+                        config=Config(read_timeout=_BEDROCK_READ_TIMEOUT_S, retries={'max_attempts': 6, 'mode': 'adaptive'}))
+
+
+_BEDROCK_READ_TIMEOUT_S = 300
 
 
 def _bedrock_region() -> str:
