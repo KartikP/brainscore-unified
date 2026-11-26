@@ -114,9 +114,11 @@ class ClipAndSoundExtractor:
                              dims=['presentation', 'neuroid'])
 
 
-def per_frame(output: np.ndarray) -> np.ndarray:
-    """A layer's output for ``B * FRAMES`` frames ``(B * FRAMES, tokens, H)`` as ``(B, FRAMES, tokens * H)``."""
-    return output.reshape(output.shape[0] // FRAMES, FRAMES, -1)
+def frame_mean(output: np.ndarray) -> np.ndarray:
+    """A layer's output for ``B * FRAMES`` frames ``(B * FRAMES, tokens, H)`` as ``(B, 1, tokens * H)``: the mean
+    over the frames of each clip, taken here so a chunk of clips keeps one step per clip (the extractor averages
+    the steps anyway)."""
+    return output.reshape(output.shape[0] // FRAMES, FRAMES, -1).mean(axis=1, keepdims=True)
 
 
 def _frames_extractor(identifier: str, random_init: bool = False):
@@ -143,7 +145,7 @@ def _frames_extractor(identifier: str, random_init: bool = False):
 
     return VideoWrapper(model=Frames(clip_model.vision_model).eval(), preprocessing=preprocess,
                         identifier=f'{identifier}-video', target_fps=None, num_frames=FRAMES,
-                        post_hook_fn=per_frame,
+                        post_hook_fn=frame_mean,
                         batch_size=8)
 
 

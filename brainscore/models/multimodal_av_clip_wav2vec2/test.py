@@ -98,3 +98,12 @@ def test_the_mario_cortex_benchmark_runs_it_and_a_benchmark_without_the_sound_is
     score = brainscore.score(subject, Offers(('sub-01',), identifier='made-up-no-sound',
                                              root='/nothing-packaged-here'), check_mem=False)
     assert np.isnan(float(score)) and video.calls == 0 and audio.calls == 0
+
+
+def test_the_frames_of_a_clip_become_one_step_their_mean():
+    import numpy as np
+    from .model import FRAMES, frame_mean
+    output = np.arange(2 * FRAMES * 3 * 2, dtype=np.float32).reshape(2 * FRAMES, 3, 2)
+    step = frame_mean(output)
+    assert step.shape == (2, 1, 6)
+    assert np.allclose(step[1, 0], output[FRAMES:].reshape(FRAMES, 6).mean(0))
