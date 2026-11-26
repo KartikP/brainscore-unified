@@ -96,7 +96,7 @@ def main(folder: Path):
 
     units = [(b, j) for b in BLOCKS for j in range(4304)]
     contrast = np.concatenate([activity[b][odd & faces].mean(0) - activity[b][odd & ~faces].mean(0) for b in BLOCKS])
-    writes = np.concatenate([(hidden.mlps[b].fc1.weight.float().cpu().numpy().T @ direction) for b in BLOCKS])
+    writes = np.concatenate([(hidden.mlps[b].fc1.weight.detach().float().cpu().numpy().T @ direction) for b in BLOCKS])
     unit_score = contrast * writes
     order = np.argsort(-unit_score)
 
@@ -123,7 +123,7 @@ def main(folder: Path):
     for n in (N_UNITS, N_LARGE):
         chosen = order[:n]
         random_drops = [drop(rng.choice(len(units), n, replace=False)) for _ in range(N_RANDOM)]
-        weights = np.stack([hidden.mlps[units[k][0]].fc1.weight[:, units[k][1]].float().cpu().numpy() for k in chosen])
+        weights = np.stack([hidden.mlps[units[k][0]].fc1.weight[:, units[k][1]].detach().float().cpu().numpy() for k in chosen])
         mass = (weights ** 2).sum(0)
         result[f'top{n}'] = {
             'units': [[int(units[k][0]), int(units[k][1])] for k in chosen],
