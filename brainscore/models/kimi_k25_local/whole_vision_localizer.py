@@ -27,6 +27,7 @@ import torch
 from .localizer import N_BLOCKS, SEED, Vision, cohen_d, load_vision, phase_scrambled, project_out, zero
 
 N_UNITS, N_LARGE, N_RANDOM = 50, 200, 20
+N_BLOCK_RANDOM = 10   # random sets per block in W2 (the first record used 1: python -m ... <folder> --block-random)
 TWIN_RULE = 0.5
 
 
@@ -103,7 +104,8 @@ def main(folder: Path):
     order_b = passing[np.argsort(-d_odd[passing])]
     w1 = {'twin_rule': f'twin d > {TWIN_RULE} on the odd half (selection), reported on the even half',
           'per_block_d_even_max': [float(d_even[block_of == b].max()) for b in range(N_BLOCKS)],
-          'per_block_d_even_top50_mean': [float(np.sort(d_even[block_of == b])[-50:].mean()) for b in range(N_BLOCKS)],
+          'per_block_d_even_top50_mean': [float(d_even[block_of == b][np.argsort(-d_odd[block_of == b])[:50]].mean())
+                                          for b in range(N_BLOCKS)],   # held out: chosen on the odd half
           'per_block_twin_d_even_top50_mean': [float(twin_even[block_of == b][np.argsort(-d_odd[block_of == b])[:50]].mean())
                                                for b in range(N_BLOCKS)]}
     random_a50 = None
@@ -152,5 +154,37 @@ def main(folder: Path):
     print('DONE', round(time.time() - start), 's', flush=True)
 
 
+def block_random(folder: Path):
+    """W2's random control again with ``N_BLOCK_RANDOM`` sets per block (the first record had one), written into the
+    record as ``random50_zero_draws`` (block x draw) and their mean ``random50_zero_mean``."""
+    from PIL import Image
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.preprocessing import StandardScaler
+    from brainscore import load_stimulus_set
+    saved = np.load(folder / 'kimi-k25-face-localizer.npz', allow_pickle=True)
+    record = json.load(open(folder / 'kimi-k25-whole-vision-localizer.json'))
+    vision = Vision(*load_vision(folder / 'weights'))
+    floc = load_stimulus_set('fLoc')
+    paths, number = list(floc['image_path'].values), floc['number'].values
+    faces, odd = floc['category'].values == 'faces', number % 2 == 1
+    features = saved['features']
+    scaler = StandardScaler().fit(features[odd])
+    probe = LogisticRegression(C=1.0, max_iter=5000).fit(scaler.transform(features[odd]), faces[odd])
+    test = np.flatnonzero(number % 4 == 0)
+    f = faces[test]
+    run = lambda lesions: probe.decision_function(scaler.transform(np.stack(
+        [block_means(vision, Image.open(paths[i]), lesions)[1] for i in test])))
+    base = run(None)
+    scale = np.sqrt((base[f].var(ddof=1) + base[~f].var(ddof=1)) / 2)
+    gap = lambda s: (s[f].mean() - s[~f].mean()) / scale
+    rng = np.random.default_rng(SEED + 1)
+    draws = [[float(gap(base) - gap(run({b: lambda h, u=rng.choice(1152, N_UNITS, replace=False): zero(h, u)})))
+              for _ in range(N_BLOCK_RANDOM)] for b in range(N_BLOCKS)]
+    record['W2']['random50_zero_draws'] = draws
+    record['W2']['random50_zero_mean'] = [float(np.mean(d)) for d in draws]
+    json.dump(record, open(folder / 'kimi-k25-whole-vision-localizer.json', 'w'), indent=1)
+    print('DONE block random', [round(np.mean(d), 2) for d in draws], flush=True)
+
+
 if __name__ == '__main__':
-    main(Path(sys.argv[1]))
+    block_random(Path(sys.argv[1])) if '--block-random' in sys.argv else main(Path(sys.argv[1]))
