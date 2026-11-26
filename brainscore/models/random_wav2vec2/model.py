@@ -17,6 +17,13 @@ from brainscore import BrainScoreModel
 from brainscore.models._shared import AUDIO_LAYER, build_audio_wrapper
 
 REGION_LAYER_MAP = {'A1': AUDIO_LAYER}
+# ``cortex`` (the whole-cortex benchmarks): the 12 encoder layers, one band each, as wav2vec2-base.
+CORTEX_LAYERS = tuple(f'encoder.layers.{i}' for i in range(12))
+
+
+def region_layers() -> dict:
+    from brainscore.selection import CompositeSelector
+    return {**REGION_LAYER_MAP, 'cortex': CompositeSelector(tuple((layer, None) for layer in CORTEX_LAYERS))}
 
 
 def get_model(identifier: str) -> BrainScoreModel:
@@ -24,7 +31,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     audio_wrapper, _ = build_audio_wrapper(identifier, random_init=True)
     return BrainScoreModel(
         identifier=identifier,
-        region_layer_map=REGION_LAYER_MAP,
+        region_layer_map=region_layers(),
         extractor={
             'audio': audio_wrapper,
         },
