@@ -135,3 +135,109 @@ class VisionHooks:
                 'pictures': len(args[1]) - 1}
         with open(Path(self._kimi['record_dir']) / f'calls-rank{self.rank}.jsonl', 'a') as log:
             log.write(json.dumps(line) + '\n')
+
+
+# The language part: the residual stream after each decoder layer, at the picture's token positions.
+# vLLM keeps the stream as two tensors that a decoder layer returns, (hidden, residual); the stream after the layer
+# is their sum (the next layer's norm adds them). Under tensor parallel serving both are whole on every rank after the
+# all-reduce, so every rank applies a lesion and rank 0 records. The picture positions of a forward step come from the
+# model's embedding merge (``embed_input_ids(..., is_multimodal=mask)``), which runs just before the decoder layers.
+# Hooks on the decoder layers need the server in eager mode (``--enforce-eager``): a compiled or graph-captured
+# forward does not call them.
+
+def language_parts(lesion: dict) -> dict:
+    """The language part of a lesion: layer -> part ({"layer", "dims", "values"} or {"layer", "direction", "value"});
+    only mean ablations (a zero in the residual stream is not a lesion of a unit)."""
+    parts = {}
+    for part in lesion.get('language', []):
+        if 'layer' not in part or not (('dims' in part and 'values' in part) or ('direction' in part and 'value' in part)):
+            raise RuntimeError(f'A language lesion part needs "layer" and "dims" with "values", or "direction" with '
+                               f'"value" (a mean ablation); it holds {sorted(part)}.')
+        if part['layer'] in parts:
+            raise RuntimeError(f"A language lesion names layer {part['layer']} twice.")
+        parts[part['layer']] = part
+    return parts
+
+
+def set_stream(hidden: torch.Tensor, residual: torch.Tensor, mask: torch.Tensor, part: dict) -> torch.Tensor:
+    """A new residual such that hidden + residual takes the part's values at the masked positions."""
+    stream = hidden[mask].float() + residual[mask].float()
+    if 'dims' in part:
+        index = torch.as_tensor(part['dims'], dtype=torch.long, device=hidden.device)
+        target = stream.clone()
+        target[:, index] = torch.as_tensor(part['values'], dtype=torch.float32, device=hidden.device)
+    else:
+        u = torch.as_tensor(part['direction'], dtype=torch.float32, device=hidden.device)
+        u = u / u.norm()
+        target = stream - ((stream @ u)[:, None] - float(part['value'])) * u
+    changed = residual.clone()
+    changed[mask] = (target - hidden[mask].float()).to(residual.dtype)
+    return changed
+
+
+class LanguageHooks:
+    """Mixed into each vLLM worker beside ``VisionHooks``; installed with ``collective_rpc('kimi_language_install')``."""
+
+    def kimi_language_install(self, settings: str) -> dict:
+        settings = json.loads(settings)
+        model = self.model_runner.get_model()
+        layers = model.language_model.model.layers
+        for handle in getattr(self, '_kimi_lang_handles', []):
+            handle.remove()
+        state = self._kimi_lang = {'lesion_file': settings['lesion_file'], 'record_dir': settings.get('record_dir'),
+                                   'mask': None, 'step': 0, 'parts': {}, 'name': None, 'rows': {}}
+        if state['record_dir']:
+            Path(state['record_dir']).mkdir(parents=True, exist_ok=True)
+        if not hasattr(self, '_kimi_embed'):
+            self._kimi_embed = model.embed_input_ids
+
+            def embed(input_ids, *args, **kwargs):
+                self._kimi_lang_step(input_ids, kwargs.get('is_multimodal'))
+                return self._kimi_embed(input_ids, *args, **kwargs)
+            model.embed_input_ids = embed
+        self._kimi_lang_handles = [layer.register_forward_hook(partial(self._kimi_lang_hook, index))
+                                   for index, layer in enumerate(layers)]
+        return {'rank': self.rank, 'layers': len(layers)}
+
+    def _kimi_lang_step(self, input_ids, mask) -> None:
+        state = self._kimi_lang
+        self._kimi_lang_flush()
+        lesion = read_lesion(state['lesion_file'])
+        state.update(step=state['step'] + 1, parts=language_parts(lesion), name=lesion['name'], rows={},
+                     mask=None if mask is None or not bool(mask.any()) else mask.to(input_ids.device),
+                     tokens=int(input_ids.shape[0]))
+
+    def _kimi_lang_hook(self, index: int, module, args, output):
+        state = self._kimi_lang
+        mask = state['mask']
+        if mask is None:
+            return None
+        hidden, residual = output
+        if mask.shape[0] != hidden.shape[0]:          # a padded step: the picture positions are the first tokens
+            mask = torch.nn.functional.pad(mask, (0, hidden.shape[0] - mask.shape[0]))
+        part = state['parts'].get(index)
+        if part is not None:
+            residual = set_stream(hidden, residual, mask, part)
+        if state['record_dir'] and self.rank == 0:
+            stream = hidden.float() + residual.float()
+            state['rows'][index] = (stream[mask].mean(0).half().cpu(), stream[state['tokens'] - 1].half().cpu())
+        return (hidden, residual) if part is not None else None
+
+    def _kimi_lang_flush(self) -> None:
+        state = self._kimi_lang
+        if state['rows'] and state['record_dir']:
+            layers = sorted(state['rows'])
+            torch.save({'lesion': state['name'], 'layers': layers,
+                        'picture_mean': torch.stack([state['rows'][k][0] for k in layers]),
+                        'last_position': torch.stack([state['rows'][k][1] for k in layers]),
+                        'picture_tokens': int(state['mask'].sum())},
+                       Path(state['record_dir']) / f"lang-step{state['step']:06d}.pt")
+        state['rows'] = {}
+
+    def kimi_language_flush(self) -> dict:
+        self._kimi_lang_flush()
+        return {'rank': self.rank, 'step': self._kimi_lang['step']}
+
+
+class KimiHooks(VisionHooks, LanguageHooks):
+    """Both sets of hooks in one worker extension (``--worker-extension-cls vllm_hooks.KimiHooks``)."""

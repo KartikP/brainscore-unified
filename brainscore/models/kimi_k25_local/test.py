@@ -8,7 +8,8 @@ import numpy as np
 import pytest
 import torch
 
-from brainscore.models.kimi_k25_local.vllm_hooks import VisionHooks, apply_lesion, picture_means, read_lesion
+from brainscore.models.kimi_k25_local.vllm_hooks import (KimiHooks, VisionHooks, apply_lesion, picture_means,
+                                                         read_lesion, set_stream)
 from brainscore.models.kimi_k25_local.localizer import phase_scrambled, project_out, sdpa_packed, zero
 
 
@@ -110,6 +111,51 @@ def test_installing_again_replaces_the_hooks(tmp_path):
     for _ in range(2):
         worker.kimi_hooks_install(json.dumps({'lesion_file': str(lesion)}))
     assert len(blocks[0]._forward_hooks) == 1
+
+
+class _Layer(torch.nn.Module):
+    def forward(self, positions, hidden, residual):
+        residual = hidden if residual is None else hidden + residual
+        return hidden * 0 + 1, residual
+
+
+def _language_worker():
+    worker = KimiHooks()
+    model = types.SimpleNamespace(language_model=types.SimpleNamespace(model=types.SimpleNamespace(
+        layers=torch.nn.ModuleList([_Layer() for _ in range(3)]))), embed_input_ids=lambda ids, *a, **k: ids.float()[:, None].repeat(1, 4))
+    worker.model_runner, worker.rank = types.SimpleNamespace(get_model=lambda: model), 0
+    return worker, model
+
+
+def _language_step(model, mask):
+    hidden, residual = model.embed_input_ids(torch.arange(5), None, is_multimodal=mask), None
+    for layer in model.language_model.model.layers:
+        hidden, residual = layer(None, hidden, residual)
+    return hidden + residual
+
+
+def test_the_stream_is_set_at_the_picture_positions_only_and_recorded(tmp_path):
+    worker, model = _language_worker()
+    lesion = tmp_path / 'lesion.json'
+    lesion.write_text(json.dumps({'name': 'lang', 'language': [{'layer': 1, 'dims': [2], 'values': [-7.0]}]}))
+    worker.kimi_language_install(json.dumps({'lesion_file': str(lesion), 'record_dir': str(tmp_path / 'rec')}))
+    mask = torch.tensor([False, True, True, False, False])
+    stream = _language_step(model, mask)
+    intact = torch.arange(5, dtype=torch.float32)[:, None].repeat(1, 4) + 3      # three layers, each adds 1
+    assert torch.equal(stream[~mask], intact[~mask]) and torch.equal(stream[mask][:, [0, 1, 3]], intact[mask][:, [0, 1, 3]])
+    assert torch.equal(stream[mask][:, 2], torch.full((2,), -6.0))    # set to -7 after layer 1; layer 2 adds 1
+    worker.kimi_language_flush()
+    record = torch.load(next((tmp_path / 'rec').glob('lang-step*.pt')))
+    assert record['lesion'] == 'lang' and record['picture_tokens'] == 2 and record['picture_mean'].shape == (3, 4)
+    assert float(record['picture_mean'][1, 2]) == -7.0
+
+
+def test_set_stream_moves_a_direction_to_its_value():
+    hidden, residual, u = torch.randn(4, 3), torch.randn(4, 3), torch.randn(3)
+    mask = torch.tensor([True, False, True, False])
+    changed = set_stream(hidden, residual, mask, {'direction': u.tolist(), 'value': 0.3})
+    assert torch.allclose((hidden + changed)[mask] @ (u / u.norm()), torch.full((2,), 0.3), atol=1e-5)
+    assert torch.equal(changed[~mask], residual[~mask])
 
 
 def test_sdpa_packed_keeps_the_pictures_apart():
