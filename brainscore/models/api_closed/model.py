@@ -36,6 +36,13 @@ REGISTRY = {
     'claude-opus-5-5-behavioral': dict(
         provider='anthropic', model='claude-opus-5-5',
         in_channels=('vision:image', 'text')),
+    # Qwen3-VL-235B-A22B through Amazon Bedrock: an open-weights model served by an API, so no activations through
+    # this path (the Bedrock Converse call answers with text only). It writes positions on a 0-1000 grid (the
+    # family's convention, as umi_dev_models states for Qwen3-VL), so its act policy reads them on that grid and
+    # nkl writes its briefing for a 1000 x 1000 screen.
+    'qwen3-vl-235b-a22b-bedrock': dict(
+        provider='bedrock', model='qwen.qwen3-vl-235b-a22b',
+        in_channels=('vision:image', 'text'), position_grid=1000),
     'claude-haiku-behavioral': dict(
         provider='anthropic', model='claude-haiku-4-5',
         in_channels=('vision:image', 'text')),
@@ -97,7 +104,7 @@ def get_model(identifier: str) -> BrainScoreModel:
         in_channels=set(cfg['in_channels']),
         answer=answer,
         reply=reply,
-        policy=act_policy(reply) if screen else None,
+        policy=act_policy(reply, position_grid=cfg.get('position_grid')) if screen else None,
         policy_in_channels=SCREEN_INPUTS if screen else ('observation',),
         policy_out_channels=SCREEN_FORMS if screen else ('motor',),
         # The frames of a screen task (vision:video) reach the act policy only: the answer and reply parts

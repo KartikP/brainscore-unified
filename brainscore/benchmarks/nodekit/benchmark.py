@@ -34,7 +34,8 @@ kept under ``record`` (``attrs['trace']``) and replays in the task repository's 
   participants' answers to the same triplet that chose the same candidate; the mean over trials, divided
   by the ceiling. Chance is 0.5 (raw) for any participants' answers. Ceiling: each participant against the
   other participants in the same way (leave one participant out), the mean over participants.
-- ``NodeKit.FaceArrangement`` (after Kriegeskorte and Mur 2012): the distances of the subject's final
+- ``NodeKit.FaceArrangement`` (after Kriegeskorte and Mur 2012; each score states the arrangements' spread, the
+  largest distance between two faces in arena radii, beside the participants'): the distances of the subject's final
   arrangements, one per pair of faces shown together (100 pairs), against the mean distances of the
   participants: Spearman correlation, divided by the ceiling. Ceiling: each participant against the mean
   of the others (leave one participant out), the mean over participants. Floor: the mean Spearman
@@ -163,6 +164,20 @@ def _faces_floor(mean: tuple) -> list:
     return [spearmanr(rng.permutation(mean), mean)[0] for _ in range(1000)]
 
 
+def spread(table: pd.DataFrame) -> list:
+    """Each test trial's largest distance between two faces, in arena radii (2.0: opposite edges of the arena):
+    how far the arrangement spreads (a pile of faces at the centre is near 0)."""
+    out = []
+    for _, row in test_rows(table).iterrows():
+        positions = row.get('positions')
+        if positions is None or (isinstance(positions, float) and np.isnan(positions)):
+            continue
+        positions = positions if isinstance(positions, list) else json.loads(positions)
+        points = np.array([[p['x'], p['y']] for p in positions], float)
+        out.append(float(np.linalg.norm(points[:, None] - points[None], axis=-1).max() / float(row['arena_radius'])))
+    return out
+
+
 def faces(subject: pd.DataFrame, participants: pd.DataFrame) -> dict:
     mean = pd.concat(_each(participants), axis=1).mean(axis=1)
     floor = _faces_floor(tuple(mean.values))
@@ -170,7 +185,18 @@ def faces(subject: pd.DataFrame, participants: pd.DataFrame) -> dict:
     return {'raw': float(spearmanr(own.values, mean.values)[0]),
             'floor': float(np.mean(floor)), 'floor_interval': [float(np.percentile(floor, 2.5)),
                                                               float(np.percentile(floor, 97.5))],
-            'score_form': 'Spearman of pair distances with the participants\' mean / leave-one-participant-out'}
+            'score_form': 'Spearman of pair distances with the participants\' mean / leave-one-participant-out',
+            **_spread_attrs(subject, participants)}
+
+
+def _spread_attrs(subject: pd.DataFrame, participants: pd.DataFrame) -> dict:
+    """The arrangements' spread (``spread``): the subject's per trial, median and range, beside the participants'
+    range of medians."""
+    own = spread(subject)
+    people = [float(np.median(spread(participants[participants.participant == p])))
+              for p in participants.participant.unique() if spread(participants[participants.participant == p])]
+    return {'spread_by_trial': own, 'spread_median': float(np.median(own)) if own else float('nan'),
+            'spread_range': [min(own), max(own)] if own else [], 'participants_spread_medians': people}
 
 
 # The act form each task's participants used (Contract Rules 5.15): the Gabor answer is a key press; the
@@ -194,7 +220,7 @@ class NodeKitBenchmark(BenchmarkBase):
 
     def __init__(self, identifier: str, task: str, max_steps: int = 20000, pacing: str = 'frozen',
                  dense_step_ms: Optional[float] = None, view: str = 'participant', acts_per_step: Optional[int] = None,
-                 record=None):
+                 looks_kept: Optional[int] = None, record=None):
         from brainscore.harnesses.nodekit import PACINGS
         if pacing not in PACINGS:
             raise ValueError(f'pacing is one of {PACINGS} (nkl\'s Frozen, Realtime and Dense), not {pacing!r}.')
@@ -205,6 +231,7 @@ class NodeKitBenchmark(BenchmarkBase):
         if view not in VIEWS:
             raise ValueError(f'view is one of {VIEWS}, not {view!r}.')
         self.dense_step_ms, self.view, self.acts_per_step = dense_step_ms, view, acts_per_step
+        self.looks_kept = looks_kept       # None: nkl's own (4); stamped when stated
         # Faces: the participants' ceiling (.174) is inside the random floor's interval, so the benchmark cannot
         # separate a subject from chance (owner, 2026-11-25: in the code, off the leaderboard).
         self.leaderboard_eligible = task != 'face-arrangement'
@@ -240,6 +267,7 @@ class NodeKitBenchmark(BenchmarkBase):
         result, environment, session = play(subject, bundle(self.task), form=ACT_FORMS[self.task], pacing=self.pacing,
                                             **({} if self.dense_step_ms is None else {'dense_step_ms': self.dense_step_ms}),
                                             view=self.view, acts_per_step=self.acts_per_step,
+                                            looks_kept=self.looks_kept,
                                             instructions=INSTRUCTIONS.get(self.task, ''),
                                             max_steps=self.max_steps, max_ms=self.max_ms, record=record)
         return self.score_result(result, steps=environment.steps, invalid_steps=environment.invalid_steps,
@@ -276,6 +304,7 @@ class NodeKitBenchmark(BenchmarkBase):
                                ceiling=self.ceiling, answers=pd.DataFrame({'response_state': states}),
                                answer_policy=ANSWER_POLICY, invalid_limit=0.1, max_ms=self.max_ms,
                                max_steps=self.max_steps, pacing=self.pacing, view=self.view,
+                               **({} if self.looks_kept is None else {'looks_kept': self.looks_kept}),
                                **({} if self.dense_step_ms is None else {'dense_step_ms': self.dense_step_ms}),
                                **run, **attrs,
                                **({'invalid_step_share': run['invalid_steps'] / run['steps']}

@@ -226,9 +226,10 @@ def _call_bedrock(model, system, messages, settings):
     kwargs = dict(modelId=model, messages=[{'role': m['role'], 'content': content(m['content'])} for m in messages],
                   inferenceConfig={names[name]: value for name, value in request.items()})
     if system:
-        # A Claude model keeps the system text in Bedrock's prompt cache: a task's turns repeat it.
+        # A Claude model keeps the system text in Bedrock's prompt cache: a task's turns repeat it (Kimi K3
+        # refuses the cache point).
         kwargs['system'] = [{'text': system}] + ([{'cachePoint': {'type': 'default'}}]
-                                                 if _samples_only(_call_bedrock, model) else [])
+                                                 if 'anthropic.' in str(model) else [])
     try:
         resp = _bedrock_client(os.getenv('AWS_REGION')).converse(**kwargs)
     except botocore.exceptions.NoCredentialsError as e:
@@ -258,9 +259,15 @@ def _bedrock_region() -> str:
     return _bedrock_client(os.getenv('AWS_REGION')).meta.region_name
 
 
+# Bedrock models that refuse a temperature (they sample at their own default and take no seed): Claude, and
+# Moonshot's Kimi K3 and K3.1 ('This model doesn't support the temperature field', 2026-11-25).
+_BEDROCK_SAMPLES_ONLY = ('anthropic.', 'moonshotai.kimi-k3')
+
+
 def _samples_only(call, model) -> bool:
-    """Whether the client serves a Claude model, which samples at its default temperature and has no seed."""
-    return call is _call_anthropic or (call is _call_bedrock and 'anthropic.' in str(model))
+    """Whether the client serves a model that samples at its default temperature and has no seed."""
+    return call is _call_anthropic or (call is _call_bedrock and any(name in str(model)
+                                                                    for name in _BEDROCK_SAMPLES_ONLY))
 
 
 PROVIDERS = {

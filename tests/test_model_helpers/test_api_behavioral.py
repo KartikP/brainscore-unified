@@ -789,3 +789,9 @@ def test_an_api_model_takes_frames_only_for_a_task_on_a_screen():
     subject = get_model('claude-opus-5-5-bedrock')
     assert 'vision:video' not in subject.output_inputs['behavior:text']
     assert {'motor:key', 'motor:pointer'} <= subject.out_channels
+
+
+def test_a_bedrock_model_that_refuses_a_temperature_gets_none():
+    from brainscore.model_helpers.api_behavioral import _call_bedrock, _samples_only
+    assert _samples_only(_call_bedrock, 'us.moonshotai.kimi-k3.1') and _samples_only(_call_bedrock, 'us.anthropic.x')
+    assert not _samples_only(_call_bedrock, 'moonshotai.kimi-k2.5')

@@ -74,7 +74,8 @@ def read(turn):
     problems = list(problems)
     # The numbers the reply wrote for each pointer move, in order: a stroke's points are these pixels.
     pixels = iter([[command['x'], command['y']] for _, command in written(text)
-                   if isinstance(command, dict) and command.get('do') == 'pointer_move'])
+                   if isinstance(command, dict) and command.get('do') == 'pointer_move'
+                   and 'x' in command and 'y' in command])     # a move without x or y is nkl's problem, not a crash
     acts = []
     for action in actions:
         if isinstance(action, TakeLook) and turn['observation'].get('view') == 'agent':
