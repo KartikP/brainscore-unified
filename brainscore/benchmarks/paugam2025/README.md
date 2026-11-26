@@ -49,7 +49,8 @@ percent of the training TRs of all participants is `other`; the choices are in t
 training frequency, the most frequent first. Per participant, one session over the
 TRs of the test runs (the same `test_runs.txt`), with every 8th TR of the training runs as the
 fitting stimuli (a readout fits on them). The value is the accuracy on the test TRs, raw, mean over
-the participants. Chance is on the score: the rate of the most frequent label (`chance_most_frequent`),
+the participants. Chance is on the score: the test rate of the most frequent training label
+(`chance_training_majority`), the rate of the most frequent label of the test TRs (`chance_most_frequent`),
 a guess drawn from the training label rates (`chance_by_rates`) and a uniform guess (`chance_uniform`).
 `chance-baseline` answers every TR with the first choice (its probabilities tie; ties go to the first
-label), so it lands on `chance_most_frequent`.
+label), so it lands on `chance_training_majority`.

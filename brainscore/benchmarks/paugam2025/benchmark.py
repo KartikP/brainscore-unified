@@ -34,8 +34,9 @@ seen in fewer than 1 percent of the training TRs of all participants is ``other`
 order of their training frequency, the most frequent first. Per participant,
 one session over the TRs of the test runs (the same ``test_runs.txt``), with every 8th training TR as
 the fitting stimuli. Score: the accuracy on the test TRs, raw, mean over the participants; chance is
-stated (the rate of the most frequent label of the test TRs, the expected accuracy of a guess drawn
-from the training label rates, and of a uniform guess).
+stated (the rate on the test TRs of the most frequent training label, which chance-baseline gets; the rate of
+the most frequent label of the test TRs; the expected accuracy of a guess drawn from the training label rates;
+and of a uniform guess).
 """
 from functools import lru_cache, partial
 from pathlib import Path
@@ -285,6 +286,7 @@ class Paugam2025MarioButtons(BenchmarkBase):
             by_participant[participant] = {
                 'accuracy': accuracies[-1], 'n_test_trs': int(len(test)), 'n_fitting_trs': int(len(fitting)),
                 'chance_most_frequent': float(max(np.mean(test_labels == label) for label in choices)),
+                'chance_training_majority': float(np.mean(test_labels == choices[0])),
                 'chance_by_rates': float(sum(rates[label] * np.mean(test_labels == label) for label in choices)),
                 'n_invalid': int((~valid).sum())}
         return benchmark_score(
@@ -292,6 +294,7 @@ class Paugam2025MarioButtons(BenchmarkBase):
             participants=list(by_participant),
             per_participant=by_participant, choices=choices, label_rates_training=rates,
             chance_most_frequent=float(np.mean([p['chance_most_frequent'] for p in by_participant.values()])),
+            chance_training_majority=float(np.mean([p['chance_training_majority'] for p in by_participant.values()])),
             chance_by_rates=float(np.mean([p['chance_by_rates'] for p in by_participant.values()])),
             chance_uniform=1 / len(choices),
             label=f'buttons held for at least {HELD_SECONDS:g} s of the TR, in the order {"+".join(BUTTONS)}; '
