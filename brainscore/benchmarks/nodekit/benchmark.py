@@ -6,16 +6,18 @@ trials are out of every score: only ``phase == 'test'`` rows are compared. Rows 
 shown (the condition, the triplet, the pair of faces), never by trial number. Each score states its form
 (``score_form``), its chance or floor, and its ceiling.
 
-One episode is one whole run of the task, with its instructions, practice and feedback, as the participants
+One episode is one run of the task, with its instructions, practice and feedback, as the participants
 did it (``trial_memory = 'none'``: each run starts empty; within the run a subject keeps what it keeps, as a
-participant does; nkl's trace marks no trial starts, so there is no begin or end for each trial). The run
-may last twice the participants' longest run in simulated time (``max_ms``, read from their traces) and
-20000 steps; then the harness stops it. The task's clock runs under nkl's pacing (``pacing``: ``frozen``,
-the default, stops it while the subject answers; ``realtime`` and ``dense`` (with its step ``dense_step_ms``) are
-a setting, stamped on the
-score). The view (``view``: ``participant``, the default, the frames since the last step and the screen;
-``agent``, nkl's agent harness: one picture a turn and the look act) and the action limit (``acts_per_step``)
-are settings, stamped on the score. nkl gives the trial records only when the program completes, so a
+participant does; nkl's trace marks no trial starts, so there is no begin or end for each trial). The defaults
+are the NodeKit author's evaluation settings (owner, 2026-11-25; ``AUTHOR_*`` below): nkl's agent view (one
+picture a turn and the look act), realtime pacing (the subject's answering time passes on the task's clock, less
+nkl's network allowance), a 640 x 480 picture, 100 acts a reply, 4 looks, his hand, and his slice of each task
+(Gabor and triplets: the practice block and the first 10 test trials; faces: its 10 trials) with his turns and
+task clock. The score states each of them, and names the author's settings when all hold. ``trials='all'`` runs
+the whole task (20000 steps; twice the participants' longest run in simulated time). The participant view (the
+frames since the last step and the screen), the frozen and dense pacings (with ``dense_step_ms``) and the other
+settings are stated settings. The ceiling and the chance or floor are computed on the participants' same trials
+(their first test trials for a slice). nkl gives the trial records only when the program completes, so a
 run that does not complete has none: every test trial is missing and the result is invalid. The subject's
 response times are simulated times (``subject_response_ms``): recorded, not scored. Each run's trace is
 kept under ``record`` (``attrs['trace']``) and replays in the task repository's viewer
@@ -167,10 +169,16 @@ def _faces_floor(mean: tuple) -> list:
 def spread(table: pd.DataFrame) -> list:
     """Each test trial's largest distance between two faces, in arena radii (2.0: opposite edges of the arena):
     how far the arrangement spreads (a pile of faces at the centre is near 0)."""
+    return [value for value in _spreads(table) if value is not None]
+
+
+def _spreads(table: pd.DataFrame) -> list:
+    """Each test trial's spread (``spread``), None for a trial that records no positions."""
     out = []
     for _, row in test_rows(table).iterrows():
         positions = row.get('positions')
         if positions is None or (isinstance(positions, float) and np.isnan(positions)):
+            out.append(None)
             continue
         positions = positions if isinstance(positions, list) else json.loads(positions)
         points = np.array([[p['x'], p['y']] for p in positions], float)
@@ -209,6 +217,20 @@ INSTRUCTIONS = {'drifting-gabor': 'Enter or the right arrow key turns an instruc
 # Each task's metric and ceiling: metric(subject, participants) -> {'raw', 'score_form', ...}; ceiling(participants).
 METRICS = {'drifting-gabor': (gabor, gabor_ceiling), 'triplet-similarity': (triplets, triplets_ceiling),
            'face-arrangement': (faces, faces_ceiling)}
+# The defaults are the NodeKit author's evaluation settings (the task repository's src/umi_nkl/evaluations/full.toml at
+# AUTHOR_COMMIT; owner, 2026-11-25): nkl's agent view under realtime pacing (nkl's network allowance, 500 ms), a
+# 640 x 480 picture of the 1024 x 768 screen, 100 acts a reply, 4 looks, his hand (``AUTHOR_MOTOR``), and for each
+# task his slice, turns and task clock (``AUTHOR_TASKS``: Gabor and triplets, the practice block and the first 10 test
+# trials; faces, its 10 trials). ``trials='all'`` runs the whole task (20000 steps, twice the participants' longest
+# run). The model's request settings (reasoning, max_tokens 8000, no temperature) belong to its registration.
+AUTHOR_COMMIT = '0ef0518'
+AUTHOR_SETTINGS = f"the NodeKit author's settings, umi-nkl {AUTHOR_COMMIT}"
+AUTHOR_PICTURE = (640, 480)
+AUTHOR_ACTS = 100
+AUTHOR_MOTOR = {'top_speed': 5.0, 'top_acceleration': 0.08}
+AUTHOR_TASKS = {'drifting-gabor': {'shown': 10, 'max_steps': 160, 'max_ms': 900_000},
+                'triplet-similarity': {'shown': 10, 'max_steps': 260, 'max_ms': 1_200_000},
+                'face-arrangement': {'shown': None, 'max_steps': 60, 'max_ms': 1_500_000}}
 
 
 class NodeKitBenchmark(BenchmarkBase):
@@ -218,10 +240,28 @@ class NodeKitBenchmark(BenchmarkBase):
 
     trial_memory = 'none'       # one run of the task is one episode that starts empty
 
-    def __init__(self, identifier: str, task: str, max_steps: int = 20000, pacing: str = 'frozen',
-                 dense_step_ms: Optional[float] = None, view: str = 'participant', acts_per_step: Optional[int] = None,
-                 looks_kept: Optional[int] = None, record=None):
+    def __init__(self, identifier: str, task: str, max_steps: Optional[int] = None, pacing: str = 'realtime',
+                 dense_step_ms: Optional[float] = None, view: str = 'agent', acts_per_step: Optional[int] = None,
+                 looks_kept: Optional[int] = 4, picture=AUTHOR_PICTURE, motor: Optional[dict] = AUTHOR_MOTOR,
+                 trials: Optional[str] = None, max_ms: Optional[float] = None, record=None):
+        """The defaults are the NodeKit author's settings (``AUTHOR_*``). ``trials``: None (his slice,
+        ``AUTHOR_TASKS``) or ``'all'`` (the whole task). ``acts_per_step``: None, 100 in the agent view (his grid) and
+        the harness's 20 in the participant view. ``picture``, ``motor`` (None: nkl's own) and ``looks_kept`` are
+        the harness's (``NodeKitEnvironment``); ``max_steps`` and ``max_ms`` (the task clock's limit): None, his for
+        the slice, 20000 and twice the participants' longest run for the whole task."""
         from brainscore.harnesses.nodekit import PACINGS
+        if trials not in (None, 'all'):
+            raise ValueError(f"trials is None (the NodeKit author's slice) or 'all' (the whole task), not {trials!r}.")
+        own = AUTHOR_TASKS[task] if trials is None else {'shown': None, 'max_steps': 20000, 'max_ms': None}
+        max_steps = own['max_steps'] if max_steps is None else max_steps
+        if acts_per_step is None and view == 'agent':
+            acts_per_step = AUTHOR_ACTS
+        self.trials, self.picture, self.motor, self.shown = trials or 'slice', picture, motor, own['shown']
+        self._max_ms = own['max_ms'] if max_ms is None else max_ms
+        # The score names the author's settings when every setting is his.
+        self._author = (trials is None and max_steps == own['max_steps'] and max_ms is None and pacing == 'realtime'
+                        and view == 'agent' and acts_per_step == AUTHOR_ACTS and looks_kept == 4
+                        and picture == AUTHOR_PICTURE and motor == AUTHOR_MOTOR and dense_step_ms is None)
         if pacing not in PACINGS:
             raise ValueError(f'pacing is one of {PACINGS} (nkl\'s Frozen, Realtime and Dense), not {pacing!r}.')
         if dense_step_ms is not None and pacing != 'dense':
@@ -253,12 +293,22 @@ class NodeKitBenchmark(BenchmarkBase):
 
     @property
     def max_ms(self) -> float:
-        """Twice the participants' longest run, in simulated ms."""
-        return 2 * self._trials.attrs['longest_run_ms']
+        """The task clock's limit in simulated ms: the stated one, else twice the participants' longest run."""
+        return self._max_ms if self._max_ms is not None else 2 * self._trials.attrs['longest_run_ms']
+
+    @cached_property
+    def compared(self) -> pd.DataFrame:
+        """The participants' trials the subject's are compared with: with a slice, each participant's practice
+        trials and first ``shown`` test trials (the same trials, in the same order, as the subject's run)."""
+        if self.shown is None:
+            return self.participants
+        table = self.participants
+        tests = table[table['phase'] == 'test'].sort_values('trial').groupby('participant').head(self.shown)
+        return pd.concat([table[table['phase'] != 'test'], tests]).sort_index()
 
     @cached_property
     def ceiling(self) -> Score:
-        return Score(METRICS[self.task][1](self.participants))
+        return Score(METRICS[self.task][1](self.compared))
 
     def __call__(self, subject) -> Score:
         from brainscore.data.local import data_home
@@ -267,7 +317,8 @@ class NodeKitBenchmark(BenchmarkBase):
         result, environment, session = play(subject, bundle(self.task), form=ACT_FORMS[self.task], pacing=self.pacing,
                                             **({} if self.dense_step_ms is None else {'dense_step_ms': self.dense_step_ms}),
                                             view=self.view, acts_per_step=self.acts_per_step,
-                                            looks_kept=self.looks_kept,
+                                            looks_kept=self.looks_kept, picture=self.picture, motor=self.motor,
+                                            shown=self.shown,
                                             instructions=INSTRUCTIONS.get(self.task, ''),
                                             max_steps=self.max_steps, max_ms=self.max_ms, record=record)
         return self.score_result(result, steps=environment.steps, invalid_steps=environment.invalid_steps,
@@ -283,9 +334,14 @@ class NodeKitBenchmark(BenchmarkBase):
             runs = result
             done = [records for records in runs if records is not None]
             result = [record for records in done for record in records] if done else None
-            tests = int(test_rows(self.participants).groupby('participant').size().max()) * len(runs)
-            return self._scored(result, tests, runs=len(runs), **run)
-        return self._scored(result, int(test_rows(self.participants).groupby('participant').size().max()), **run)
+            return self._scored(result, self._tests * len(runs), runs=len(runs), **run)
+        return self._scored(result, self._tests, **run)
+
+    @property
+    def _tests(self) -> int:
+        """The test trials of one run: the participants' count, or the ``shown`` slice of it."""
+        count = int(test_rows(self.participants).groupby('participant').size().max())   # all of one run
+        return count if self.shown is None else min(count, self.shown)
 
     def _scored(self, result, tests: int, **run) -> Score:
         if result is None:
@@ -293,10 +349,11 @@ class NodeKitBenchmark(BenchmarkBase):
             states = ['missing'] * tests
         else:
             own = test_rows(data.rows(result))
-            measured = METRICS[self.task][0](own, self.participants)
+            measured = METRICS[self.task][0](own, self.compared)
             # A raw that is not a number (a constant arrangement has no rank order) is no measurement.
             state = 'valid' if np.isfinite(measured['raw']) else 'invalid'
-            states = [state] * len(own) + ['missing'] * max(0, tests - len(own))
+            states = [state] * len(own)
+            states += ['missing'] * max(0, tests - len(own))
             if 'response_milliseconds' in own:
                 measured['subject_response_ms'] = [float(t) for t in own['response_milliseconds']]
         attrs = {key: value for key, value in measured.items() if key not in ('raw', 'score_form')}
@@ -305,6 +362,10 @@ class NodeKitBenchmark(BenchmarkBase):
                                answer_policy=ANSWER_POLICY, invalid_limit=0.1, max_ms=self.max_ms,
                                max_steps=self.max_steps, pacing=self.pacing, view=self.view,
                                **({} if self.looks_kept is None else {'looks_kept': self.looks_kept}),
+                               trials=self.trials, test_trials=self._tests, picture=self.picture,
+                               motor=self.motor if self.motor is not None else "nkl's own",
+                               acts_per_step_limit=self.acts_per_step,
+                               **({'settings': AUTHOR_SETTINGS} if self._author else {}),
                                **({} if self.dense_step_ms is None else {'dense_step_ms': self.dense_step_ms}),
                                **run, **attrs,
                                **({'invalid_step_share': run['invalid_steps'] / run['steps']}

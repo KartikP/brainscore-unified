@@ -157,10 +157,10 @@ def test_a_subject_without_the_screen_or_the_act_form_is_na_before_any_compute(m
 
 
 def test_a_run_that_does_not_complete_is_invalid_with_every_test_trial_missing(clone):
-    benchmark = NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor')
+    benchmark = NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor', trials='all')
     score = benchmark.score_result(None)
     assert score.attrs['n_missing'] == 2 and score.attrs['result_validity'] == 'invalid'
-    assert benchmark.max_ms == 10.0                      # twice the participants' longest run
+    assert benchmark.max_ms == 10.0                      # the whole task: twice the participants' longest run
 
 
 def test_the_subject_response_times_are_recorded_not_scored(clone):
@@ -176,9 +176,9 @@ def test_the_three_benchmarks_are_registered():
     assert {'NodeKit.DriftingGabor', 'NodeKit.TripletSimilarity', 'NodeKit.FaceArrangement'} <= set(benchmark_registry)
 
 
-def test_the_pacing_is_frozen_by_default_stamped_and_checked(clone):
+def test_the_pacing_is_realtime_by_default_stamped_and_checked(clone):
     benchmark = NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor')
-    assert benchmark.pacing == 'frozen' and benchmark.score_result(None).attrs['pacing'] == 'frozen'
+    assert benchmark.pacing == 'realtime' and benchmark.score_result(None).attrs['pacing'] == 'realtime'
     assert NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor', pacing='dense').pacing == 'dense'
     with pytest.raises(ValueError, match='pacing'):
         NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor', pacing='fast')
@@ -235,3 +235,28 @@ def test_the_faces_score_states_how_far_each_arrangement_spreads():
               'positions': [{'x': 0, 'y': 0}, {'x': 150, 'y': 0}], 'distances': [[0, 1], [1, 0]]}
     pile = dict(record, positions=[{'x': 0, 'y': 0}, {'x': 5, 'y': 0}])
     assert spread(data.rows([record])) == [1.5] and spread(data.rows([pile])) == [0.05]
+
+
+def test_the_defaults_are_the_nodekit_author_s_settings_and_the_score_states_them(clone):
+    attrs = NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor').score_result(None).attrs
+    assert 'NodeKit author' in attrs['settings'] and attrs['view'] == 'agent' and attrs['picture'] == (640, 480)
+    assert attrs['trials'] == 'slice' and attrs['acts_per_step_limit'] == 100 and attrs['motor']['top_speed'] == 5.0
+    changed = NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor', pacing='frozen').score_result(None).attrs
+    assert 'settings' not in changed and changed['pacing'] == 'frozen'
+    assert NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor', view='participant').acts_per_step is None
+
+
+def test_the_slice_compares_the_participants_first_test_trials_and_trials_all_the_whole_task(monkeypatch):
+    from brainscore.benchmarks.nodekit import benchmark as module
+    monkeypatch.setitem(module.AUTHOR_TASKS, 'drifting-gabor', {'shown': 1, 'max_steps': 160, 'max_ms': 900_000})
+    people = data.rows([gabor_record('practice', 5, 667, 'left', 'left'), gabor_record('test', 8, 45, 'right', 'left'),
+                        gabor_record('test', 5, 220, 'right', 'right')]).assign(participant='p1')
+    monkeypatch.setattr(NodeKitBenchmark, 'participants', people)
+    sliced = NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor')
+    assert sliced._tests == 1 and list(module.test_rows(sliced.compared)['size_degrees']) == [8]
+    assert len(sliced.compared) == 2                      # the practice trial stays (it never reaches a score)
+    whole = NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor', trials='all')
+    assert whole._tests == 2 and whole.max_steps == 20000
+    with pytest.raises(ValueError, match='trials'):
+        NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor', trials=5)
+
