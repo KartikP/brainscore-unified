@@ -34,7 +34,8 @@ kept under ``record`` (``attrs['trace']``) and replays in the task repository's 
   participants' answers to the same triplet that chose the same candidate; the mean over trials, divided
   by the ceiling. Chance is 0.5 (raw) for any participants' answers. Ceiling: each participant against the
   other participants in the same way (leave one participant out), the mean over participants.
-- ``NodeKit.FaceArrangement`` (after Kriegeskorte and Mur 2012): the distances of the subject's final
+- ``NodeKit.FaceArrangement`` (after Kriegeskorte and Mur 2012; each score states the arrangements' spread, the
+  largest distance between two faces in arena radii, beside the participants'): the distances of the subject's final
   arrangements, one per pair of faces shown together (100 pairs), against the mean distances of the
   participants: Spearman correlation, divided by the ceiling. Ceiling: each participant against the mean
   of the others (leave one participant out), the mean over participants. Floor: the mean Spearman
@@ -163,6 +164,20 @@ def _faces_floor(mean: tuple) -> list:
     return [spearmanr(rng.permutation(mean), mean)[0] for _ in range(1000)]
 
 
+def spread(table: pd.DataFrame) -> list:
+    """Each test trial's largest distance between two faces, in arena radii (2.0: opposite edges of the arena):
+    how far the arrangement spreads (a pile of faces at the centre is near 0)."""
+    out = []
+    for _, row in test_rows(table).iterrows():
+        positions = row.get('positions')
+        if positions is None or (isinstance(positions, float) and np.isnan(positions)):
+            continue
+        positions = positions if isinstance(positions, list) else json.loads(positions)
+        points = np.array([[p['x'], p['y']] for p in positions], float)
+        out.append(float(np.linalg.norm(points[:, None] - points[None], axis=-1).max() / float(row['arena_radius'])))
+    return out
+
+
 def faces(subject: pd.DataFrame, participants: pd.DataFrame) -> dict:
     mean = pd.concat(_each(participants), axis=1).mean(axis=1)
     floor = _faces_floor(tuple(mean.values))
@@ -170,7 +185,18 @@ def faces(subject: pd.DataFrame, participants: pd.DataFrame) -> dict:
     return {'raw': float(spearmanr(own.values, mean.values)[0]),
             'floor': float(np.mean(floor)), 'floor_interval': [float(np.percentile(floor, 2.5)),
                                                               float(np.percentile(floor, 97.5))],
-            'score_form': 'Spearman of pair distances with the participants\' mean / leave-one-participant-out'}
+            'score_form': 'Spearman of pair distances with the participants\' mean / leave-one-participant-out',
+            **_spread_attrs(subject, participants)}
+
+
+def _spread_attrs(subject: pd.DataFrame, participants: pd.DataFrame) -> dict:
+    """The arrangements' spread (``spread``): the subject's per trial, median and range, beside the participants'
+    range of medians."""
+    own = spread(subject)
+    people = [float(np.median(spread(participants[participants.participant == p])))
+              for p in participants.participant.unique() if spread(participants[participants.participant == p])]
+    return {'spread_by_trial': own, 'spread_median': float(np.median(own)) if own else float('nan'),
+            'spread_range': [min(own), max(own)] if own else [], 'participants_spread_medians': people}
 
 
 # The act form each task's participants used (Contract Rules 5.15): the Gabor answer is a key press; the

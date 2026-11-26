@@ -227,3 +227,11 @@ def test_the_dense_step_is_a_setting_of_dense_pacing_only(clone):
     assert benchmark.score_result(None).attrs['dense_step_ms'] == 250
     with pytest.raises(ValueError, match='dense_step_ms'):
         NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor', dense_step_ms=250)
+
+
+def test_the_faces_score_states_how_far_each_arrangement_spreads():
+    from brainscore.benchmarks.nodekit.benchmark import spread
+    record = {'face_arrangement_trial': {'phase': 'test', 'face_ids': ['1', '2']}, 'arena_radius': 100.0,
+              'positions': [{'x': 0, 'y': 0}, {'x': 150, 'y': 0}], 'distances': [[0, 1], [1, 0]]}
+    pile = dict(record, positions=[{'x': 0, 'y': 0}, {'x': 5, 'y': 0}])
+    assert spread(data.rows([record])) == [1.5] and spread(data.rows([pile])) == [0.05]
