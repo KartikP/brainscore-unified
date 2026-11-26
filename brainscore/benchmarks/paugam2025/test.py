@@ -97,6 +97,7 @@ def test_a_model_whose_layers_carry_the_signal_of_the_play_predicts_the_held_out
     assert facts['n_test_runs'] == 2 and facts['n_trs_scored'] == 2 * N_TRS
     assert facts['n_trs_with_play'] == 8 * 50 and facts['components_per_band'] == {'early': 12, 'late': 12}
     assert len(facts['per_parcel_r']) == N_PARCELS
+    assert score.attrs['references']['task_regressors']['mean'] < score.attrs['references']['random-vit-b-32']['mean']
 
 
 def test_no_test_run_reaches_the_fit(packaged, monkeypatch):

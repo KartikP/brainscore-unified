@@ -26,6 +26,9 @@ participant's own play, it does not play. For each participant:
 6. Score: the median r over parcels, raw (no ceiling: no play is repeated frame for frame); the
    benchmark value is the mean over the participants. Each participant's median r and per-parcel r
    are on the score.
+7. References on the score (``REFERENCES``): a ridge on the task alone (seconds of play and presses per
+   button, with the HRF; no model), mean 0.154, and random-vit-b-32, 0.170. Much of a model's score here can
+   come from the timing of play and presses; a model must be above this reference to show more than that.
 
 ``Paugam2025-behavior-mario-buttons`` asks ``behavior:choice``: which buttons the participant held in
 each TR, on the same input rows. The answer is one label per TR: the buttons held for at least half
@@ -84,6 +87,16 @@ STATED = {
     'split': f'by run: {len(TEST_RUNS)} test runs (test_runs.txt, about 20 percent, by main level, seed 2026); '
              'penalty on one held-out fold of training runs. The paper used 80/10/10 of the plays by level',
     'ceiling_method': 'none: the score is the raw median per-parcel Pearson r',
+}
+# Stated references of the cortex form, measured on the packaged data with this split (2026-11-26). The task
+# regressors: one ridge per participant on the seconds of play and the presses of each button per TR, each convolved
+# with the SPM HRF per run; no model. Much of a model's score here can come from the timing of play and presses; a
+# model must be above this reference to show more than that.
+REFERENCES = {
+    'task_regressors': {'mean': 0.1538, 'per_participant': {'sub-01': 0.1961, 'sub-02': 0.1397, 'sub-03': 0.1516,
+                                                            'sub-05': 0.1484, 'sub-06': 0.1334},
+                        'what': 'ridge on play seconds and presses per button per TR, SPM HRF per run; no model'},
+    'random-vit-b-32': {'mean': 0.1700, 'what': 'CLIP ViT-B/32 architecture with random weights'},
 }
 
 
@@ -209,7 +222,7 @@ class Paugam2025Mario(BenchmarkBase):
         medians = [part['median_r'] for part in by_participant.values()]
         return benchmark_score(self, raw=float(np.mean(medians)), metric='median_per_parcel_pearson_r',
                                participants=list(by_participant), per_participant=by_participant,
-                               band_cap=MAX_BANDS, **STATED)
+                               band_cap=MAX_BANDS, references=REFERENCES, **STATED)
 
 
 def button_labels(series) -> np.ndarray:

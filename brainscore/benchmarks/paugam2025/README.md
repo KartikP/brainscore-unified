@@ -40,6 +40,11 @@ test runs. The value is the median r over parcels, raw: no ceiling is measured. 
 value is the mean over the five participants; each participant's median r and per-parcel r are on
 the score (`per_participant`).
 
+References on the score (`references`): a ridge on the task alone (the seconds of play and the presses
+of each button per TR, with the HRF; no model) reaches 0.154 (sub-01 0.196, sub-02 0.140, sub-03 0.152,
+sub-05 0.148, sub-06 0.133), and random-vit-b-32 reaches 0.170. Much of a model's score here can come
+from the timing of play and presses; a model must be above this reference to show more than that.
+
 ## The behavior form
 
 `Paugam2025-behavior-mario-buttons` asks `behavior:choice` on the same input rows: which buttons
