@@ -66,6 +66,24 @@ def read_sound(path) -> np.ndarray:
     return samples.astype(np.float32)
 
 
+def _audio_per_row(tower) -> None:
+    """Make ``tower`` (the audio encoder) encode the sounds of a packed batch one at a time, then join them."""
+    forward = tower.forward
+
+    def per_row(input_features, feature_lens=None, aftercnn_lens=None):
+        if feature_lens is None or len(feature_lens) < 2:
+            return forward(input_features, feature_lens=feature_lens)
+        from transformers.modeling_outputs import BaseModelOutput
+        import torch
+        parts, start = [], 0
+        for i, length in enumerate(feature_lens.tolist()):
+            parts.append(forward(input_features[:, start:start + length],
+                                 feature_lens=feature_lens[i:i + 1]).last_hidden_state)
+            start += length
+        return BaseModelOutput(last_hidden_state=torch.cat(parts))
+    tower.forward = per_row
+
+
 class OmniThinkerExtractor:
     """The pooled thinker states (and four encoder blocks of each tower) of each row, from one forward pass.
 
@@ -73,8 +91,9 @@ class OmniThinkerExtractor:
     address it.
     Limit: a row has no context from the rows before it.
     Limit: rows run in batches of ``BATCH`` in table order (a batch needs rows with one token count; otherwise its
-    rows run one by one). A row's values depend on its batch at the rounding of bf16: batch 8 against batch 1
-    differed by at most 1.7 on values up to 1168 (layers.23, measured on 8 Friends scans).
+    rows run one by one). The audio encoder runs one row at a time inside a batch (``_audio_per_row``): in
+    transformers 4.57 its attention keeps the packed rows of a batch apart only under FlashAttention 2, so under the
+    default attention the sounds of a batch would attend to each other.
     Limit: the vision encoder sits on one GPU (``device_map='auto'`` places it whole).
     """
 
@@ -88,6 +107,7 @@ class OmniThinkerExtractor:
         config = model.config.thinker_config
         self._video_token, self._audio_token = config.video_token_id, config.audio_token_id
         self._hooked = {}
+        _audio_per_row(model.thinker.audio_tower)
         from brainscore.model_helpers.extractors import get_layer, hook
         for path in [f'visual.blocks.{i}' for i in VISUAL_BLOCKS] + [f'audio_tower.layers.{i}' for i in AUDIO_LAYERS]:
             hook(get_layer(model.thinker, path), path, self._keep(f'{path}/mean'))
@@ -95,7 +115,7 @@ class OmniThinkerExtractor:
     def _keep(self, name):
         def keep(output):
             hidden = output[0] if isinstance(output, tuple) else output
-            self._hooked[name] = hidden.reshape(-1, hidden.shape[-1]).float()
+            self._hooked.setdefault(name, []).append(hidden.reshape(-1, hidden.shape[-1]).float())
         return keep
 
     def layer_names(self) -> list:
@@ -139,8 +159,10 @@ class OmniThinkerExtractor:
         records = []
         for b in range(len(rows)):
             # the encoders pack the rows of a batch one after the other; rows of a batch have equal lengths
-            record = {name: hidden.reshape(len(rows), -1, hidden.shape[-1])[b].mean(0).cpu().numpy()
-                      for name, hidden in self._hooked.items()}
+            record = {}
+            for name, parts in self._hooked.items():
+                hidden = torch.cat(parts)
+                record[name] = hidden.reshape(len(rows), -1, hidden.shape[-1])[b].mean(0).cpu().numpy()
             record.update({f'tokens/{pool}': np.array([float(count[b])], np.float32) for pool, count in counts.items()})
             for index, state in enumerate(states):
                 name = 'embed' if index == 0 else f'layers.{index - 1}'

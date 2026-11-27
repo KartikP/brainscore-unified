@@ -149,6 +149,24 @@ def test_the_encoder_means_are_kept_per_row_in_a_batch(tmp_path):
     assert [float(r['tokens/sound'][0]) for r in records] == [SOUND_TOKENS] * 3
 
 
+def test_the_audio_encoder_takes_the_sounds_of_a_batch_one_at_a_time():
+    import torch
+    from types import SimpleNamespace
+    from .model import _audio_per_row
+    seen = []
+
+    class Tower(torch.nn.Module):
+        def forward(self, input_features, feature_lens=None, aftercnn_lens=None):
+            seen.append(input_features.shape[1])
+            # each output token holds the sum of every input frame it was given: rows must not meet
+            return SimpleNamespace(last_hidden_state=input_features.sum(1, keepdim=True).T.expand(2, -1))
+    tower = Tower()
+    _audio_per_row(tower)
+    features = torch.cat([torch.full((1, 3), 1.0), torch.full((1, 5), 10.0)], dim=1)
+    out = tower(features, feature_lens=torch.tensor([3, 5])).last_hidden_state
+    assert seen == [3, 5] and out[:2, 0].tolist() == [3.0, 3.0] and out[2:, 0].tolist() == [50.0, 50.0]
+
+
 def test_a_wrong_identifier_is_refused():
     from .model import get_model
     with pytest.raises(ValueError, match='registers'):
