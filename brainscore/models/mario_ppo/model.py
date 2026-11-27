@@ -12,12 +12,11 @@ critic head. Its input: the last 4 frames, grey, 84 x 84 (area interpolation), v
 training. A step of ``brainscore.harnesses.mario`` gives the 4 frames on ``vision:video``; the policy takes
 the button set of the largest actor output, as the tutorial's evaluation does.
 
-``cortex`` names conv2, conv3, conv4 and fc. During play the policy shows each step's input to the
-extractor (a stack file of the 4 grey frames), so a session that requests ``neural:cortex`` records the
-layers on the input the agent acted on. A picture on ``vision:image`` is one grey frame, repeated 4 times.
+``cortex`` names conv2, conv3, conv4 and fc. During play a session that requests ``neural:cortex`` records the
+layers in the policy's one forward pass, on the input the agent acted on. Passively the extractor takes a stack
+file of the 4 grey frames (``.npy``) or a picture on ``vision:image``: one grey frame, repeated 4 times.
 """
 import hashlib
-import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -96,35 +95,19 @@ def load_inputs(paths) -> np.ndarray:
 
 
 class Policy:
-    """One step: the button set of the largest actor output for the last 4 frames; the input is shown to the
-    extractor (``neural:cortex`` during play)."""
+    """One step: the button set of the largest actor output for the last 4 frames. The one forward pass of the
+    network is the pass a recording during play reads (``neural:cortex``)."""
 
-    def __init__(self, network, extractor):
-        self.network, self.extractor = network, extractor
-        self.folder = Path(tempfile.mkdtemp(prefix='mario-ppo-steps-'))
-        self.step = 0
+    def __init__(self, network):
+        self.network = network
 
     def __call__(self, row) -> dict:
         import torch
-        from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
         frames = np.asarray(row['vision:video'])[-STACK:]
         stack = np.stack([grey(frame) for frame in frames])
-        path = self.folder / f'step-{self.step:06d}.npy'
-        np.save(path, stack)
-        table = StimulusSet({'stimulus_id': [path.stem], 'image_path': [str(path)]})
-        table.identifier = f'{self.folder.name}-{path.stem}'
-        table.stimulus_paths = {path.stem: str(path)}
-        self.step += 1
-        try:
-            with torch.no_grad():
-                self.extractor(table, layers=list(CORTEX_LAYERS))
-                logits = self.network(torch.from_numpy(stack[None].astype(np.float32) / 255.0))
-        finally:
-            path.unlink(missing_ok=True)
+        with torch.no_grad():
+            logits = self.network(torch.from_numpy(stack[None].astype(np.float32) / 255.0))
         return {'motor': int(logits.argmax(dim=-1).item())}
-
-    def reset(self):
-        self.step = 0
 
 
 def get_model(identifier: str) -> BrainScoreModel:
@@ -145,6 +128,6 @@ def get_model(identifier: str) -> BrainScoreModel:
         model=network,
         region_layer_map={'cortex': CompositeSelector(tuple((layer, None) for layer in CORTEX_LAYERS))},
         extractor={'vision': extractor},
-        policy=Policy(network, extractor),
-        policy_in_channels=('vision:video', 'audio', 'instruction'),
+        policy=Policy(network),
+        policy_in_channels=('vision:video',),
     )

@@ -51,3 +51,19 @@ def test_the_input_is_the_last_four_grey_frames_at_84_by_84():
     frame[:, :120] = 255
     image = grey(frame)
     assert image.shape == (84, 84) and image[0, 0] == 255 and image[0, -1] == 0
+
+
+def test_one_step_runs_the_network_once_and_the_policy_declares_only_what_it_reads(monkeypatch):
+    from brainscore.models.mario_ppo import model as mario
+    from brainscore_core.streaming_helpers import environment_session
+    calls, build = [], mario.build_network
+
+    def counted():
+        network = build()
+        network.conv1.register_forward_hook(lambda *_: calls.append(1))
+        return network
+    monkeypatch.setattr(mario, 'build_network', counted)
+    subject, game = mario.get_model('mario-ppo-untrained'), _Frames()
+    subject.participate(environment_session(game, ['motor', 'neural:cortex']))
+    assert len(calls) == len(game.actions) == 5
+    assert 'audio' not in subject.in_channels and 'instruction' not in subject.in_channels
