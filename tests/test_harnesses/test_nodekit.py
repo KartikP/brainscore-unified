@@ -263,16 +263,6 @@ def test_a_run_stops_after_answers_in_a_row_that_give_no_act(stand_in):
     assert environment.steps == nodekit.MAX_INVALID_IN_A_ROW
 
 
-def test_the_policy_states_the_settings_its_reply_stated():
-    from brainscore._model import parts
-    from brainscore.model_helpers.provenance import state_settings_as
-    reply, policy = object(), object()
-    with parts.session_log() as log:
-        log.settings[id(reply)] = {'{"model": "m", "provider": "bedrock"}'}
-        state_settings_as(policy, reply)
-        assert log.settings[id(policy)] == {'{"model": "m", "provider": "bedrock"}'}
-
-
 def test_the_act_policy_compares_frames_with_the_last_frame_and_cleans_its_pictures(stand_in, monkeypatch):
     import brainscore.harnesses._environment_folder as environment_folder
     import brainscore.harnesses.nodekit.policy as act

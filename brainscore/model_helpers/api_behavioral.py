@@ -723,7 +723,9 @@ def api_policy(
                 f"Available actions (reply with the NUMBER):\n{menu}"
                 f"{_history_block(legal, payload)}\n\n{tail}")
 
-        _state_settings(act, provider_name, model, _one_turn_settings(call, model, max_tokens))
+        from brainscore.model_helpers.provenance import state_settings_as
+        state_settings_as(settings={'provider': provider_name, 'model': model,
+                                    **_one_turn_settings(call, model, max_tokens)})
         response = None
         key = None
         use_cache = cache is not None and not _samples_only(call, model)

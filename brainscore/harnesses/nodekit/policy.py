@@ -176,8 +176,8 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
         kept = 0 if seen.get('view') == 'agent' else turns_kept
         history = tuple(state['history'][-kept:]) if kept else ()
         answer = reply(Prompt(parts=tuple(parts), names=tuple(names), response=settings, history=history))
-        state_settings_as(policy, reply, {'position_grid': position_grid,
-                                          'system_briefing': f"nkl's grid of {position_grid} x {position_grid}"}
+        state_settings_as(reply, {'position_grid': position_grid,
+                                   'system_briefing': f"nkl's grid of {position_grid} x {position_grid}"}
                           if position_grid else None)
         text = answer.payload if isinstance(answer, StreamEvent) else answer
         meta = answer.meta if isinstance(answer, StreamEvent) else {}

@@ -236,8 +236,8 @@ def computer_use_policy(reply: Callable, *, max_tokens: int = 1024, temperature:
                         seed=None if seed is None else seed + state['turn'])
         answer = reply(Prompt(parts=tuple(parts), names=tuple(names), response=settings,
                               history=tuple(state['history'][-TURNS_KEPT:])))
-        state_settings_as(policy, reply, {'action_format': FORMAT, 'position_grid': GRID,
-                                          **({'frames_as': frames_as} if frames_as != 'stills' else {})})
+        state_settings_as(reply, {'action_format': FORMAT, 'position_grid': GRID,
+                                   **({'frames_as': frames_as} if frames_as != 'stills' else {})})
         said = answer.payload if isinstance(answer, StreamEvent) else answer
         acts, problems = read(said, seen['act_form'], seen.get('pointer', (0, 0)), (screen.shape[1], screen.shape[0]))
         state['history'].append((Prompt(parts=(parts[1], ('text', 'The screen now (not shown again).')),
