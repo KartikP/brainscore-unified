@@ -62,7 +62,9 @@ from brainscore.benchmarks._score import benchmark_score
 from brainscore.benchmarks.nodekit import data
 
 ANSWER_POLICY = ('A trial the subject did not reach is missing; a run that does not complete has no trial '
-                 'record, so all its test trials are missing and the result is invalid.')
+                 'record, so all its test trials are missing and the result is invalid. Faces: a test trial whose '
+                 'faces were not arranged (largest distance under 0.5 arena radius) or that records no positions is '
+                 'invalid, and its pairs are out of the correlation.')
 
 
 def test_rows(table: pd.DataFrame) -> pd.DataFrame:
@@ -187,10 +189,21 @@ def _spreads(table: pd.DataFrame) -> list:
     return out
 
 
+def arranged(table: pd.DataFrame) -> list:
+    """For each test trial, whether its faces were arranged: it records positions that spread at least
+    ``UNARRANGED_SPREAD`` arena radii. Any other trial is an invalid answer."""
+    return [value is not None and value >= UNARRANGED_SPREAD for value in _spreads(table)]
+
+
 def faces(subject: pd.DataFrame, participants: pd.DataFrame) -> dict:
     mean = pd.concat(_each(participants), axis=1).mean(axis=1)
     floor = _faces_floor(tuple(mean.values))
-    own = pair_distances(subject).reindex(mean.index)
+    tests = test_rows(subject)
+    kept = arranged(tests)
+    # The pairs only an invalid trial showed are out of the correlation; a trial not reached leaves its pairs missing.
+    out = pair_distances(tests[[not ok for ok in kept]]).index.difference(pair_distances(tests[kept]).index)
+    mean = mean.drop(out, errors='ignore')
+    own = pair_distances(tests[kept]).reindex(mean.index)
     return {'raw': float(spearmanr(own.values, mean.values)[0]),
             'floor': float(np.mean(floor)), 'floor_interval': [float(np.percentile(floor, 2.5)),
                                                               float(np.percentile(floor, 97.5))],
@@ -358,8 +371,7 @@ class NodeKitBenchmark(BenchmarkBase):
             state = 'valid' if np.isfinite(measured['raw']) else 'invalid'
             states = [state] * len(own)
             if self.task == 'face-arrangement':         # a pile of faces is no arrangement (UNARRANGED_SPREAD)
-                states = [state if value is None or value >= UNARRANGED_SPREAD else 'invalid'
-                          for value in _spreads(own)]
+                states = [state if ok else 'invalid' for ok in arranged(own)]
                 measured['unarranged_rule'] = (f'a test trial whose largest distance between two faces is under '
                                                f'{UNARRANGED_SPREAD} arena radius is an invalid answer')
             states += ['missing'] * max(0, tests - len(own))

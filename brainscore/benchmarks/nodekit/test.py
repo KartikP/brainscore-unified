@@ -117,11 +117,17 @@ def test_triplet_agreement_is_the_share_of_participants_answers_that_agree():
     assert triplets(data.rows([_triplet('right'), _triplet('left', 'practice')]), people)['raw'] == pytest.approx(1 / 3)
 
 
+def _face_trial(ids, distances, spread=1.0):
+    """One test trial of three faces at ``distances`` (pairs 01, 02, 12), placed ``spread`` arena radii apart."""
+    a, b, c = distances
+    return {'face_arrangement_trial': {'phase': 'test', 'face_ids': list(ids)}, 'arena_radius': 100.0,
+            'positions': [{'x': 0.0, 'y': 0.0}, {'x': 100.0 * spread, 'y': 0.0}, {'x': 50.0 * spread, 'y': 20.0 * spread}],
+            'distances': [[0, a, b], [a, 0, c], [b, c, 0]], 'response_milliseconds': 1.0}
+
+
 def _faces(distance, participant):
     """One trial of three faces; the pair (1, 2) at ``distance``, the others at 0.5 and 0.9."""
-    record = {'face_arrangement_trial': {'phase': 'test', 'face_ids': ['1', '2', '3']},
-              'distances': [[0, distance, 0.5], [distance, 0, 0.9], [0.5, 0.9, 0]], 'response_milliseconds': 1.0}
-    return _table([record], participant)
+    return _table([_face_trial('123', (distance, 0.5, 0.9))], participant)
 
 
 def test_face_arrangement_correlates_pair_distances_with_the_participants():
@@ -289,3 +295,20 @@ def test_a_pile_of_faces_is_an_invalid_answer(monkeypatch):
     assert pile.attrs['n_invalid'] == 1 and pile.attrs['result_validity'] == 'invalid'
     assert 'arena radius' in pile.attrs['unarranged_rule']
     assert benchmark.score_result([_arranged(1.0)] * 3).attrs['n_invalid'] == 0
+
+
+def test_a_pile_of_faces_and_a_trial_with_no_positions_leave_the_correlation(monkeypatch):
+    # Each participant: three trials; the subject arranges the first two as they do and piles the third.
+    trials = [('123', (0.2, 0.6, 1.4)), ('456', (0.4, 1.0, 1.8)), ('789', (0.3, 0.8, 1.6))]
+    people = pd.concat([_table([_face_trial(ids, [d + 0.05 * k for d in distances]) for ids, distances in trials],
+                               f'p{k}') for k in range(3)], ignore_index=True)
+    monkeypatch.setattr(NodeKitBenchmark, 'participants', people)
+    monkeypatch.setattr(NodeKitBenchmark, 'ceiling', Score(1.0))
+    benchmark = NodeKitBenchmark('NodeKit.FaceArrangement', 'face-arrangement')
+    arranged = [_face_trial('123', (0.2, 1.4, 0.6)), _face_trial('456', (0.4, 1.0, 1.8))]
+    piled = benchmark.score_result(arranged + [_face_trial('789', (1.9, 0.01, 0.02), spread=0.2)])
+    two = people[people['face_ids'].apply(lambda ids: '7' not in ids)]
+    assert piled.attrs['n_invalid'] == 1
+    assert float(piled.attrs['raw']) == pytest.approx(faces(data.rows(arranged), two)['raw'])
+    unplaced = {key: value for key, value in _face_trial('789', (0.3, 0.8, 1.6)).items() if key != 'positions'}
+    assert benchmark.score_result(arranged + [unplaced]).attrs['n_invalid'] == 1
