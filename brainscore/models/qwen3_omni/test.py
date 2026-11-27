@@ -92,16 +92,16 @@ def test_four_regions_come_from_one_pass_per_row_with_the_pools_kept_apart(tmp_p
     assert processor.calls[0]['together'] and processor.calls[0]['frames'] == 8
     sound = session.collect('neural:A1').transpose('presentation', 'neuroid').values
     picture = session.collect('neural:V1').transpose('presentation', 'neuroid').values
-    # layers.23 is state 24; sound tokens at positions 5, 6; layers.11 is state 12, picture tokens at 1 to 4
+    # layers.23 is state 24, sound tokens at positions 5, 6; layers.14 is state 15, last token at position 8
     rows = 1000 * np.arange(2)[:, None]
-    assert np.allclose(sound, rows + 100 * 24 + 5.5) and np.allclose(picture, rows + 100 * 12 + 2.5)
+    assert np.allclose(sound, rows + 100 * 24 + 5.5) and np.allclose(picture, rows + 100 * 15 + 8)
 
 
 def test_without_sound_the_clip_regions_run_and_a1_is_refused_before_any_pass(tmp_path):
     from brainscore_core.streaming_helpers import stimulus_session
     subject, extractor, thinker, processor = _subject()
     assert subject.output_inputs['neural:A1'] == {'audio'}
-    assert subject.output_inputs['neural:IT'] >= {'vision:video'}
+    assert subject.output_inputs['neural:IT'] == {'vision:video', 'audio'}
     assert subject.required_channels == {'vision:video'}
     session = stimulus_session(_rows(tmp_path, sound=False), ['neural:IT'], None)
     subject.participate(session)

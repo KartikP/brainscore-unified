@@ -35,13 +35,16 @@ AUDIO_LAYERS = (0, 10, 21, 31)        # 4 evenly spaced of the 32 audio-encoder 
 TEMPLATE = ('<|im_start|>user\n<|vision_start|><|video_pad|><|vision_end|><|im_end|>\n'
             '<|im_start|>assistant\n')
 
-# The committed map (README, "Layer rule"). V1, V4 and IT read the clip, A1 reads the sound: a session without
-# sound that asks A1 is N/A in pre-flight (``output_inputs``). The regions that read the clip come first, so the
-# memory probe (a clip without sound) records one of them.
+# The committed map (README, "Layer rule"), chosen on the selection films friends_s01e06a to s01e10b (median r over
+# parcels, one band each: layers.14/last 0.168, layers.26/last 0.169, layers.32/last 0.166, layers.23/sound 0.163).
+# V1, V4 and IT are recorded from the clip; with sound, the sound reaches their tokens too (the picture and sound
+# tokens are interleaved and the last token follows both), so they state both inputs (tuple modality). A1 reads the
+# sound tokens: a session without sound that asks A1 is N/A in pre-flight. The regions of the clip come first, so
+# the memory probe (a clip without sound) records one of them.
 REGION_LAYER_MAP = {
-    'V1': LayerSelector('layers.11/picture', modality='video'),
-    'V4': LayerSelector('layers.23/picture', modality='video'),
-    'IT': LayerSelector('layers.35/picture', modality='video'),
+    'V1': LayerSelector('layers.14/last', modality=('video', 'audio')),
+    'V4': LayerSelector('layers.26/last', modality=('video', 'audio')),
+    'IT': LayerSelector('layers.32/last', modality=('video', 'audio')),
     'A1': LayerSelector('layers.23/sound', modality='audio'),
 }
 
@@ -93,7 +96,9 @@ class OmniThinkerExtractor:
     Limit: rows run in batches of ``BATCH`` in table order (a batch needs rows with one token count; otherwise its
     rows run one by one). The audio encoder runs one row at a time inside a batch (``_audio_per_row``): in
     transformers 4.57 its attention keeps the packed rows of a batch apart only under FlashAttention 2, so under the
-    default attention the sounds of a batch would attend to each other.
+    default attention the sounds of a batch would attend to each other. The thinker values of a row still differ
+    slightly with its batch (bf16 kernels): per-unit r over 24 Friends scans, layers.23, picture 0.999, sound 0.995,
+    last 0.980 (medians). The same run twice is identical.
     Limit: the vision encoder sits on one GPU (``device_map='auto'`` places it whole).
     """
 
