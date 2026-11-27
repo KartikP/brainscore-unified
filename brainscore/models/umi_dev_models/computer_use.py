@@ -6,7 +6,7 @@ Source (public): the Qwen3-VL authors' cookbook, QwenLM/Qwen3-VL ``cookbooks/uti
 the screen stated as 1000 x 1000, coordinates on a 0-1000 grid of the picture). The model gets the tool in its
 system turn in the authors' words, and each turn one task line (``TASK_LINE`` and the harness's
 ``observation['task']``: the act form and the benchmark's instructions; nkl's own briefing is not used), the
-screen (and at most ``FRAMES_SHOWN`` changed frames since its last turn) and its last turns as text. It answers with ``<tool_call>`` blocks; each becomes motor acts:
+screen (and the frames since its last turn, as ``frames_as`` says) and its last turns as text. It answers with ``<tool_call>`` blocks; each becomes motor acts:
 
 - ``mouse_move``: move; ``left_click``: move to its coordinate (if given), down, up (``double_click`` and
   ``triple_click``: two and three clicks there); ``left_click_drag``: down at
@@ -17,6 +17,15 @@ screen (and at most ``FRAMES_SHOWN`` changed frames since its last turn) and its
 - ``right_click``, ``middle_click``, ``scroll``, ``hscroll``, ``answer``, more than ``MAX_ACTS`` acts,
   an action of the other act form, a key the task cannot take: the reply is invalid (None), with the action's
   name; it is shown to the model at its next turn.
+
+The frames since the last turn (``vision:video``) reach the model in one of two forms (``frames_as``, stated on the
+score when not the default): ``'stills'`` (default), at most ``FRAMES_SHOWN`` changed frames as pictures, each with
+its time; ``'video'``, every frame of the turn as one clip through the model's own video input (a lossless FFV1 file
+at the frames' rate, so the processor gets the real frame times), after one text line with the first and last time.
+
+Limit: in the ``'video'`` form the model's processor samples the clip by its registration's ``video_sampling``
+(Qwen: 2 frames a second, at least ``min_frames``), so a turn keeps every frame only when it has at most
+``min_frames`` frames (the ``-all-frames`` registration: 16, one 250 ms dense step has 15).
 
 Limit: key names are read by ``KEYS`` (the common names: enter, space, arrows, tab, escape, letters, digits);
 another key name makes the reply invalid with the name.
@@ -36,6 +45,7 @@ TURNS_KEPT = 8
 FRAMES_SHOWN = 4
 MAX_ACTS = 20                   # the participant view's acts of one step
 TASK_LINE = 'Do the task on the screen.'
+FRAMES_AS = ('stills', 'video')
 
 # The authors' words, as their cookbook gives them (QwenLM/Qwen3-VL at COMMIT, Apache License 2.0): the
 # ``computer_use`` tool's description (display 1000 x 1000) and parameters, and Qwen-Agent's FN_CALL_TEMPLATE
@@ -163,8 +173,11 @@ def read(reply: str, form: str, pointer, size) -> tuple:
 
 
 def computer_use_policy(reply: Callable, *, max_tokens: int = 1024, temperature: Optional[float] = None,
-                        seed: Optional[int] = None) -> Callable:
-    """A ``policy(row) -> {act form: acts}`` that asks ``reply`` in Qwen3-VL's computer-use format."""
+                        seed: Optional[int] = None, frames_as: str = 'stills') -> Callable:
+    """A ``policy(row) -> {act form: acts}`` that asks ``reply`` in Qwen3-VL's computer-use format; ``frames_as``:
+    the form of the frames since the last turn (``FRAMES_AS``)."""
+    if frames_as not in FRAMES_AS:
+        raise ValueError(f'frames_as {frames_as!r} is not one of {FRAMES_AS}')
     import tempfile
     from pathlib import Path
     from PIL import Image
@@ -182,16 +195,39 @@ def computer_use_policy(reply: Callable, *, max_tokens: int = 1024, temperature:
         Image.fromarray(np.asarray(array)).save(path)
         return str(path)
 
+    def clip(frames, times) -> str:
+        """The frames as one lossless clip at their rate (60 a second when there is one frame)."""
+        import cv2
+        if state['folder'] is None:
+            state['folder'] = Path(tempfile.mkdtemp(prefix='computer-use-'))
+        path = state['folder'] / f'{len(list(state["folder"].iterdir())):06d}.avi'
+        rate = 1000 * (len(times) - 1) / (times[-1] - times[0]) if len(times) > 1 else 60.0
+        height, width = frames[0].shape[:2]
+        writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*'FFV1'), rate, (width, height))
+        for frame in frames:
+            writer.write(cv2.cvtColor(np.asarray(frame), cv2.COLOR_RGB2BGR))
+        writer.release()
+        return str(path)
+
     def policy(row):
         seen, screen = row['observation'], row['vision:image']
         video = row.get('vision:video')
-        shown = changed_frames(video, seen.get('frame_t_ms', []), state['last'], FRAMES_SHOWN)
+        times = list(seen.get('frame_t_ms', []))
+        if frames_as == 'video':
+            shown = list(zip(times, video)) if video is not None and len(video) else []
+        else:
+            shown = changed_frames(video, times, state['last'], FRAMES_SHOWN)
         parts, names = [('text', SYSTEM)], ['instruction']
         text = [f"{TASK_LINE} {seen.get('task', '')}".strip()]
         if state['problems']:
             text.append('Your last reply was not done: ' + '; '.join(state['problems']))
         parts.append(('text', '\n'.join(text))); names.append('task')
-        for at, frame in shown:
+        if frames_as == 'video' and shown:
+            parts += [('text', f'The {len(shown)} frames since your last turn, from {shown[0][0] / 1000:.3f} s to '
+                               f'{shown[-1][0] / 1000:.3f} s, as a video:'),
+                      ('video', clip([frame for _, frame in shown], [at for at, _ in shown]))]
+            names += ['frame', 'frame']
+        for at, frame in shown if frames_as == 'stills' else ():
             parts += [('text', f'A frame since your last turn, at {at / 1000:.3f} s:'), ('image', picture(frame))]
             names += ['frame', 'frame']
         parts += [('text', 'The screen now:'), ('image', picture(screen))]
@@ -200,16 +236,18 @@ def computer_use_policy(reply: Callable, *, max_tokens: int = 1024, temperature:
                         seed=None if seed is None else seed + state['turn'])
         answer = reply(Prompt(parts=tuple(parts), names=tuple(names), response=settings,
                               history=tuple(state['history'][-TURNS_KEPT:])))
-        state_settings_as(policy, reply, {'action_format': FORMAT, 'position_grid': GRID})
+        state_settings_as(policy, reply, {'action_format': FORMAT, 'position_grid': GRID,
+                                          **({'frames_as': frames_as} if frames_as != 'stills' else {})})
         said = answer.payload if isinstance(answer, StreamEvent) else answer
         acts, problems = read(said, seen['act_form'], seen.get('pointer', (0, 0)), (screen.shape[1], screen.shape[0]))
         state['history'].append((Prompt(parts=(parts[1], ('text', 'The screen now (not shown again).')),
                                         names=('task', 'turn')), said))
         state.update(last=video[-1] if video is not None and len(video) else state['last'], problems=problems,
                      turn=state['turn'] + 1)
-        trace.append({'turn': state['turn'], 'reply': said, 'acts': acts, 'problems': problems})
+        trace.append({'turn': state['turn'], 'reply': said, 'acts': acts, 'problems': problems,
+                      'frames_shown': [at for at, _ in shown]})
         return {seen['act_form']: StreamEvent(seen['act_form'], acts, None, {
-            'answer': said, 'valid': not problems,
+            'answer': said, 'valid': not problems, 'frames_shown': [at for at, _ in shown],
             'parse_error': '; '.join(problems) or None})}
 
     def reset():

@@ -73,3 +73,61 @@ def test_a_subject_takes_part_in_its_own_format_through_participate(tmp_path, mo
                                 dense_step_ms=250)
     assert result[0]['response'] == 'ArrowLeft'
     assert prompts[0].parts[1][1].startswith('Do the task on the screen. This task takes keyboard actions only')
+
+
+def test_frames_as_video_gives_every_frame_of_the_turn_as_one_lossless_clip_through_participate(tmp_path, monkeypatch):
+    import sys
+    import numpy as np
+    import brainscore.harnesses.nodekit as nodekit
+    from brainscore import BrainScoreModel
+    from brainscore.model_helpers.vlm_video_wrapper import read_clip
+    from brainscore.models.umi_dev_models.computer_use import computer_use_policy
+    from tests.test_harnesses.test_nodekit import STAND_IN, _program
+    folder = tmp_path / 'environments' / 'nodekit' / 'ready'
+    (folder / 'env' / 'bin').mkdir(parents=True)
+    (folder / 'env' / 'bin' / 'python').symlink_to(sys.executable)
+    (tmp_path / 'worker.py').write_text(STAND_IN)
+    monkeypatch.setattr(nodekit, 'library', lambda: None)
+    monkeypatch.setattr(nodekit, 'ready_folder', lambda library, identifier, given=None: folder)
+    monkeypatch.setattr(nodekit, '_WORKER', tmp_path / 'worker.py')
+    shown, seen = [], []
+
+    def reply(prompt):
+        kinds = [kind for kind, _ in prompt.parts]
+        if 'video' in kinds:      # read while the turn's clip exists
+            shown.append(read_clip(prompt.parts[kinds.index('video')][1]))
+        seen.append(kinds)
+        return call(action='wait', time=0.25) if len(seen) == 1 else call(action='key', keys=['left'])
+    policy = computer_use_policy(reply, frames_as='video')
+    subject = BrainScoreModel('format', policy=policy, policy_out_channels=('motor:key',),
+                              policy_in_channels=('vision:image', 'vision:video', 'observation'))
+    result, _, _ = nodekit.play(subject, _program(tmp_path / 'keys'), form='motor:key', pacing='dense',
+                                dense_step_ms=250)
+    assert result[0]['response'] == 'ArrowLeft'
+    # The 250 ms wait passed the stand-in's 14 frame times: one clip of all of them at 60 a second, then the screen.
+    (frames, rate), = shown
+    assert seen[1][-3:] == ['video', 'text', 'image'] and seen[1].count('image') == 1
+    assert rate == 60.0 and frames.shape == (14, 384, 512, 3) and len(policy.trace[1]['frames_shown']) == 14
+
+
+def test_frames_as_video_keeps_the_frames_exactly_and_states_the_form():
+    import numpy as np
+    from brainscore.model_helpers.vlm_video_wrapper import read_clip
+    from brainscore.models.umi_dev_models.computer_use import computer_use_policy
+    video = (np.random.default_rng(0).random((15, 384, 512, 3)) * 255).astype(np.uint8)
+    row = {'vision:image': np.zeros((768, 1024, 3), np.uint8), 'vision:video': video,
+           'observation': {'act_form': 'motor:key', 'task': 'Answer.', 'frame_t_ms': [16.667 * k for k in range(1, 16)]}}
+    clips = []
+
+    def reply(prompt):
+        clips.extend(read_clip(value) for kind, value in prompt.parts if kind == 'video')
+        return call(action='key', keys=['left'])
+    policy = computer_use_policy(reply, frames_as='video')
+    policy(row)
+    (frames, rate), = clips
+    assert np.array_equal(frames, video) and abs(rate - 60.0) < 0.01
+    stills = []
+    computer_use_policy(lambda prompt: stills.append([k for k, _ in prompt.parts]) or call(action='key', keys=['left']))(row)
+    assert 'video' not in stills[0] and stills[0].count('image') == 1 + 4      # default: the changed frames as pictures
+    with pytest.raises(ValueError, match='frames_as'):
+        computer_use_policy(reply, frames_as='film')
