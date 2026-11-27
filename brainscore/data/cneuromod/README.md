@@ -131,7 +131,8 @@ for one session; 4.2 GB for the 36 sessions of sub-01 (19 s from the kept downlo
 On the full packaging (2026-11-24) it equals the released noise-ceiling map on every region
 voxel (largest difference 0.0011 percentage points; the betas are stored as float32) and gives
 the paper's image counts and maxima for sub-01, 02 and 03. sub-06 has no pRF masks; its FFA,
-EBA and PPA are the Kanwisher group parcels. The figure and tables are in `validation/`.
+EBA and PPA are the Kanwisher group parcels. The script writes the figure and the tables to the folder given
+with `--out`.
 After the change to one mask set per region (2026-11-24) the check on sub-01 gives the same image
 count (3247), maximum (56.51) and region medians; `voxels` in `fig2a_voxels.csv` still counts the
 earlier packaging, with the group parcels beside the own masks (sub-01 now: 12417 unique voxels).
