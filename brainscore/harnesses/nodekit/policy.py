@@ -158,8 +158,8 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
         parts, names = [('text', system)], ['instruction']
         video = row.get('vision:video')
         shown = changed_frames(video, seen.get('frame_t_ms', []), state['last'], frames)
-        briefing = reader.ask({'brief': turn})
-        for number, (text, image) in enumerate(briefing):
+        turn_parts = reader.ask({'brief': turn})   # nkl's text of the turn, each with the picture it names
+        for number, (text, image) in enumerate(turn_parts):
             if image == 'screen' and shown:     # the frames since the last turn come before the screen
                 for at, frame in shown:
                     parts += [('text', f'A frame since your last turn, at {at / 1000:.3f} s:'),
