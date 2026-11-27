@@ -43,10 +43,10 @@ The highest median r wins. On a tie, the shallower layer wins. A candidate that 
 (`embed/last`, the embedding of a fixed text token) has no usable fit and is skipped. The scores of the candidates
 are in the run record.
 
-Selection result (median r, one band): `layers.14/last` 0.168, `layers.26/last` 0.169, `layers.32/last` 0.166,
+Selection result (median r, one band): `layers.14/last` 0.168, `layers.26/last` 0.169, `layers.32/last` 0.160,
 `layers.23/sound` 0.163.
-- The best picture pool, `layers.23/picture`, is 0.139.
-- The best encoder blocks: `visual.blocks.26/mean` 0.119, `audio_tower.layers.31/mean` 0.124.
+- The best picture pool, `layers.42/picture`, is 0.142.
+- The best encoder blocks: `visual.blocks.17/mean` 0.120, `audio_tower.layers.31/mean` 0.124.
 
 ## Limits
 

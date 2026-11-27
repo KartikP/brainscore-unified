@@ -36,7 +36,7 @@ TEMPLATE = ('<|im_start|>user\n<|vision_start|><|video_pad|><|vision_end|><|im_e
             '<|im_start|>assistant\n')
 
 # The committed map (README, "Layer rule"), chosen on the selection films friends_s01e06a to s01e10b (median r over
-# parcels, one band each: layers.14/last 0.168, layers.26/last 0.169, layers.32/last 0.166, layers.23/sound 0.163).
+# parcels, one band each: layers.14/last 0.168, layers.26/last 0.169, layers.32/last 0.160, layers.23/sound 0.163).
 # V1, V4 and IT are recorded from the clip; with sound, the sound reaches their tokens too (the picture and sound
 # tokens are interleaved and the last token follows both), so they state both inputs (tuple modality). A1 reads the
 # sound tokens: a session without sound that asks A1 is N/A in pre-flight. The regions of the clip come first, so
