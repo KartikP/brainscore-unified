@@ -25,7 +25,7 @@ class MyEnvironment:
 
 `observation` is defined by your environment. Declaring `observation_spec()` and `action_spec()` (with `ArraySpec`, `ActionSpec` and friends from `brainscore_core.environment`) lets the session validate shapes, units and bounds. [A new kind of output](new_output.md) shows a structured action (a pointer move, a click, a key press) with these specifications.
 
-A task on a screen takes the act forms of a person: `motor:key` (`press`, `release`, `type`, `wait`) and `motor:pointer` (`move`, `down`, `up`, `stroke`, `wait`). Each payload is a list of acts, done in order; positions are pixels of the last picture, origin at the top left; the session checks each act (`MOTOR_ACTS` in `brainscore_core.io_catalog`). The benchmark asks for the form its participants used, and a policy declares the forms it gives with `policy_out_channels`. The NodeKit benchmarks use these forms.
+A task on a screen takes the act forms of a person: `motor:key` (`press`, `release`, `type`, `wait`, `look`) and `motor:pointer` (`move`, `down`, `up`, `stroke`, `wait`, `look`); a `look` asks for one more picture in a benchmark's agent view. Each payload is a list of acts, done in order; positions are pixels of the last picture, origin at the top left; the session checks each act (`MOTOR_ACTS` in `brainscore_core.io_catalog`). The benchmark asks for the form its participants used, and a policy declares the forms it gives with `policy_out_channels`. The NodeKit benchmarks use these forms.
 
 ## Connect a policy
 

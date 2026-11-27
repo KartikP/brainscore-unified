@@ -55,7 +55,7 @@ participant's submission in the task repository, so ``python -m brainscore.harne
 
 Limit: a subject that takes ``vision:image`` and not ``vision:video`` sees only the screen at the end of each
 step: a brief stimulus (the 45 ms Gabor patch) is seen only when a step ends while it is shown. nkl's
-``look`` act is not offered (it is not a motor act).
+``look`` act is offered in the agent view (``view='agent'``, Contract Rules 5.15) and refused in the participant view.
 
 Limit: a session takes its acts on one channel: a program that needs key and pointer acts in one run (type
 a text, then click) runs with the one form its benchmark asks for, and a step that needs the other form
