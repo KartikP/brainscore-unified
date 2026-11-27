@@ -154,7 +154,7 @@ def test_a_readout_on_layers_that_carry_the_play_names_the_held_buttons_above_ch
     assert float(score) > score.attrs['chance_most_frequent'] + 0.1
     facts = score.attrs['per_participant']['sub-01']
     assert facts['n_test_trs'] == 2 * 50 and facts['n_fitting_trs'] == 6 * 50
-    assert score.attrs['n_trials'] == 200 and score.attrs['answer_policy']
+    assert score.attrs['n_trials'] == 200 and score.attrs['answer_policy'] and score.attrs['result_validity'] == 'valid'
 
 
 def test_the_chance_floor_lands_at_the_most_frequent_label(packaged):

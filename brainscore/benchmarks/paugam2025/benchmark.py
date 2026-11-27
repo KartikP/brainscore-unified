@@ -304,6 +304,7 @@ class Paugam2025MarioButtons(BenchmarkBase):
                 'n_invalid': int((~valid).sum())}
         return benchmark_score(
             self, raw=float(np.mean(accuracies)), metric='accuracy', answers=answers, answer_policy=ANSWER_POLICY,
+            invalid_limit=0.1,
             participants=list(by_participant),
             per_participant=by_participant, choices=choices, label_rates_training=rates,
             chance_most_frequent=float(np.mean([p['chance_most_frequent'] for p in by_participant.values()])),
