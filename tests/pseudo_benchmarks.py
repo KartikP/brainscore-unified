@@ -105,7 +105,7 @@ class PseudoChoice(BenchmarkBase):
     def __init__(self, channel='text', folder=None):
         self.required_input_channels = frozenset({channel})
         self.stimuli = text_stimuli() if channel == 'text' else image_stimuli(folder)
-        super().__init__(identifier=f'pseudo-choice-{channel}', version=1, parent='behavioral',
+        super().__init__(identifier=f'pseudo-choice-{channel}', version=1, parent='behavior',
                          ceiling=not_estimated())
 
     def __call__(self, subject):
@@ -134,7 +134,7 @@ class PseudoProbabilities(BenchmarkBase):
         self.required_input_channels = frozenset({channel})
         self.stimuli = text_stimuli() if channel == 'text' else image_stimuli(folder)
         self.fitting = FITTING if fitting else None
-        super().__init__(identifier='pseudo-probabilities', version=1, parent='behavioral',
+        super().__init__(identifier='pseudo-probabilities', version=1, parent='behavior',
                          ceiling=not_estimated())
 
     def __call__(self, subject):
@@ -163,7 +163,7 @@ class PseudoRating(BenchmarkBase):
 
     def __init__(self):
         self.stimuli = text_stimuli()
-        super().__init__(identifier='pseudo-rating', version=1, parent='behavioral',
+        super().__init__(identifier='pseudo-rating', version=1, parent='behavior',
                          ceiling=not_estimated())
 
     def __call__(self, subject):
@@ -191,7 +191,7 @@ class PseudoResponseTime(BenchmarkBase):
 
     def __init__(self):
         self.stimuli = text_stimuli()
-        super().__init__(identifier='pseudo-response-time', version=1, parent='behavioral',
+        super().__init__(identifier='pseudo-response-time', version=1, parent='behavior',
                          ceiling=not_estimated())
 
     def __call__(self, subject):
@@ -219,7 +219,7 @@ class PseudoText(BenchmarkBase):
 
     def __init__(self):
         self.stimuli = text_stimuli()
-        super().__init__(identifier='pseudo-text', version=1, parent='behavioral',
+        super().__init__(identifier='pseudo-text', version=1, parent='behavior',
                          ceiling=not_estimated())
 
     @staticmethod
@@ -251,7 +251,7 @@ class PseudoLogProbabilities(BenchmarkBase):
 
     def __init__(self):
         self.stimuli = text_stimuli()
-        super().__init__(identifier='pseudo-log-probabilities', version=1, parent='behavioral',
+        super().__init__(identifier='pseudo-log-probabilities', version=1, parent='behavior',
                          ceiling=not_estimated())
 
     def __call__(self, subject):

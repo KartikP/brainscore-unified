@@ -241,7 +241,7 @@ class Paugam2025MarioButtons(BenchmarkBase):
     def __init__(self, participants=PARTICIPANTS, *, identifier: str, root=None):
         self._participants = tuple(participants)
         self._root = root
-        super().__init__(identifier=identifier, version=1, parent='behavioral', ceiling=not_estimated(),
+        super().__init__(identifier=identifier, version=1, parent='behavior', ceiling=not_estimated(),
                          bibtex=BIBTEX)
 
     @property

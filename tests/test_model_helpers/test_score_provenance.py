@@ -383,7 +383,7 @@ class _Conversation(BenchmarkBase):
     def __init__(self, partner):
         self.partner = partner
         self.required_input_channels = frozenset({'text'})
-        super().__init__(identifier='provenance-conversation', version=1, parent='behavioral',
+        super().__init__(identifier='provenance-conversation', version=1, parent='behavior',
                          ceiling=not_estimated())
 
     def __call__(self, subject):
@@ -442,7 +442,7 @@ class _Sessions(BenchmarkBase):
         self.makers, self.catch = makers, catch
         self.requested_output_channels = frozenset(outputs)
         self.required_input_channels = frozenset(inputs)
-        super().__init__(identifier='provenance-sessions', version=1, parent='behavioral',
+        super().__init__(identifier='provenance-sessions', version=1, parent='behavior',
                          ceiling=not_estimated())
 
     def __call__(self, subject):
@@ -640,7 +640,7 @@ class _InnerScore(BenchmarkBase):
     def __init__(self, inner):
         self.inner = inner
         self.required_input_channels = frozenset({'text'})
-        super().__init__(identifier='provenance-inner-score', version=1, parent='behavioral',
+        super().__init__(identifier='provenance-inner-score', version=1, parent='behavior',
                          ceiling=not_estimated())
 
     def __call__(self, subject):

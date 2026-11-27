@@ -216,7 +216,7 @@ class EWoKBenchmark(BenchmarkBase):
             selection = json.dumps(sorted(set(domains))).encode()
             identifier += f'-domains-{hashlib.sha256(selection).hexdigest()[:12]}'
         super().__init__(
-            identifier=identifier, version=1, parent='behavioral',
+            identifier=identifier, version=1, parent='behavior',
             ceiling=not_estimated(),
             bibtex='@article{ivanova2025elements, title={Elements of World Knowledge}, '
                    'author={Ivanova, Anna and others}, year={2025}, '
