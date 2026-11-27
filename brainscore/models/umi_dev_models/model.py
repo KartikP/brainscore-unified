@@ -7,6 +7,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from functools import partial
 from pathlib import Path
 
+from brainscore.harnesses.nodekit import SCREEN_FORMS, SCREEN_INPUTS
 from brainscore.model_helpers.provenance import ProvenanceSubject
 
 MODEL_CONFIGS = json.loads((Path(__file__).parent / 'model_configs.json').read_text())
@@ -298,10 +299,6 @@ def _reply_client(reply):
         return reply(Prompt(parts=tuple(parts), names=tuple(names), response=Text(
             max_tokens=settings.get('max_tokens'), temperature=settings.get('temperature') or 0)))
     return local_model
-
-
-SCREEN_FORMS = ('motor:key', 'motor:pointer')
-SCREEN_INPUTS = ('vision:image', 'vision:video', 'instruction', 'observation')
 
 
 # How a model writes positions in its answers, when not in pixels (its own convention; the act policy scales them

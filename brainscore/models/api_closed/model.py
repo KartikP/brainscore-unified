@@ -11,6 +11,7 @@ that takes pictures also has the NodeKit act policy (``brainscore.harnesses.node
 so it takes part in a task on a screen with the keyboard or the pointer.
 """
 from brainscore import BrainScoreModel
+from brainscore.harnesses.nodekit import SCREEN_FORMS, SCREEN_INPUTS
 from brainscore.model_helpers.api_behavioral import api_answer, build_api_reply
 
 # identifier -> (provider, model id, declared input channels). Pin dated snapshots
@@ -83,9 +84,6 @@ REGISTRY = {
         in_channels=('vision:image', 'text')),
 }
 
-# A task on a screen (NodeKit): the act policy reads these and acts on these forms.
-SCREEN_INPUTS = ('vision:image', 'vision:video', 'instruction', 'observation')
-SCREEN_FORMS = ('motor:key', 'motor:pointer')
 # The behavior outputs the answer and reply parts give (their inputs are stated for a model with a screen policy).
 ANSWERED = ('behavior', 'behavior:choice', 'behavior:rating', 'behavior:text')
 

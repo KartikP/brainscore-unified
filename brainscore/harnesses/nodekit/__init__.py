@@ -109,7 +109,10 @@ DENSE_STEP_MS = 16.667          # nkl's Dense step: one frame at 60 frames a sec
 VIDEO = (512, 384)              # the size of a vision:video frame; frames at 60 a second (the worker's FRAME_US)
 # The participants' folder of each bundle in the task repository: the replay viewer's names.
 VIEWER_FOLDERS = {'drifting-gabor': 'gabor', 'triplet-similarity': 'triplets', 'face-arrangement': 'faces'}
-FORMS = ('motor:key', 'motor:pointer')
+# A task on a screen: the inputs each row sends (the screen, the frames since the last turn in the participant view,
+# nkl's briefing, the facts of the turn) and the act forms a subject can act on (Contract Rules 5.15).
+SCREEN_INPUTS = ('vision:image', 'vision:video', 'instruction', 'observation')
+SCREEN_FORMS = ('motor:key', 'motor:pointer')
 # The arguments of each bundle that are the main block's parallel lists of trials (the trials and their media):
 # ``shown`` keeps their first n, as the task code's own ``shown`` does (the practice block stays whole).
 MAIN_BLOCK = {'drifting-gabor': (5,), 'triplet-similarity': (8, 9, 10, 11)}
@@ -204,8 +207,8 @@ class NodeKitEnvironment:
         self.max_ms, self.max_steps, self.record, self.name = max_ms, max_steps, record, name
         if not (self.program / 'program.json').is_file():
             raise ValueError(f'{self.program} is not an nkl bundle: it holds no program.json.')
-        if form not in FORMS:
-            raise ValueError(f'A NodeKit subject acts on {sorted(FORMS)}, not {form!r} (Contract Rules 5.15).')
+        if form not in SCREEN_FORMS:
+            raise ValueError(f'A NodeKit subject acts on {sorted(SCREEN_FORMS)}, not {form!r} (Contract Rules 5.15).')
         if pacing not in PACINGS:
             raise ValueError(f'pacing is one of {PACINGS} (nkl\'s Frozen, Realtime and Dense), not {pacing!r}.')
         if not (isinstance(dense_step_ms, (int, float)) and not isinstance(dense_step_ms, bool) and dense_step_ms > 0):
