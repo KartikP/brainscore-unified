@@ -148,12 +148,13 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
             turn['grid'] = [position_grid] * 2
         system = row['instruction']
         if position_grid and 'briefing' in seen:     # nkl's briefing written for the model's grid, by nkl
-            if state.get('system_for') != seen['briefing']:
+            asked = (seen['briefing'], [screen.shape[1], screen.shape[0]])      # it states the picture's size
+            if state.get('system_for') != asked:
                 state['system'] = reader.ask({'system': {
                     'briefing': seen['briefing'], 'screen': [screen.shape[1], screen.shape[0]],
                     'grid': [position_grid] * 2,
                     'extent': seen['briefing'].get('extent', [screen.shape[1], screen.shape[0]])}})
-                state['system_for'] = seen['briefing']
+                state['system_for'] = asked
             system = state['system']
         parts, names = [('text', system)], ['instruction']
         video = row.get('vision:video')
@@ -200,7 +201,7 @@ def act_policy(reply: Callable, *, frames: int = FRAMES_SHOWN, turns_kept: int =
 
     def reset():
         clear()
-        state.update(memories=[], problems=[], dropped=0, last=None, turn=0, history=[])
+        state.update(memories=[], problems=[], dropped=0, last=None, turn=0, history=[], system_for=None)
         trace.clear()
 
     def close():

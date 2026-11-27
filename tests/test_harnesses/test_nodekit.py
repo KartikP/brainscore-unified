@@ -450,3 +450,21 @@ def test_a_reply_that_core_would_refuse_is_an_invalid_turn_of_the_computer_use_p
     (event,) = policy(_screen_row('agent', form)).values()
     assert event.payload is None and event.meta['parse_error']
     policy.close()
+
+
+def test_the_act_policy_asks_nkl_for_the_grid_briefing_again_when_the_picture_size_changes(stand_in, monkeypatch):
+    import brainscore.harnesses._environment_folder as environment_folder
+    import brainscore.harnesses.nodekit.policy as act
+    reader = stand_in / 'stand_in_reader.py'
+    reader.write_text(READER.replace("send({'done': f'Positions are on a grid laid over it: {width} x {height}.'})",
+                                     "send({'done': f\"A grid over the {command['system']['screen']} picture.\"})"))
+    monkeypatch.setattr(act, '_READER', reader)
+    monkeypatch.setattr(environment_folder, 'ready_folder', nodekit.ready_folder)
+    prompts = []
+    policy = act.act_policy(lambda prompt: prompts.append(prompt) or '[]', position_grid=1000)
+    for size in ((48, 64), (96, 128)):
+        row = _screen_row('agent', size=size)
+        row['observation']['briefing'] = {'limits': {'turns': 10}}
+        policy(row)
+    policy.close()
+    assert '[64, 48]' in prompts[0].parts[0][1] and '[128, 96]' in prompts[1].parts[0][1]
