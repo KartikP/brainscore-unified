@@ -14,10 +14,10 @@ class _Processor:
 
     def __call__(self, text, videos, audio=None, use_audio_in_video=False, fps=None, return_tensors=None):
         import torch
-        self.calls.append({'frames': len(videos[0]), 'sound': audio is not None,
+        self.calls.append({'frames': len(videos[0]), 'rows': len(videos), 'sound': audio is not None,
                            'together': use_audio_in_video, 'fps': fps})
         ids = [1] + [VIDEO] * PICTURE_TOKENS + ([AUDIO] * SOUND_TOKENS if audio is not None else []) + [2, 3]
-        return {'input_ids': torch.tensor([ids])}
+        return {'input_ids': torch.tensor([ids] * len(videos)), 'attention_mask': torch.ones(len(videos), len(ids))}
 
 
 class _Thinker:
@@ -33,19 +33,19 @@ class _Thinker:
     def get_input_embeddings(self):
         return self._embedding
 
-    def __call__(self, input_ids, output_hidden_states, use_audio_in_video):
+    def __call__(self, input_ids, output_hidden_states, use_audio_in_video, attention_mask=None):
         import torch
         from types import SimpleNamespace
         self.calls += 1
-        for block in self.visual.blocks:
-            block(torch.ones(5, 1152))
+        rows, n = input_ids.shape
+        for block in self.visual.blocks:          # the encoders pack the rows of a batch one after the other
+            block(torch.arange(rows, dtype=torch.float32).repeat_interleave(5)[:, None].expand(rows * 5, 1152))
         if use_audio_in_video:
             for layer in self.audio_tower.layers:
-                layer((torch.full((3, 1280), 2.0),))
-        n = input_ids.shape[1]
-        # state k, position p: every value is 100 k + p
-        states = tuple((100.0 * k + torch.arange(n, dtype=torch.float32))[None, :, None].expand(1, n, 2048)
-                       for k in range(49))
+                layer((torch.full((rows * 3, 1280), 2.0),))
+        # row b, state k, position p: every value is 1000 b + 100 k + p
+        states = tuple((1000.0 * torch.arange(rows)[:, None] + 100.0 * k + torch.arange(n, dtype=torch.float32)
+                        )[:, :, None].expand(rows, n, 2048) for k in range(49))
         return SimpleNamespace(hidden_states=states)
 
 
@@ -88,12 +88,13 @@ def test_four_regions_come_from_one_pass_per_row_with_the_pools_kept_apart(tmp_p
     subject, extractor, thinker, processor = _subject()
     session = stimulus_session(_rows(tmp_path), [f'neural:{r}' for r in ('V1', 'V4', 'IT', 'A1')], None)
     subject.participate(session)
-    assert thinker.calls == 2           # one forward per row for the four regions (independent_layers)
+    assert thinker.calls == 1 and processor.calls[0]['rows'] == 2   # one batched pass for four regions
     assert processor.calls[0]['together'] and processor.calls[0]['frames'] == 8
     sound = session.collect('neural:A1').transpose('presentation', 'neuroid').values
     picture = session.collect('neural:V1').transpose('presentation', 'neuroid').values
     # layers.23 is state 24; sound tokens at positions 5, 6; layers.11 is state 12, picture tokens at 1 to 4
-    assert np.allclose(sound, 100 * 24 + 5.5) and np.allclose(picture, 100 * 12 + 2.5)
+    rows = 1000 * np.arange(2)[:, None]
+    assert np.allclose(sound, rows + 100 * 24 + 5.5) and np.allclose(picture, rows + 100 * 12 + 2.5)
 
 
 def test_without_sound_the_clip_regions_run_and_a1_is_refused_before_any_pass(tmp_path):
@@ -104,10 +105,10 @@ def test_without_sound_the_clip_regions_run_and_a1_is_refused_before_any_pass(tm
     assert subject.required_channels == {'vision:video'}
     session = stimulus_session(_rows(tmp_path, sound=False), ['neural:IT'], None)
     subject.participate(session)
-    assert not processor.calls[0]['together'] and thinker.calls == 2
+    assert not processor.calls[0]['together'] and thinker.calls == 1
     with pytest.raises(Exception):
         subject.participate(stimulus_session(_rows(tmp_path, sound=False), ['neural:A1'], None))
-    assert thinker.calls == 2
+    assert thinker.calls == 1
 
 
 def test_the_friends_benchmarks_with_and_without_sound_accept_it():
@@ -139,6 +140,13 @@ def test_a_layer_that_is_not_recorded_and_a_sound_at_another_rate_are_refused(tm
     with pytest.raises(ValueError, match='16000'):
         read_sound(wav)
     assert thinker.calls == 0
+
+
+def test_the_encoder_means_are_kept_per_row_in_a_batch(tmp_path):
+    subject, extractor, thinker, processor = _subject()
+    records = extractor.pooled([(v, a) for v, a in zip(_rows(tmp_path, n=3)['video_path'], _rows(tmp_path, n=3)['audio_path'])])
+    assert [float(r['visual.blocks.8/mean'][0]) for r in records] == [0.0, 1.0, 2.0]
+    assert [float(r['tokens/sound'][0]) for r in records] == [SOUND_TOKENS] * 3
 
 
 def test_a_wrong_identifier_is_refused():

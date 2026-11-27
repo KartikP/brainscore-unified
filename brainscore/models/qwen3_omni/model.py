@@ -26,6 +26,7 @@ IDENTIFIER = 'qwen3-omni-30b-a3b-thinking'
 WEIGHTS = 'Qwen/Qwen3-Omni-30B-A3B-Thinking'
 REVISION = None               # set to the commit of the weights used by the recorded run (README)
 FRAMES = 8                    # frames taken evenly from a clip; 2 temporal patches each give 4 picture groups
+BATCH = 8                     # rows per forward pass (the expert layers run once per pass: 0.39 s a row, 2.6 alone)
 SOUND_RATE_HZ = 16000
 THINKER_LAYERS = 48
 POOLS = ('picture', 'sound', 'last')
@@ -70,7 +71,10 @@ class OmniThinkerExtractor:
 
     Limit: a pooled layer name (``layers.<i>/picture``) is a recording address only; an intervention cannot
     address it.
-    Limit: one row per forward pass; a row has no context from the rows before it.
+    Limit: a row has no context from the rows before it.
+    Limit: rows run in batches of ``BATCH`` in table order (a batch needs rows with one token count; otherwise its
+    rows run one by one). A row's values depend on its batch at the rounding of bf16: batch 8 against batch 1
+    differed by at most 1.7 on values up to 1168 (layers.23, measured on 8 Friends scans).
     Limit: the vision encoder sits on one GPU (``device_map='auto'`` places it whole).
     """
 
@@ -91,45 +95,62 @@ class OmniThinkerExtractor:
     def _keep(self, name):
         def keep(output):
             hidden = output[0] if isinstance(output, tuple) else output
-            self._hooked[name] = hidden.reshape(-1, hidden.shape[-1]).float().mean(0).cpu().numpy()
+            self._hooked[name] = hidden.reshape(-1, hidden.shape[-1]).float()
         return keep
 
     def layer_names(self) -> list:
         return layer_names()
 
-    def pooled(self, video_path, audio_path=None) -> dict:
-        """``{layer path: vector}`` for every layer of one row (``audio_path`` None: the clip alone)."""
+    def pooled(self, rows) -> list:
+        """``[{layer path: vector}]`` for every layer of each row of ``rows`` (``(video_path, audio_path)``; an
+        ``audio_path`` of None: the clip alone), in batches of ``BATCH``."""
+        records = []
+        for start in range(0, len(rows), BATCH):
+            records += self._batch(rows[start:start + BATCH])
+        return records
+
+    def _batch(self, rows) -> list:
         import torch
         from brainscore.model_helpers.video_wrapper import default_uniform_frame_sampler
-        frames = np.stack(default_uniform_frame_sampler(video_path, FRAMES))
-        sound = None if audio_path is None else read_sound(audio_path)
-        inputs = self._processor(text=TEMPLATE, videos=[frames], audio=None if sound is None else [sound],
-                                 use_audio_in_video=sound is not None, fps=len(frames) / self._clip_seconds,
-                                 return_tensors='pt')
-        ids = inputs['input_ids'][0]
+        frames = [np.stack(default_uniform_frame_sampler(video, FRAMES)) for video, _ in rows]
+        sounds = [None if audio is None else read_sound(audio) for _, audio in rows]
+        with_sound = sounds[0] is not None
+        if any((s is not None) != with_sound for s in sounds):
+            raise ValueError('a batch mixes rows with and without sound; give every row a sound or none.')
+        inputs = self._processor(text=[TEMPLATE] * len(rows), videos=frames, audio=sounds if with_sound else None,
+                                 use_audio_in_video=with_sound, fps=FRAMES / self._clip_seconds, return_tensors='pt')
+        if 'attention_mask' in inputs and not bool(inputs['attention_mask'].all()) and len(rows) > 1:
+            return [record for row in rows for record in self._batch([row])]     # rows of different lengths
+        ids = inputs['input_ids']
         spans = {'picture': ids == self._video_token, 'sound': ids == self._audio_token}
-        if not spans['picture'].any() or (sound is not None and not spans['sound'].any()):
-            raise ValueError(f'{video_path}: the processor gave {int(spans["picture"].sum())} picture and '
-                             f'{int(spans["sound"].sum())} sound tokens; a row needs at least one of each input '
-                             'it has. Check the clip and the sound files.')
+        counts = {pool: mask.sum(1) for pool, mask in spans.items()}
+        if (counts['picture'] == 0).any() or (with_sound and (counts['sound'] == 0).any()):
+            raise ValueError(f'{[v for v, _ in rows]}: the processor gave {counts["picture"].tolist()} picture and '
+                             f'{counts["sound"].tolist()} sound tokens; a row needs at least one of each input it '
+                             'has. Check the clip and the sound files.')
         device = self._model.thinker.get_input_embeddings().weight.device
         inputs = {key: value.to(device) for key, value in inputs.items()}
         self._hooked.clear()
         with torch.no_grad(), torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == 'cuda'):
-            out = self._model.thinker(**inputs, output_hidden_states=True, use_audio_in_video=sound is not None)
+            out = self._model.thinker(**inputs, output_hidden_states=True, use_audio_in_video=with_sound)
         states = out.hidden_states
         if len(states) != THINKER_LAYERS + 1:
             raise ValueError(f'the thinker gave {len(states)} hidden states; expected {THINKER_LAYERS + 1}.')
-        record = dict(self._hooked)
-        record.update({f'tokens/{pool}': np.array([mask.sum()], np.float32) for pool, mask in spans.items()})
-        for index, state in enumerate(states):
-            name = 'embed' if index == 0 else f'layers.{index - 1}'
-            hidden = state[0].float()
-            for pool, mask in spans.items():
-                if mask.any():
-                    record[f'{name}/{pool}'] = hidden[mask.to(hidden.device)].mean(0).cpu().numpy()
-            record[f'{name}/last'] = hidden[-1].cpu().numpy()
-        return record
+        records = []
+        for b in range(len(rows)):
+            # the encoders pack the rows of a batch one after the other; rows of a batch have equal lengths
+            record = {name: hidden.reshape(len(rows), -1, hidden.shape[-1])[b].mean(0).cpu().numpy()
+                      for name, hidden in self._hooked.items()}
+            record.update({f'tokens/{pool}': np.array([float(count[b])], np.float32) for pool, count in counts.items()})
+            for index, state in enumerate(states):
+                name = 'embed' if index == 0 else f'layers.{index - 1}'
+                hidden = state[b].float()
+                for pool, mask in spans.items():
+                    if mask[b].any():
+                        record[f'{name}/{pool}'] = hidden[mask[b].to(hidden.device)].mean(0).cpu().numpy()
+                record[f'{name}/last'] = hidden[-1].cpu().numpy()
+            records.append(record)
+        return records
 
     def __call__(self, stimuli, layers):
         from brainscore_core.assembly_builder import make_assembly, make_layer_neuroid_coords
@@ -143,8 +164,8 @@ class OmniThinkerExtractor:
         if not has_sound and any(layer.endswith('/sound') or layer.startswith('audio_tower.') for layer in layers):
             raise ValueError(f'{[l for l in layers if l.endswith("/sound") or l.startswith("audio_tower.")]} read '
                              'the sound, and the rows have no audio_path. Give the sound, or ask a picture layer.')
-        rows = [self.pooled(video, audio) for video, audio in zip(
-            stimuli['video_path'], stimuli['audio_path'] if has_sound else [None] * len(stimuli))]
+        rows = self.pooled(list(zip(stimuli['video_path'],
+                                    stimuli['audio_path'] if has_sound else [None] * len(stimuli))))
         values = np.concatenate([np.stack([row[layer] for row in rows]) for layer in layers], axis=1)
         neuroid = {}
         for layer in layers:
