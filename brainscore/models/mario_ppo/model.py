@@ -118,7 +118,8 @@ def get_model(identifier: str) -> BrainScoreModel:
     if identifier == 'mario-ppo':
         network.load_state_dict(torch.load(trained_weights(), map_location='cpu', weights_only=True))
     elif identifier != 'mario-ppo-untrained':
-        raise ValueError(f'unknown mario agent {identifier!r}')
+        raise ValueError(f"unknown mario agent {identifier!r}; this plugin registers 'mario-ppo' and "
+                         f"'mario-ppo-untrained'.")
     network.eval()
     # Limit: batch_size=1: PytorchWrapper pads a batch to its size, and a recording during a step keeps the padded rows.
     extractor = PytorchWrapper(model=network, preprocessing=load_inputs, identifier=identifier, device='cpu',

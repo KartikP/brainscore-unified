@@ -67,3 +67,9 @@ def test_one_step_runs_the_network_once_and_the_policy_declares_only_what_it_rea
     subject.participate(environment_session(game, ['motor', 'neural:cortex']))
     assert len(calls) == len(game.actions) == 5
     assert 'audio' not in subject.in_channels and 'instruction' not in subject.in_channels
+
+
+def test_an_unknown_identifier_names_the_two_agents():
+    from brainscore.models.mario_ppo.model import get_model
+    with pytest.raises(ValueError, match='mario-ppo-untrained'):
+        get_model('mario-ppo-made-up')

@@ -460,7 +460,9 @@ def _reply_messages(prompt) -> Tuple[Optional[str], list]:
                 media, data = _encode_image(value)
                 content.append({'type': 'image', 'media_type': media, 'data': data})
             else:
-                raise ExecutionNotFeasibleError(f'hosted models here cannot be shown a {kind!r} part')
+                raise ExecutionNotFeasibleError(f'hosted models here cannot be shown a {kind!r} part; they take text and '
+                                                'image parts. Remedy: give this part to a local model, or present '
+                                                'the stimulus as text or images.')
         return system, content
 
     messages = []

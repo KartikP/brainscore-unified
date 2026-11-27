@@ -71,7 +71,8 @@ def middle_frames(video_path: Union[str, Path], num_frames: int = FRAMES, target
     import cv2
     capture = cv2.VideoCapture(str(video_path))
     if not capture.isOpened():
-        raise IOError(f'cv2 could not open {video_path}')
+        raise IOError(f'cv2 could not open {video_path}; check that the file exists and is a video cv2 reads '
+                      '(make the packaged clips again with the data packaging script of the benchmark).')
     total = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
     capture.set(cv2.CAP_PROP_POS_FRAMES, max(0, (total - num_frames) // 2))
     frames = []
@@ -82,7 +83,8 @@ def middle_frames(video_path: Union[str, Path], num_frames: int = FRAMES, target
         frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
     capture.release()
     if not frames:
-        raise IOError(f'no frame in {video_path}')
+        raise IOError(f'no frame in {video_path}; the clip is empty: make it again with the data packaging script '
+                      'of the benchmark.')
     return frames + [frames[-1]] * (num_frames - len(frames))
 
 
