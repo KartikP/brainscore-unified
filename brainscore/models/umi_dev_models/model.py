@@ -2,6 +2,7 @@
 ``model_configs.json``, by the rules of ``README.md``. Everything of the study is in this folder."""
 import json
 import re
+from typing import Optional
 from decimal import ROUND_HALF_UP, Decimal
 from functools import partial
 from pathlib import Path
@@ -51,8 +52,9 @@ def cortex_layers(block_paths, n_max=CORTEX_BANDS):
 
 
 class _StudySubject(ProvenanceSubject):
-    """The study's provenance on every response, and the one input the policy acts on: it reads the
-    observation's frame, so ``motor`` is answered from an observation only. The study records the
+    """The study's provenance on every response, and the inputs the policy acts on: on the grid game it
+    reads the observation's frame, so ``motor`` is answered from an observation only; on a task on a
+    screen (``motor:key``, ``motor:pointer``) it reads the screen, its frames, the briefing and the turn. The study records the
     language layer in a passive session only: a session that asks for it under a task (the planner runs
     the task even when only neural outputs are requested) or together with an answer is refused before
     any compute."""
@@ -65,13 +67,15 @@ class _StudySubject(ProvenanceSubject):
         inputs = dict(self._subject.output_inputs)
         if 'motor' in self._subject.out_channels:
             inputs['motor'] = frozenset({'observation'})
+        inputs.update({form: frozenset(SCREEN_INPUTS) & self.in_channels
+                       for form in SCREEN_FORMS if form in self._subject.out_channels})
         inputs.update({output: frozenset({'vision:image'}) for output in self.READOUT if output in self._subject.out_channels})
         return inputs
 
     def participate(self, session):
         outputs, task = set(session.outputs or ()), session.task
         answering = (task is not None and task.task_type != 'passive') or any(
-            o.startswith('behavior') or o == 'motor' for o in outputs)
+            o.startswith('behavior') or o.startswith('motor') for o in outputs)
         shown = self._shown(session) if outputs & set(self.READOUT) else None
         if shown is not None and 'vision:image' not in shown:
             from brainscore_core.compatibility import ExecutionNotFeasibleError
@@ -159,15 +163,28 @@ def _load(identifier, config):
     return model.eval(), processor
 
 
-def _one_device(identifier, module, part):
-    """The one device of a loaded part; its extractor is given it, so nothing is moved. Offloaded or
-    spread weights are refused: v2's extractors would move them or send inputs to meta."""
+def _part_device(identifier, module, part):
+    """The device for the inputs of a loaded part; its extractor is given it, so nothing is moved. A part
+    on one device gives that device. A language part spread over several accelerators (a model too large
+    for one, under device_map='auto') gives the device of its input embeddings; the loading library moves
+    each block's input to that block. Offloaded weights (on meta, or on the CPU next to an accelerator)
+    are refused.
+
+    Limit: the vision part must be on one accelerator, because its picture and clip extractors move it
+    or send inputs to one device; every vision part of the study is far smaller than one accelerator."""
     devices = {parameter.device for parameter in module.parameters()}
-    if len(devices) != 1 or next(iter(devices)).type == 'meta':
+    offloaded = any(d.type == 'meta' for d in devices) or (len(devices) > 1 and any(d.type == 'cpu' for d in devices))
+    if offloaded:
         raise ValueError(f"'{identifier}': the {part} part is on {sorted(map(str, devices))}; this study "
-                         f"needs each part on one accelerator (no offload). Give a device_map or a "
-                         f"max_memory that holds it on one.")
-    return str(next(iter(devices)))
+                         f"needs each part on accelerators (no offload). Give a device_map or a max_memory "
+                         f"that holds it on accelerators.")
+    if len(devices) > 1 and part == 'vision':
+        raise ValueError(f"'{identifier}': the vision part is on {sorted(map(str, devices))}; this study "
+                         f"needs it on one accelerator. Give a device_map that holds it on one.")
+    if len(devices) == 1:
+        return str(next(iter(devices)))
+    from brainscore.model_helpers.device import input_device
+    return str(input_device(module))
 
 
 def _blocks(model, part):
@@ -283,6 +300,49 @@ def _reply_client(reply):
     return local_model
 
 
+SCREEN_FORMS = ('motor:key', 'motor:pointer')
+SCREEN_INPUTS = ('vision:image', 'vision:video', 'instruction', 'observation')
+
+
+# How a model writes positions in its answers, when not in pixels (its own convention; the act policy scales them
+# to the pixels of the picture, Contract Rules 5.15, and states the grid on the score). Qwen3-VL: a 0-1000 grid of
+# the picture, measured on 2026-11-25 (NodeKit faces, the Next button at about (754, 528) of 1024 x 768 pixels):
+# qwen3-vl-8b clicked (738, 692) and qwen3-vl-30b-a3b (733, 703) at every turn, that is (755, 531) and (750, 540)
+# on a 0-1000 grid.
+POSITION_GRID = {'qwen3-vl': 1000}
+
+
+def _position_settings(identifier: str) -> dict:
+    grid = next((size for family, size in POSITION_GRID.items() if identifier.startswith(family)), None)
+    return {'position_grid': grid} if grid else {}
+
+
+def _policy(reply, identifier, turn_settings):
+    """One policy for the study's two closed loops, chosen by the row's inputs: a screen (``vision:image``, a
+    task on a screen) goes to NodeKit's act policy with ``turn_settings`` (or, with ``action_format:
+    'computer_use'``, to Qwen3-VL's own trained interface, ``computer_use.py``); the grid game's ``observation``
+    frame goes to ``api_policy`` as before. ``reset()`` and ``close()`` reach both."""
+    from brainscore.harnesses.nodekit.policy import act_policy
+    from brainscore.model_helpers.api_behavioral import api_policy
+    turn_settings = dict(turn_settings)
+    if turn_settings.pop('action_format', None) == 'computer_use':    # the model's own trained interface
+        from .computer_use import computer_use_policy
+        turn_settings.pop('position_grid', None)                       # the format states its own grid
+        screen = computer_use_policy(reply, **turn_settings)
+    else:
+        screen = act_policy(reply, **turn_settings)
+    grid = api_policy(_reply_client(reply), identifier)
+
+    def policy(row):
+        return (screen if 'vision:image' in row else grid)(row)
+
+    def reset():
+        screen.reset()
+        grid.reset()
+    policy.reset, policy.close = reset, screen.close
+    return policy
+
+
 def _intervention(model, vision, language):
     """``pytorch_intervention`` on one module that holds each part's blocks under the first name of its
     block path, so a change names a layer as the region map does (the modules are shared)."""
@@ -298,9 +358,10 @@ def _intervention(model, vision, language):
     return pytorch_intervention(torch.nn.ModuleDict(roots))
 
 
-def get_model(identifier: str):
+def get_model(identifier: str, turn_settings: Optional[dict] = None):
+    """The study model ``identifier``. ``turn_settings`` are the act policy's settings for a task on a screen
+    (``brainscore.harnesses.nodekit.policy.act_policy``: ``temperature``, ``seed``, ``max_tokens``, ...)."""
     from brainscore import BrainScoreModel
-    from brainscore.model_helpers.api_behavioral import api_policy
     from brainscore.model_helpers.replies import chat_parts
     from brainscore.model_helpers.text_wrapper import TextWrapper
     from brainscore.selection import CompositeSelector, LayerSelector
@@ -319,18 +380,18 @@ def get_model(identifier: str):
     if pixels is None:          # the processor's flattened patches (Qwen-VL layout)
         from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
         image = VLMVisionWrapper(model=vision_module, processor=processor, identifier=f'{identifier}-vision',
-                                 device=_one_device(identifier, vision_module, 'vision'))
+                                 device=_part_device(identifier, vision_module, 'vision'))
     else:                       # whole pictures as (B, C, H, W); every patch token kept (or pooled), so PCA to 1000
         pool = config.get('token_pool')
         image = _pixel_extractor(pool)(
             model=vision_module, identifier=f'{identifier}-vision' + (f'-pool{pool}' if pool else ''),
-            device=_one_device(identifier, vision_module, 'vision'),
+            device=_part_device(identifier, vision_module, 'vision'),
             preprocessing=partial(_whole_images, image_processor=processor.image_processor, settings=pixels))
         pca = _one_layer_pca()(image, n_components=1000)
         pca.handle = image.register_batch_activations_hook(pca)
     extractor = {'vision': image, 'text': TextWrapper(
         model=language_module, tokenizer=processor.tokenizer, identifier=f'{identifier}-text',
-        device=_one_device(identifier, language_module, 'language'))}
+        device=_part_device(identifier, language_module, 'language'))}
     if config['video']:
         from brainscore.model_helpers.vlm_video_wrapper import VLMVideoWrapper
         # The stated frame sampling (the Qwen authors' tool), on the processor, so a recording and an
@@ -344,7 +405,10 @@ def get_model(identifier: str):
     subject = BrainScoreModel(
         identifier, model, region_layer_map, extractor=extractor, reply=reply, likelihood=likelihood,
         behavioral_readout_layer=region_layer_map['IT'],
-        policy=api_policy(_reply_client(reply), identifier), policy_in_channels=('observation', 'instruction', 'reward'),
+        # A model without video takes the screen task's last screen only (no vision:video).
+        policy=_policy(reply, identifier, {**_position_settings(identifier), **(turn_settings or {})}),
+        policy_in_channels=('reward', *(c for c in SCREEN_INPUTS if config['video'] or c != 'vision:video')),
+        policy_out_channels=('motor', *SCREEN_FORMS),
         answer_owners={'behavior:rating': 'generation', 'behavior:probabilities': 'readout'},
         **parts)
     depths = ', '.join(f'{region} {f:.2f}' for table in DEPTH_TABLE.values() for region, f in table.items())

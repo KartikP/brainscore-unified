@@ -680,8 +680,8 @@ def build_messages(trial, experiment):
     'brainscore.models.api_closed.model', fromlist=['REGISTRY']).REGISTRY))
 def test_every_request_of_a_registered_api_model_states_its_temperature(identifier, tmp_path,
                                                                         monkeypatch):
-    """A provider that takes a temperature gets one in every request, for every response
-    kind; the Anthropic client takes none (its default is sampling), so its sampled
+    """A provider that takes a temperature gets the stated one in every request, for every response
+    kind (a registration may state none: the provider's default); the Anthropic client takes none (its default is sampling), so its sampled
     reply with no seed is never stored. A new model, provider or path is covered here."""
     import sys
     import types
@@ -701,6 +701,15 @@ def test_every_request_of_a_registered_api_model_states_its_temperature(identifi
     client.messages = client.completions = client.chat = client
     monkeypatch.setitem(sys.modules, 'anthropic', types.SimpleNamespace(Anthropic=lambda: client))
     monkeypatch.setitem(sys.modules, 'openai', types.SimpleNamespace(OpenAI=lambda **k: client))
+    bedrock = types.SimpleNamespace(meta=types.SimpleNamespace(region_name='us-east-2'),
+                                    converse=lambda **k: requests.append(k['inferenceConfig']) or {
+                                        'output': {'message': {'content': [{'text': 'yes'}]}}})
+    from brainscore.model_helpers.api_behavioral import _bedrock_client
+    _bedrock_client.cache_clear()
+    monkeypatch.setitem(sys.modules, 'boto3', types.SimpleNamespace(client=lambda *a, **k: bedrock))
+    monkeypatch.setitem(sys.modules, 'botocore', types.SimpleNamespace(exceptions=types.SimpleNamespace(
+        NoCredentialsError=type('NoCredentialsError', (Exception,), {}))))
+    monkeypatch.setitem(sys.modules, 'botocore.exceptions', sys.modules['botocore'].exceptions)
     monkeypatch.setenv('HOME', str(tmp_path))   # the response store is under the home folder
     stimuli = StimulusSet({'stimulus_id': ['s0'], 'sentence': ['The sky is blue.']})
     stimuli.identifier = 'temperature-stated'
@@ -714,8 +723,112 @@ def test_every_request_of_a_registered_api_model_states_its_temperature(identifi
                 get_model(identifier).participate(stimulus_session(
                     stimuli, [output], TaskContext(instruction=None if index else 'Answer.', response=response)))
             sent[output, index] = len(requests) - before
-    if REGISTRY[identifier]['provider'] == 'anthropic':
+    from brainscore.model_helpers.api_behavioral import PROVIDERS, _samples_only
+    if _samples_only(PROVIDERS[REGISTRY[identifier]['provider']], REGISTRY[identifier]['model']):
         # Sampled with no seed, by the answer part and the reply part: asked again each time.
         assert all(count == 2 for count in sent.values()), sent
     else:
-        assert requests and all(r.get('temperature') == 0 for r in requests)
+        # The answer part sends 0; the reply part the registration's temperature (None: none sent, the
+        # provider's own sampling, so the reply is asked again each time).
+        cfg = REGISTRY[identifier]
+        stated = cfg.get('temperature', None if cfg.get('request_fields') else 0)
+        assert requests and all(r.get('temperature') in (0, stated) for r in requests)
+        if stated is None:
+            assert sent['behavior:text', 0] == 2, sent
+
+
+class TestBedrock:
+    """The bedrock provider with a stand-in at the boto3 client boundary (no AWS call)."""
+
+    def _boto3(self, monkeypatch, calls):
+        import sys
+        import types
+
+        class Client:
+            meta = types.SimpleNamespace(region_name='us-east-2')
+
+            def converse(self, **request):
+                calls.append(request)
+                return {'output': {'message': {'content': [{'text': 'press Space'}]}},
+                        'usage': {'inputTokens': 12, 'outputTokens': 3}}
+        botocore = types.ModuleType('botocore')
+        botocore.exceptions = types.SimpleNamespace(NoCredentialsError=type('NoCredentialsError', (Exception,), {}))
+        monkeypatch.setitem(sys.modules, 'botocore', botocore)
+        monkeypatch.setitem(sys.modules, 'botocore.exceptions', botocore.exceptions)
+        monkeypatch.setitem(sys.modules, 'boto3', types.SimpleNamespace(client=lambda service, region_name=None, **settings: Client()))
+        from brainscore.model_helpers.api_behavioral import _bedrock_client
+        _bedrock_client.cache_clear()
+
+    def test_a_claude_reply_on_bedrock_obeys_the_anthropic_settings(self, monkeypatch, tmp_path):
+        from PIL import Image
+        from brainscore_core.responses import Prompt, Text
+        from brainscore_core.streaming import StreamEvent
+        from brainscore.model_helpers.api_behavioral import build_api_reply
+        calls = []
+        self._boto3(monkeypatch, calls)
+        Image.new('RGB', (4, 4)).save(tmp_path / 'screen.png')
+        reply = build_api_reply('bedrock', 'us.anthropic.claude-sonnet-5-5')
+        answer = reply(Prompt(parts=(('text', 'You take part.'), ('text', 'Now:'), ('image', str(tmp_path / 'screen.png'))),
+                              names=('instruction', 'turn', 'screen'), response=Text(max_tokens=64)))
+        assert isinstance(answer, StreamEvent) and answer.payload == 'press Space'
+        assert answer.meta['token_usage'] == {'input_tokens': 12, 'output_tokens': 3, 'cache_read_tokens': 0,
+                                              'cache_write_tokens': 0}
+        request = calls[0]
+        assert request['system'] == [{'text': 'You take part.'}, {'cachePoint': {'type': 'default'}}]
+        assert request['inferenceConfig'] == {'maxTokens': 64}                 # no temperature for Claude
+        assert request['messages'][0]['content'][1]['image']['format'] == 'png'
+        with pytest.raises(Exception, match='temperature'):
+            reply(Prompt(parts=(('text', 'x'),), names=('turn',), response=Text(max_tokens=8, temperature=0.5)))
+
+    def test_another_bedrock_model_gets_the_task_temperature(self, monkeypatch):
+        from brainscore_core.responses import Prompt, Text
+        from brainscore.model_helpers.api_behavioral import build_api_reply
+        calls = []
+        self._boto3(monkeypatch, calls)
+        build_api_reply('bedrock', 'meta.llama3-70b')(Prompt(parts=(('text', 'x'),), names=('turn',),
+                                                             response=Text(max_tokens=8)))
+        assert calls[0]['inferenceConfig'] == {'maxTokens': 8, 'temperature': 0}
+
+    def test_request_fields_go_by_their_provider_names_and_a_registration_may_send_no_temperature(self, monkeypatch):
+        from brainscore_core.responses import Prompt, Text
+        from brainscore.model_helpers.api_behavioral import build_api_reply
+        calls = []
+        self._boto3(monkeypatch, calls)
+        prompt = Prompt(parts=(('text', 'x'),), names=('turn',), response=Text(max_tokens=8))
+        build_api_reply('bedrock', 'moonshotai.kimi-k2.5', request_fields={'reasoning_config': 'high'},
+                        temperature=None)(prompt)
+        assert calls[0]['additionalModelRequestFields'] == {'reasoning_config': 'high'}
+        assert calls[0]['inferenceConfig'] == {'maxTokens': 8}                 # the provider's own temperature
+
+
+def test_an_api_model_takes_frames_only_for_a_task_on_a_screen():
+    from brainscore.models.api_closed.model import get_model
+    subject = get_model('claude-opus-5-5-bedrock')
+    assert 'vision:video' not in subject.output_inputs['behavior:text']
+    assert {'motor:key', 'motor:pointer'} <= subject.out_channels
+
+
+def test_a_bedrock_model_that_refuses_a_temperature_gets_none():
+    from brainscore.model_helpers.api_behavioral import _call_bedrock, _samples_only
+    assert _samples_only(_call_bedrock, 'us.moonshotai.kimi-k3.1') and _samples_only(_call_bedrock, 'us.anthropic.x')
+    assert not _samples_only(_call_bedrock, 'moonshotai.kimi-k2.5')
+
+
+def test_an_api_registration_states_its_reasoning_fields():
+    from brainscore.models.api_closed.model import REGISTRY
+    assert REGISTRY['claude-opus-5-5-bedrock']['request_fields']['output_config'] == {'effort': 'medium'}
+    assert REGISTRY['kimi-k2.5-bedrock']['request_fields'] == {'reasoning_config': 'high'}
+
+
+def test_the_bedrock_client_waits_for_a_reasoning_model(monkeypatch):
+    import sys
+    import types
+    from brainscore.model_helpers import api_behavioral
+    made = {}
+    monkeypatch.setitem(sys.modules, 'boto3', types.SimpleNamespace(client=lambda *a, **k: made.update(k) or 'client'))
+    api_behavioral._bedrock_client.cache_clear()
+    try:
+        api_behavioral._bedrock_client('us-east-1')
+    finally:
+        api_behavioral._bedrock_client.cache_clear()
+    assert made['config'].read_timeout >= 300

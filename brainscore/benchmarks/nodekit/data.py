@@ -7,6 +7,8 @@ result, a list of trial records. Only that line is read. A run with no such line
 counted and left out (``trials(...).attrs['not_completed']``). Participants are named ``p1``, ``p2``, ...
 in the order of their file names; the files' own identifiers never leave the clone.
 
+``trials(...).attrs['longest_run_ms']`` is the time of the longest completed run (its trace's last line).
+
 ``rows`` turns a program's result (a participant's or a subject's, the same value JSON) into one row per
 trial: the fields of each record, with a nested record's fields beside them.
 """
@@ -18,8 +20,7 @@ import pandas as pd
 
 from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
 
-# The participants' folder of each bundle of the task repository.
-FOLDERS = {'drifting-gabor': 'gabor', 'triplet-similarity': 'triplets', 'face-arrangement': 'faces'}
+from brainscore.harnesses.nodekit import VIEWER_FOLDERS as FOLDERS      # each bundle's participants' folder
 
 
 def rows(result: list) -> pd.DataFrame:
@@ -47,21 +48,24 @@ def trials(task: str) -> BehavioralAssembly:
     ``presentation``; every field is a coordinate (a list as JSON text), the values are the trial numbers."""
     from brainscore.harnesses.nodekit import source
     files = sorted((source() / 'prolific' / FOLDERS[task] / 'submissions').glob('*.json'))
-    tables, not_completed = [], 0
-    for number, path in enumerate(files, 1):
-        result = completed_result(json.loads(path.read_text()))
+    tables, not_completed, run_ms = [], 0, []
+    for path in files:
+        trace = json.loads(path.read_text())
+        result = completed_result(trace)
         if result is None:
             not_completed += 1
             continue
+        run_ms.append(trace[-1][1] / 1000)          # the run's last line, in ms
         table = rows(result)
-        table.insert(0, 'participant', f'p{number}')
+        table.insert(0, 'participant', f'p{len(tables) + 1}')      # completed runs, numbered in file order
         tables.append(table)
     table = pd.concat(tables, ignore_index=True)
     coords = {column: ('presentation', [value if not isinstance(value, (list, dict)) else json.dumps(value)
                                         for value in table[column]])
               for column in table.columns}
     assembly = BehavioralAssembly(table['trial'].values, coords=coords, dims=['presentation'])
-    assembly.attrs.update(task=task, not_completed=not_completed, participants=len(tables))
+    assembly.attrs.update(task=task, not_completed=not_completed, participants=len(tables),
+                          longest_run_ms=max(run_ms) if run_ms else None)
     return assembly
 
 
