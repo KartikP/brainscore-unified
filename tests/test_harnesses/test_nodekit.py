@@ -386,3 +386,67 @@ def test_the_looks_nkl_keeps_are_a_stated_setting(stand_in):
     assert environment.looks_kept == 2
     with pytest.raises(ValueError, match='looks_kept'):
         nodekit.NodeKitEnvironment(_program(stand_in / 'b'), form='motor:key', looks_kept=-1)
+
+
+# The screen policies: each takes every row the harness sends, in both views, and never raises on a reply.
+
+WAIT = {'act': '[{"act": "wait", "ms": 100}]',
+        'computer_use': '<tool_call>{"name": "computer_use", "arguments": {"action": "wait", "time": 0.1}}</tool_call>'}
+
+
+def _screen_policy(kind, stand_in, monkeypatch, said, **settings):
+    """The act policy (with the stand-in nkl reader) or Qwen3-VL's computer-use policy, answering ``said``."""
+    import brainscore.harnesses._environment_folder as environment_folder
+    import brainscore.harnesses.nodekit.policy as act
+    from brainscore.models.umi_dev_models.computer_use import computer_use_policy
+    reader = stand_in / 'stand_in_reader.py'
+    reader.write_text(READER)
+    monkeypatch.setattr(act, '_READER', reader)
+    monkeypatch.setattr(environment_folder, 'ready_folder', nodekit.ready_folder)
+    build = act.act_policy if kind == 'act' else computer_use_policy
+    return build(lambda prompt: said, **settings)
+
+
+def _screen_row(view, form='motor:key', size=(48, 64)):
+    """A row as the harness sends it: the participant view's screen and frames, or the agent view's named pictures."""
+    from brainscore_core.streaming import NamedStreams
+    screen = np.zeros((*size, 3), np.uint8)
+    seen = {'t_ms': 0.0, 'act_form': form, 'view': view, 'task': 'Press a key.'}
+    row = {'vision:image': screen, 'instruction': 'brief', 'observation': seen}
+    if view == 'agent':
+        row['vision:image'] = NamedStreams({'screen': screen, 'look:t1': screen + 1})
+        seen['looks'] = {'t1': 0.0}
+    else:
+        row['vision:video'] = np.stack([screen, screen + 1])
+        seen['frame_t_ms'] = [0.0, 16.7]
+    return row
+
+
+@pytest.mark.parametrize('view', ['participant', 'agent'])
+@pytest.mark.parametrize('kind', ['act', 'computer_use'])
+def test_a_screen_policy_takes_every_row_the_harness_sends_and_leaves_no_file(kind, view, stand_in, monkeypatch,
+                                                                             tmp_path):
+    import tempfile
+    (tmp_path / 'temp').mkdir()
+    monkeypatch.setattr(tempfile, 'tempdir', str(tmp_path / 'temp'))
+    policy = _screen_policy(kind, stand_in, monkeypatch, WAIT[kind])
+    (event,) = policy(_screen_row(view)).values()
+    assert event.payload == [{'act': 'wait', 'ms': 100}] and event.meta['valid']
+    policy.reset()
+    policy(_screen_row(view))
+    policy.close()
+    assert not list((tmp_path / 'temp').iterdir())          # the pictures of the episode are gone
+
+
+@pytest.mark.parametrize('form, arguments', [
+    ('motor:key', {'action': 'wait', 'time': 'soon'}), ('motor:key', {'action': 'wait', 'time': -1}),
+    ('motor:key', {'action': 'wait', 'time': float('inf')}), ('motor:key', {'action': 'type', 'text': ''}),
+    ('motor:key', {'action': 'key', 'keys': 5}), ('motor:pointer', {'action': 'left_click', 'coordinate': [float('nan'), 1]}),
+    ('motor:pointer', {'action': 'mouse_move', 'coordinate': [1, 2, 3]})])
+def test_a_reply_that_core_would_refuse_is_an_invalid_turn_of_the_computer_use_policy(form, arguments, stand_in,
+                                                                                     monkeypatch):
+    said = '<tool_call>' + json.dumps({'name': 'computer_use', 'arguments': arguments}) + '</tool_call>'
+    policy = _screen_policy('computer_use', stand_in, monkeypatch, said)
+    (event,) = policy(_screen_row('agent', form)).values()
+    assert event.payload is None and event.meta['parse_error']
+    policy.close()

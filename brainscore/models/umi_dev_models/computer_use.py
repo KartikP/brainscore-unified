@@ -15,8 +15,12 @@ screen (and the frames since its last turn, as ``frames_as`` says) and its last 
 - ``terminate``: no act (the run goes on until the task ends).
 - several calls in one reply are taken in order, up to ``MAX_ACTS`` acts.
 - ``right_click``, ``middle_click``, ``scroll``, ``hscroll``, ``answer``, more than ``MAX_ACTS`` acts,
-  an action of the other act form, a key the task cannot take: the reply is invalid (None), with the action's
-  name; it is shown to the model at its next turn.
+  an action of the other act form, a key the task cannot take, an argument it cannot use (a time that is not a
+  number) or an act the session would refuse (a position that is not finite, an empty text, a negative wait):
+  the reply is invalid (None), with the reason; it is shown to the model at its next turn.
+
+In the agent view (``view='agent'``) the screen is the row's picture named ``screen``; the format has no look
+action, so a look picture arrives only if another part asked for it, and it follows the screen with its name.
 
 The frames since the last turn (``vision:video``) reach the model in one of two forms (``frames_as``, stated on the
 score when not the default): ``'stills'`` (default), at most ``FRAMES_SHOWN`` changed frames as pictures, each with
@@ -37,6 +41,8 @@ import re
 from typing import Callable, Optional
 
 import numpy as np
+
+from brainscore_core.io_catalog import validate
 
 COMMIT = '0dcc180d854f4b132f8059b10bbf0b5fd5dae9ed'      # the last commit of the authors' agent_function_call.py
 FORMAT = f'computer_use (QwenLM/Qwen3-VL {COMMIT[:8]}, cookbooks/utils/agent_function_call.py, Apache-2.0)'
@@ -138,37 +144,43 @@ def read(reply: str, form: str, pointer, size) -> tuple:
         if action not in wanted | {'wait', 'terminate'}:
             return None, [f'call {number}: {action!r} cannot be done in this task (it takes '
                           f'{"pointer" if form == "motor:pointer" else "keyboard"} actions)']
-        coordinate = arguments.get('coordinate')
-        if coordinate is not None:
-            try:
-                x, y = (float(v) for v in coordinate)
-            except (TypeError, ValueError):
-                return None, [f'call {number}: coordinate {coordinate!r} is not (x, y)']
-            point = [x * width / GRID, y * height / GRID]
-        elif action in ('mouse_move', 'left_click_drag'):
-            return None, [f'call {number}: {action} needs a coordinate']
-        if action == 'mouse_move':
-            acts.append({'act': 'move', 'x': point[0], 'y': point[1]}); at = point
-        elif action in ('left_click', 'double_click', 'triple_click'):
+        try:
+            coordinate = arguments.get('coordinate')
             if coordinate is not None:
+                try:
+                    x, y = (float(v) for v in coordinate)
+                except (TypeError, ValueError):
+                    return None, [f'call {number}: coordinate {coordinate!r} is not (x, y)']
+                point = [x * width / GRID, y * height / GRID]
+            elif action in ('mouse_move', 'left_click_drag'):
+                return None, [f'call {number}: {action} needs a coordinate']
+            if action == 'mouse_move':
                 acts.append({'act': 'move', 'x': point[0], 'y': point[1]}); at = point
-            acts += [{'act': 'down'}, {'act': 'up'}] * {'left_click': 1, 'double_click': 2, 'triple_click': 3}[action]
-        elif action == 'left_click_drag':
-            acts += [{'act': 'down'}, {'act': 'stroke', 'points': [point]}, {'act': 'up'}]; at = point
-        elif action == 'key':
-            keys = arguments.get('keys')
-            keys = [keys] if isinstance(keys, str) else keys
-            codes = [KEYS.get(str(key).lower()) for key in keys or []]
-            if not codes or None in codes:
-                return None, [f'call {number}: key {keys!r} is not a key name this task reads']
-            acts += [{'act': 'press', 'key': code} for code in codes]
-            acts += [{'act': 'release', 'key': code} for code in reversed(codes)]
-        elif action == 'type':
-            acts.append({'act': 'type', 'text': str(arguments.get('text', ''))})
-        elif action == 'wait':
-            acts.append({'act': 'wait', 'ms': float(arguments.get('time', 1)) * 1000})
+            elif action in ('left_click', 'double_click', 'triple_click'):
+                if coordinate is not None:
+                    acts.append({'act': 'move', 'x': point[0], 'y': point[1]}); at = point
+                acts += [{'act': 'down'}, {'act': 'up'}] * {'left_click': 1, 'double_click': 2, 'triple_click': 3}[action]
+            elif action == 'left_click_drag':
+                acts += [{'act': 'down'}, {'act': 'stroke', 'points': [point]}, {'act': 'up'}]; at = point
+            elif action == 'key':
+                keys = arguments.get('keys')
+                keys = [keys] if isinstance(keys, str) else keys
+                codes = [KEYS.get(str(key).lower()) for key in keys or []]
+                if not codes or None in codes:
+                    return None, [f'call {number}: key {keys!r} is not a key name this task reads']
+                acts += [{'act': 'press', 'key': code} for code in codes]
+                acts += [{'act': 'release', 'key': code} for code in reversed(codes)]
+            elif action == 'type':
+                acts.append({'act': 'type', 'text': str(arguments.get('text', ''))})
+            elif action == 'wait':
+                acts.append({'act': 'wait', 'ms': float(arguments.get('time', 1)) * 1000})
+        except (TypeError, ValueError, KeyError) as error:
+            return None, [f'call {number}: {action!r} has an argument it cannot use ({error})']
     if len(acts) > MAX_ACTS:
         return None, [f'the reply makes {len(acts)} acts; at most {MAX_ACTS} a turn']
+    refused = validate(form, acts)              # an act core refuses (a NaN position, no text) is an invalid reply
+    if refused:
+        return None, refused
     return acts, problems
 
 
@@ -178,29 +190,39 @@ def computer_use_policy(reply: Callable, *, max_tokens: int = 1024, temperature:
     the form of the frames since the last turn (``FRAMES_AS``)."""
     if frames_as not in FRAMES_AS:
         raise ValueError(f'frames_as {frames_as!r} is not one of {FRAMES_AS}')
+    import shutil
     import tempfile
+    import weakref
     from pathlib import Path
     from PIL import Image
     from brainscore_core.responses import Prompt, Text
     from brainscore_core.streaming import StreamEvent
     from brainscore.harnesses.nodekit.policy import changed_frames
     from brainscore.model_helpers.provenance import state_settings_as
-    state = {'history': [], 'last': None, 'problems': [], 'turn': 0, 'folder': None}
+    state = {'history': [], 'last': None, 'problems': [], 'turn': 0, 'folder': None, 'files': 0}
     trace: list = []
 
-    def picture(array) -> str:
+    def file(suffix: str) -> Path:
+        """A new file for the reply part, in the episode's folder (made at its first file)."""
         if state['folder'] is None:
             state['folder'] = Path(tempfile.mkdtemp(prefix='computer-use-'))
-        path = state['folder'] / f'{len(list(state["folder"].iterdir())):06d}.png'
+        state['files'] += 1
+        return state['folder'] / f'{state["files"]:06d}{suffix}'
+
+    def clear():
+        if state['folder'] is not None:
+            shutil.rmtree(state['folder'], ignore_errors=True)
+        state.update(folder=None, files=0)
+
+    def picture(array) -> str:
+        path = file('.png')
         Image.fromarray(np.asarray(array)).save(path)
         return str(path)
 
     def clip(frames, times) -> str:
         """The frames as one lossless clip at their rate (60 a second when there is one frame)."""
         import cv2
-        if state['folder'] is None:
-            state['folder'] = Path(tempfile.mkdtemp(prefix='computer-use-'))
-        path = state['folder'] / f'{len(list(state["folder"].iterdir())):06d}.avi'
+        path = file('.avi')
         rate = 1000 * (len(times) - 1) / (times[-1] - times[0]) if len(times) > 1 else 60.0
         height, width = frames[0].shape[:2]
         writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*'FFV1'), rate, (width, height))
@@ -210,7 +232,10 @@ def computer_use_policy(reply: Callable, *, max_tokens: int = 1024, temperature:
         return str(path)
 
     def policy(row):
-        seen, screen = row['observation'], row['vision:image']
+        seen, pictures = row['observation'], row['vision:image']
+        # The agent view names its pictures (the screen and each kept look); the participant view sends the screen.
+        pictures = dict(pictures) if isinstance(pictures, dict) else {'screen': pictures}
+        screen = pictures['screen']
         video = row.get('vision:video')
         times = list(seen.get('frame_t_ms', []))
         if frames_as == 'video':
@@ -232,6 +257,10 @@ def computer_use_policy(reply: Callable, *, max_tokens: int = 1024, temperature:
             names += ['frame', 'frame']
         parts += [('text', 'The screen now:'), ('image', picture(screen))]
         names += ['turn', 'screen']
+        for name, look in pictures.items():
+            if name != 'screen':
+                parts += [('text', f"The picture of your look {name.split(':', 1)[-1]}:"), ('image', picture(look))]
+                names += ['turn', 'look']
         settings = Text(max_tokens=max_tokens, temperature=temperature,
                         seed=None if seed is None else seed + state['turn'])
         answer = reply(Prompt(parts=tuple(parts), names=tuple(names), response=settings,
@@ -251,8 +280,10 @@ def computer_use_policy(reply: Callable, *, max_tokens: int = 1024, temperature:
             'parse_error': '; '.join(problems) or None})}
 
     def reset():
+        clear()
         state.update(history=[], last=None, problems=[], turn=0)
         trace.clear()
 
-    policy.reset, policy.trace, policy.close = reset, trace, lambda: None
+    policy.reset, policy.trace, policy.close = reset, trace, clear
+    weakref.finalize(policy, clear)       # the pictures go with the policy
     return policy
