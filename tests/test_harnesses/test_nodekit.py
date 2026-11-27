@@ -261,6 +261,11 @@ def test_a_run_stops_after_answers_in_a_row_that_give_no_act(stand_in):
     result, environment, session = nodekit.play(subject, _program(stand_in / 'mute'), form='motor:key')
     assert session.source.end_reason == 'truncated' and environment.stop_cause == 'invalid answers in a row'
     assert environment.steps == nodekit.MAX_INVALID_IN_A_ROW
+    environment.reset()                 # a reused environment starts its next run with no count and no cause
+    try:
+        assert environment.stop_cause is None and environment.invalid_in_a_row == environment.same_in_a_row == 0
+    finally:
+        environment.close()
 
 
 def test_the_act_policy_compares_frames_with_the_last_frame_and_cleans_its_pictures(stand_in, monkeypatch):

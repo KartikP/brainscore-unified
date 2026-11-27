@@ -294,6 +294,7 @@ class NodeKitEnvironment:
                                    env=environment, log_directory=self.log_directory,
                                    idle_timeout_s=_CHILD_SILENCE_S).__enter__()
         self.steps, self.result, self.invalid_steps, self.trace = 0, None, 0, None
+        self.invalid_in_a_row, self.same_in_a_row, self._last_acts, self._steps_seen, self.stop_cause = 0, 0, None, [], None
         words = _SESSION_WORDS[self.form] + (f' {_NO_LOOK}' if self.view == 'participant' else '')
         self.task = f'{_SESSION_WORDS[self.form]}\n\n{self.instructions}'.strip()
         # The arguments of nkl's briefing, also in each row (observation['briefing']): a subject that reads

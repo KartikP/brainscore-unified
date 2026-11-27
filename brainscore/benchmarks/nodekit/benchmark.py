@@ -328,7 +328,7 @@ class NodeKitBenchmark(BenchmarkBase):
         return self.score_result(result, steps=environment.steps, invalid_steps=environment.invalid_steps,
                                  acts_per_step=environment.acts_per_step,
                                  run_ms=environment.t_ms, end_reason=session.source.end_reason,
-                                 trace=str(environment.trace))
+                                 stop_cause=environment.stop_cause, trace=str(environment.trace))
 
     def score_result(self, result, **run) -> Score:
         """The score of one run's result (None for a run that did not complete), or of repeated runs of one

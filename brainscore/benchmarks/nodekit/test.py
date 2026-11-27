@@ -205,6 +205,17 @@ def test_face_arrangement_is_off_the_leaderboard():
     assert NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor').leaderboard_eligible is True
 
 
+def test_the_score_states_why_the_run_stopped(clone, monkeypatch):
+    from types import SimpleNamespace
+    environment = SimpleNamespace(steps=4, invalid_steps=4, acts_per_step=100, t_ms=10.0, trace=None,
+                                  stop_cause='invalid answers in a row')
+    session = SimpleNamespace(source=SimpleNamespace(end_reason='truncated'))
+    monkeypatch.setattr(nodekit, 'play', lambda *args, **kwargs: (None, environment, session))
+    monkeypatch.setattr(nodekit, 'bundle', lambda task: task)
+    score = NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor', record='unused')(object())
+    assert score.attrs['stop_cause'] == 'invalid answers in a row'
+
+
 def test_a_pair_shown_twice_has_the_mean_distance():
     from brainscore.benchmarks.nodekit.benchmark import pair_distances
     twice = pd.concat([_faces(0.1, 's'), _faces(0.3, 's')], ignore_index=True)
