@@ -26,9 +26,10 @@ participant's own play, it does not play. For each participant:
 6. Score: the median r over parcels, raw (no ceiling: no play is repeated frame for frame); the
    benchmark value is the mean over the participants. Each participant's median r and per-parcel r
    are on the score.
-7. References on the score (``REFERENCES``): a ridge on the task alone (seconds of play and presses per
-   button, with the HRF; no model), mean 0.154, and random-vit-b-32, 0.170. Much of a model's score here can
-   come from the timing of play and presses; a model must be above this reference to show more than that.
+7. References on the score of the full participant set (``REFERENCES``; a run on fewer participants has none): a
+   ridge on the task alone (seconds of play and presses per button, with the HRF; no model), mean 0.154, and the
+   floors random-vit-b-32, 0.170 (pictures), and random-wav2vec2-base, 0.175 (sound). Much of a model's score
+   here can come from the timing of play and presses; a model must be above this reference to show more than that.
 
 ``Paugam2025-behavior-mario-buttons`` asks ``behavior:choice``: which buttons the participant held in
 each TR, on the same input rows. The answer is one label per TR: the buttons held for at least half
@@ -97,6 +98,7 @@ REFERENCES = {
                                                             'sub-05': 0.1484, 'sub-06': 0.1334},
                         'what': 'ridge on play seconds and presses per button per TR, SPM HRF per run; no model'},
     'random-vit-b-32': {'mean': 0.1700, 'what': 'CLIP ViT-B/32 architecture with random weights'},
+    'random-wav2vec2-base': {'mean': 0.1750, 'what': 'wav2vec2-base architecture with random weights, sound only'},
 }
 
 
@@ -222,7 +224,8 @@ class Paugam2025Mario(BenchmarkBase):
         medians = [part['median_r'] for part in by_participant.values()]
         return benchmark_score(self, raw=float(np.mean(medians)), metric='median_per_parcel_pearson_r',
                                participants=list(by_participant), per_participant=by_participant,
-                               band_cap=MAX_BANDS, references=REFERENCES, **STATED)
+                               band_cap=MAX_BANDS, **STATED,
+                               **({'references': REFERENCES} if set(self._participants) == set(PARTICIPANTS) else {}))
 
 
 def button_labels(series) -> np.ndarray:
