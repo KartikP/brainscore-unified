@@ -206,9 +206,14 @@ def test_participants_are_numbered_among_the_runs_that_completed(tmp_path, monke
     assert len(NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor').participants) == 1
 
 
-def test_face_arrangement_is_off_the_leaderboard():
-    assert NodeKitBenchmark('NodeKit.FaceArrangement', 'face-arrangement').leaderboard_eligible is False
-    assert NodeKitBenchmark('NodeKit.DriftingGabor', 'drifting-gabor').leaderboard_eligible is True
+@pytest.mark.parametrize('trials', [None, 'all'])
+@pytest.mark.parametrize('task', ['drifting-gabor', 'triplet-similarity', 'face-arrangement'])
+def test_no_nodekit_benchmark_is_on_the_leaderboard_and_the_score_says_why(clone, task, trials):
+    benchmark = NodeKitBenchmark('NodeKit.X', task, trials=trials)
+    assert benchmark.leaderboard_eligible is False
+    if task == 'drifting-gabor':                     # the stand-in clone holds Gabor runs
+        score = benchmark.score_result(None)
+        assert score.attrs['leaderboard_eligible'] is False and 'participants' in score.attrs['leaderboard_reason']
 
 
 def test_the_score_states_why_the_run_stopped(clone, monkeypatch):

@@ -27,8 +27,9 @@ kept under ``record`` (``attrs['trace']``) and replays in the task repository's 
   subject's proportion correct in each of the 10 conditions (patch size x duration; one contrast, 0.95) with
   the participants' mean proportions, divided by the ceiling: each participant's profile against the mean of
   the others (leave one participant out), the mean over participants. Chance is 0 (a responder at chance has
-  no profile). One run has 5 test trials a condition, so one run's proportions move in steps of 0.2 (noise);
-  repeated runs of a subject are scored together (``score_result`` with a list of runs). A profile that is the
+  no profile). The whole task (``trials='all'``) has 5 test trials a condition, so one run's proportions move in
+  steps of 0.2 (noise); the author's slice has 10 test trials over the 10 conditions (about 1 each); repeated
+  runs of a subject are scored together (``score_result`` with a list of runs). A profile that is the
   same in every condition, or a condition with no trial, has no correlation: the score states it and is not a
   number. Extra values: the overall proportion correct (``proportion_correct``, the participants'
   ``proportion_correct_participants``) and the per-condition table (``by_condition``).
@@ -43,7 +44,10 @@ kept under ``record`` (``attrs['trace']``) and replays in the task repository's 
   participants: Spearman correlation, divided by the ceiling. Ceiling: each participant against the mean
   of the others (leave one participant out), the mean over participants. Floor: the mean Spearman
   correlation of 1000 random permutations of the participants' mean distances with themselves (seed 0),
-  with its 2.5 and 97.5 percentiles.
+  with its 2.5 and 97.5 percentiles. The participants' ceiling (.174) is inside the floor's interval.
+
+No NodeKit benchmark is on the leaderboard (``NOT_ON_LEADERBOARD``, stated on each score): the data is a pilot of 5
+participants.
 """
 from __future__ import annotations
 
@@ -65,6 +69,9 @@ ANSWER_POLICY = ('A trial the subject did not reach is missing; a run that does 
                  'record, so all its test trials are missing and the result is invalid. Faces: a test trial whose '
                  'faces were not arranged (largest distance under 0.5 arena radius) or that records no positions is '
                  'invalid, and its pairs are out of the correlation.')
+# Owner, 2026-11-27: the participants' data is a pilot of 5 participants, so no NodeKit benchmark is on the
+# leaderboard, for any ``trials``; each stays registered and runnable, and can be eligible when the data has more.
+NOT_ON_LEADERBOARD = 'pilot data of 5 participants: not on the leaderboard until the data has more participants'
 
 
 def test_rows(table: pd.DataFrame) -> pd.DataFrame:
@@ -289,9 +296,7 @@ class NodeKitBenchmark(BenchmarkBase):
             raise ValueError(f'view is one of {VIEWS}, not {view!r}.')
         self.dense_step_ms, self.view, self.acts_per_step = dense_step_ms, view, acts_per_step
         self.looks_kept = looks_kept       # None: nkl's own (4); stamped when stated
-        # Faces: the participants' ceiling (.174) is inside the random floor's interval, so the benchmark cannot
-        # separate a subject from chance (owner, 2026-11-25: in the code, off the leaderboard).
-        self.leaderboard_eligible = task != 'face-arrangement'
+        self.leaderboard_eligible = False       # NOT_ON_LEADERBOARD
         # The screen is the stimulus: a subject that cannot take it never sees the task (N/A, Rule 5.1).
         # The frames since the last turn go on vision:video (a subject without it sees the last screen only),
         # nkl's briefing on instruction and the facts of each turn (time, hands, turns left) on observation.
@@ -381,6 +386,7 @@ class NodeKitBenchmark(BenchmarkBase):
         return benchmark_score(self, raw=measured['raw'], metric=measured['score_form'],
                                ceiling=self.ceiling, answers=pd.DataFrame({'response_state': states}),
                                answer_policy=ANSWER_POLICY, invalid_limit=0.1, max_ms=self.max_ms,
+                               leaderboard_reason=NOT_ON_LEADERBOARD,
                                max_steps=self.max_steps, pacing=self.pacing, view=self.view,
                                **({} if self.looks_kept is None else {'looks_kept': self.looks_kept}),
                                trials=self.trials, test_trials=self._tests, picture=self.picture,
