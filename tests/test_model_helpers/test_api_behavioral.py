@@ -533,8 +533,16 @@ class TestApiReply:
         from brainscore_core.responses import Prompt, Text
         monkeypatch.setitem(sys.modules, 'anthropic', None)   # a request would fail differently
         reply = build_api_reply('anthropic', 'claude-x')
-        with pytest.raises(ExecutionNotFeasibleError, match='Anthropic API refuses'):
+        with pytest.raises(ExecutionNotFeasibleError, match="'claude-x' refuses"):
             reply(Prompt((('text', 'x'),), response=Text(**settings)))
+
+    def test_a_bedrock_model_that_refuses_a_temperature_is_named_with_the_remedy(self):
+        from brainscore.model_helpers.api_behavioral import build_api_reply
+        from brainscore_core.responses import Prompt, Text
+        reply = build_api_reply('bedrock', 'us.moonshotai.kimi-k3.1')
+        with pytest.raises(ExecutionNotFeasibleError, match='kimi-k3.1') as error:
+            reply(Prompt((('text', 'x'),), response=Text(temperature=0.0)))
+        assert 'Anthropic' not in str(error.value) and 'temperature=None' in str(error.value)
 
     def test_anthropic_default_temperature_is_not_sent(self, monkeypatch):
         import sys

@@ -110,16 +110,18 @@ def answer_text(instruction: Optional[str], label_set: Sequence[str]) -> str:
 _ANTHROPIC_DEFAULT_TEMPERATURE = 1.0
 
 
-def _anthropic_settings(settings) -> dict:
+def _anthropic_settings(settings, who: str = 'The Anthropic API') -> dict:
+    """The request settings of a model that takes no seed and samples only at its default temperature; ``who``
+    names the provider and the model in the refusal."""
     refused = [name for name in ('top_p', 'seed') if settings.get(name) is not None]
     temperature = settings.get('temperature')
     if temperature is not None and float(temperature) != _ANTHROPIC_DEFAULT_TEMPERATURE:
         refused.append('temperature')
     if refused:
         raise ExecutionNotFeasibleError(
-            f'The Anthropic API refuses the task settings {refused}: it has no seed, and '
-            'current Claude models reject temperature and top_p. Only a temperature of 1.0, '
-            "the API's default, can run, and it is not sent.")
+            f'{who} refuses the task settings {refused}: it has no seed and rejects temperature and top_p; '
+            "only a temperature of 1.0, the API's default, can run, and it is not sent. Remedy: leave seed and top_p "
+            'out of the task and give temperature=None (or 1.0), in the task or in the registration.')
     return {'max_tokens': settings['max_tokens']}
 
 
@@ -212,7 +214,7 @@ def _call_bedrock(model, system, messages, settings):
     configuration, environment or role, read by boto3; the region is the configured one or ``AWS_REGION``).
     ``model`` is a Bedrock model or inference profile id, such as ``us.anthropic.claude-sonnet-5-5``. A Claude
     model takes the settings the Anthropic API takes (no seed; temperature only at its default)."""
-    request = (_anthropic_settings(settings) if _samples_only(_call_bedrock, model)
+    request = (_anthropic_settings(settings, f'Bedrock model {model!r}') if _samples_only(_call_bedrock, model)
                else {name: settings[name] for name in ('max_tokens', 'temperature', 'top_p')
                      if settings.get(name) is not None})
     if settings.get('seed') is not None:
@@ -533,7 +535,7 @@ def build_api_reply(
         if request_fields:
             settings['request_fields'] = request_fields
         if _samples_only(call, model):
-            _anthropic_settings(settings)   # fail before the cache or a request
+            _anthropic_settings(settings, f'{provider_name} model {model!r}')   # fail before the cache or a request
         _state_settings(reply, provider_name, model,
                         {**settings, 'region': _bedrock_region()} if call is _call_bedrock else settings)
         system, messages = _reply_messages(prompt)
