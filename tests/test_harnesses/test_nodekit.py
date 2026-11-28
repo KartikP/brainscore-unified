@@ -1,5 +1,6 @@
 """The NodeKit harness with a stand-in at the child-process boundary: a small worker that speaks the
-worker's protocol without nkl (one question; an arrow key answers it). No clone, no nkl, no browser."""
+worker's protocol without nkl (one question; an arrow key answers it). No clone, no nkl, no browser:
+nkl's Chrome download is a stand-in that writes an empty file."""
 import json
 import sys
 from pathlib import Path
@@ -67,12 +68,29 @@ def _program(folder: Path, imports=("keyboard.inputs",)) -> Path:
     return folder
 
 
+# nkl's Chrome download, which the harness asks for on Linux before the worker starts: an empty file here.
+STAND_IN_CHROME = '''
+import os, pathlib
+def fetch_chrome():
+    chrome = pathlib.Path(os.environ['HOME']) / 'chrome' / 'chrome'
+    chrome.parent.mkdir(parents=True, exist_ok=True)
+    chrome.touch()
+    return chrome
+'''
+
+
 @pytest.fixture
 def stand_in(tmp_path, monkeypatch):
-    """nkl's folder with this Python as its environment's Python, and the stand-in worker."""
+    """nkl's folder with a virtual environment of this Python as its environment (it holds only the stand-in
+    of nkl's Chrome download), and the stand-in worker."""
     folder = tmp_path / 'environments' / 'nodekit' / 'ready'
     (folder / 'env' / 'bin').mkdir(parents=True)
     (folder / 'env' / 'bin' / 'python').symlink_to(sys.executable)
+    (folder / 'env' / 'pyvenv.cfg').write_text(f'home = {Path(sys.executable).parent}\n')
+    chrome = (folder / 'env' / 'lib' / f'python{sys.version_info[0]}.{sys.version_info[1]}' / 'site-packages' / 'nkl'
+              / '_core' / 'server' / 'chrome.py')
+    chrome.parent.mkdir(parents=True)
+    chrome.write_text(STAND_IN_CHROME)
     worker = tmp_path / 'stand_in_worker.py'
     worker.write_text(STAND_IN)
     monkeypatch.setattr(nodekit, 'library', lambda: None)
