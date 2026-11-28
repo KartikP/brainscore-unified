@@ -1,4 +1,5 @@
-"""Qwen3-Omni-30B-A3B-Thinking (thinker only): one forward pass on the clip and the sound of a row together.
+"""Qwen3-Omni-30B-A3B-Thinking (thinker only): one forward pass on the clip and the sound of a row together, and
+written answers to text, pictures and clips.
 
 The thinker of ``Qwen/Qwen3-Omni-30B-A3B-Thinking`` takes the picture and the sound of a row as one interleaved
 token sequence (``use_audio_in_video=True``: the picture and sound tokens are put in time order). The extractor
@@ -10,9 +11,13 @@ width 1280), each the mean over its tokens.
 
 Input of a row: the clip (``video_path``) and, when the benchmark gives it, the sound (``audio_path``, a WAV at
 16 kHz, mono). ``FRAMES`` frames are taken evenly from the clip and given with ``fps = FRAMES / clip seconds``,
-so the time positions of the picture tokens match the sound. Without a sound column, the row is the clip alone.
+so the time positions of the picture tokens match the sound. Without a sound column, the row is the clip alone;
+without a clip column, the row is the sound alone (``SOUND_TEMPLATE``; only the sound layers can be read).
 Text of a row (``TEMPLATE``): the model's own chat template for one user turn that holds the clip, followed by the
 start of the assistant turn; ``/last`` is the last token of that start (the newline after ``assistant``).
+
+Written answers (``reply``, ``likelihood``): the shared chat parts on the thinker, with thinking switched off
+(``CHAT_TEMPLATE``).
 
 The region map is committed (``REGION_LAYER_MAP``). It was chosen by the rule in the README on Friends films
 that the registered Friends score does not use; nothing is searched at run time.
@@ -34,6 +39,13 @@ VISUAL_BLOCKS = (0, 8, 17, 26)        # 4 evenly spaced of the 27 vision-encoder
 AUDIO_LAYERS = (0, 10, 21, 31)        # 4 evenly spaced of the 32 audio-encoder layers
 TEMPLATE = ('<|im_start|>user\n<|vision_start|><|video_pad|><|vision_end|><|im_end|>\n'
             '<|im_start|>assistant\n')
+SOUND_TEMPLATE = ('<|im_start|>user\n<|audio_start|><|audio_pad|><|audio_end|><|im_end|>\n'
+                  '<|im_start|>assistant\n')    # a row with a sound and no clip
+# The written answers: the model's chat template with thinking switched off (its template writes an empty
+# reasoning block), so a reply is the answer itself.
+CHAT_TEMPLATE = {'enable_thinking': False}
+# The inputs a written answer can show (the shared chat parts: text, pictures, clips).
+ANSWER_INPUTS = ('text', 'vision:image', 'vision:video')
 
 # The committed map (README, "Layer rule"), chosen on the selection films friends_s01e06a to s01e10b (median r over
 # parcels, one band each: layers.14/last 0.168, layers.26/last 0.169, layers.32/last 0.160, layers.23/sound 0.163).
@@ -137,19 +149,22 @@ class OmniThinkerExtractor:
     def _batch(self, rows) -> list:
         import torch
         from brainscore.model_helpers.video_wrapper import default_uniform_frame_sampler
-        frames = [np.stack(default_uniform_frame_sampler(video, FRAMES)) for video, _ in rows]
+        with_clip = rows[0][0] is not None
+        frames = [np.stack(default_uniform_frame_sampler(video, FRAMES)) for video, _ in rows] if with_clip else None
         sounds = [None if audio is None else read_sound(audio) for _, audio in rows]
         with_sound = sounds[0] is not None
         if any((s is not None) != with_sound for s in sounds):
             raise ValueError('a batch mixes rows with and without sound; give every row a sound or none.')
-        inputs = self._processor(text=[TEMPLATE] * len(rows), videos=frames, audio=sounds if with_sound else None,
-                                 use_audio_in_video=with_sound, fps=FRAMES / self._clip_seconds, return_tensors='pt')
+        together = with_sound and with_clip
+        inputs = self._processor(text=[TEMPLATE if with_clip else SOUND_TEMPLATE] * len(rows), videos=frames,
+                                 audio=sounds if with_sound else None, use_audio_in_video=together,
+                                 fps=FRAMES / self._clip_seconds, return_tensors='pt')
         if 'attention_mask' in inputs and not bool(inputs['attention_mask'].all()) and len(rows) > 1:
             return [record for row in rows for record in self._batch([row])]     # rows of different lengths
         ids = inputs['input_ids']
         spans = {'picture': ids == self._video_token, 'sound': ids == self._audio_token}
         counts = {pool: mask.sum(1) for pool, mask in spans.items()}
-        if (counts['picture'] == 0).any() or (with_sound and (counts['sound'] == 0).any()):
+        if (with_clip and (counts['picture'] == 0).any()) or (with_sound and (counts['sound'] == 0).any()):
             raise ValueError(f'{[v for v, _ in rows]}: the processor gave {counts["picture"].tolist()} picture and '
                              f'{counts["sound"].tolist()} sound tokens; a row needs at least one of each input it '
                              'has. Check the clip and the sound files.')
@@ -157,7 +172,7 @@ class OmniThinkerExtractor:
         inputs = {key: value.to(device) for key, value in inputs.items()}
         self._hooked.clear()
         with torch.no_grad(), torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == 'cuda'):
-            out = self._model.thinker(**inputs, output_hidden_states=True, use_audio_in_video=with_sound)
+            out = self._model.thinker(**inputs, output_hidden_states=True, use_audio_in_video=together)
         states = out.hidden_states
         if len(states) != THINKER_LAYERS + 1:
             raise ValueError(f'the thinker gave {len(states)} hidden states; expected {THINKER_LAYERS + 1}.')
@@ -191,8 +206,13 @@ class OmniThinkerExtractor:
         if not has_sound and any(layer.endswith('/sound') or layer.startswith('audio_tower.') for layer in layers):
             raise ValueError(f'{[l for l in layers if l.endswith("/sound") or l.startswith("audio_tower.")]} read '
                              'the sound, and the rows have no audio_path. Give the sound, or ask a picture layer.')
-        rows = self.pooled(list(zip(stimuli['video_path'],
-                                    stimuli['audio_path'] if has_sound else [None] * len(stimuli))))
+        has_clip = 'video_path' in stimuli.columns
+        if not has_clip and any(layer.endswith('/picture') or layer.startswith('visual.') for layer in layers):
+            raise ValueError(f'{[l for l in layers if l.endswith("/picture") or l.startswith("visual.")]} read '
+                             'the clip, and the rows have no video_path. Give the clip, or ask a sound layer.')
+        none = [None] * len(stimuli)
+        rows = self.pooled(list(zip(stimuli['video_path'] if has_clip else none,
+                                    stimuli['audio_path'] if has_sound else none)))
         values = np.concatenate([np.stack([row[layer] for row in rows]) for layer in layers], axis=1)
         neuroid = {}
         for layer in layers:
@@ -203,14 +223,37 @@ class OmniThinkerExtractor:
                              dims=['presentation', 'neuroid'])
 
 
-def build_model(identifier: str, extractor: OmniThinkerExtractor) -> BrainScoreModel:
-    """The subject: one extractor for the clip and the sound; the clip is required, the sound is optional.
+def build_model(identifier: str, extractor: OmniThinkerExtractor, reply, likelihood) -> BrainScoreModel:
+    """The subject: one extractor for the clip and the sound, and the written answers of the thinker.
 
     The extractor goes under the tuple key ``('video', 'audio')``: a session with both inputs runs it once for all
-    regions, and each call gets the whole row, so the sound reaches the picture tokens too.
+    regions, and each call gets the whole row, so the sound reaches the picture tokens too. A row with a sound and
+    no clip runs the sound alone (``A1``). ``reply`` and ``likelihood`` are the shared chat parts
+    (``chat_parts``) on the thinker: text, pictures and clips in, with the task's instruction as the system turn;
+    choices, ratings and texts out, and the log
+    probability of each option. No input is required: the model takes text alone, a picture alone, a clip alone
+    or a sound alone.
+
+    Limit: the regions are recorded from the clip and the sound (the layers were chosen on films with sound); a
+    benchmark that sends only text or pictures and asks for a region is N/A.
+    Limit: a written answer takes no sound: the shared chat parts refuse a sound part at the first trial that
+    shows one, before the forward pass; a benchmark that sends only sound and asks for an answer is N/A.
+    Limit: in a written answer, the time positions of a clip's picture tokens use the processor's default of one
+    frame a second, not the clip's rate (the shared chat parts give the rate as metadata, which this processor
+    does not read).
+    Limit: no speech output: this checkpoint has no talker (``enable_audio_output`` is false in its config).
+    Limit: no ``language_system`` region: no layer of the thinker was chosen on language data.
+    Limit: no screen acts: the act form of the study models reads positions on the 0-1000 grid measured for
+    Qwen3-VL; the grid of this model is not measured.
+    Limit: no intervention part is wired.
     """
-    return BrainScoreModel(identifier=identifier, region_layer_map=REGION_LAYER_MAP,
-                           extractor={('video', 'audio'): extractor}, required_channels=['vision:video'])
+    return BrainScoreModel(
+        identifier=identifier, region_layer_map=REGION_LAYER_MAP, extractor={('video', 'audio'): extractor},
+        in_channels=('text', 'vision:image', 'instruction'), reply=reply, likelihood=likelihood,
+        answer_owners={'behavior:probabilities': ('likelihood', 'softmax')},
+        output_inputs={output: ANSWER_INPUTS for output in (
+            'behavior:choice', 'behavior:rating', 'behavior:text', 'behavior:log_probabilities',
+            'behavior:probabilities', 'behavior:rt')})
 
 
 def get_model(identifier: str) -> BrainScoreModel:
@@ -220,12 +263,15 @@ def get_model(identifier: str) -> BrainScoreModel:
     import transformers
     from transformers import AutoProcessor, Qwen3OmniMoeForConditionalGeneration
     from brainscore.model_helpers.provenance import ProvenanceSubject
+    from brainscore.model_helpers.replies import chat_parts
     processor = AutoProcessor.from_pretrained(WEIGHTS, revision=REVISION)
     model = Qwen3OmniMoeForConditionalGeneration.from_pretrained(
         WEIGHTS, revision=REVISION, dtype=torch.bfloat16, device_map='auto').eval()
-    subject = build_model(identifier, OmniThinkerExtractor(identifier, model, processor))
+    subject = build_model(identifier, OmniThinkerExtractor(identifier, model, processor),
+                          *chat_parts(model.thinker, processor, chat_template_kwargs=CHAT_TEMPLATE))
     return ProvenanceSubject(subject, {
         'identifier': identifier, 'checkpoint': WEIGHTS, 'revision': getattr(model.config, '_commit_hash', None),
         'dtype': 'bfloat16', 'device_map': 'auto', 'torch': torch.__version__,
         'transformers': transformers.__version__, 'frames_per_clip': FRAMES, 'template': TEMPLATE,
-        'use_audio_in_video': 'when the row has sound', 'pools': list(POOLS)})
+        'use_audio_in_video': 'when the row has a clip and a sound', 'pools': list(POOLS),
+        'answers': f'chat template with {CHAT_TEMPLATE}, greedy unless the task states settings'})

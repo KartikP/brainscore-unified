@@ -14,10 +14,12 @@ class _Processor:
 
     def __call__(self, text, videos, audio=None, use_audio_in_video=False, fps=None, return_tensors=None):
         import torch
-        self.calls.append({'frames': len(videos[0]), 'rows': len(videos), 'sound': audio is not None,
-                           'together': use_audio_in_video, 'fps': fps})
-        ids = [1] + [VIDEO] * PICTURE_TOKENS + ([AUDIO] * SOUND_TOKENS if audio is not None else []) + [2, 3]
-        return {'input_ids': torch.tensor([ids] * len(videos)), 'attention_mask': torch.ones(len(videos), len(ids))}
+        self.calls.append({'sound': audio is not None, 'together': use_audio_in_video, 'fps': fps})
+        rows = len(videos if videos is not None else audio)
+        self.calls[-1].update(frames=len(videos[0]) if videos is not None else 0, rows=rows, template=text[0])
+        ids = ([1] + ([VIDEO] * PICTURE_TOKENS if videos is not None else [])
+               + ([AUDIO] * SOUND_TOKENS if audio is not None else []) + [2, 3])
+        return {'input_ids': torch.tensor([ids] * rows), 'attention_mask': torch.ones(rows, len(ids))}
 
 
 class _Thinker:
@@ -40,7 +42,7 @@ class _Thinker:
         rows, n = input_ids.shape
         for block in self.visual.blocks:          # the encoders pack the rows of a batch one after the other
             block(torch.arange(rows, dtype=torch.float32).repeat_interleave(5)[:, None].expand(rows * 5, 1152))
-        if use_audio_in_video:
+        if (input_ids == AUDIO).any():
             for layer in self.audio_tower.layers:
                 layer((torch.full((rows * 3, 1280), 2.0),))
         # row b, state k, position p: every value is 1000 b + 100 k + p
@@ -49,7 +51,8 @@ class _Thinker:
         return SimpleNamespace(hidden_states=states)
 
 
-def _subject():
+def _subject(prompts=None):
+    """The subject with a stand-in thinker; its reply and likelihood keep each prompt's parts in ``prompts``."""
     from types import SimpleNamespace
     from .model import OmniThinkerExtractor, build_model
     thinker = _Thinker()
@@ -57,7 +60,16 @@ def _subject():
         thinker_config=SimpleNamespace(video_token_id=VIDEO, audio_token_id=AUDIO)))
     processor = _Processor()
     extractor = OmniThinkerExtractor('made-up-omni', model, processor)
-    return build_model('made-up-omni', extractor), extractor, thinker, processor
+    prompts = [] if prompts is None else prompts
+
+    def reply(prompt):
+        prompts.append([kind for kind, _ in prompt.parts] + list(prompt.names or ()))
+        return 'B'
+
+    def likelihood(prompt, candidates):
+        prompts.append([kind for kind, _ in prompt.parts] + list(prompt.names or ()))
+        return {candidate: -float(i) for i, candidate in enumerate(candidates)}
+    return build_model('made-up-omni', extractor, reply, likelihood), extractor, thinker, processor
 
 
 def _rows(tmp_path, n=2, sound=True):
@@ -102,7 +114,6 @@ def test_without_sound_the_clip_regions_run_and_a1_is_refused_before_any_pass(tm
     subject, extractor, thinker, processor = _subject()
     assert subject.output_inputs['neural:A1'] == {'audio'}
     assert subject.output_inputs['neural:IT'] == {'vision:video', 'audio'}
-    assert subject.required_channels == {'vision:video'}
     session = stimulus_session(_rows(tmp_path, sound=False), ['neural:IT'], None)
     subject.participate(session)
     assert not processor.calls[0]['together'] and thinker.calls == 1
@@ -171,3 +182,98 @@ def test_a_wrong_identifier_is_refused():
     from .model import get_model
     with pytest.raises(ValueError, match='registers'):
         get_model('qwen3-omni-made-up')
+
+
+def _table(tmp_path, **columns):
+    """One row with the given columns; ``image_path`` a small picture file."""
+    from PIL import Image
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    row = {'stimulus_id': 'trial-0', **columns}
+    if 'image_path' in columns:
+        Image.fromarray(np.full((8, 8, 3), 90, np.uint8)).save(columns['image_path'])
+    table = StimulusSet([row])
+    table.identifier = 'made-up-trials-' + '-'.join(sorted(columns))
+    return table
+
+
+def test_it_declares_every_input_and_requires_none():
+    subject = _subject()[0]
+    assert {'text', 'vision:image', 'vision:video', 'audio', 'instruction'} <= subject.in_channels
+    assert subject.required_channels == set()
+    assert {'behavior:choice', 'behavior:rating', 'behavior:text', 'behavior:probabilities'} <= subject.out_channels
+    assert subject.output_inputs['behavior:choice'] == {'text', 'vision:image', 'vision:video'}
+
+
+@pytest.mark.parametrize('columns, shown', [
+    ({'text': 'Is a cat an animal?'}, ['text', 'instruction']),
+    ({'image_path': 'picture.png'}, ['image', 'instruction']),
+    ({'video_path': 'clip'}, ['video', 'instruction']),
+])
+def test_text_a_picture_or_a_clip_alone_gets_a_written_answer(tmp_path, columns, shown):
+    from brainscore_core.contract import TaskContext
+    from brainscore_core.responses import Choice
+    from brainscore_core.streaming_helpers import stimulus_session
+    columns = {k: (str(tmp_path / v) if k.endswith('_path') else v) for k, v in columns.items()}
+    if 'video_path' in columns:
+        columns['video_path'] = _rows(tmp_path, n=1, sound=False)['video_path'][0]
+    prompts = []
+    subject, extractor, thinker, processor = _subject(prompts)
+    for output in ('behavior:choice', 'behavior:probabilities'):
+        session = stimulus_session(_table(tmp_path, **columns), [output],
+                                   TaskContext(instruction='Answer A or B.', response=Choice(['A', 'B'])))
+        subject.participate(session)
+        assert len(session.collect(output)['presentation']) == 1
+    assert all(set(shown) <= set(parts) for parts in prompts) and len(prompts) == 2
+    assert thinker.calls == 0          # the answer parts ran; no recording pass
+
+
+def test_a_sound_alone_records_a1_with_the_sound_template(tmp_path):
+    from brainscore_core.streaming_helpers import stimulus_session
+    from .model import SOUND_TEMPLATE
+    subject, extractor, thinker, processor = _subject()
+    rows = _rows(tmp_path)
+    session = stimulus_session(rows[['stimulus_id', 'audio_path']].pipe(_as_table, rows), ['neural:A1'], None)
+    subject.participate(session)
+    assert processor.calls[0]['template'] == SOUND_TEMPLATE and not processor.calls[0]['together']
+    sound = session.collect('neural:A1').transpose('presentation', 'neuroid').values
+    # no picture tokens: the sound tokens are at positions 1, 2 of layers.23 (state 24)
+    assert np.allclose(sound, 1000 * np.arange(2)[:, None] + 100 * 24 + 1.5)
+    # a clip region from a sound alone is refused at the session's start, before any pass
+    from brainscore_core.compatibility import ExecutionNotFeasibleError
+    with pytest.raises(ExecutionNotFeasibleError):
+        subject.participate(stimulus_session(rows[['stimulus_id', 'audio_path']].pipe(_as_table, rows),
+                                             ['neural:V1'], None))
+    assert thinker.calls == 1
+
+
+def _as_table(frame, like):
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    table = StimulusSet(frame.reset_index(drop=True))
+    table.identifier = like.identifier + '-sound'
+    return table
+
+
+def test_a_request_it_cannot_serve_is_refused_before_any_pass(tmp_path):
+    from types import SimpleNamespace
+    from brainscore_core.compatibility import CompatibilityError, check_channel_compatibility
+    from brainscore_core.contract import TaskContext
+    from brainscore_core.responses import Choice
+    from brainscore_core.streaming_helpers import stimulus_session
+    prompts = []
+    subject, extractor, thinker, processor = _subject(prompts)
+    for inputs, output in [({'vision:image'}, 'neural:IT'), ({'text'}, 'neural:V1'), ({'audio'}, 'behavior:choice'),
+                           ({'text'}, 'neural:language_system'), ({'vision:image'}, 'motor')]:
+        with pytest.raises(CompatibilityError):
+            check_channel_compatibility(subject, SimpleNamespace(
+                identifier='made-up', required_input_channels=inputs, requested_output_channels={output}))
+    # text with a sound passes pre-flight; the shared chat parts refuse the sound part at the first trial,
+    # before any forward pass
+    from brainscore.model_helpers.replies import chat_parts
+    from .model import CHAT_TEMPLATE, build_model
+    subject = build_model('made-up-omni', extractor, *chat_parts(thinker, processor, chat_template_kwargs=CHAT_TEMPLATE))
+    rows = _rows(tmp_path, n=1)
+    table = _as_table(rows[['stimulus_id', 'audio_path']].assign(text='Say A or B.'), rows)
+    task = TaskContext(response=Choice(['A', 'B']), present=('audio:audio_path', 'text:text'))
+    with pytest.raises(Exception, match="'audio' part"):
+        subject.participate(stimulus_session(table, ['behavior:choice'], task))
+    assert thinker.calls == 0 and not processor.calls

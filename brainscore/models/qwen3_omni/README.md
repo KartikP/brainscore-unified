@@ -1,12 +1,16 @@
 # qwen3-omni-30b-a3b-thinking
 
 The thinker of `Qwen/Qwen3-Omni-30B-A3B-Thinking` (bf16, `device_map='auto'`; about 16 GB on each of 4 L40S).
-One forward pass takes the clip and its sound of a row together (`use_audio_in_video=True`).
+One forward pass takes the clip and its sound of a row together (`use_audio_in_video=True`). The thinker also
+writes answers to text, pictures and clips.
 
 ## Inputs and declarations
 
-- Inputs: `vision:video` (required) and `audio` (optional). Each row's clip gives 8 frames, evenly spaced. The
-  model gets `fps = 8 / 1.49`, so the picture and sound positions match in time.
+- Inputs: `vision:video`, `audio`, `text`, `vision:image` and `instruction`. None is required.
+  - Brain recordings take the clip, the sound, or both. Each row's clip gives 8 frames, evenly spaced. The model
+    gets `fps = 8 / 1.49`, so the picture and sound positions match in time. A row with a sound and no clip runs
+    the sound alone; only `A1` can be read from it.
+  - Written answers take text, pictures and clips; the task's instruction is the system turn.
 - Sound: a mono 16 kHz WAV, the form the Algonauts 2025 benchmark prepares. Another rate is refused.
 - Text: the model's chat template for one user turn holding the clip, then the start of the assistant turn.
 - Regions (committed map):
@@ -15,6 +19,14 @@ One forward pass takes the clip and its sound of a row together (`use_audio_in_v
   - `A1` = `layers.23/sound`, the mean over the sound tokens. A session without sound that asks for `A1` is N/A in
     pre-flight.
   - With sound, the sound tokens also follow earlier picture tokens in the interleaved sequence.
+
+## Written answers
+
+- The shared chat parts (`chat_parts`) on the thinker, with the model's chat template and thinking switched off
+  (`enable_thinking=False`: the template writes an empty reasoning block, so the reply is the answer).
+- Outputs: `behavior:choice`, `behavior:rating` and `behavior:text` from the reply; the log probability of each
+  option, and `behavior:probabilities` (softmax) and `behavior:rt` from the likelihood.
+- The reply is greedy unless the task states its generation settings.
 
 ## Recorded layers (one pass)
 
@@ -59,3 +71,12 @@ Selection result (median r, one band): `layers.14/last` 0.168, `layers.26/last` 
   rows of a batch apart only under FlashAttention 2.
 - No context: a row has no context from the rows before it.
 - Pooled layer names are recording addresses only.
+- Regions come from the clip and the sound only: a benchmark that sends only text or pictures and asks for a region
+  is N/A.
+- A written answer takes no sound: the shared chat parts refuse a sound part at the first trial, before the forward
+  pass. A benchmark that sends only sound and asks for an answer is N/A.
+- In a written answer, the time positions of a clip use the processor's default of one frame a second.
+- No speech output: this checkpoint has no talker.
+- No `language_system` region: no layer was chosen on language data.
+- No screen acts: the position grid of this model is not measured.
+- No intervention part.
