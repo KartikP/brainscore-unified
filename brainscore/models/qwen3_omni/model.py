@@ -206,14 +206,11 @@ class OmniThinkerExtractor:
 def build_model(identifier: str, extractor: OmniThinkerExtractor) -> BrainScoreModel:
     """The subject: one extractor for the clip and the sound; the clip is required, the sound is optional.
 
-    The one extractor is given under each input key, not under the tuple key ``('video', 'audio')``: on the tuple
-    key, a session with both inputs calls the extractor once per region (the fused path of the dispatch does not
-    share the call), here once for all regions. Each call gets the whole row, so the sound reaches the picture
-    tokens too.
-    Limit: this goes when the fused path of the dispatch shares one call between regions.
+    The extractor goes under the tuple key ``('video', 'audio')``: a session with both inputs runs it once for all
+    regions, and each call gets the whole row, so the sound reaches the picture tokens too.
     """
     return BrainScoreModel(identifier=identifier, region_layer_map=REGION_LAYER_MAP,
-                           extractor={'video': extractor, 'audio': extractor}, required_channels=['vision:video'])
+                           extractor={('video', 'audio'): extractor}, required_channels=['vision:video'])
 
 
 def get_model(identifier: str) -> BrainScoreModel:
