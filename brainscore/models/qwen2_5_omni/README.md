@@ -63,6 +63,7 @@ is registered yet.
 
 ## Limits
 
+- A session with a sound alone that asks for a region is refused when it starts, before any pass: an error, not N/A. Every region states the clip and the sound (rule 2.5), so pre-flight lets it through.
 - Batches: rows run in batches of 8, in table order. The batch-8 difference of the thinker (bf16) is measured
   before a scored pass and stated here.
 - No context: a row has no context from the rows before it.

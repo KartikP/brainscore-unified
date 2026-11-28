@@ -68,6 +68,7 @@ is registered yet.
 
 ## Limits
 
+- A session with a sound alone that asks for a region is refused when it starts, before any pass: an error, not N/A. Every region states the clip and the sound (rule 2.5), so pre-flight lets it through.
 - One row a pass: the batch test of this model has not run.
 - No context: a row has no context from the rows before it.
 - Pooled layer names are recording addresses only.

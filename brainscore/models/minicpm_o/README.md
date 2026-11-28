@@ -76,6 +76,7 @@ is registered yet.
 
 ## Limits
 
+- A session with a sound alone that asks for a region is refused when it starts, before any pass: an error, not N/A. Every region states the clip and the sound (rule 2.5), so pre-flight lets it through.
 - One row a pass. The model's config sets `stream_input`, which allows one row with sound a pass
   (`modeling_minicpmo.py:748-749`); with that switch off, its code fills the sound of the last row of a batch only
   (`:762-797`).
