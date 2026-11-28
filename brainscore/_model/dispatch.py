@@ -11,6 +11,7 @@ for all requested layers (the fused extractor need not get all its inputs).
 
 from collections.abc import Mapping
 from contextlib import contextmanager
+from functools import partial
 from typing import List, Set
 
 from brainscore_core.compatibility import ExecutionNotFeasibleError
@@ -309,15 +310,8 @@ def supports_layer_extraction(model, modality: str) -> bool:
 
 
 def extract_for_modality(model, stimuli, modality: str, layers: List[str]):
-    """Call the extractor for ``modality`` and the form of ``stimuli``.
-
-    An intervention is a forward hook the activation cache key does not see,
-    so the cache is bypassed while any intervention is active.
-    """
-    if model._interventions.active_interventions:
-        with activation_cache_disabled():
-            return _extract(model, stimuli, modality, layers)
-    return _extract(model, stimuli, modality, layers)
+    """Call the extractor for ``modality`` and the form of ``stimuli``."""
+    return _extract(model, stimuli, extractor_or_refuse(model, stimuli, modality, layers), layers)
 
 
 def call_extractor(extractor, stimuli, layers):
@@ -334,14 +328,22 @@ def call_extractor(extractor, stimuli, layers):
     return c_order(extractor(stimuli, layers=layers))
 
 
-def _extract(model, stimuli, modality: str, layers: List[str]):
-    extractor = extractor_or_refuse(model, stimuli, modality, layers)
+def _extract(model, stimuli, extractor, layers: List[str]):
+    """Call ``extractor``, or its share of the session's call on ``stimuli`` (``one_call_per_extractor``).
+
+    The one path of every recording from a table, a fused extractor's too.
+    An intervention is a forward hook the activation cache key does not see,
+    so the cache is bypassed while any intervention is active.
+    """
     shared = model._shared_calls
     call = (shared[1].get(id(extractor))
             if shared is not None and shared[0] is stimuli else None)
-    if call is not None:
-        return call(stimuli, layers)
-    return call_extractor(extractor, stimuli, layers)
+    if call is None:
+        call = partial(call_extractor, extractor)
+    if model._interventions.active_interventions:
+        with activation_cache_disabled():
+            return call(stimuli, layers)
+    return call(stimuli, layers)
 
 
 def extractor_or_refuse(model, stimuli, modality: str, layers: List[str], in_session: bool = False):
@@ -378,7 +380,7 @@ def extract_modalities(model, stimuli, detected: Set[str], layers: List[str], ch
         if check_only:
             return None
         # One fused extractor takes every input type: one forward pass.
-        assembly = call_extractor(fused, stimuli, layers)
+        assembly = _extract(model, stimuli, fused, layers)
         if request.is_multi_region:
             assembly = request.tag_neuroids_with_regions(assembly)
         return assembly

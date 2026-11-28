@@ -89,3 +89,48 @@ def test_required_channels_must_match_the_declared_visual_form():
         with pytest.raises(ValueError, match='vision:'):
             BrainScoreModel('m', extractor={key: extractor}, required_channels={required},
                             region_layer_map={'A': 'layers.3'})
+
+
+class Layered:
+    """A fused extractor for the clip and the sound whose layers are independent: one value row per layer."""
+    identifier = 'layered'
+    independent_layers = True
+
+    def __init__(self):
+        self.calls = []
+
+    def layer_names(self):
+        return ['a', 'b', 'c', 'd']
+
+    def __call__(self, stimuli, layers, **kwargs):
+        self.calls.append(list(layers))
+        ids = list(stimuli['stimulus_id'])
+        values = np.concatenate([np.full((len(ids), 2), 1.0 + 'abcd'.index(layer)) + np.arange(len(ids))[:, None]
+                                 for layer in layers], axis=1)
+        return NeuroidAssembly(values, dims=['presentation', 'neuroid'], coords={
+            'stimulus_id': ('presentation', ids),
+            'neuroid_id': ('neuroid', [f'{layer}.{i}' for layer in layers for i in range(2)]),
+            'layer': ('neuroid', [layer for layer in layers for _ in range(2)])})
+
+
+def _clip_and_sound(plan, monkeypatch):
+    monkeypatch.setenv('BRAINSCORE_REGIONS_PER_PASS', plan)
+    layered = Layered()
+    model = BrainScoreModel('layered', extractor={('video', 'audio'): layered}, region_layer_map={
+        'V1': LayerSelector('a', modality=('video', 'audio')), 'IT': LayerSelector('b', modality=('video', 'audio')),
+        'A1': LayerSelector('c', modality='audio')})
+    both = StimulusSet({'stimulus_id': ['x', 'y'], 'video_path': ['x.mp4', 'y.mp4'],
+                        'audio_path': ['x.wav', 'y.wav']})
+    both.identifier = 'clip-and-sound'
+    session = stimulus_session(both, ['neural:V1', 'neural:IT', 'neural:A1'])
+    model.participate(session)
+    return layered, {region: session.collect(f'neural:{region}') for region in ('V1', 'IT', 'A1')}
+
+
+def test_a_fused_extractor_with_independent_layers_runs_one_pass_for_all_regions(monkeypatch):
+    shared, recorded = _clip_and_sound('all', monkeypatch)
+    alone, expected = _clip_and_sound('one', monkeypatch)
+    assert shared.calls == [['a', 'b', 'c']] and len(alone.calls) == 3
+    for region, assembly in expected.items():   # each region gets the layers and values of its own pass
+        assert list(recorded[region]['layer'].values) == list(assembly['layer'].values)
+        np.testing.assert_array_equal(recorded[region].values, assembly.values)
