@@ -383,7 +383,7 @@ class _Conversation(BenchmarkBase):
     def __init__(self, partner):
         self.partner = partner
         self.required_input_channels = frozenset({'text'})
-        super().__init__(identifier='provenance-conversation', version=1, parent='behavioral',
+        super().__init__(identifier='provenance-conversation', version=1, parent='behavior',
                          ceiling=not_estimated())
 
     def __call__(self, subject):
@@ -408,6 +408,30 @@ def test_a_conversation_states_the_model_parts_and_the_silent_partner():
          'parts': [_item('policy', f'{__name__}._say_hello', ['behavior:text'])]})
 
 
+def test_a_policy_that_another_callable_wraps_states_its_settings_on_the_score(tmp_path):
+    """Settings a screen policy states, its own and those of the reply it asks, reach the score whatever
+    callable the registration wraps it in (rule 6.3)."""
+    from brainscore.harnesses.multi_agent import EchoAgent
+    from brainscore.model_helpers.api_behavioral import build_api_reply
+    from brainscore.model_helpers.provenance import state_settings_as
+    from brainscore_core.responses import Prompt, Text
+
+    reply = build_api_reply(lambda model, system, messages, settings: 'hello', 'snapshot-2026-01-01',
+                            max_tokens=16, cache_dir=tmp_path / 'store')
+
+    def screen(row):
+        reply(Prompt(parts=(('text', 'hi'),), names=('turn',), response=Text(max_tokens=16)))
+        state_settings_as(reply, {'position_grid': 4})
+        return {'behavior:text': 'hello'}
+
+    model = BrainScoreModel('provenance-wrapped', policy=lambda row: screen(row), policy_in_channels=('text',),
+                            policy_out_channels=('behavior:text',))
+    score = _score(model, _Conversation(EchoAgent('provenance-partner')))
+    (item,) = [item for item in score.attrs['provenance'][1]['parts'] if item['part'] == 'policy']
+    assert '{"position_grid": 4}' in item['settings']
+    assert any('"model": "snapshot-2026-01-01"' in setting for setting in item['settings'])
+
+
 # Chunk B: each case where a second resolution named a part that did not run, or named none.
 
 class _Sessions(BenchmarkBase):
@@ -418,7 +442,7 @@ class _Sessions(BenchmarkBase):
         self.makers, self.catch = makers, catch
         self.requested_output_channels = frozenset(outputs)
         self.required_input_channels = frozenset(inputs)
-        super().__init__(identifier='provenance-sessions', version=1, parent='behavioral',
+        super().__init__(identifier='provenance-sessions', version=1, parent='behavior',
                          ceiling=not_estimated())
 
     def __call__(self, subject):
@@ -616,7 +640,7 @@ class _InnerScore(BenchmarkBase):
     def __init__(self, inner):
         self.inner = inner
         self.required_input_channels = frozenset({'text'})
-        super().__init__(identifier='provenance-inner-score', version=1, parent='behavioral',
+        super().__init__(identifier='provenance-inner-score', version=1, parent='behavior',
                          ceiling=not_estimated())
 
     def __call__(self, subject):
@@ -671,8 +695,10 @@ def test_an_api_part_states_its_provider_snapshot_and_generation_settings(part, 
         assert fact in item['settings']
 
 
-def test_an_api_policy_states_its_provider_snapshot_and_generation_settings(tmp_path):
-    # The policy part of the same clients: a closed-loop score names its settings too.
+@pytest.mark.parametrize('wrapped', [False, True], ids=['as given', 'in another callable'])
+def test_an_api_policy_states_its_provider_snapshot_and_generation_settings(tmp_path, wrapped):
+    # The policy part of the same clients: a closed-loop score names its settings too, also when the
+    # registration calls it from a callable of its own.
     from brainscore.benchmarks.grid_game.benchmark import GridGameBenchmark, policy_model
     from brainscore.model_helpers.api_behavioral import api_policy
 
@@ -680,7 +706,8 @@ def test_an_api_policy_states_its_provider_snapshot_and_generation_settings(tmp_
         return 'Action: 0'
     policy = api_policy(stand_in_client, 'snapshot-2026-01-01', obs_mode='ascii', max_tokens=16,
                         cache_dir=tmp_path / 'store')
-    score = _score(policy_model(policy, 'api-policy'), GridGameBenchmark(size=5, n_episodes=1, max_steps=2))
+    part = (lambda row: policy(row)) if wrapped else policy
+    score = _score(policy_model(part, 'api-policy'), GridGameBenchmark(size=5, n_episodes=1, max_steps=2))
     (entry,) = [entry for entry in score.attrs['provenance'] if entry['subject'] == 'api-policy']
     (item,) = entry['parts']
     assert item['part'] == 'policy'

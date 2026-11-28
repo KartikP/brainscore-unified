@@ -154,15 +154,15 @@ from brainscore.temporal import (
 )
 from brainscore import load_dataset, load_stimulus_set
 from brainscore.metrics.encoding import SklearnRidge, cross_validated_r, ridge
-from brainscore.benchmarks._score import benchmark_score, not_estimated
+from brainscore.benchmarks._score import benchmark_score, not_estimated, voxel_score
 
 from .benchmark import (
     BIBTEX,
     _VISUAL,
+    _mask_attrs,
     _select_voxels,
     presented_stimuli,
     reliability_on_test_set,
-    voxel_score,
 )
 from brainscore.data.lahner2024 import DEFAULT_SAMPLE_TIMES_MS
 from ._util import (
@@ -501,6 +501,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
                                               participant_per_obs)
 
         score = voxel_score(self, per_voxel_r)
+        score.attrs.update(_mask_attrs(self))
         score.attrs['n_runs'] = assembly.sizes['presentation']
         score.attrs['n_observations'] = int(len(Y_flat))
         score.attrs['motion_regressed'] = bool(self._confounds)

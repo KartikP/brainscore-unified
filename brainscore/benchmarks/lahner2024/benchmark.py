@@ -99,7 +99,7 @@ from brainscore_core.supported_data_standards.brainio.assemblies import (
     NeuronRecordingAssembly,
 )
 from brainscore import load_dataset, load_stimulus_set
-from brainscore.benchmarks._score import benchmark_score, not_estimated
+from brainscore.benchmarks._score import not_estimated, voxel_score
 from brainscore.metrics.encoding import SklearnRidge, cross_validated_r, ridge
 from brainscore.data.lahner2024 import DEFAULT_SAMPLE_TIMES_MS
 from ._util import (
@@ -259,54 +259,18 @@ def _select_voxels(reliability_threshold: Optional[float], voxel_mask_fn: Option
     return None
 
 
-def voxel_score(benchmark, per_voxel_r, ceiling_per_voxel: Optional[np.ndarray] = None) -> Score:
-    """The score of a Lahner2024 benchmark from the held-out r of each scored voxel.
-
-    ``per_voxel_r`` holds one value per voxel of ``benchmark.voxel_mask`` (every
-    voxel without a mask), in voxel order. One rule for every variant: a voxel
-    counts when its r is finite and, given ``ceiling_per_voxel``, its ceiling is
-    finite and above zero. A voxel with a constant response has no correlation;
-    a voxel with a reliability at or below zero has no ceiling. Such a voxel is
-    left out of the median and the mean and counted in ``n_voxels_excluded``,
-    as the Algonauts2025 benchmark leaves out a constant parcel. The attribute
-    ``per_voxel_r`` keeps every scored voxel (NaN where r is undefined), so
-    ``voxel_mask_indices`` places it back on the surface.
-
-    With ``ceiling_per_voxel`` the score is ``median(r_i / c_i)``, not
-    ``median(r_i) / median(c_i)``: the repository convention. Without it the
-    raw median is divided by ``benchmark.ceiling`` when it is measured.
-    """
-    r = np.asarray(per_voxel_r)
-    counts = np.isfinite(r)
-    if ceiling_per_voxel is not None:
-        ceiling_per_voxel = np.asarray(ceiling_per_voxel, dtype=float)
-        counts &= np.isfinite(ceiling_per_voxel) & (ceiling_per_voxel > 0)
-    kept = r[counts]
-    median_r = float(np.median(kept))
-    if ceiling_per_voxel is not None:
-        score = benchmark_score(
-            benchmark, value=float(np.median(np.asarray(kept, dtype=float) / ceiling_per_voxel[counts])),
-            raw=median_r, metric='median_per_voxel_pearson_r',
-            ceiling=Score(float(np.median(ceiling_per_voxel[counts]))),
-            ceiling_aggregation='per_voxel')
-    else:
-        score = benchmark_score(
-            benchmark, raw=median_r, metric='median_per_voxel_pearson_r',
-            ceiling_aggregation='scalar')
-    score.attrs['mean_r'] = float(np.mean(kept))
-    score.attrs['n_voxels_scored'] = int(counts.sum())
-    score.attrs['n_voxels_excluded'] = int(r.size - counts.sum())
-    score.attrs['per_voxel_r'] = r   # exposed for bootstrap CIs and surface maps
+def _mask_attrs(benchmark) -> dict:
+    """The voxel mask of a Lahner2024 score: its size, the kept voxels and the rule that chose them."""
     mask = benchmark.voxel_mask
-    if mask is not None:
-        score.attrs['voxel_mask_n_total'] = int(mask.size)
-        score.attrs['voxel_mask_n_kept'] = int(mask.sum())
-        score.attrs['voxel_mask_indices'] = np.flatnonzero(mask)
-        if benchmark._reliability_threshold is not None:
-            score.attrs['reliability_threshold'] = float(benchmark._reliability_threshold)
-        if benchmark._voxel_mask_fn is not None:
-            score.attrs['voxel_mask_source'] = benchmark._voxel_mask_fn.__name__
-    return score
+    if mask is None:
+        return {}
+    attrs = {'voxel_mask_n_total': int(mask.size), 'voxel_mask_n_kept': int(mask.sum()),
+             'voxel_mask_indices': np.flatnonzero(mask)}
+    if benchmark._reliability_threshold is not None:
+        attrs['reliability_threshold'] = float(benchmark._reliability_threshold)
+    if benchmark._voxel_mask_fn is not None:
+        attrs['voxel_mask_source'] = benchmark._voxel_mask_fn.__name__
+    return attrs
 
 
 class Lahner2024BOLDMoments(BenchmarkBase):
@@ -574,6 +538,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         per_voxel_r, _ = cross_validated_r(
             features, neural_mat, [(~test, test)], ridge(1.0, SklearnRidge()))
         score = voxel_score(self, per_voxel_r, self._per_voxel_ceiling(mask))
+        score.attrs.update(_mask_attrs(self))
         score.attrs['n_videos_fitted'] = int((~test).sum())
         score.attrs['n_videos_scored'] = int(test.sum())
         score.attrs.update(route_attrs)

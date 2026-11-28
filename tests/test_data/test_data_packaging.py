@@ -31,6 +31,8 @@ from brainscore import data_builder_registry
 from brainscore.data import DataBuilder, package_data
 from brainscore.data import local
 from brainscore.data.local import LocalDataMissing
+# Imported here, at collection: imported first under the nibabel stand-in of ``offline``, it would keep the stand-in.
+from tests.cneuromod_stand_in import REAL_NIBABEL, make_source as make_cneuromod_source
 
 pytestmark = pytest.mark.unit
 
@@ -169,6 +171,12 @@ def test_a_missing_source_says_what_to_get_and_where_to_put_it(tmp_path, offline
         for fact in (builder.source, builder.access, builder.layout, builder.needs, str(source)):
             assert fact in message, f'{name}: the error lacks {fact!r}'
         assert not (tmp_path / 'out' / name).exists()
+
+
+def test_a_part_is_refused_by_a_plugin_packaged_whole(tmp_path, monkeypatch):
+    monkeypatch.setenv('BRAINSCORE_DATA_HOME', str(tmp_path))
+    with pytest.raises(ValueError, match='packaged whole'):
+        package_data('sun2025', part='sub-01')
 
 
 def test_a_plugin_with_no_builder_says_so(tmp_path):
@@ -834,11 +842,18 @@ def _sun2025_source(tmp_path, monkeypatch, offline):
     return source
 
 
+def _cneuromod_source(tmp_path, monkeypatch, offline):
+    monkeypatch.setitem(sys.modules, 'nibabel', REAL_NIBABEL)     # the stand-in nibabel reads GIfTI only
+    return make_cneuromod_source(tmp_path / 'cneuromod')
+
+
 SOURCES = {'ewok': _ewok_source, 'lebel2023': _lebel_source, 'algonauts2025': _algonauts_film_source,
            'lahner2024-frames': _lahner_clips_source,
            'lahner2024-sound': _lahner_clips_source, 'lahner2024-timeresolved': _lahner_series_source,
            'lahner2024-motion': _lahner_motion_source, 'rajalingham2018-2afc': _rajalingham_source,
-           'sun2025': _sun2025_source}
+           'sun2025': _sun2025_source, 'cneuromod-things': _cneuromod_source,
+           'cneuromod-things-timeseries': _cneuromod_source, 'cneuromod-movie10-timeseries': _cneuromod_source,
+           'cneuromod-mario-timeseries': _cneuromod_source}
 UPLOAD_FLAGS = {'lebel2023': '--upload', 'lahner2024-timeresolved': '--upload-to-s3',
                 'lahner2024-motion': '--upload-to-s3'}
 

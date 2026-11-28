@@ -8,9 +8,9 @@ and how their trials relate (`trial_memory`).
 Each builds its score with `benchmark_score`, which writes the attributes every
 unified score carries (`raw`, `ceiling`, `normalized`, `metric`,
 `benchmark_version`); `not_estimated()` is the ceiling of a benchmark that
-measures none.
+measures none. The voxel benchmarks share `noise_ceiling` and `voxel_score`.
 """
-from ._score import benchmark_score, not_estimated  # noqa: F401
+from ._score import benchmark_score, noise_ceiling, not_estimated, voxel_score  # noqa: F401
 
 from brainscore import _import_plugins
 

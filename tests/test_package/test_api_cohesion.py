@@ -255,7 +255,7 @@ def test_resnet_notebook_subject_works_in_experiments_and_scoring(tmp_path):
         return Session([StreamEvent(channel='vision:image', payload=inputs.copy(), t_ms=0)], ['behavior'])
     class SessionBenchmark(Benchmark):
         identifier = 'notebook-channel-transfer'
-        parent = 'behavioral'
+        parent = 'behavior'
         required_input_channels = {'vision:image'}
         requested_output_channels = {'behavior'}
         def __call__(self, subject):

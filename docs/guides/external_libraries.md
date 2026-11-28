@@ -79,7 +79,7 @@ class MadeUpLibraryChoice(BenchmarkBase):
         self.people = {item: chosen for item, _, _, chosen in ITEMS}
         # The library's protocol fixes the text: verbatim adds no sentence.
         self.task = TaskContext(response=Choice(labels='options', verbatim=True))
-        super().__init__(identifier='MadeUpLibrary-choice', version=1, parent='behavioral',
+        super().__init__(identifier='MadeUpLibrary-choice', version=1, parent='behavior',
                          ceiling=not_estimated())
 
     def __call__(self, subject):

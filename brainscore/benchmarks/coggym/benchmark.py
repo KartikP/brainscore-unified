@@ -136,7 +136,7 @@ class CogGymBenchmark(BenchmarkBase):
         super().__init__(
             identifier=identifier,
             version=1,
-            parent='behavioral',
+            parent='behavior',
             ceiling=not_estimated(),
             bibtex='@misc{coggym2026, title={CogGym: Towards Large-Scale Comparative '
                    'Evaluation of Human and Machine Cognition}, year={2026}, '

@@ -13,7 +13,7 @@ from typing import Iterable, Sequence
 import numpy as np
 
 from brainscore_core.metrics import per_unit_pearson
-from brainscore.benchmarks.algonauts2025.projection import FeatureProjection
+from brainscore.metrics.encoding import FeatureProjection
 from brainscore.temporal import contiguous_block_cv
 
 

@@ -198,9 +198,17 @@ def _collect(subject, stimuli, outputs, task):
 
 def test_the_depth_rule():
     vision = study.depth_layers([f'blocks.{i}' for i in range(32)], study.DEPTH_TABLE['vision'])
-    assert vision == {'V1': 'blocks.3', 'V2': 'blocks.8', 'V4': 'blocks.16', 'IT': 'blocks.28', 'VWFA': 'blocks.28'}
+    expected = {'V1': 'blocks.3', 'V2': 'blocks.8', 'V3': 'blocks.11', 'V4': 'blocks.16', 'IT': 'blocks.28'}
+    assert {region: vision[region] for region in expected} == expected
+    assert {vision[region] for region in ('VWFA', 'FFA', 'OFA', 'pSTS', 'PPA', 'OPA', 'MPA', 'EBA')} == {'blocks.28'}
     assert study.depth_layers([f'l{i}' for i in range(36)], study.DEPTH_TABLE['language']) == {'language_system': 'l23'}
     assert study.depth_layers([f'l{i}' for i in range(26)], {'V1': 0.10}) == {'V1': 'l3'}     # 2.5 rounds up
+
+
+def test_the_cortex_rule_takes_every_kth_block_and_at_most_12():
+    assert study.cortex_layers([f'b{i}' for i in range(32)]) == [f'b{i}' for i in range(2, 32, 3)]
+    assert study.cortex_layers([f'b{i}' for i in range(6)]) == [f'b{i}' for i in range(6)]
+    assert all(len(study.cortex_layers(list(range(n)))) <= 12 for n in range(1, 100))
 
 
 def test_the_token_pool_averages_blocks_of_the_patch_grid():
@@ -246,6 +254,8 @@ def test_each_declared_output_comes_out_of_one_session(stand_in, identifier):
         'behavior:choice', 'behavior:probabilities', 'behavior:log_probabilities', 'behavior:rating',
         'behavior:rt', 'behavior:text', 'motor'} <= subject.out_channels
     assert subject.output_inputs['motor'] == {'observation'}
+    assert {'motor:key', 'motor:pointer'} <= subject.out_channels       # a task on a screen, by the act policy
+    assert {'vision:image', 'instruction', 'observation'} <= subject.output_inputs['motor:key']
     assert ('vision:video' in subject.in_channels) == config['video']
     pixel = config['image_processor_kwargs'] is not None
     assert ('perturbation' in subject.out_channels) == (not pixel) == ('lesion' in subject.in_channels)
@@ -361,7 +371,7 @@ def test_the_fit_of_one_layer_at_a_time_gives_the_bits_of_the_fit_of_the_layers_
         fit = pca_class(extractor, 2)
         fit.handle = extractor.register_batch_activations_hook(fit)
         return extractor(pictures, layers=layers).values
-    assert len(layers) == 4
+    assert len(layers) > 1
     assert np.array_equal(projected(study._one_layer_pca()), projected(LayerPCA))
 
 
@@ -549,10 +559,33 @@ def test_one_whole_image_per_picture_or_a_refusal(tmp_path, processor, whole, ti
         study._whole_images(paths, image_processor, tiled)
 
 
-def test_a_part_offloaded_or_spread_is_refused():
-    part = torch.nn.Linear(2, 2).to('meta')
-    with pytest.raises(ValueError, match='one accelerator'):
-        study._one_device('m', part, 'vision')
+class _PartOn(torch.nn.Module):
+    """A stand-in part whose parameters are on the named devices (no accelerator needed); its input
+    embeddings, when given, are another such part."""
+
+    def __init__(self, *devices, entry=None):
+        super().__init__()
+        self._devices, self._entry = [torch.device(d) for d in devices], entry
+
+    def parameters(self, recurse=True):
+        return iter(SimpleNamespace(device=device) for device in self._devices)
+
+    def get_input_embeddings(self):
+        return self._entry
+
+
+def test_a_language_part_spread_over_accelerators_takes_inputs_at_its_embeddings():
+    spread = _PartOn('cuda:1', 'cuda:2', 'cuda:3', entry=_PartOn('cuda:1'))
+    assert study._part_device('m', spread, 'language') == 'cuda:1'
+    assert study._part_device('m', _PartOn('cuda:0', 'cuda:0'), 'language') == 'cuda:0'    # one device: as before
+    assert study._part_device('m', torch.nn.Linear(2, 2), 'vision') == 'cpu'
+
+
+@pytest.mark.parametrize('devices, part', [(('meta',), 'language'), (('cuda:0', 'meta'), 'language'),
+                                           (('cuda:0', 'cpu'), 'language'), (('cuda:0', 'cuda:1'), 'vision')])
+def test_an_offloaded_part_or_a_spread_vision_part_is_refused(devices, part):
+    with pytest.raises(ValueError, match='Give a device_map'):
+        study._part_device('m', _PartOn(*devices), part)
 
 
 def test_a_missing_package_and_a_missing_class_are_named_before_any_download(monkeypatch):
@@ -826,3 +859,9 @@ def test_all_frames_registration_differs_only_in_the_frame_setting(base):
     assert _frames_kept(16, 30, variant['video_sampling']) == 16
     assert {k: v for k, v in variant['video_sampling'].items() if k not in ('min_frames', 'source')} == \
         {k: v for k, v in default['video_sampling'].items() if k not in ('min_frames', 'source')}
+
+
+
+def test_qwen3_vl_states_its_position_grid():
+    assert study._position_settings('qwen3-vl-8b_UMI-dev') == {'position_grid': 1000}
+    assert study._position_settings('qwen2.5-vl-7b_UMI-dev') == {}

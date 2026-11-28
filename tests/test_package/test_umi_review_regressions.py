@@ -119,7 +119,7 @@ def test_algonauts_prediction_uses_training_svd(tmp_path, monkeypatch):
 
 
 def test_feature_projection_validates_basis_and_preserves_no_compression():
-    from brainscore.benchmarks.algonauts2025.projection import FeatureProjection
+    from brainscore.metrics.encoding import FeatureProjection
     projection = FeatureProjection(5)
     features = np.eye(2, dtype=np.float32)
     with pytest.raises(ValueError, match='training data'):

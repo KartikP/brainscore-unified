@@ -42,11 +42,10 @@ from brainscore.metrics.encoding import (
     group_kfold,
     held_out_r,
     penalty_grid,
+    prepare_bands,
     ridge,
     row_kfold,
 )
-
-from .projection import FeatureProjection
 
 # The score names its preparation protocol so a reader can see that no test row
 # was used to fit it.
@@ -64,30 +63,6 @@ def _banded_fit(names, alpha_grid, n_candidates, n_splits, random_state, inner_r
     split = partial(group_kfold, n_splits=n_splits, random_state=inner_random_state,
                     n_used=1)
     return ridge(grid_search(tuples, split, undefined_r='skip'), NormalEquations())
-
-
-def prepare_bands(bands, fit_rows, dim_cap, prepared=None):
-    """Centre, reduce and standardize each band; return ``(prepared, fitted)``.
-
-    ``fitted[band]`` is ``(mean, projection, component mean, band scale)``,
-    fitted on ``bands[band][fit_rows]`` unless ``prepared`` gives fitted ones.
-    """
-    out, fitted = {}, {}
-    for name, (features, feature_ids) in bands.items():
-        features = np.asarray(features, dtype=np.float64)
-        if prepared is None:
-            mean = features[fit_rows].mean(0)
-            projection = FeatureProjection(dim_cap).fit(features[fit_rows] - mean, feature_ids)
-            components = projection.transform(features[fit_rows] - mean, feature_ids)
-            # One scale for the band, not one for each component.
-            c_mean = components.mean(0)
-            c_scale = float(np.sqrt(components.var(0).mean())) or 1.0
-        else:
-            mean, projection, c_mean, c_scale = prepared[name]
-        components = projection.transform(features - mean, feature_ids)
-        out[name] = (components - c_mean) / c_scale
-        fitted[name] = (mean, projection, c_mean, c_scale)
-    return out, fitted
 
 
 def _design(prepared, keep, stack):

@@ -19,7 +19,7 @@ def _benchmark(ceiling):
     class Fixture(BenchmarkBase):
         def __call__(self, subject):
             raise AssertionError('not run')
-    return Fixture(identifier='fixture', ceiling=ceiling, version=3, parent='behavioral')
+    return Fixture(identifier='fixture', ceiling=ceiling, version=3, parent='behavior')
 
 
 def test_a_normalized_score_carries_raw_ceiling_and_metric():
@@ -113,3 +113,14 @@ def test_no_unified_benchmark_writes_the_common_attributes_by_hand():
                     and any(k.arg in COMMON + ('ceiling_status',) for k in node.keywords)):
                 offenders.append(f'{path.name}:{node.lineno}')
     assert offenders == []
+
+
+def test_a_behavior_benchmark_plugin_names_its_parent_behavior():
+    """One parent word for behavior: 'behavior', the word of the legacy plugins and the submission database."""
+    import pathlib
+    import re
+    import brainscore.benchmarks as benchmarks
+    folder = pathlib.Path(benchmarks.__file__).parent
+    found = [str(path.relative_to(folder)) for path in sorted(folder.rglob('*.py'))
+             if re.search(r"parent\s*=\s*['\"]behavioral['\"]", path.read_text())]
+    assert not found, f"use parent='behavior' in {found}"

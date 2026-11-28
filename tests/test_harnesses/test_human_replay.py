@@ -103,3 +103,14 @@ def test_a_participate_only_subject_gets_a_score():
     episode = [(step, [3, 1]) for step in steps(4)]
     score = HumanAgreementBenchmark('mover', [episode], n_actions=2)(Mover())
     assert score.attrs['n_scored_states'] == 4
+
+
+def test_a_subject_without_the_observation_is_na_before_compute():
+    # The reward alone is not the recorded state: a subject that cannot take the
+    # observation never sees it, so the pair is N/A (Contract Rule 5.1).
+    from brainscore_core.compatibility import CompatibilityError, check_compatibility
+    from tests.benchmark_declarations import Declared
+    episode = [({**step, 'reward': 0.0}, [3, 1]) for step in steps(2)]
+    benchmark = HumanAgreementBenchmark('rewarded', [episode], n_actions=2)
+    with pytest.raises(CompatibilityError, match='observation'):
+        check_compatibility(Declared({'reward'}, {'motor'}), benchmark)

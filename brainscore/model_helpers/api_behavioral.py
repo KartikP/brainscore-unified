@@ -27,6 +27,7 @@ layer activations, so an API model has no ``extractor``; it declares its inputs 
 ``in_channels``, and a neural benchmark gets a clear error.
 """
 import base64
+import functools
 import hashlib
 import json
 import os
@@ -97,7 +98,9 @@ def answer_text(instruction: Optional[str], label_set: Sequence[str]) -> str:
 # the text as payload and extra data (reasoning, token counts) as meta.
 # messages are [{'role': 'user'|'assistant', 'content': [part, ...]}] with parts
 # {'type': 'text', 'text': ...} or {'type': 'image', 'media_type': ..., 'data': <base64>};
-# settings hold max_tokens and any of temperature, top_p, seed. SDKs are
+# settings hold max_tokens and any of temperature, top_p, seed, and request_fields: the provider's own request
+# fields (for example reasoning), sent by their provider names (Bedrock's additionalModelRequestFields, the
+# Anthropic API's top-level fields, an OpenAI-compatible endpoint's extra body). SDKs are
 # imported lazily so `unified` has no hard dependency on anthropic / openai; a
 # missing SDK or key raises a clear error only when a call is made.
 
@@ -107,16 +110,18 @@ def answer_text(instruction: Optional[str], label_set: Sequence[str]) -> str:
 _ANTHROPIC_DEFAULT_TEMPERATURE = 1.0
 
 
-def _anthropic_settings(settings) -> dict:
+def _anthropic_settings(settings, who: str = 'The Anthropic API') -> dict:
+    """The request settings of a model that takes no seed and samples only at its default temperature; ``who``
+    names the provider and the model in the refusal."""
     refused = [name for name in ('top_p', 'seed') if settings.get(name) is not None]
     temperature = settings.get('temperature')
     if temperature is not None and float(temperature) != _ANTHROPIC_DEFAULT_TEMPERATURE:
         refused.append('temperature')
     if refused:
         raise ExecutionNotFeasibleError(
-            f'The Anthropic API refuses the task settings {refused}: it has no seed, and '
-            'current Claude models reject temperature and top_p. Only a temperature of 1.0, '
-            "the API's default, can run, and it is not sent.")
+            f'{who} refuses the task settings {refused}: it has no seed and rejects temperature and top_p; '
+            "only a temperature of 1.0, the API's default, can run, and it is not sent. Remedy: leave seed and top_p "
+            'out of the task and give temperature=None (or 1.0), in the task or in the registration.')
     return {'max_tokens': settings['max_tokens']}
 
 
@@ -134,7 +139,7 @@ def _call_anthropic(model, system, messages, settings):
         {'type': 'image', 'source': {'type': 'base64', 'media_type': p['media_type'], 'data': p['data']}}
         for p in parts]
     kwargs = dict(model=model, messages=[{'role': m['role'], 'content': content(m['content'])}
-                                         for m in messages], **request)
+                                         for m in messages], **request, **(settings.get('request_fields') or {}))
     if system:
         kwargs['system'] = system
     resp = client.messages.create(**kwargs)
@@ -176,7 +181,9 @@ def _make_openai_compatible(base_url=None, api_key_env='OPENAI_API_KEY', label='
         request = {name: settings[name] for name in ('max_tokens', 'temperature', 'top_p', 'seed')
                    if settings.get(name) is not None}
         try:
-            resp = client.chat.completions.create(model=model, messages=chat, **request)
+            resp = client.chat.completions.create(model=model, messages=chat, **request,
+                                                  **({'extra_body': settings['request_fields']}
+                                                     if settings.get('request_fields') else {}))
         except Exception as e:
             # A text-only model (e.g. DeepSeek-V3, Llama-3.3) sent an image gets
             # a cryptic provider 404 ("no endpoints found that support image
@@ -202,8 +209,86 @@ def _make_openai_compatible(base_url=None, api_key_env='OPENAI_API_KEY', label='
     return call
 
 
+def _call_bedrock(model, system, messages, settings):
+    """Client for Amazon Bedrock's Converse API with the user's own AWS credentials (the AWS CLI's
+    configuration, environment or role, read by boto3; the region is the configured one or ``AWS_REGION``).
+    ``model`` is a Bedrock model or inference profile id, such as ``us.anthropic.claude-sonnet-5-5``. A Claude
+    model takes the settings the Anthropic API takes (no seed; temperature only at its default)."""
+    request = (_anthropic_settings(settings, f'Bedrock model {model!r}') if _samples_only(_call_bedrock, model)
+               else {name: settings[name] for name in ('max_tokens', 'temperature', 'top_p')
+                     if settings.get(name) is not None})
+    if settings.get('seed') is not None:
+        raise ExecutionNotFeasibleError('Bedrock\'s Converse API has no seed; leave the seed out of the task.')
+    try:
+        import boto3
+        import botocore.exceptions
+    except ImportError as e:
+        raise RuntimeError("boto3 not installed: `pip install boto3` to score models on Amazon Bedrock.") from e
+    names = {'max_tokens': 'maxTokens', 'temperature': 'temperature', 'top_p': 'topP'}
+    content = lambda parts: [
+        {'text': p['text']} if p['type'] == 'text' else
+        {'image': {'format': p['media_type'].split('/')[1], 'source': {'bytes': base64.b64decode(p['data'])}}}
+        for p in parts]
+    kwargs = dict(modelId=model, messages=[{'role': m['role'], 'content': content(m['content'])} for m in messages],
+                  inferenceConfig={names[name]: value for name, value in request.items()})
+    if settings.get('request_fields'):
+        kwargs['additionalModelRequestFields'] = settings['request_fields']
+    if system:
+        # A Claude model keeps the system text in Bedrock's prompt cache: a task's turns repeat it (Kimi K3
+        # refuses the cache point).
+        kwargs['system'] = [{'text': system}] + ([{'cachePoint': {'type': 'default'}}]
+                                                 if 'anthropic.' in str(model) else [])
+    try:
+        resp = _bedrock_client(os.getenv('AWS_REGION')).converse(**kwargs)
+    except botocore.exceptions.NoCredentialsError as e:
+        raise RuntimeError('Amazon Bedrock needs AWS credentials: run `aws configure` (or set a profile or role) '
+                           'with access to the model, or use an API-key provider.') from e
+    blocks = resp['output']['message']['content']
+    text = ''.join(b.get('text', '') for b in blocks)        # exactly as given
+    reasoning = ''.join(b['reasoningContent'].get('reasoningText', {}).get('text', '')
+                        for b in blocks if 'reasoningContent' in b) or None
+    usage = resp.get('usage', {})
+    return _with_meta(text, reasoning, {'input_tokens': usage.get('inputTokens', 0),
+                                        'output_tokens': usage.get('outputTokens', 0),
+                                        'cache_read_tokens': usage.get('cacheReadInputTokens', 0),
+                                        'cache_write_tokens': usage.get('cacheWriteInputTokens', 0)}
+                      if usage else None)
+
+
+@functools.lru_cache(maxsize=None)
+def _bedrock_client(region):
+    """One Bedrock runtime client for each region (None: the configured one). A reasoning model can take minutes
+    to answer: the client waits ``_BEDROCK_READ_TIMEOUT_S`` for a reply and retries throttling, as nkl's own
+    Bedrock backend does (300 s, adaptive retries)."""
+    import boto3
+    from botocore.config import Config
+    return boto3.client('bedrock-runtime', region_name=region,
+                        config=Config(read_timeout=_BEDROCK_READ_TIMEOUT_S, retries={'max_attempts': 6, 'mode': 'adaptive'}))
+
+
+_BEDROCK_READ_TIMEOUT_S = 300
+
+
+def _bedrock_region() -> str:
+    """The AWS region a Bedrock request goes to: ``AWS_REGION`` or the configured one."""
+    return _bedrock_client(os.getenv('AWS_REGION')).meta.region_name
+
+
+# Bedrock models that refuse a temperature (they sample at their own default and take no seed): Claude, and
+# Moonshot's Kimi K3 and K3.1 ('This model doesn't support the temperature field', 2026-11-25).
+_BEDROCK_SAMPLES_ONLY = ('anthropic.', 'moonshotai.kimi-k3')
+
+
+def _samples_only(call, model) -> bool:
+    """Whether the client serves a model that samples at its default temperature and has no seed."""
+    return call is _call_anthropic or (call is _call_bedrock and any(name in str(model)
+                                                                    for name in _BEDROCK_SAMPLES_ONLY))
+
+
 PROVIDERS = {
     'anthropic': _call_anthropic,
+    # Amazon Bedrock with the user's AWS credentials (no API key): Claude and the other Bedrock models.
+    'bedrock': _call_bedrock,
     'openai': _make_openai_compatible(),
     # DeepSeek's API is OpenAI-compatible. Text-only (no vision): register
     # DeepSeek models with modalities=('text',). deepseek-chat = V3,
@@ -235,15 +320,15 @@ def _one_turn(call, model, system, text, image, max_tokens) -> str:
     text_part = [{'type': 'text', 'text': text}]
     image_part = ([] if image is None
                   else [{'type': 'image', 'media_type': image[0], 'data': image[1]}])
-    settings = _one_turn_settings(call, max_tokens)
-    content = image_part + text_part if call is _call_anthropic else text_part + image_part
+    settings = _one_turn_settings(call, model, max_tokens)
+    content = image_part + text_part if _samples_only(call, model) else text_part + image_part
     reply = call(model, system, [{'role': 'user', 'content': content}], settings)
     return reply.payload if isinstance(reply, StreamEvent) else reply
 
 
-def _one_turn_settings(call, max_tokens) -> dict:
-    """The generation settings of ``_one_turn``: no temperature for Anthropic, else 0."""
-    return ({'max_tokens': max_tokens} if call is _call_anthropic
+def _one_turn_settings(call, model, max_tokens) -> dict:
+    """The generation settings of ``_one_turn``: no temperature for a Claude model, else 0."""
+    return ({'max_tokens': max_tokens} if _samples_only(call, model)
             else {'max_tokens': max_tokens, 'temperature': 0})
 
 
@@ -337,9 +422,9 @@ def api_answer(
         payload_hash = hashlib.sha256(payload.encode('utf-8')).hexdigest()[:16]
 
         key = _key(prompt, label_set, stim_key, payload_hash)
-        _state_settings(generate, provider_name, model, _one_turn_settings(call, max_tokens))
+        _state_settings(generate, provider_name, model, _one_turn_settings(call, model, max_tokens))
         # Anthropic gets no temperature and no seed: its reply is a sample, never stored.
-        use_cache = cache is not None and call is not _call_anthropic
+        use_cache = cache is not None and not _samples_only(call, model)
         response = cache.get(key) if use_cache else None
         if response is None:
             response = _one_turn(call, model, system_prompt, user_text, image, max_tokens)
@@ -375,7 +460,9 @@ def _reply_messages(prompt) -> Tuple[Optional[str], list]:
                 media, data = _encode_image(value)
                 content.append({'type': 'image', 'media_type': media, 'data': data})
             else:
-                raise ExecutionNotFeasibleError(f'hosted models here cannot be shown a {kind!r} part')
+                raise ExecutionNotFeasibleError(f'hosted models here cannot be shown a {kind!r} part; they take text and '
+                                                'image parts. Remedy: give this part to a local model, or present '
+                                                'the stimulus as text or images.')
         return system, content
 
     messages = []
@@ -393,6 +480,8 @@ def build_api_reply(
     *,
     max_tokens: int = 512,
     cache_dir: Optional[Union[str, Path]] = None,
+    request_fields: Optional[dict] = None,
+    temperature: Optional[float] = 0,
 ) -> Callable:
     """Build a ``reply(prompt)`` part for a hosted model API.
 
@@ -405,18 +494,24 @@ def build_api_reply(
     task's instruction as the system text, and obeys the generation settings
     of the task's ``Text`` response: ``max_tokens`` (``max_tokens`` here when
     the task gives none), ``temperature`` (0 when the task gives none; the
-    Anthropic API's default 1.0 for Claude), ``top_p`` and ``seed``. A provider
-    that refuses a setting the task gives fails before any request is sent:
+    Anthropic API's default 1.0 for Claude, also on Bedrock), ``top_p`` and ``seed``.
+    A provider that refuses a setting the task gives fails before any request is sent:
     the Anthropic API has no seed and refuses temperature (other than its
-    default 1.0) and top_p.
+    default 1.0) and top_p; Bedrock has no seed.
 
     Limit: video and audio parts are refused at the first trial that shows one; register the
     model without those inputs so such a task is N/A.
 
     :param provider: ``'anthropic'``, ``'openai'``, ``'deepseek'``,
-        ``'openrouter'``, or a callable client
+        ``'openrouter'`` (an API key in the environment), ``'bedrock'`` (the
+        user's AWS credentials), or a callable client
         ``(model, system, messages, settings)`` that returns the text, or a
         ``StreamEvent`` with the text as payload and the extra data as meta.
+    :param request_fields: the provider's own request fields, sent with every request by their provider
+        names (Bedrock's ``additionalModelRequestFields``, such as Claude's ``thinking`` and
+        ``output_config``, or ``reasoning_config``) and stated with the settings on the score.
+    :param temperature: the temperature sent when the task gives none (a model that samples only, such as
+        Claude, sends none); None: none is sent and the provider samples at its own default (stated as null).
     :param cache_dir: if set, replies are cached per trial, keyed on the
         provider, the model, the system text, the turns and the settings. A
         sampled call (temperature above 0) with no seed is never cached.
@@ -435,18 +530,22 @@ def build_api_reply(
                      'top_p': response.top_p, 'seed': response.seed}
             settings.update({name: value for name, value in given.items() if value is not None})
         # The temperature is stated: the Anthropic client sends none and samples at its
-        # default; any other client gets 0 when the task gives none.
+        # default; any other client gets the registration's temperature (0 unless it states another or None, the
+        # provider's own default) when the task gives none.
         settings.setdefault('temperature', _ANTHROPIC_DEFAULT_TEMPERATURE
-                            if call is _call_anthropic else 0)
-        if call is _call_anthropic:
-            _anthropic_settings(settings)   # fail before the cache or a request
-        _state_settings(reply, provider_name, model, settings)
+                            if _samples_only(call, model) else temperature)
+        if request_fields:
+            settings['request_fields'] = request_fields
+        if _samples_only(call, model):
+            _anthropic_settings(settings, f'{provider_name} model {model!r}')   # fail before the cache or a request
+        _state_settings(reply, provider_name, model,
+                        {**settings, 'region': _bedrock_region()} if call is _call_bedrock else settings)
         system, messages = _reply_messages(prompt)
         key = hashlib.sha256(json.dumps([provider_name, model, system, messages, settings,
                                          _CACHE_FORM], sort_keys=True).encode('utf-8')).hexdigest()
         # A sampled call without a seed differs on each repetition: do not cache it.
         use_cache = cache is not None and not (
-            settings['temperature'] > 0 and settings.get('seed') is None)
+            (settings['temperature'] is None or settings['temperature'] > 0) and settings.get('seed') is None)
         answer = cache.get(key) if use_cache else None
         if answer is None:
             answer = call(model, system, messages, settings)
@@ -628,10 +727,12 @@ def api_policy(
                 f"Available actions (reply with the NUMBER):\n{menu}"
                 f"{_history_block(legal, payload)}\n\n{tail}")
 
-        _state_settings(act, provider_name, model, _one_turn_settings(call, max_tokens))
+        from brainscore.model_helpers.provenance import state_settings_as
+        state_settings_as(settings={'provider': provider_name, 'model': model,
+                                    **_one_turn_settings(call, model, max_tokens)})
         response = None
         key = None
-        use_cache = cache is not None and call is not _call_anthropic
+        use_cache = cache is not None and not _samples_only(call, model)
         if use_cache:
             # Include the policy's own step count (reset with its episode state)
             # so a stuck state (unchanged observation) at different ticks does

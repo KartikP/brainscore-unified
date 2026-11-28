@@ -286,7 +286,9 @@ def test_the_zero_shot_registration_shares_the_network_and_its_cache_names(stand
     assert type(zero_shot) is BrainScoreModel     # a plain subject (rule 2.3): no subclass
     for key in ('vision', 'text'):
         assert zero_shot.extractor[key].identifier == first.extractor[key].identifier
-    assert {r: s.layer_path for r, s in zero_shot.region_layer_selectors.items()} == stand_ins.REGION_LAYER_MAP
+    assert {r: s.layer_path for r, s in zero_shot.region_layer_selectors.items()
+            if r in stand_ins.REGION_LAYER_MAP} == stand_ins.REGION_LAYER_MAP
+    assert zero_shot.region_layer_selectors['cortex'].layer_paths == stand_ins.CORTEX_LAYERS
     assert {'neural:IT', 'behavior:choice'} <= zero_shot.out_channels
 
 

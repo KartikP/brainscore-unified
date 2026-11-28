@@ -253,9 +253,16 @@ def act(model, row):
             f"requires BrainScoreModel(policy=...), a callable "
             f"policy(row) -> {{output channel: payload}}."
         )
-    outputs = model._policy(row)
+    from . import parts
+    log = parts.active()
+    if log is not None:
+        log.calling = id(model._policy)    # settings stated inside the call are the noted policy's
+    try:
+        outputs = model._policy(row)
+    finally:
+        if log is not None:
+            log.calling = None
     if isinstance(outputs, Mapping):
-        from . import parts
         parts.note('policy', model._policy, serves=list(outputs))   # the channels it answered
     if not isinstance(outputs, Mapping):
         raise TypeError(

@@ -287,11 +287,12 @@ def test_constructor_wiring(registration):
     vision, text = FakeExtractor.instances
     assert list(model.extractor.items()) == [('vision', vision), ('text', text)]
     # The same layer of each region, and each region is recorded from its tower.
-    assert {region: selector.layer_path
-            for region, selector in model.region_layer_selectors.items()} == module.REGION_LAYER_MAP
+    assert {region: selector.layer_path for region, selector in model.region_layer_selectors.items()
+            if region in module.REGION_LAYER_MAP} == module.REGION_LAYER_MAP
     # Qwen-VL's language model also reads the picture tokens: its region states both inputs.
     reached = {'text', 'vision:image'} if identifier == 'qwen2.5-vl-3b' else {'text'}
-    assert model.output_inputs == {
+    assert {output: inputs for output, inputs in model.output_inputs.items()
+            if output[len('neural:'):] in module.REGION_LAYER_MAP} == {
         f'neural:{region}': frozenset(reached if tower == 'text' else {'vision:image'})
         for region, tower in _TOWERS(module).items()}
     assert model._region_modality_map['language_system'] == 'text'      # recorded by the text extractor
@@ -302,7 +303,7 @@ def test_constructor_wiring(registration):
 
 CASES = {
     'clip-vit-b-32': [('V1', 'images'), ('V2', 'images'), ('V4', 'images'), ('IT', 'images'),
-                      ('language_system', 'sentences'), (['V4', 'IT'], 'images')],
+                      ('language_system', 'sentences'), (['V4', 'IT'], 'images'), ('cortex', 'images')],
     'qwen2.5-vl-3b': [('V1', 'images'), ('V2', 'images'), ('V4', 'images'), ('IT', 'images'),
                       ('language_system', 'sentences'), (['V4', 'IT'], 'images')],
 }
@@ -322,7 +323,9 @@ def test_each_input_reaches_its_wrapper_and_layer(registration, tmp_path):
         assert any(_call_logs()), (record, kind)
         for region in regions:
             assembly = session.collect(f'neural:{region}')
-            assert set(assembly['layer'].values) == {module.REGION_LAYER_MAP[region]}
+            layers = (set(module.CORTEX_LAYERS) if region == 'cortex'          # one band per block
+                      else {module.REGION_LAYER_MAP[region]})
+            assert set(assembly['layer'].values) == layers
             assert all(str(n).startswith(expected_wrapper[kind] + '.') for n in assembly['neuroid_id'].values)
 
 

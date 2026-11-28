@@ -19,7 +19,7 @@ from PIL import Image
 from transformers import CLIPConfig, CLIPModel, CLIPProcessor
 
 from brainscore.model_helpers.text_wrapper import TextWrapper
-from brainscore import BrainScoreModel, LayerSelector
+from brainscore import BrainScoreModel, CompositeSelector, LayerSelector
 from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
 from brainscore_core.hf_compat import pin_image_processor
 from brainscore.models._shared import _load_preprocess_images
@@ -34,6 +34,16 @@ REGION_LAYER_MAP = {
     # Language region -- relative to text_model (TextWrapper root)
     'language_system': 'encoder.layers.10',
 }
+# The region cortex: every k-th vision block, at most 12 (the rule of the study models); of 12 blocks, all.
+CORTEX_LAYERS = tuple(f'encoder.layers.{i}' for i in range(12))
+
+
+def region_layers() -> dict:
+    """The region map of the CLIP registrations: ``REGION_LAYER_MAP`` from its towers, and ``cortex``."""
+    layers = {region: LayerSelector(name=layer, modality='text' if region == 'language_system' else 'vision')
+              for region, layer in REGION_LAYER_MAP.items()}
+    layers['cortex'] = CompositeSelector(tuple((layer, None) for layer in CORTEX_LAYERS), modality='vision')
+    return layers
 
 # The zero-shot registration matches each image against the text of each label of the task.
 ZERO_SHOT_IDENTIFIER = 'clip-vit-b-32-zero-shot'
@@ -132,13 +142,7 @@ def get_model(identifier: str) -> BrainScoreModel:
         max_length=77,
     )
 
-    region_layer_map = {
-        region: LayerSelector(
-            name=layer,
-            modality='text' if region == 'language_system' else 'vision',
-        )
-        for region, layer in REGION_LAYER_MAP.items()
-    }
+    region_layer_map = region_layers()
     extractor = {
         'vision': vision_wrapper,
         'text': text_wrapper,

@@ -38,11 +38,17 @@ A metric selects its valid rows with ``answer['response_state'].values == 'valid
 ``score()`` adds ``benchmark_identifier``, ``model_identifier``,
 ``compatibility``, ``trial_memory`` and the channel provenance. A benchmark keeps
 its own extra attributes beside these.
+
+The voxel benchmarks share two functions here: :func:`noise_ceiling` (the voxelwise
+noise ceiling from repeated trials) and :func:`voxel_score` (the median over voxels
+of r, or of r / c with a ceiling per voxel).
 """
 import math
 from collections.abc import Mapping
 from numbers import Real
 from typing import Optional
+
+import numpy as np
 
 from brainscore_core.metrics import Score
 
@@ -166,4 +172,68 @@ def benchmark_score(benchmark, *, raw: float, metric: str, ceiling: Optional[Sco
     elif answer_policy is not None or invalid_limit is not None:
         raise TypeError('answer_policy and invalid_limit describe the answers; pass answers=')
     score.attrs.update(attrs)
+    return score
+
+
+def noise_ceiling(responses: np.ndarray, image: np.ndarray, viewing: np.ndarray, n: int = 3) -> tuple:
+    """``(noise ceiling per voxel in percent, images used)`` from trials x voxels; ``viewing`` is the
+    place of each trial among the answered trials of its image (``things.answered_viewing`` of the
+    CNeuroMod plugin, 0: no response). An image counts when it has exactly ``n`` answered trials,
+    also when shown more often.
+
+    The method of St-Laurent et al. (2026), Scientific Data 13:141 (p.5-6), as the paper's
+    ``GLMsingle_noiseceilings.py`` computes it: the responses of each viewing z-scored per voxel
+    over the images; the noise variance is the variance over the ``n`` viewings (n - 1), averaged
+    over images; signal = 1 - noise (not below 0); NC = 100 ncsnr^2 / (ncsnr^2 + 1/n). A shift and
+    scale per voxel cancel. The ceiling of the mean of the ``n`` viewings as a correlation is
+    ``sqrt(NC / 100)``.
+    """
+    image = np.asarray(image).astype(str)
+    labels, counts = np.unique(image[viewing > 0], return_counts=True)
+    used = np.isin(image, labels[counts == n])
+    cube = np.stack([responses[used & (viewing == place)][np.argsort(image[used & (viewing == place)], kind='stable')]
+                     for place in range(1, n + 1)], axis=1)                         # images x places x voxels
+    cube = (cube - cube.mean(axis=0)) / cube.std(axis=0)                            # per repetition, over images
+    noise = np.sqrt(np.mean(np.var(cube, axis=1, ddof=1), axis=0))
+    snr = np.sqrt(np.clip(1 - noise ** 2, 0, None)) / noise
+    return np.nan_to_num(100 * snr ** 2 / (snr ** 2 + 1 / n)), int(np.sum(counts == n))
+
+
+def voxel_score(benchmark, per_voxel_r, ceiling_per_voxel: Optional[np.ndarray] = None) -> Score:
+    """The score of a voxel benchmark from the held-out r of each scored voxel.
+
+    ``per_voxel_r`` holds one value per scored voxel, in voxel order. One rule
+    for every voxel benchmark (Lahner2024, StLaurent2026): a voxel
+    counts when its r is finite and, given ``ceiling_per_voxel``, its ceiling is
+    finite and above zero. A voxel with a constant response has no correlation;
+    a voxel with a reliability at or below zero has no ceiling. Such a voxel is
+    left out of the median and the mean and counted in ``n_voxels_excluded``,
+    as the Algonauts2025 benchmark leaves out a constant parcel. The attribute
+    ``per_voxel_r`` keeps every scored voxel (NaN where r is undefined).
+
+    With ``ceiling_per_voxel`` the score is ``median(r_i / c_i)``, not
+    ``median(r_i) / median(c_i)``: the repository convention. Without it the
+    raw median is divided by ``benchmark.ceiling`` when it is measured.
+    """
+    r = np.asarray(per_voxel_r)
+    counts = np.isfinite(r)
+    if ceiling_per_voxel is not None:
+        ceiling_per_voxel = np.asarray(ceiling_per_voxel, dtype=float)
+        counts &= np.isfinite(ceiling_per_voxel) & (ceiling_per_voxel > 0)
+    kept = r[counts]
+    median_r = float(np.median(kept))
+    if ceiling_per_voxel is not None:
+        score = benchmark_score(
+            benchmark, value=float(np.median(np.asarray(kept, dtype=float) / ceiling_per_voxel[counts])),
+            raw=median_r, metric='median_per_voxel_pearson_r',
+            ceiling=Score(float(np.median(ceiling_per_voxel[counts]))),
+            ceiling_aggregation='per_voxel')
+    else:
+        score = benchmark_score(
+            benchmark, raw=median_r, metric='median_per_voxel_pearson_r',
+            ceiling_aggregation='scalar')
+    score.attrs['mean_r'] = float(np.mean(kept))
+    score.attrs['n_voxels_scored'] = int(counts.sum())
+    score.attrs['n_voxels_excluded'] = int(r.size - counts.sum())
+    score.attrs['per_voxel_r'] = r   # exposed for bootstrap CIs and surface maps
     return score

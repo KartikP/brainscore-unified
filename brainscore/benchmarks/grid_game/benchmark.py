@@ -80,8 +80,10 @@ class GridGameBenchmark(BenchmarkBase):
         self.max_steps = max_steps
         self.base_seed = base_seed
         # Every row holds the view, the goal and the last reward; the game needs actions,
-        # so a subject without a policy is N/A.
-        self.required_input_channels = frozenset({'observation', 'instruction', 'reward'})
+        # so a subject without a policy is N/A. The view is the stimulus: a subject that
+        # cannot take it never sees the board, so the pair is N/A (Contract Rule 5.1).
+        self.essential_input_channels = frozenset({'observation'})
+        self.required_input_channels = self.essential_input_channels | {'instruction', 'reward'}
         self.requested_output_channels = frozenset({'motor'})
 
         super().__init__(

@@ -51,6 +51,15 @@ REGION_LAYER_MAP = {
     'IT': 'encoder.layer.16',
 }
 
+# ``cortex`` (the whole-cortex benchmarks): every second encoder block of 24, at most 12 bands, one band each.
+CORTEX_LAYERS = tuple(f'encoder.layer.{i}' for i in range(1, 24, 2))
+
+
+def region_layers() -> dict:
+    from brainscore.selection import CompositeSelector
+    return {**REGION_LAYER_MAP, 'cortex': CompositeSelector(tuple((layer, None) for layer in CORTEX_LAYERS))}
+
+
 # V-JEPA2-L config: 64 input frames, tubelet_size=2 → 32 temporal steps,
 # 256×256 image with patch_size=16 → 16×16 = 256 spatial patches per tubelet.
 NUM_INPUT_FRAMES = 64
@@ -112,7 +121,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     return BrainScoreModel(
         identifier=identifier,
         model=vjepa,
-        region_layer_map=REGION_LAYER_MAP,
+        region_layer_map=region_layers(),
         extractor={
             'video': video_wrapper,
         },

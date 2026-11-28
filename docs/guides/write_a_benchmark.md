@@ -121,7 +121,7 @@ class MyWordBenchmark(BenchmarkBase):
                                                       ['real', 'pseudo', 'real', 'pseudo']))
         self._human = np.array(participants['p1'])
         first, second = (np.array(labels) for labels in participants.values())
-        super().__init__(identifier='MyLab2026.word-choice', version=1, parent='behavioral', bibtex='',
+        super().__init__(identifier='MyLab2026.word-choice', version=1, parent='behavior', bibtex='',
                          ceiling=Score(float(np.mean(first == second))))   # the one Score(...) a benchmark builds
 
     def __call__(self, subject):

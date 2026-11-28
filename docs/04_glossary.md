@@ -4,6 +4,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 
 | Term | Meaning |
 | --- | --- |
+| **Act form** | How a subject acts on a screen, as a person does: `motor:key` (key acts) or `motor:pointer` (pointer acts). The payload is a list of acts, such as `[{'act': 'press', 'key': 'Space'}, {'act': 'wait', 'ms': 100}]`; positions are pixels of the last picture, origin at the top left. A benchmark asks for the form its participants used; a subject declares each form it has. Bare `motor` is an action in the form the environment defines. |
 | **Ablate** | An experiment tool that sets selected unit outputs of a network that is not a subject to zero during chosen conditions. A subject is changed with `Intervene`. |
 | **Adapter** | A permanent wrapper that presents a classic Brain-Score vision or language model as a subject. |
 | **`answer`** | A `BrainScoreModel` part: `(stimulus_row, instruction, label_set) -> text`, called with keywords. It words its own prompt and returns the generated text; `BrainScoreModel` parses it with `Choice.parse`. It answers a plain `Choice`; a task with settings goes to `reply`. |

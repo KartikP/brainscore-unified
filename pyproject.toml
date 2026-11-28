@@ -61,6 +61,8 @@ test = [
     "matplotlib",
     "gymnasium",
     "minigrid",
+    "nibabel>=5,<6",     # the CNeuroMod data-packaging tests write NIfTI files
+    "nilearn>=0.13,<1",  # and resample a mask to the trial grid
 ]
 
 notebooks = [
@@ -125,6 +127,7 @@ filterwarnings = [
 # plugin's README, whose Rebuild block the tests compare with its declaration (also installed),
 # and the study configuration and requirements that the study registrations read at import.
 brainscore = ["data/rajalingham2018_2afc/*.csv", "data/*/data_packaging/expected.json", "data/*/README.md",
+              "data/cneuromod/*.csv", "benchmarks/*/test_*.txt",
               "models/umi_dev_models/model_configs.json", "models/umi_dev_models/requirements.txt"]
 
 "brainscore.models.vjepa_v1.backbone" = ["LICENSE", "NOTICE.md"]
@@ -132,6 +135,8 @@ brainscore = ["data/rajalingham2018_2afc/*.csv", "data/*/data_packaging/expected
 # README whose code blocks the tests run (also against an installed package).
 "brainscore.harnesses" = ["README.md"]
 "brainscore.harnesses.coggym" = ["requirements.txt"]
+"brainscore.harnesses.mario" = ["requirements.txt"]
+"brainscore.harnesses.nodekit" = ["requirements.txt"]
 
 [tool.setuptools.exclude-package-data]
 "*" = ["*.pyc", "**/__pycache__/*"]

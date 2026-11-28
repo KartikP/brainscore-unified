@@ -217,7 +217,7 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
         super().__init__(
             identifier=identifier,
             version=1,
-            parent='behavioral',
+            parent='behavior',
             ceiling=Score(self._human_accuracy),
             bibtex=BIBTEX,
         )

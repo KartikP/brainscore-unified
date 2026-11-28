@@ -9,7 +9,7 @@ Data format. An episode is a list of ``(step, human_counts)`` pairs:
 
 - ``step`` is the row (a mapping of channel -> payload) a participant faced
   (history-relevant order, so a stateful policy sees the same sequence a
-  person did).
+  person did). It holds the ``observation``, the essential input.
 - ``human_counts[a]`` is how many participants chose action ``a`` in that state.
 
 Steps answered by fewer than two participants are still shown (they keep the
@@ -136,7 +136,10 @@ class HumanAgreementBenchmark(BenchmarkBase):
                 _check_counts(counts, n_actions)
         self.episodes = episodes
         self.n_actions = n_actions
-        # The recorded states are the inputs: one channel for each key a step holds.
+        # The recorded states are the inputs: one channel for each key a step holds. The
+        # observation is the state itself: a subject that cannot take it never sees the
+        # state, so the pair is N/A (Contract Rule 5.1).
+        self.essential_input_channels = frozenset({'observation'})
         self.required_input_channels = frozenset(
             channel for episode in episodes for step, _ in episode for channel in step)
         counts = [c for episode in episodes for _, c in episode]

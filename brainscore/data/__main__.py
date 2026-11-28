@@ -1,7 +1,7 @@
 """Package a data plugin from its original source, or list the plugins and local assets.
 
     python -m brainscore.data                       each plugin's source place, and the local assets
-    python -m brainscore.data package <name> [--source <folder>] [--output <new folder>]
+    python -m brainscore.data package <name> [--source <folder>] [--output <new folder>] [--part <part>]
     python -m brainscore.data <asset name>          how to obtain one local asset
 """
 import argparse
@@ -30,9 +30,10 @@ def main(argv: list[str] | None = None) -> int:
     package.add_argument('name')
     package.add_argument('--source', help='the folder of the original source data')
     package.add_argument('--output', help='a new folder in place of the place where the benchmarks read the data')
+    package.add_argument('--part', help='a part of a large dataset, when its plugin can package one (its README says how)')
     args = parser.parse_args(argv)
     try:
-        package_data(args.name, source=args.source, output=args.output)
+        package_data(args.name, source=args.source, output=args.output, part=args.part)
     except (ValueError, FileNotFoundError, FileExistsError, PermissionError, ImportError,
             NotImplementedError, RuntimeError) as error:
         parser.exit(2, f'{error}\n')

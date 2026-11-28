@@ -124,7 +124,7 @@ class Sun2025MotionBenchmark(BenchmarkBase):
         self.task = TaskContext(instruction=INSTRUCTION, response=Text(max_tokens=64, temperature=0),
                                 trial_memory='none')
         self.reference = reference
-        super().__init__(identifier=identifier, version=1, parent='behavioral', ceiling=not_estimated(),
+        super().__init__(identifier=identifier, version=1, parent='behavior', ceiling=not_estimated(),
                          bibtex='@article{sun2025motion, title={Machine learning modelling for '
                          'multi-order human visual motion processing}, author={Sun and others}, '
                          'journal={Nature Machine Intelligence}, year={2025}, '
