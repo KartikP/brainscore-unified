@@ -67,7 +67,7 @@ def test_the_cortex_rows_are_the_cortical_labels_of_the_segmentation_on_the_tria
 
 
 def test_a_segmentation_on_another_grid_is_refused(tmp_path):
-    import nibabel
+    nibabel = pytest.importorskip('nibabel')
     grid = nibabel.Nifti1Image(np.ones((2, 2, 2), np.uint8), np.eye(4))
     nibabel.Nifti1Image(np.full((3, 3, 3), 1001, np.int16), np.eye(4)).to_filename(tmp_path / 'dseg.nii.gz')
     with pytest.raises(ValueError, match='not on the grid'):
@@ -129,7 +129,7 @@ def test_a_new_data_set_needs_only_its_module(source, tmp_path, monkeypatch):
 
 
 def test_a_mask_on_another_grid_is_resampled_to_the_grid():
-    import nibabel
+    nibabel = pytest.importorskip('nibabel')
     grid = nibabel.Nifti1Image(np.ones((2, 2, 2), np.uint8), np.diag([2.0, 2.0, 2.0, 1.0]))
     fine = np.zeros((4, 4, 4), np.uint8)
     fine[2:, :, :] = 1                                   # the half with x >= 2 mm

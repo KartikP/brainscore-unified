@@ -8,9 +8,14 @@ Kanwisher group parcels), as in the release. A 4 x 4 x 4 voxel grid; 3 trials pe
 from pathlib import Path
 
 import h5py
-import nibabel
 import numpy as np
 import pandas as pd
+import pytest
+
+try:
+    import nibabel
+except ModuleNotFoundError:     # not in the offline install: ``make_source`` skips the test that asks for it
+    nibabel = None
 
 REAL_NIBABEL = nibabel          # some packaging tests replace nibabel; the CNeuroMod source needs the real one
 TR = 1.49
@@ -50,6 +55,8 @@ def _timeseries(path: Path, runs: dict, columns: int) -> None:
 
 
 def make_source(root: Path) -> Path:
+    if nibabel is None:
+        pytest.skip('the made-up CNeuroMod source writes NIfTI files with nibabel, which is not installed')
     grid = _grid()
     v1 = np.zeros((4, 4, 4), bool)
     v1[1, 1:3, 1:3] = True
