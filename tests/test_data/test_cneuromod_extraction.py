@@ -11,6 +11,7 @@ import types
 from pathlib import Path
 
 import h5py
+import nibabel
 import numpy as np
 import pandas as pd
 import pytest
@@ -18,8 +19,6 @@ import xarray as xr
 
 from brainscore.data.cneuromod.data_packaging import extraction, movie10, package, shared, things
 from tests.cneuromod_stand_in import N_TRS, make_source
-
-nibabel = pytest.importorskip('nibabel')   # every test here writes NIfTI files; not in the offline install
 
 pytestmark = pytest.mark.unit
 
