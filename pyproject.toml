@@ -61,7 +61,8 @@ test = [
     "matplotlib",
     "gymnasium",
     "minigrid",
-    "nibabel>=5,<6",     # the made-up CNeuroMod source of the data-packaging tests writes NIfTI files
+    "nibabel>=5,<6",     # the CNeuroMod data-packaging tests write NIfTI files
+    "nilearn>=0.13,<1",  # and resample a mask to the trial grid
 ]
 
 notebooks = [
